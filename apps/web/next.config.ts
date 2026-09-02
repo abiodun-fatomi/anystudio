@@ -1,4 +1,9 @@
 import type { NextConfig } from 'next';
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
+
+// Lets `next dev` see Cloudflare bindings and `vars` from wrangler.jsonc.
+// A no-op in `next build`, and outside a Cloudflare project.
+initOpenNextCloudflareForDev();
 
 /**
  * Same-origin API in the browser: /api/* is rewritten to the NestJS service, so

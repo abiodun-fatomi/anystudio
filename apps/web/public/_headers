@@ -1,0 +1,4 @@
+# Immutable, content-hashed assets from the Next build. Cloudflare serves
+# these straight from the assets binding without invoking the Worker.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable

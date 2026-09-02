@@ -1,0 +1,44 @@
+/**
+ * Cloudflare Workers config for the user portal (app.anystudio.ai).
+ *
+ * One Worker per environment, each bound to one git branch by Workers
+ * Builds, each owning one hostname. The environment name is what
+ * `wrangler deploy --env <name>` selects, and it becomes the Worker name
+ * suffix in the dashboard: anystudio-app-development, -staging, -production.
+ *
+ * `custom_domain: true` makes wrangler create the DNS record and the
+ * certificate itself — nothing is added by hand in the DNS tab.
+ *
+ * Only NON-secret, runtime-readable values go in `vars`. Build-time values
+ * (anything read in next.config.ts or prefixed NEXT_PUBLIC_) are set in the
+ * Worker's Build → Variables screen instead, because Next inlines them when
+ * it compiles, before this file is ever read.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anystudio-app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "workers_dev": false,
+
+  "env": {
+    "development": {
+      "name": "anystudio-app-development",
+      "routes": [{ "pattern": "app.dev.anystudio.ai", "custom_domain": true }],
+      "vars": { "NEXTJS_ENV": "development", "APP_ENV": "development" }
+    },
+    "staging": {
+      "name": "anystudio-app-staging",
+      "routes": [{ "pattern": "app.staging.anystudio.ai", "custom_domain": true }],
+      "vars": { "NEXTJS_ENV": "production", "APP_ENV": "staging" }
+    },
+    "production": {
+      "name": "anystudio-app-production",
+      "routes": [{ "pattern": "app.anystudio.ai", "custom_domain": true }],
+      "vars": { "NEXTJS_ENV": "production", "APP_ENV": "production" }
+    }
+  }
+}
