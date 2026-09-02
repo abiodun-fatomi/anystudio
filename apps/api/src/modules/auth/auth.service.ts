@@ -12,7 +12,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type User, type Surface, type StaffRole } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
-import { surfaceForOrigin } from '@anystudio/shared';
+import { surfaceForOrigin, type AppEnv } from '@anystudio/shared';
 import { SessionService, COOKIE, type IssuedSession } from './session.service';
 import { verifyPassword, needsRehash, hashPassword } from '../../common/crypto/password';
 import { verifyCode } from '../../common/crypto/totp';
@@ -41,8 +41,8 @@ export class AuthService {
    * CORS; it never resolves to ADMIN.
    */
   surfaceFromOrigin(req: Request): Surface {
-    const env = (process.env.APP_ENV === 'production' ? 'production'
-      : process.env.APP_ENV === 'dev' ? 'dev' : 'local') as 'production' | 'dev' | 'local';
+    const raw = process.env.APP_ENV;
+    const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
     const origin = req.get('origin') ?? req.get('referer') ?? '';
     return surfaceForOrigin(origin, env) ?? 'APP';
   }

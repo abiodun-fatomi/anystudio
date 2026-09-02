@@ -31,22 +31,33 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 12
 
+    # Fixtures, not secrets. The Postgres and Redis they point at are service
+    # containers on the runner's own loopback interface that are destroyed with
+    # the job, and GitHub prints a step's env verbatim — so nothing that unlocks
+    # anything may be written here. Real credentials go in repository secrets,
+    # which GitHub masks in logs.
     env:
       DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
       REDIS_URL: redis://localhost:6379
-      APP_KEY: dGVzdC1rZXktbm90LWZvci1wcm9kdWN0aW9uLXVzZS1vbmx5MA==
       ORIGIN_APP: http://localhost:3000
       ORIGIN_ORG: http://localhost:3002
       ORIGIN_ADMIN: http://localhost:3003
 
     steps:
       - uses: actions/checkout@v4
+      # No version here on purpose: it is read from package.json's
+      # packageManager field. Giving both is ERR_PNPM_BAD_PM_VERSION.
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
 
       - run: pnpm install --frozen-lockfile
+
+      # Generated per run rather than written above, so no key-shaped literal
+      # ever exists in this file or in a build log. APP_KEY encrypts TOTP seeds
+      # at rest; a fresh one each run is exactly right for a throwaway database.
+      - name: Generate a throwaway APP_KEY
+        run: echo "APP_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       # Before lint and typecheck, never after: every app imports the generated
       # client, so without this the failures point at the wrong place.

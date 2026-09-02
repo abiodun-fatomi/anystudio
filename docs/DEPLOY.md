@@ -32,70 +32,57 @@ read production sessions. Under `*.dev.anystudio.ai` and
 
 ---
 
-## 2. Web surfaces on Cloudflare Workers — click by click
+## 2. Web surfaces on Cloudflare Workers
 
 Each surface has a `wrangler.jsonc` with three named environments
-(`development`, `staging`, `production`). Each environment is its own Worker
-in the dashboard, connected to one branch. Do **development first**; the other
-two are the same steps with a different branch and environment name.
+(`development`, `staging`, `production`). Each environment is its own Worker,
+owning two hostnames (the marketing site and the app — `middleware.ts` routes
+by host). **GitHub Actions builds and deploys them**
+(`.github/workflows/web-deploy.yml`): a push to a branch deploys the matching
+environment, and the first deploy creates the Worker, its custom domains and
+their certificates. Nothing is configured in the Cloudflare dashboard.
 
-### 2.1 Create the development Worker from the repo
+### 2.1 One-time setup
 
-1. dash.cloudflare.com → **Workers & Pages** → **Create** → **Import a repository**
-2. Connect GitHub if asked, pick `abiodun-fatomi/anystudio`
-3. **Project name**: `anystudio-app-development` — this MUST match the
-   `env.development.name` in `apps/web/wrangler.jsonc`, or the build fails
-   with a name mismatch
-4. **Production branch**: `development`
-5. **Root directory**: `apps/web`
-6. **Build command**: `pnpm run cf:build`
-7. **Deploy command**: `pnpm exec wrangler deploy --env development`
-8. **Build variables** (this screen, "Variables and secrets", scope *Build*):
-   - `API_ORIGIN` = `https://api.dev.anystudio.ai`
-   - `NEXT_PUBLIC_ADMIN_ORIGIN` = `https://admin.dev.anystudio.ai`
-   - `NODE_VERSION` = `22`
-9. **Create and deploy**. The first build takes 3–5 minutes.
+1. Cloudflare → My Profile → API Tokens → Create → template **Edit Cloudflare
+   Workers** → scope the zone policy to `anystudio.ai` and add **DNS · Edit**
+   and **SSL and Certificates · Edit**. No expiration.
+2. GitHub → repo → Settings → Secrets and variables → Actions:
+   `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (the 32-hex
+   id in every dashboard URL).
+3. GitHub → Settings → Environments → create **`production`** and add yourself
+   under **Required reviewers**. That is the release gate. The other two
+   environments are created by the first deploy.
+4. If a Worker was ever connected to the repo from the Cloudflare side
+   (Worker → Settings → Build), **disconnect** it — otherwise every merge
+   deploys twice.
 
-The deploy step, because of `custom_domain: true` in `wrangler.jsonc`, creates
-the `app.dev.anystudio.ai` DNS record and its certificate. Do not add that
-record by hand; if one already exists, delete it first or the deploy errors.
+There are no per-environment variables anywhere: the app derives its API and
+admin hostnames from the request host (`apps/web/lib/hosts.ts`), and the
+Worker's runtime values live in `wrangler.jsonc` under each environment.
 
-### 2.2 Stop it building other branches
+### 2.2 What a deploy does
 
-Worker → **Settings** → **Build** → **Branch control** → untick
-**Builds for non-production branches** → Save. Otherwise a push to `staging`
-also builds this Worker (and fails, harmlessly, at the deploy step).
+`Web` workflow → *Build* (typecheck, `opennextjs-cloudflare build`) → *Deploy*
+(`wrangler deploy --env <branch>`). The run shows on the commit, the PR and
+the **Deployments** tab. A two-level hostname such as `app.dev.anystudio.ai`
+gets its own certificate on first creation; the browser shows an SSL error
+for the 5–15 minutes that takes.
 
 ### 2.3 Check
 
-- `https://app.dev.anystudio.ai/login` shows the sign-in page
+- `https://dev.anystudio.ai` — the landing page
+- `https://app.dev.anystudio.ai/login` — the sign-in page
 - `curl -I https://app.dev.anystudio.ai` → `server: cloudflare`
-- Worker → **Logs** shows the request
 
-Sign-in will fail with a network error until the dev API exists (section 4);
-that is expected.
+Sign-in fails with a network error until the dev API exists (section 3).
 
-### 2.4 Staging and production
-
-Repeat 2.1–2.2 twice, changing only:
-
-| | staging | production |
-|---|---|---|
-| Project name | `anystudio-app-staging` | `anystudio-app-production` |
-| Production branch | `staging` | `production` |
-| Deploy command | `… --env staging` | `… --env production` |
-| `API_ORIGIN` | `https://api.staging.anystudio.ai` | `https://api.anystudio.ai` |
-| `NEXT_PUBLIC_ADMIN_ORIGIN` | `https://admin.staging.anystudio.ai` | `https://admin.anystudio.ai` |
-
-Do production last, and only after `api.staging` answers `/ready`.
-
-### 2.5 Promoting code between environments
+### 2.4 Promoting code between environments
 
 Nobody pushes to `development`, `staging` or `production` directly — not
 even the owner. A GitHub ruleset (Settings → Rules → Rulesets) requires a
 pull request for all three, blocks force-pushes and deletions, and has an
-empty bypass list. Every build is therefore the result of a merge, which is
-the thing that shows up in history with a reviewer and a green check.
+empty bypass list. Every deploy is therefore the result of a merge.
 
 | Change | Branch to open the PR from | Into | Merge method |
 |---|---|---|---|
@@ -106,9 +93,6 @@ the thing that shows up in history with a reviewer and a green check.
 Promotion PRs must be *merge commits*, never squashes: squashing rewrites the
 commits, the environment branches diverge, and the next promotion PR shows
 every old change again and conflicts on all of them.
-
-Workers Builds treats a merge as a push to the branch, so the matching
-environment Worker builds and deploys the moment the PR is merged.
 
 ---
 

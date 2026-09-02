@@ -21,10 +21,12 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
  * this map; it never reads the surface from a request body, because a caller
  * must not be able to ask for an admin session by typing "ADMIN" into JSON.
  *
- * Staging nests under dev.anystudio.ai rather than sitting beside production,
- * so no cookie can ever be shared between the two environments.
+ * Development and staging nest under their own subdomain rather than sitting
+ * beside production, so no cookie can ever be shared between environments.
  */
-export function surfaceForOrigin(origin: string, env: 'production' | 'dev' | 'local'): Surface | null {
+export type AppEnv = 'production' | 'staging' | 'dev' | 'local';
+
+export function surfaceForOrigin(origin: string, env: AppEnv): Surface | null {
   const host = (() => {
     try { return new URL(origin).host; } catch { return ''; }
   })();
@@ -34,6 +36,11 @@ export function surfaceForOrigin(origin: string, env: 'production' | 'dev' | 'lo
       'app.anystudio.ai': 'APP',
       'org.anystudio.ai': 'ORG',
       'admin.anystudio.ai': 'ADMIN',
+    },
+    staging: {
+      'app.staging.anystudio.ai': 'APP',
+      'org.staging.anystudio.ai': 'ORG',
+      'admin.staging.anystudio.ai': 'ADMIN',
     },
     dev: {
       'app.dev.anystudio.ai': 'APP',
