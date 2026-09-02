@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: { default: 'AnyStudio', template: '%s · AnyStudio' },
   description: 'One product photo in. Everything you post, out.',
   robots: { index: false, follow: false }, // the app is not a marketing surface
+  // app/icon.svg and app/apple-icon.png are picked up by file convention and
+  // linked automatically; this only names the app for "Add to Home Screen".
+  applicationName: 'AnyStudio',
+  appleWebApp: { title: 'AnyStudio' },
 };
 
 export const viewport: Viewport = {
