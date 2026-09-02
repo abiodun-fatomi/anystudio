@@ -1,0 +1,1009 @@
+<meta charset="utf-8">
+<title>Sign in · AnyStudio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- ==================== DISCOVERY ====================
+     Account pages are deliberately kept out of the index. They carry no content
+     worth ranking, they duplicate each other across four hash routes, and an
+     indexed sign-in page is a standing phishing target — a copy of it ranking
+     next to the real one is how credentials get harvested. noarchive and
+     nosnippet stop caches and previews of the form itself. -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="description" content="Sign in to AnyStudio, or create an account to start with three free generations.">
+<link rel="canonical" href="https://anystudio.ai/signin">
+
+<!-- Link previews still matter: this URL gets pasted into chats. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AnyStudio">
+<meta property="og:title" content="Sign in to AnyStudio">
+<meta property="og:description" content="Your library, brand kits and credits are where you left them.">
+<meta property="og:image" content="https://anystudio.ai/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://anystudio.ai/og-image.png">
+
+<!-- ==================== ICONS, THEME ==================== -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#EFECF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131016" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="AnyStudio">
+<meta name="format-detection" content="telephone=no">
+
+<!-- ==================== SECURITY ====================
+     no-referrer on the auth screens specifically: a reset link lives in the URL,
+     and the referrer header would otherwise leak that token to Google Fonts and
+     to any host the page talks to. The header-level policy (CSP, HSTS, COOP,
+     frame-ancestors) is in seo/_headers and seo/next-headers.mjs — this page
+     must never be frameable, or it can be clickjacked. -->
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ============ TOKENS (same system as the landing page) ============ */
+:root{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --danger:#B3261E; --ok:#0F7B4F;
+  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
+  --frame-shadow-lg:0 2px 4px rgba(23,19,26,.06),0 24px 60px rgba(23,19,26,.12);
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:4px;
+  --pad-b:38px;   /* both columns close on this line */
+  --foot-lh:22px; /* and their last row shares this line box */
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not([data-app-theme="light"]){
+    --paper:#131016; --surface:#1B1621; --surface-2:#241E2B;
+    --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+    --line:#352C3E; --line-soft:#2A2332;
+    --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+    --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+    --danger:#FF8A80; --ok:#5BD6A0;
+    --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+    --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"], :root[data-app-theme="dark"]{
+  --paper:#131016; --surface:#1B1621; --surface-2:#241E2B;
+  --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+  --line:#352C3E; --line-soft:#2A2332;
+  --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+  --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+  --danger:#FF8A80; --ok:#5BD6A0;
+  --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+  --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+:root[data-app-theme="light"]{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --danger:#B3261E; --ok:#0F7B4F;
+  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
+  --frame-shadow-lg:0 2px 4px rgba(23,19,26,.06),0 24px 60px rgba(23,19,26,.12);
+  color-scheme:light;
+}
+
+/* ============ BASE ============ */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.025em;line-height:1.08;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;color:inherit;cursor:pointer}
+img{max-width:100%;display:block}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:2px}
+.mono{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* ============ SHELL ============ */
+.shell{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);min-height:100vh}
+/* dvh tracks the real viewport as mobile browser chrome shows and hides */
+@supports(height:100dvh){.shell{min-height:100dvh}}
+@media(max-width:940px){.shell{grid-template-columns:1fr;min-height:0}}
+@media(min-width:941px){
+  /* Two rows: the form column, then the footer. The proof column spans both, so
+     the two sides close on the same line by construction rather than by matching
+     paddings — nothing to drift when the type or the copy changes. */
+  .shell{height:100vh;overflow:hidden;grid-template-rows:minmax(0,1fr) auto}
+  .shell>.aside{grid-column:1;grid-row:1/3}
+  .shell>.main{grid-column:2;grid-row:1;padding-bottom:0}
+  .shell>.main-foot{
+    grid-column:2;grid-row:2;justify-content:flex-end;
+    /* the links carry 9px of tap padding below their text, so the box sits 9px
+       lower than the line it should close on */
+    padding:0 clamp(18px,4vw,48px) calc(var(--pad-b) - 9px + env(safe-area-inset-bottom));
+  }
+  /* Three fixed rows: the header, a scrolling middle, and a footer pinned to
+     the bottom of the viewport. Pinning it is what makes the two columns close
+     on the same line — a footer that lives inside the scroll area lands
+     wherever the current view happens to end, which is what was misaligning
+     against the reassurance rows on the left. */
+  .main{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+  /* safe centring: a plain `center` in a scroll container puts overflow above
+     the top edge where it cannot be reached */
+  .main .form-wrap{overflow-y:auto;overscroll-behavior:contain;display:grid;align-content:safe center}
+  /* When a long form runs past the column, fade its bottom edge so the cut
+     reads as "there is more" rather than as a clipped layout. */
+  .main .form-wrap[data-more="true"]{
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+    mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+  }
+  /* the proof column scrolls inside itself too, so locking the shell height
+     can never clip the trust rows off the bottom on a short laptop screen */
+  .shell>.aside{overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+}
+@supports(height:100dvh){@media(min-width:941px){.shell{height:100dvh}}}
+
+/* --- left: the proof panel --- */
+.aside{
+  position:relative;
+  padding:38px clamp(24px,4vw,56px) calc(var(--pad-b) + env(safe-area-inset-bottom));
+  background:var(--surface);border-right:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:30px;overflow:hidden;
+}
+.aside::before{
+  content:"";position:absolute;inset:auto -20% 0 -20%;height:420px;
+  background:radial-gradient(closest-side,var(--accent-wash),transparent 72%);
+  pointer-events:none;
+}
+.aside > *{position:relative;z-index:1}
+.aside h2{font-size:clamp(26px,2.9vw,38px);font-weight:800;max-width:15ch}
+.aside .lede{color:var(--muted);font-size:16px;max-width:44ch;margin-top:14px}
+.aside-foot{margin-top:auto;display:grid;gap:11px}
+.aside-foot .row{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;line-height:var(--foot-lh);color:var(--ink-soft)}
+.aside-foot .row svg{width:15px;height:15px;flex:none;margin-top:4px;stroke:var(--accent);fill:none;stroke-width:2.6}
+
+/* The sheet is the only element here that can afford to shrink. Sizing it
+   against the viewport height keeps the whole column inside one screen on a
+   short laptop, so the reassurance rows stay visible and land on the same
+   line as the footer opposite instead of scrolling out of view. */
+.sheet{width:min(100%,calc((100vh - 513px) * 1.38));margin-inline:auto;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:14px;box-shadow:var(--frame-shadow-lg)}
+@supports(height:100dvh){.sheet{width:min(100%,calc((100dvh - 513px) * 1.38))}}
+@media(max-width:940px){.sheet{width:100%}}
+.sheet-bar{display:flex;justify-content:space-between;margin-bottom:11px}
+.sheet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.frame{position:relative;aspect-ratio:1;border-radius:3px;overflow:hidden;border:1px solid var(--line-soft);background:var(--surface);display:flex;flex-direction:column;justify-content:flex-end;padding:8px}
+.frame .art{position:absolute;inset:0;z-index:0}
+.frame .ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.frame .scrim{position:absolute;inset:0;z-index:2;background:linear-gradient(to top,rgba(0,0,0,.6),transparent 55%)}
+.frame .fnum{position:absolute;top:5px;left:6px;z-index:4;font-family:var(--f-mono);font-size:8px;letter-spacing:.1em;color:rgba(255,255,255,.9);text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.frame .tag{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:flex-end;gap:5px}
+.frame .nm{font-family:var(--f-display);font-weight:700;font-size:10px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.45);line-height:1.15}
+.frame .pr{font-family:var(--f-mono);font-size:8.5px;font-weight:700;background:#fff;color:#17131A;padding:2px 5px;border-radius:2px}
+.frame.src .ph{filter:saturate(.3) contrast(.85)}
+/* the last frame plays itself; if the video is blocked the still stays put */
+.frame .vd{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;display:block;background:#17131A}
+.frame.reel .live,.frame.reel .prog{opacity:0;transition:opacity .3s}
+.frame.reel.playing .live,.frame.reel.playing .prog{opacity:1}
+.frame.reel .live{position:absolute;top:5px;left:6px;z-index:5;display:flex;align-items:center;gap:4px;
+  font-family:var(--f-mono);font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;color:#fff;
+  background:rgba(0,0,0,.45);padding:2px 5px;border-radius:2px}
+.frame.reel .live i{width:4px;height:4px;border-radius:50%;background:var(--accent);flex:none;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.frame.reel .prog{position:absolute;left:0;right:0;bottom:0;height:2px;z-index:5;background:rgba(255,255,255,.22)}
+.frame.reel .prog i{display:block;height:100%;width:0;background:#fff;animation:reelprog 5s linear infinite}
+@keyframes reelprog{from{width:0}to{width:100%}}
+.frame.src .badge{position:absolute;bottom:6px;left:6px;z-index:4;font-family:var(--f-mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:var(--paper);padding:2px 5px;border-radius:2px}
+
+/* --- right: the form --- */
+.main{
+  display:flex;flex-direction:column;
+  padding:calc(20px + env(safe-area-inset-top)) clamp(18px,4vw,48px)
+          calc(var(--pad-b) + env(safe-area-inset-bottom));
+}
+@media(max-width:380px){.main{padding-inline:16px}}
+.main-top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:clamp(28px,5vw,52px)}
+/* the aside already carries the logo on wide screens — don't say it twice */
+@media(min-width:941px){.main-top{justify-content:flex-end}.main-top .brand{display:none}}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--f-display);font-weight:800;font-size:18px;letter-spacing:-.03em;color:var(--ink);text-decoration:none;padding:10px 0;min-height:44px}
+.brand:hover{text-decoration:none}
+.brand svg{width:22px;height:22px;flex:none}
+.theme{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:transparent;border-radius:var(--r);padding:7px 11px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);transition:.18s}
+.theme:hover{border-color:var(--ink);color:var(--ink)}
+.theme svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none}
+.theme .lbl{min-width:34px;text-align:left}
+
+/* Stability comes from the shell being exactly one viewport tall with this
+   column scrolling inside itself (see the min-width:941px block above), not
+   from reserving the tallest view's height — the four views differ by more
+   than a screen, and reserving that much left the short ones stranded in dead
+   space. The document itself cannot move; only this column scrolls. */
+.form-wrap{width:100%;max-width:412px;margin-inline:auto;flex:1;display:flex;flex-direction:column;justify-content:center;padding-block:8px}
+.view{display:none}
+.view[data-active="true"]{display:block;animation:in .34s cubic-bezier(.2,.8,.3,1)}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.view[data-active="true"]{animation:none}}
+
+.view h1{font-size:clamp(27px,3.6vw,34px);font-weight:800}
+.view .sub{color:var(--muted);margin-top:10px;font-size:15.5px}
+
+/* social + whatsapp */
+.social{display:grid;gap:9px;margin-top:26px}
+.sbtn{
+  display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+  padding:12px 16px;border:1px solid var(--line);background:var(--surface-2);
+  border-radius:var(--r);font-weight:600;font-size:15px;transition:.18s;
+}
+.sbtn:hover{border-color:var(--ink);transform:translateY(-1px)}
+.sbtn svg{width:18px;height:18px;flex:none}
+.sbtn.wa{border-color:var(--accent);color:var(--accent)}
+.sbtn.wa:hover{background:var(--accent-wash)}
+
+.divider{display:flex;align-items:center;gap:14px;margin:22px 0}
+.divider::before,.divider::after{content:"";height:1px;background:var(--line);flex:1}
+.divider span{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* fields */
+.field{margin-bottom:16px}
+.field label{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13.5px;font-weight:600;margin-bottom:7px}
+.field label a{font-weight:500;font-size:13.5px;padding:6px 2px;margin:-6px -2px} /* larger tap area without shifting layout */
+.inp{position:relative;display:flex;align-items:center}
+input[type=text],input[type=email],input[type=password]{
+  width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface-2);color:var(--ink);font:inherit;
+  /* 16px minimum: iOS Safari zooms the whole page on focus below this */
+  font-size:16px;
+  transition:border-color .16s,box-shadow .16s;
+}
+input::placeholder{color:var(--muted);opacity:.75}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+input[aria-invalid="true"]{border-color:var(--danger)}
+.peek{
+  position:absolute;right:2px;border:0;background:transparent;border-radius:3px;
+  color:var(--muted);display:grid;place-items:center;
+  width:44px;height:44px; /* thumb-sized target */
+}
+.peek:hover{color:var(--ink)}
+.peek svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
+.hint{font-size:12.5px;color:var(--muted);margin-top:7px}
+.field-aside{display:flex;justify-content:flex-end;margin-top:9px}
+.field-aside a{font-size:13.5px;font-weight:500;padding:6px 2px;margin:-6px -2px}
+
+/* errors sit under the field they belong to and announce themselves */
+.err{
+  font-size:13px;color:var(--danger);margin-top:8px;display:none;
+  align-items:flex-start;gap:7px;line-height:1.4;
+}
+.err[data-show="true"]{display:flex;animation:errIn .2s ease-out}
+@keyframes errIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.err::before{
+  content:"";width:14px;height:14px;flex:none;margin-top:2px;border-radius:50%;
+  background:var(--danger);
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm0-4h-2V7h2z'/></svg>") center/contain no-repeat;
+  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm0-4h-2V7h2z'/></svg>") center/contain no-repeat;
+}
+.check.bad{color:var(--danger)}
+.check.bad input{outline:2px solid var(--danger);outline-offset:2px}
+
+/* password strength */
+.meter{display:flex;gap:4px;margin-top:9px}
+.meter i{height:3px;flex:1;border-radius:2px;background:var(--line);transition:background .25s}
+.meter[data-s="1"] i:nth-child(1){background:var(--danger)}
+.meter[data-s="2"] i:nth-child(-n+2){background:#C98A00}
+.meter[data-s="3"] i:nth-child(-n+3){background:#C98A00}
+.meter[data-s="4"] i{background:var(--ok)}
+.slabel{font-size:12.5px;color:var(--muted);margin-top:7px;font-family:var(--f-mono);letter-spacing:.06em}
+
+.check{display:flex;gap:11px;align-items:flex-start;font-size:14px;color:var(--ink-soft);
+  margin:4px 0 20px;padding:8px 0;cursor:pointer;min-height:44px}
+.check input{margin-top:2px;accent-color:var(--accent);width:20px;height:20px;flex:none}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;
+  padding:13px 22px;border:1px solid transparent;border-radius:var(--r);
+  font-weight:600;font-size:15.5px;transition:transform .18s cubic-bezier(.2,.8,.3,1),box-shadow .18s;
+  background:var(--accent);color:var(--accent-ink);
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 24px -8px var(--accent);text-decoration:none}
+.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+.alt{text-align:center;margin-top:22px;font-size:15px;color:var(--muted)}
+.alt a{display:inline-block;padding:9px 4px;margin:-9px 0} /* tappable without extra height */
+.back{display:inline-flex;align-items:center;gap:7px;font-size:14px;margin-bottom:22px;color:var(--muted)}
+.back:hover{color:var(--accent)}
+.back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2}
+
+/* sent / success state */
+.note{
+  display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border-radius:var(--r);
+  background:var(--cyan-wash);border:1px solid color-mix(in srgb,var(--cyan) 34%,transparent);
+  font-size:14.5px;color:var(--ink-soft);margin-top:22px;
+}
+.note svg{width:17px;height:17px;flex:none;margin-top:3px;stroke:var(--cyan);fill:none;stroke-width:2.2}
+
+.legal{margin-top:28px;font-size:12.5px;color:var(--muted);text-align:center;max-width:38ch;margin-inline:auto}
+
+.main-foot{display:flex;justify-content:center;gap:6px 18px;flex-wrap:wrap;font-size:13px;line-height:var(--foot-lh);color:var(--muted);align-items:center;padding:0 clamp(18px,5vw,32px) calc(26px + env(safe-area-inset-bottom))}
+.main-foot a{color:var(--muted);padding:9px 2px} /* 32px+ tap height */
+.main-foot a:hover{color:var(--accent)}
+
+/* ============ SUPPORTING BLOCKS ============
+   The reset and forgot views carry one field each. Reserving the tallest
+   view's height keeps the page still, but it left those two views floating in
+   dead space. So they get real content instead of filler: what happens next,
+   and what the password has to satisfy. Both are things the user actually
+   wants to know at that moment. */
+
+.aside-block{
+  margin-top:30px;padding-top:24px;border-top:1px solid var(--line-soft);
+}
+.aside-block .cap{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:16px;
+}
+
+/* --- the three-step timeline --- */
+.steps{display:grid;gap:0;position:relative}
+.step{
+  display:grid;grid-template-columns:26px 1fr;gap:14px;align-items:start;
+  padding-bottom:20px;position:relative;
+}
+.step:last-child{padding-bottom:0}
+/* the rail is drawn per-step so the last one has no tail */
+.step:not(:last-child)::before{
+  content:"";position:absolute;left:12.5px;top:24px;bottom:2px;width:1px;
+  background:var(--line);transform-origin:top;
+  animation:rail .5s cubic-bezier(.4,0,.2,1) both;
+}
+.step .dot{
+  width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
+  background:var(--surface-2);display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:10px;font-weight:700;color:var(--muted);
+  position:relative;z-index:1;
+}
+.step.on .dot{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.step .t{display:block;font-weight:600;font-size:14.5px;line-height:1.35}
+.step .d{display:block;color:var(--muted);font-size:13.5px;line-height:1.5;margin-top:3px}
+/* staggered entrance — the steps arrive in the order they happen */
+.view[data-active="true"] .step{animation:stepIn .45s cubic-bezier(.2,.8,.3,1) both}
+.view[data-active="true"] .step:nth-child(1){animation-delay:.06s}
+.view[data-active="true"] .step:nth-child(2){animation-delay:.16s}
+.view[data-active="true"] .step:nth-child(3){animation-delay:.26s}
+.view[data-active="true"] .step:not(:last-child)::before{animation-delay:.2s}
+@keyframes stepIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes rail{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+
+/* --- live password requirements --- */
+.reqs{display:grid;gap:9px;margin-top:18px}
+.req{
+  display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:center;
+  font-size:13.5px;color:var(--muted);transition:color .2s;
+}
+.req .box{
+  width:18px;height:18px;border-radius:50%;border:1.4px solid var(--line);
+  display:grid;place-items:center;transition:border-color .22s,background .22s;
+}
+.req .box svg{width:10px;height:10px;stroke:var(--accent-ink);fill:none;stroke-width:3.2;
+  stroke-dasharray:22;stroke-dashoffset:22;transition:stroke-dashoffset .28s ease-out .04s}
+.req[data-met="true"]{color:var(--ink)}
+.req[data-met="true"] .box{border-color:var(--accent);background:var(--accent)}
+.req[data-met="true"] .box svg{stroke-dashoffset:0}
+
+/* --- small reassurance card --- */
+.card{
+  display:grid;grid-template-columns:20px 1fr;gap:12px;align-items:start;
+  background:var(--surface-2);border:1px solid var(--line-soft);border-radius:var(--r);
+  padding:14px 15px;margin-top:20px;font-size:13.5px;line-height:1.5;color:var(--ink-soft);
+}
+.card svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.9;margin-top:1px}
+.card b{font-weight:600;color:var(--ink)}
+
+/* frames arrive one after another, like a sheet being laid out */
+.sheet-grid .frame{animation:frameIn .5s cubic-bezier(.2,.8,.3,1) both}
+.sheet-grid .frame:nth-child(1){animation-delay:.05s}
+.sheet-grid .frame:nth-child(2){animation-delay:.12s}
+.sheet-grid .frame:nth-child(3){animation-delay:.19s}
+.sheet-grid .frame:nth-child(4){animation-delay:.26s}
+.sheet-grid .frame:nth-child(5){animation-delay:.33s}
+.sheet-grid .frame:nth-child(6){animation-delay:.40s}
+@keyframes frameIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+
+/* ============ NARROW SCREENS ============
+   The proof panel used to be deleted below 940px, which left a bare form on a
+   flat background — the page the user called scanty. It now moves below the
+   form instead: same markup, restyled into a compact band, so a phone still
+   sees what the product does without the form losing first position. */
+@media(max-width:940px){
+  .shell>.main{order:1}
+  .shell>.main-foot{order:3;padding-top:24px}
+  .shell>.aside{
+    display:flex;order:2;border-right:0;border-top:1px solid var(--line-soft);
+    padding:30px clamp(18px,5vw,32px) calc(34px + env(safe-area-inset-bottom));
+    gap:20px;
+  }
+  .aside .brand{display:none}
+  .aside h2{font-size:22px;max-width:20ch}
+  .aside .lede{font-size:14.5px;margin-top:9px}
+  .aside .sheet{padding:11px}
+  .aside .sheet-grid{gap:6px}
+  .aside-foot{margin-top:4px;gap:9px}
+  .aside-foot .row{font-size:13.5px}
+  .main{padding-bottom:26px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
+</style>
+
+<div class="shell">
+
+  <!-- ================= LEFT: proof ================= -->
+  <aside class="aside">
+    <a class="brand" href="landing.html">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/>
+      </svg>
+      AnyStudio
+    </a>
+
+    <div>
+      <h2>One photo in. Everything you post, out.</h2>
+      <p class="lede">This is the sheet a seller got back from a single phone snapshot taken on a kitchen table.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-bar"><span class="mono">Sheet 001 · Ravi Hair Oil</span><span class="mono">6 frames</span></div>
+      <div class="sheet-grid">
+        <div class="frame src">
+          <div class="art" style="background:linear-gradient(150deg,#b9a998,#6f6257)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp">
+          <span class="fnum" style="color:var(--muted);text-shadow:none">01</span>
+          <span class="badge">Their photo</span>
+        </div>
+        <div class="frame">
+          <div class="art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100625_ac6a5163-9b02-4749-9aa1-88ef4f99309e_min.webp">
+          <span class="scrim"></span><span class="fnum">02</span>
+          <div class="tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div>
+        </div>
+        <div class="frame">
+          <div class="art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_76c9dda3-bd71-4133-b679-5031d24d6c4a_min.webp">
+          <span class="scrim"></span><span class="fnum">03</span>
+          <div class="tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div>
+        </div>
+        <div class="frame">
+          <div class="art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp">
+          <span class="scrim"></span><span class="fnum">04</span>
+          <div class="tag"><span class="nm">Bimbo</span><span class="pr">₦18,000</span></div>
+        </div>
+        <div class="frame">
+          <div class="art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d_min.webp">
+          <span class="scrim"></span><span class="fnum">05</span>
+          <div class="tag"><span class="nm">Kicks</span><span class="pr">₦32,000</span></div>
+        </div>
+        <div class="frame reel">
+          <div class="art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div>
+          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
+          <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4" type="video/mp4"></video>
+          <span class="scrim"></span><span class="fnum">06</span>
+          <span class="live"><i></i>Reel</span><span class="prog"><i></i></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="aside-foot">
+      <span class="row"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Three generations free — no card</span>
+      <span class="row"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Works on WhatsApp and on the web</span>
+      <span class="row"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Your images stay private by default</span>
+    </div>
+  </aside>
+
+  <!-- ================= RIGHT: forms ================= -->
+  <main class="main">
+    <div class="main-top">
+      <a class="brand" href="landing.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/>
+        </svg>
+        AnyStudio
+      </a>
+      <button class="theme" id="themeBtn" type="button">
+        <span id="themeIcon" aria-hidden="true"></span><span class="lbl" id="themeLbl">Auto</span>
+      </button>
+    </div>
+
+    <div class="form-wrap">
+
+      <!-- ---------------- LOGIN ---------------- -->
+      <section class="view" data-view="login" data-active="true">
+        <h1>Welcome back.</h1>
+        <p class="sub">Your library, brand kits and credits are where you left them.</p>
+
+        <div class="social">
+          <a class="sbtn wa" href="https://wa.me/17753032588?text=Sign%20me%20in%20to%20AnyStudio" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.1-1.3A10 10 0 1012 2zm0 2a8 8 0 11-4.1 14.9l-.4-.2-3 .8.8-2.9-.2-.4A8 8 0 0112 4z"/></svg>
+            Continue on WhatsApp
+          </a>
+          <button class="sbtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.2a5.3 5.3 0 01-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.5z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.5-2-6.4-4.7H1.8v3C3.7 21.4 7.5 24 12 24z"/><path fill="#FBBC05" d="M5.6 14.7a7.2 7.2 0 010-4.6v-3H1.8a12 12 0 000 10.6z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3C17.7 1.2 15.1 0 12 0 7.5 0 3.7 2.6 1.8 6.4l3.8 3C6.5 6.7 9 4.8 12 4.8z"/></svg>
+            Continue with Google
+          </button>
+        </div>
+
+        <div class="divider"><span>or with email</span></div>
+
+        <form novalidate data-form="login">
+          <div class="field">
+            <label for="li-email">Email</label>
+            <div class="inp"><input id="li-email" type="email" autocomplete="email" placeholder="you@yourshop.com" required aria-describedby="e-li-email"></div>
+            <p class="err" id="e-li-email" data-err="li-email" role="alert"></p>
+          </div>
+          <div class="field">
+            <label for="li-pass">Password</label>
+            <div class="inp">
+              <input id="li-pass" type="password" autocomplete="current-password" placeholder="Your password"
+                     required aria-describedby="e-li-pass">
+              <button class="peek" type="button" data-peek="li-pass" aria-label="Show password"></button>
+            </div>
+            <p class="err" id="e-li-pass" data-err="li-pass" role="alert"></p>
+            <p class="field-aside"><a href="#forgot">Forgot your password?</a></p>
+          </div>
+          <label class="check"><input type="checkbox" checked> Keep me signed in on this device</label>
+          <button class="btn" type="submit">Sign in</button>
+        </form>
+
+        <p class="alt">New here? <a href="#signup">Create an account</a></p>
+      </section>
+
+      <!-- ---------------- SIGN UP ---------------- -->
+      <section class="view" data-view="signup">
+        <h1>Three free. No card.</h1>
+        <p class="sub">Make an account and your first three generations are on us.</p>
+
+        <div class="social">
+          <a class="sbtn wa" href="https://wa.me/17753032588?text=Hi%20AnyStudio%2C%20I%27d%20like%20to%20start" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.1-1.3A10 10 0 1012 2zm0 2a8 8 0 11-4.1 14.9l-.4-.2-3 .8.8-2.9-.2-.4A8 8 0 0112 4z"/></svg>
+            Start on WhatsApp
+          </a>
+          <button class="sbtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.2a5.3 5.3 0 01-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.5z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.5-2-6.4-4.7H1.8v3C3.7 21.4 7.5 24 12 24z"/><path fill="#FBBC05" d="M5.6 14.7a7.2 7.2 0 010-4.6v-3H1.8a12 12 0 000 10.6z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3C17.7 1.2 15.1 0 12 0 7.5 0 3.7 2.6 1.8 6.4l3.8 3C6.5 6.7 9 4.8 12 4.8z"/></svg>
+            Sign up with Google
+          </button>
+        </div>
+
+        <div class="divider"><span>or with email</span></div>
+
+        <form novalidate data-form="signup">
+          <div class="field">
+            <label for="su-name">Your name</label>
+            <div class="inp"><input id="su-name" type="text" autocomplete="name" placeholder="Adaeze Okonkwo" required aria-describedby="e-su-name"></div>
+            <p class="err" id="e-su-name" data-err="su-name" role="alert"></p>
+          </div>
+          <div class="field">
+            <label for="su-email">Email</label>
+            <div class="inp"><input id="su-email" type="email" autocomplete="email" placeholder="you@yourshop.com" required aria-describedby="e-su-email"></div>
+            <p class="err" id="e-su-email" data-err="su-email" role="alert"></p>
+          </div>
+          <div class="field">
+            <label for="su-pass">Password</label>
+            <div class="inp">
+              <input id="su-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters" required aria-describedby="slabel e-su-pass">
+              <button class="peek" type="button" data-peek="su-pass" aria-label="Show password"></button>
+            </div>
+            <div class="meter" id="meter" data-s="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <p class="slabel" id="slabel">Use 8 or more characters</p>
+            <p class="err" id="e-su-pass" data-err="su-pass" role="alert"></p>
+          </div>
+          <label class="check" id="termsRow"><input type="checkbox" id="su-terms" aria-describedby="e-su-terms"> I agree to the <a href="#top">Terms</a> and <a href="#top">Privacy Policy</a></label>
+          <p class="err" id="e-su-terms" data-err="su-terms" role="alert" style="margin-top:-12px;margin-bottom:18px"></p>
+          <button class="btn" type="submit">Create account</button>
+        </form>
+
+        <p class="legal">We'll ask you to confirm a phone number before your free generations start — it keeps the free tier honest.</p>
+        <p class="alt">Already have an account? <a href="#login">Sign in</a></p>
+      </section>
+
+      <!-- ---------------- FORGOT ---------------- -->
+      <section class="view" data-view="forgot">
+        <a class="back" href="#login"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back to sign in</a>
+        <h1>Reset your password.</h1>
+        <p class="sub">Give us the email on your account and we'll send a link that works for one hour.</p>
+
+        <form novalidate data-form="forgot" style="margin-top:26px">
+          <div class="field">
+            <label for="fp-email">Email</label>
+            <div class="inp"><input id="fp-email" type="email" autocomplete="email" placeholder="you@yourshop.com" required aria-describedby="e-fp-email"></div>
+            <p class="err" id="e-fp-email" data-err="fp-email" role="alert"></p>
+          </div>
+          <button class="btn" type="submit">Send reset link</button>
+        </form>
+
+        <div class="note" id="fpSent" style="display:none">
+          <svg viewBox="0 0 24 24"><path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+          <span>If an account exists for that address, a reset link is on its way. Check spam before trying again — and the link expires in one hour.</span>
+        </div>
+
+        <p class="alt">Signed up with WhatsApp instead? <a href="https://wa.me/17753032588?text=I%20need%20to%20get%20back%20into%20my%20account" target="_blank" rel="noopener noreferrer">Message us</a></p>
+
+        <div class="aside-block">
+          <span class="cap">What happens next</span>
+          <div class="steps">
+            <div class="step on">
+              <span class="dot">1</span>
+              <div><span class="t">We send one link</span>
+                <span class="d">It goes only to the address on the account. We never say whether an account exists — that is how someone else's email gets confirmed for them.</span></div>
+            </div>
+            <div class="step">
+              <span class="dot">2</span>
+              <div><span class="t">You have one hour</span>
+                <span class="d">The link works once and then expires. Ask for a new one any time; the old one stops working the moment you do.</span></div>
+            </div>
+            <div class="step">
+              <span class="dot">3</span>
+              <div><span class="t">Every other device is signed out</span>
+                <span class="d">Your library, brand kits and credits are untouched — only the sessions are cleared, so a phone you no longer have cannot get back in.</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------- RESET ---------------- -->
+      <section class="view" data-view="reset">
+        <h1>Choose a new password.</h1>
+        <p class="sub">You're signing in as <strong id="rsWho">ada@bimbofabrics.ng</strong>. This link stops working once you're done, and every other device is signed out.</p>
+
+        <form novalidate data-form="reset" style="margin-top:26px">
+          <div class="field">
+            <label for="rs-pass">New password</label>
+            <div class="inp">
+              <input id="rs-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters" required aria-describedby="slabel2 e-rs-pass">
+              <button class="peek" type="button" data-peek="rs-pass" aria-label="Show password"></button>
+            </div>
+            <div class="meter" id="meter2" data-s="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <p class="slabel" id="slabel2">Use 8 or more characters</p>
+            <p class="err" id="e-rs-pass" data-err="rs-pass" role="alert"></p>
+          </div>
+          <div class="field">
+            <label for="rs-pass2">Confirm new password</label>
+            <div class="inp">
+              <input id="rs-pass2" type="password" autocomplete="new-password" placeholder="Type it again" required aria-describedby="e-rs-pass2">
+              <button class="peek" type="button" data-peek="rs-pass2" aria-label="Show password"></button>
+            </div>
+            <p class="err" id="e-rs-pass2" data-err="rs-pass2" role="alert"></p>
+          </div>
+          <button class="btn" type="submit">Save and sign in</button>
+        </form>
+
+        <div class="note" id="rsDone" style="display:none">
+          <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>
+          <span>Password changed. We've signed you out everywhere else, so any device you lost no longer has access.</span>
+        </div>
+
+        <p class="alt">Link expired? <a href="#forgot">Send a new one</a></p>
+
+        <div class="aside-block">
+          <span class="cap">Your new password</span>
+          <div class="reqs" id="reqs">
+            <span class="req" data-req="len"  data-met="false"><span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span> At least 8 characters</span>
+            <span class="req" data-req="case" data-met="false"><span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span> An upper and a lower case letter</span>
+            <span class="req" data-req="num"  data-met="false"><span class="box"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span> At least one number</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <div class="main-foot">
+      <a href="#top">Privacy</a><a href="#top">Terms</a>
+      <a href="landing.html">Home</a>
+      <a href="https://wa.me/17753032588?text=I%20need%20help%20with%20AnyStudio" target="_blank" rel="noopener noreferrer">Help on WhatsApp</a>
+      <span>© <span class="yr">2026</span> AnyStudio</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- theme: auto by device preference AND local time ---------- */
+  var SUN='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>';
+  var MOON='<svg viewBox="0 0 24 24"><path d="M20 14.2A8.2 8.2 0 019.8 4 8.4 8.4 0 1020 14.2z"/></svg>';
+  var AUTO='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 3.4a8.6 8.6 0 010 17.2z" fill="currentColor" stroke="none"/></svg>';
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  var btn=document.getElementById("themeBtn"), ic=document.getElementById("themeIcon"), lb=document.getElementById("themeLbl");
+  var mode="auto";
+  function store(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function night(){var h=new Date().getHours();return h>=19||h<6;}
+  function resolved(){return (mode==="light"||mode==="dark")?mode:((mq.matches||night())?"dark":"light");}
+  function apply(){
+    var t=resolved();
+    document.documentElement.setAttribute("data-app-theme",t);
+    ic.innerHTML = mode==="auto"?AUTO:(t==="dark"?MOON:SUN);
+    lb.textContent = mode==="auto"?"Auto":(mode==="dark"?"Dark":"Light");
+    btn.setAttribute("aria-label", mode==="auto"
+      ? "Theme follows your device — currently "+t+". Click for light."
+      : "Theme set to "+mode+". Click to change.");
+  }
+  var saved=load("as-theme");
+  if(saved==="light"||saved==="dark"||saved==="auto") mode=saved;
+  apply();
+  btn.addEventListener("click",function(){
+    mode = mode==="auto"?"light":(mode==="light"?"dark":"auto");
+    store("as-theme",mode); apply();
+  });
+  if(mq.addEventListener) mq.addEventListener("change",apply);
+  setInterval(apply,300000);
+
+  /* ---------- photo fallback ---------- */
+  function dropPhoto(im){
+    var s=im.parentNode&&im.parentNode.querySelector(".scrim");
+    if(s) s.remove();
+    im.remove();
+  }
+  document.querySelectorAll("img.ph").forEach(function(im){
+    im.addEventListener("error",function(){ dropPhoto(im); });
+    if(im.complete && im.naturalWidth===0) dropPhoto(im);
+  });
+
+  /* The reel frame plays itself, muted and inline. If the file never arrives, or
+     the browser cannot decode it, the video is hidden rather than removed — the
+     still underneath keeps the frame looking finished, and the LIVE badge and
+     progress bar only appear once playback has actually started, so the frame
+     never claims to be moving when it is not. */
+  document.querySelectorAll(".frame.reel video.vd").forEach(function(v){
+    var frame = v.closest(".frame");
+    function fail(){ v.style.display = "none"; frame.classList.remove("playing"); }
+    v.addEventListener("error", fail, true);
+    v.addEventListener("playing", function(){ frame.classList.add("playing"); });
+    setTimeout(function(){ if (v.readyState < 2) fail(); }, 6000);
+    var q = v.play && v.play(); if (q && q.catch) q.catch(function(){ /* retry once the tab is visible */
+      document.addEventListener("visibilitychange", function once(){
+        if (!document.hidden){ document.removeEventListener("visibilitychange", once); var r=v.play(); if(r&&r.catch) r.catch(fail); }
+      });
+    });
+  });
+
+  /* The requirement list ticks as you type, so the rules are feedback rather
+     than a warning you only meet after a failed submit. */
+  (function(){
+    var f = document.getElementById("rs-pass"), box = document.getElementById("reqs");
+    if(!f || !box) return;
+    var TESTS = {
+      len:  function(v){ return v.length >= 8; },
+      case: function(v){ return /[a-z]/.test(v) && /[A-Z]/.test(v); },
+      num:  function(v){ return /[0-9]/.test(v); }
+    };
+    function paint(){
+      var v = f.value;
+      box.querySelectorAll(".req").forEach(function(r){
+        r.setAttribute("data-met", String(TESTS[r.dataset.req](v)));
+      });
+    }
+    f.addEventListener("input", paint);
+    paint();
+  })();
+
+  /* the fade only belongs there while something is actually below the fold */
+  (function(){
+    var w = document.querySelector(".form-wrap");
+    if(!w) return;
+    function sync(){
+      var more = w.scrollHeight - w.clientHeight - w.scrollTop > 6;
+      w.setAttribute("data-more", String(more));
+    }
+    w.addEventListener("scroll", sync, {passive:true});
+    window.addEventListener("resize", sync);
+    window.addEventListener("hashchange", function(){ setTimeout(sync, 40); });
+    if (window.ResizeObserver) new ResizeObserver(sync).observe(w);
+    sync();
+  })();
+
+  /* screen readers and search engines both need the document language */
+  document.documentElement.lang = document.documentElement.lang || "en";
+
+  /* the copyright year should not need a deploy every January */
+  document.querySelectorAll(".yr").forEach(function(el){
+    el.textContent = String(new Date().getFullYear());
+  });
+
+  /* ---------- routing ---------- */
+  var VIEWS=["login","signup","forgot","reset"];
+  function route(){
+    var h=(location.hash||"#login").replace(/^#\/?/,"");
+    if(VIEWS.indexOf(h)===-1) h="login";
+    document.querySelectorAll(".view").forEach(function(v){
+      v.setAttribute("data-active", String(v.dataset.view===h));
+    });
+    var first=document.querySelector('.view[data-active="true"] input');
+    if(first && window.innerWidth>940) first.focus({preventScroll:true});
+  }
+  window.addEventListener("hashchange",route);
+  route();
+
+  /* ---------- show / hide password ---------- */
+  var EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF='<svg viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M9.9 5.7A9.9 9.9 0 0112 5.5c6.4 0 10 6.5 10 6.5a17 17 0 01-3.3 4M6.3 8.2A16.6 16.6 0 002 12s3.6 6.5 10 6.5c1.2 0 2.2-.2 3.2-.5"/></svg>';
+  document.querySelectorAll(".peek").forEach(function(p){
+    p.innerHTML=EYE;
+    p.addEventListener("click",function(){
+      var inp=document.getElementById(p.dataset.peek);
+      var show=inp.type==="password";
+      inp.type=show?"text":"password";
+      p.innerHTML=show?EYE_OFF:EYE;
+      p.setAttribute("aria-label",show?"Hide password":"Show password");
+    });
+  });
+
+  /* ---------- password strength ---------- */
+  function score(v){
+    var s=0;
+    if(v.length>=8) s++;
+    if(v.length>=12) s++;
+    if(/[0-9]/.test(v)&&/[a-zA-Z]/.test(v)) s++;
+    if(/[^a-zA-Z0-9]/.test(v)) s++;
+    return Math.min(s,4);
+  }
+  var WORDS=["Use 8 or more characters","Weak — add length","Getting there — mix in a number","Good","Strong"];
+  function wire(inputId,meterId,labelId){
+    var i=document.getElementById(inputId), m=document.getElementById(meterId), l=document.getElementById(labelId);
+    if(!i) return;
+    i.addEventListener("input",function(){
+      var s=i.value?score(i.value):0;
+      m.setAttribute("data-s",String(s));
+      l.textContent=WORDS[s];
+    });
+  }
+  wire("su-pass","meter","slabel");
+  wire("rs-pass","meter2","slabel2");
+
+  /* ==========================================================
+     VALIDATION
+     Each field has a rule that returns either null (valid) or the
+     exact sentence to show. Errors appear on submit, then correct
+     themselves live as the person fixes them — never while they are
+     still mid-typing a field they haven't submitted yet.
+     ========================================================== */
+  var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function emailRule(label){
+    return function(v){
+      v = v.trim();
+      if (!v) return "We need your email address" + (label ? " " + label : "") + ".";
+      if (v.indexOf("@") === -1) return "This is missing an @ — check the address and try again.";
+      if (!EMAIL.test(v)) return "That address looks incomplete. It should look like name@shop.com.";
+      return null;
+    };
+  }
+
+  var RULES = {
+    "li-email": emailRule("to sign you in"),
+    "li-pass": function(v){ return v.length ? null : "Enter your password to continue."; },
+    "su-name": function(v){
+      v = v.trim();
+      if (!v) return "Tell us what to call you.";
+      if (v.length < 2) return "That looks too short to be a name.";
+      return null;
+    },
+    "su-email": emailRule("to create your account"),
+    "su-pass": function(v){
+      if (!v) return "Choose a password.";
+      if (v.length < 8) return "Use at least 8 characters — you have " + v.length + ".";
+      return null;
+    },
+    "fp-email": emailRule("so we know where to send the link"),
+    "rs-pass": function(v){
+      if (!v) return "Choose a new password.";
+      if (v.length < 8) return "Use at least 8 characters — you have " + v.length + ".";
+      return null;
+    },
+    "rs-pass2": function(v){
+      if (!v) return "Type your new password again to confirm it.";
+      if (v !== document.getElementById("rs-pass").value) return "These two don't match yet.";
+      return null;
+    }
+  };
+
+  function show(id, msg){
+    var f = document.getElementById(id);
+    var e = document.querySelector('[data-err="' + id + '"]');
+    if (f) f.setAttribute("aria-invalid", String(!!msg));
+    if (e){
+      e.textContent = msg || "";
+      e.setAttribute("data-show", String(!!msg));
+    }
+    return !msg;
+  }
+
+  function check(id){ return show(id, RULES[id](document.getElementById(id).value)); }
+
+  /* Once a field has been marked wrong, re-check it as they type so the
+     error clears the moment it is fixed. */
+  Object.keys(RULES).forEach(function(id){
+    var f = document.getElementById(id);
+    if (!f) return;
+    f.addEventListener("input", function(){
+      if (f.getAttribute("aria-invalid") === "true") check(id);
+      if (id === "rs-pass" && document.getElementById("rs-pass2").getAttribute("aria-invalid") === "true") check("rs-pass2");
+    });
+    f.addEventListener("blur", function(){ if (f.value) check(id); });
+  });
+
+  function validate(ids){
+    var firstBad = null;
+    ids.forEach(function(id){ if (!check(id) && !firstBad) firstBad = id; });
+    if (firstBad) document.getElementById(firstBad).focus();
+    return !firstBad;
+  }
+
+  document.querySelector('[data-form="login"]').addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (validate(["li-email","li-pass"])) location.hash = "#reset";
+  });
+
+  var termsRow = document.getElementById("termsRow"), terms = document.getElementById("su-terms");
+  terms.addEventListener("change", function(){
+    if (terms.checked){ show("su-terms", null); termsRow.classList.remove("bad"); }
+  });
+
+  document.querySelector('[data-form="signup"]').addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var ok = validate(["su-name","su-email","su-pass"]);
+    if (!terms.checked){
+      show("su-terms", "Please accept the terms so we can create your account.");
+      termsRow.classList.add("bad");
+      if (ok) terms.focus();
+      ok = false;
+    } else {
+      show("su-terms", null);
+      termsRow.classList.remove("bad");
+    }
+    if (ok) location.hash = "#login";
+  });
+
+  document.querySelector('[data-form="forgot"]').addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (validate(["fp-email"])){
+      document.getElementById("fpSent").style.display = "flex";
+      ev.target.style.display = "none";
+    }
+  });
+
+  document.querySelector('[data-form="reset"]').addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (validate(["rs-pass","rs-pass2"])){
+      document.getElementById("rsDone").style.display = "flex";
+      ev.target.style.display = "none";
+    }
+  });
+
+  /* ---------- preview-only: artifact pages are separate URLs, so
+     relative links between them don't resolve in the viewer.
+     Delete this block when the pages become Next.js routes. ---------- */
+  if (window.__FRAME_PREAMBLE || window.self !== window.top){
+    var LANDING = "https://claude.ai/code/artifact/d6cb3ef3-5f8a-4dc0-87c0-e816576b7cca";
+    document.querySelectorAll('a[href^="landing.html"]').forEach(function(a){
+      a.href = LANDING; a.target = "_top";
+    });
+  }
+})();
+</script>

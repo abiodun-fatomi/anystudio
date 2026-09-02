@@ -1,0 +1,553 @@
+<title>AnyStudio Portal Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* AnyStudio's own tokens — this document is part of the project, not a visitor. */
+:root{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF; --sunk:#E8E4EC;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --warn:#8A5A00; --warn-wash:#FDF0DA;
+  --code-bg:#17131A; --code-ink:#F1ECF5;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#131016; --surface:#1B1621; --surface-2:#241E2B; --sunk:#0E0B12;
+    --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+    --line:#352C3E; --line-soft:#2A2332;
+    --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+    --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+    --warn:#E8B65C; --warn-wash:#2E2411;
+    --code-bg:#0E0B12; --code-ink:#F1ECF5;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#131016; --surface:#1B1621; --surface-2:#241E2B; --sunk:#0E0B12;
+  --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+  --line:#352C3E; --line-soft:#2A2332;
+  --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+  --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+  --warn:#E8B65C; --warn-wash:#2E2411;
+  --code-bg:#0E0B12; --code-ink:#F1ECF5;
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);
+  font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--f-display);margin:0;letter-spacing:-.028em;line-height:1.12;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent)}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:2px}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--sunk);padding:1px 5px;border-radius:3px}
+
+.mono{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* ---- page frame: a contents rail beside the spec ---- */
+.page{max-width:1220px;margin-inline:auto;padding:0 clamp(18px,4vw,40px) 90px}
+.masthead{padding:clamp(44px,7vw,78px) 0 clamp(30px,4vw,44px);border-bottom:1px solid var(--line)}
+.masthead .mono{display:block;margin-bottom:16px}
+.masthead h1{font-size:clamp(34px,5.4vw,58px);font-weight:800;max-width:17ch}
+.masthead .lede{color:var(--muted);font-size:18px;margin-top:18px;max-width:62ch}
+.stamp{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:26px;font-family:var(--f-mono);
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stamp b{color:var(--ink);font-weight:700}
+
+.body-grid{display:grid;grid-template-columns:214px minmax(0,1fr);gap:clamp(30px,5vw,64px);
+  align-items:start;padding-top:clamp(30px,4vw,48px)}
+@media(max-width:900px){.body-grid{grid-template-columns:1fr;gap:24px}}
+.toc{position:sticky;top:26px}
+@media(max-width:900px){.toc{position:static;border:1px solid var(--line);border-radius:6px;
+  background:var(--surface);padding:16px 18px}}
+.toc ol{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:2px;counter-reset:t}
+.toc a{display:block;padding:6px 0;color:var(--ink-soft);text-decoration:none;font-size:14px;
+  border-left:2px solid transparent;padding-left:12px;margin-left:-12px;transition:.15s}
+.toc a:hover{color:var(--accent);border-left-color:var(--accent)}
+.toc .sub a{font-size:13px;color:var(--muted);padding-left:24px}
+
+section{padding-top:clamp(38px,5vw,60px)}
+section+section{border-top:1px solid var(--line-soft);margin-top:clamp(38px,5vw,58px)}
+.sec-num{font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;color:var(--accent);
+  display:block;margin-bottom:12px}
+section>h2{font-size:clamp(25px,3.4vw,34px);font-weight:800;max-width:22ch}
+.host{display:inline-block;margin-top:12px;font-family:var(--f-mono);font-size:12.5px;
+  background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:4px 10px;color:var(--ink-soft)}
+.intro{color:var(--muted);margin-top:16px;max-width:66ch;font-size:16.5px}
+h3{font-size:19px;font-weight:700;margin-top:38px}
+h3+.intro{margin-top:10px}
+h4{font-size:15.5px;font-weight:700;margin-top:24px}
+
+/* ---- the first-run walk: genuinely a sequence, so it is numbered ---- */
+.walk{list-style:none;margin:22px 0 0;padding:0;counter-reset:w;display:grid}
+.walk li{counter-increment:w;position:relative;padding:0 0 20px 46px}
+.walk li:last-child{padding-bottom:0}
+.walk li::before{content:counter(w);position:absolute;left:0;top:0;width:28px;height:28px;
+  border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:11.5px;font-weight:700}
+.walk li:not(:last-child)::after{content:"";position:absolute;left:13.5px;top:32px;bottom:4px;
+  width:1px;background:var(--line)}
+.walk b{display:block;font-weight:600;font-size:15.5px}
+.walk span{display:block;color:var(--muted);font-size:14.5px;margin-top:3px;max-width:60ch}
+
+/* ---- feature areas: a map, not a sequence, so no numbers ---- */
+.areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:1px;
+  background:var(--line-soft);border:1px solid var(--line-soft);border-radius:6px;
+  margin-top:22px;overflow:hidden}
+.area{background:var(--surface-2);padding:17px 18px}
+.area .nm{font-family:var(--f-display);font-weight:700;font-size:15.5px;letter-spacing:-.02em}
+.area .dt{display:block;color:var(--muted);font-size:14px;line-height:1.52;margin-top:6px}
+.area ul{margin:9px 0 0;padding-left:17px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.area li{margin-bottom:2px}
+
+/* ---- rules: the things that cost money or trust if broken ---- */
+.rule{border-left:3px solid var(--accent);background:var(--accent-wash);
+  padding:15px 18px;margin-top:20px;border-radius:0 4px 4px 0}
+.rule .k{font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);display:block;margin-bottom:7px}
+.rule p{font-size:14.5px;line-height:1.6;color:var(--ink-soft)}
+.rule p+p{margin-top:9px}
+.rule.note{border-left-color:var(--cyan);background:var(--cyan-wash)}
+.rule.note .k{color:var(--cyan)}
+.rule.warn{border-left-color:var(--warn);background:var(--warn-wash)}
+.rule.warn .k{color:var(--warn)}
+.rule b{color:var(--ink);font-weight:600}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin-top:20px;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:14.5px;background:var(--surface-2)}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+thead th{background:var(--surface);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);font-weight:700;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+pre{margin:20px 0 0;background:var(--code-bg);color:var(--code-ink);border-radius:6px;padding:18px;
+  font-family:var(--f-mono);font-size:12.5px;line-height:1.72;overflow-x:auto}
+pre .c{color:#ADA3B7}
+pre .k{color:#FF9CC8}
+pre .s{color:#9DEDF6}
+
+ul.plain{margin:16px 0 0;padding-left:19px;color:var(--ink-soft);font-size:15.5px;line-height:1.66}
+ul.plain li{margin-bottom:7px}
+ul.plain li::marker{color:var(--accent)}
+ul.plain b{font-weight:600}
+
+.close{margin-top:clamp(38px,5vw,58px);border-top:1px solid var(--line);padding-top:28px;
+  color:var(--muted);font-size:14.5px;max-width:66ch}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <span class="mono">AnyStudio · Build spec · Before any code</span>
+    <h1>Three portals, one ledger.</h1>
+    <p class="lede">What each portal does, who it serves, and the flows a person actually walks through — plus the logging, rate limiting, security and deployment decisions that have to be settled before the first migration runs.</p>
+    <div class="stamp">
+      <span>Repo <b>anystudio</b> · monorepo</span>
+      <span>API <b>NestJS</b></span>
+      <span>Web <b>Next.js 15</b></span>
+      <span>DB <b>Postgres + Prisma</b></span>
+      <span>Queue <b>BullMQ</b></span>
+    </div>
+  </header>
+
+  <div class="body-grid">
+
+    <nav class="toc" aria-label="Contents">
+      <span class="mono">Contents</span>
+      <ol>
+        <li><a href="#hosts">Where everything lives</a></li>
+        <li><a href="#user">User portal</a></li>
+        <li><a href="#org">Organization portal</a></li>
+        <li><a href="#admin">Admin portal</a></li>
+        <li><a href="#logging">Logging</a></li>
+        <li><a href="#limits">Rate limiting</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#pipeline">Pipeline and Docker</a></li>
+        <li><a href="#first">What I build first</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ============ HOSTS ============ -->
+      <section id="hosts">
+        <span class="sec-num">01</span>
+        <h2>Where everything lives.</h2>
+        <p class="intro">Four surfaces, one API. Staging nests under a single <code>dev</code> label rather than sitting beside production, and that choice is about cookies, not tidiness.</p>
+
+        <div class="tw">
+          <table>
+            <thead><tr><th>Surface</th><th>Production</th><th>Staging</th><th>Runs on</th></tr></thead>
+            <tbody>
+              <tr><td>Marketing</td><td><code>anystudio.ai</code></td><td><code>dev.anystudio.ai</code></td><td>Vercel</td></tr>
+              <tr><td>User portal</td><td><code>app.anystudio.ai</code></td><td><code>app.dev.anystudio.ai</code></td><td>Vercel</td></tr>
+              <tr><td>Organization portal</td><td><code>org.anystudio.ai</code></td><td><code>org.dev.anystudio.ai</code></td><td>Vercel</td></tr>
+              <tr><td>Admin portal</td><td><code>admin.anystudio.ai</code></td><td><code>admin.dev.anystudio.ai</code></td><td>Vercel</td></tr>
+              <tr><td>Public API</td><td><code>api.anystudio.ai</code></td><td><code>api.dev.anystudio.ai</code></td><td>Render / Fly</td></tr>
+              <tr><td>Media</td><td><code>cdn.anystudio.ai</code></td><td>same bucket, <code>dev/</code> prefix</td><td>Cloudflare R2</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rule">
+          <span class="k">Why dev nests</span>
+          <p>Name staging <code>app-dev.anystudio.ai</code> and every host is a sibling under <code>anystudio.ai</code> — so any cookie ever set on the parent domain is readable by both environments. One careless <code>domain=.anystudio.ai</code> and a staging bug can read production sessions.</p>
+          <p>Under <code>*.dev.anystudio.ai</code> the two trees cannot see each other's cookies, and one wildcard certificate still covers the whole staging estate.</p>
+        </div>
+
+        <div class="rule warn">
+          <span class="k">Admin is isolated on purpose</span>
+          <p>The admin portal gets its own cookie, its own session store and its own login. A stolen <code>app.anystudio.ai</code> session must be worth nothing at <code>admin.anystudio.ai</code>. No shared parent-domain cookie, ever — that single decision is what keeps a customer-side compromise from becoming a company-side one.</p>
+        </div>
+      </section>
+
+      <!-- ============ USER PORTAL ============ -->
+      <section id="user">
+        <span class="sec-num">02</span>
+        <h2>User portal</h2>
+        <span class="host">app.anystudio.ai</span>
+        <p class="intro">Written for Bimbo, who sells fabric in Lagos, works from her phone between customers, and has never opened a design tool. Everything below has to make sense to her before it makes sense to us.</p>
+
+        <h3>Her first fifteen minutes</h3>
+        <ol class="walk">
+          <li><b>She arrives already signed in</b><span>Straight from sign-up. A workspace was created for her — type <code>BUSINESS</code> because she said she sells products — so there is never a personal account that later has to "become" a business.</span></li>
+          <li><b>Three questions, all skippable</b><span>Business name, what she sells, and the currency she prices in. Skipping leaves defaults she can fix later; blocking her here loses her.</span></li>
+          <li><b>The empty state is a task</b><span>Not an illustration. One button: add your first product photo. That is the only thing to do on this screen.</span></li>
+          <li><b>She uploads the photo she already has</b><span>Taken on a table, under a ceiling light. She adds a name and a price. Category and tone are optional.</span></li>
+          <li><b>She picks what she wants back</b><span>Branded images, background change, description, caption, reel — each with its credit cost beside it, and a running total. She sees the price before she spends, not after.</span></li>
+          <li><b>The job runs where she can watch it</b><span>Queued → generating → finishing, with real states rather than a spinner. She can leave; it finishes without her and notifies.</span></li>
+          <li><b>The sheet comes back</b><span>Every output on one screen. Per item: download, tweak, make a variation, or publish. Her free allowance ticks down visibly — two of three left.</span></li>
+        </ol>
+
+        <h3>What she can reach from the sidebar</h3>
+        <div class="areas">
+          <div class="area"><span class="nm">Today</span><span class="dt">Balance, recent work, and anything that needs her: a failed job, an Instagram connection about to expire, a low balance.</span></div>
+          <div class="area"><span class="nm">Create</span><span class="dt">The generation flow. Pick an existing product or start from a new photo.</span></div>
+          <div class="area"><span class="nm">Library</span><span class="dt">Every asset ever produced, filterable by product, type and date. Re-edit, re-export at another size, bulk download.</span></div>
+          <div class="area"><span class="nm">Products</span><span class="dt">Her catalogue. A product holds its photo, name, price and category, and every generation attaches to it — so a price change does not mean re-typing.</span></div>
+          <div class="area"><span class="nm">Brand kit</span><span class="dt">Logo, colours, fonts, tone, watermark. Applied to everything automatically, with a live sample so she can see the effect before she commits.</span></div>
+          <div class="area"><span class="nm">Publishing</span><span class="dt">Connected accounts, scheduled posts, and what actually went out. Instagram, TikTok and WhatsApp Status.</span></div>
+          <div class="area"><span class="nm">Insights</span><span class="dt">Generations over time, credits by output type, and — once publishing data returns — which posts did anything.</span></div>
+          <div class="area"><span class="nm">Credits &amp; billing</span><span class="dt">Balance, the full ledger, top-ups, plan changes and invoices, all in her own currency.</span></div>
+          <div class="area"><span class="nm">Settings</span><span class="dt">Profile, phone and email, workspace, teammates, notifications, and the destructive things kept well away from everything else.</span></div>
+        </div>
+
+        <h3>The four flows that have to be right</h3>
+
+        <h4>Spending a credit</h4>
+        <p class="intro">Cost shown before she commits. Debit on success. On failure the credit returns and the interface says so in words — <em>"That one failed, your 10 credits are back"</em> — because silence here reads as theft.</p>
+
+        <h4>Running out mid-way</h4>
+        <p class="intro">Her input is never lost. The generation is saved as a draft, she tops up, and she comes back to exactly the screen she left, with her selections intact.</p>
+
+        <h4>Publishing</h4>
+        <p class="intro">Connect once, then preview per platform before anything posts. Nothing is ever published without a confirmation step. Expired tokens surface on Today, not at the moment she tries to post.</p>
+
+        <h4>WhatsApp parity</h4>
+        <p class="intro">Everything she makes in WhatsApp appears here, in the same library, because her phone number is the account. The web is a bigger screen for the same workspace — never a second, separate life.</p>
+
+        <div class="rule">
+          <span class="k">The ledger is the product</span>
+          <p>Every row she sees — date, what it was, plus or minus, balance after — comes from <code>ledger_entries</code>, which is append-only. There is no balance column to disagree with the history.</p>
+          <p>When she disputes a charge, the ledger is the answer. That is only true if we never wrote a shortcut.</p>
+        </div>
+      </section>
+
+      <!-- ============ ORG PORTAL ============ -->
+      <section id="org">
+        <span class="sec-num">03</span>
+        <h2>Organization portal</h2>
+        <span class="host">org.anystudio.ai</span>
+        <p class="intro">Two people share this screen: the platform PM who signed, and the engineer who has to make it work. The engineer decides whether it stays.</p>
+
+        <h3>The engineer's first hour</h3>
+        <ol class="walk">
+          <li><b>Lands with an organization already created</b><span>Made during sign-up, workspace type <code>ORGANIZATION</code>, with the region and billing currency already chosen.</span></li>
+          <li><b>Creates a project</b><span>One project per environment — <code>marketplace-staging</code>, <code>marketplace-prod</code> — each with its own keys, quota, rate limit and webhook URL.</span></li>
+          <li><b>Takes the test key</b><span>Secret shown exactly once, with a copy button and a curl that works unedited. 500 test credits, no card.</span></li>
+          <li><b>Makes the first call and watches it land</b><span>The request appears in the request log within seconds: endpoint, latency, credit cost, request id. That feedback loop is what earns the integration.</span></li>
+          <li><b>Points a webhook at their own system</b><span>Signed payload, delivery log, replay button. Generation completion is pushed, never polled.</span></li>
+          <li><b>Runs a real batch against staging</b><span>A few hundred of their own listings. Per-merchant usage shows up immediately, so the PM can check the billing model before anyone signs.</span></li>
+          <li><b>Requests live keys</b><span>The only step that asks for documents: registration number and billing entity. Everything before this was free.</span></li>
+        </ol>
+
+        <h3>What the portal holds</h3>
+        <div class="areas">
+          <div class="area"><span class="nm">Overview</span><span class="dt">Usage against commitment, spend, error rate, p50 and p95 latency, and anything currently degraded.</span></div>
+          <div class="area"><span class="nm">Projects</span><span class="dt">Environment, quota, rate limit, webhook, usage. Deleting one is deliberately hard.</span></div>
+          <div class="area"><span class="nm">API keys</span><span class="dt">Key id, created, last used, scopes, per-key rate limit, revoke. Secrets are hashed with Argon2id and shown once.</span></div>
+          <div class="area"><span class="nm">Merchants</span><span class="dt">The sub-accounts. Generations, credits and cost per merchant — what makes per-merchant billing real rather than promised.</span></div>
+          <div class="area"><span class="nm">Requests</span><span class="dt">Recent calls with status, latency, key, merchant and request id. Filterable, exportable. The single biggest reason support tickets never get written.</span></div>
+          <div class="area"><span class="nm">Webhooks</span><span class="dt">Endpoint, signing secret, delivery history with attempts, and replay for anything that failed while their server was down.</span></div>
+          <div class="area"><span class="nm">Usage &amp; billing</span><span class="dt">Metered by endpoint, project and merchant. Commitment versus overage, invoices, CSV export for their finance team.</span></div>
+          <div class="area"><span class="nm">Brand kits</span><span class="dt">Organization defaults with per-merchant overrides, so a marketplace can hold a house style and still let a seller keep their own.</span></div>
+          <div class="area"><span class="nm">Team</span><span class="dt">Members, the five roles, invitations, and joining by verified email domain.</span></div>
+          <div class="area"><span class="nm">Audit log</span><span class="dt">Key created or revoked, member added, role changed, project deleted — who, when, from where.</span></div>
+          <div class="area"><span class="nm">Settings</span><span class="dt">Organization profile, region, billing entity, data retention, and SSO when it arrives.</span></div>
+        </div>
+
+        <h3>Roles</h3>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Role</th><th>Can</th><th>Cannot</th></tr></thead>
+            <tbody>
+              <tr><td><b>Owner</b></td><td>Billing, contracts, delete the organization</td><td>Exactly one; transferable, never duplicated</td></tr>
+              <tr><td><b>Admin</b></td><td>Projects, keys, members, brand kits</td><td>Billing, deletion</td></tr>
+              <tr><td><b>Member</b></td><td>Generate inside assigned projects</td><td>See projects they are not in</td></tr>
+              <tr><td><b>Billing</b></td><td>Invoices, usage, credit history</td><td>Generate anything</td></tr>
+              <tr><td><b>Auditor</b></td><td>Read usage and the audit log</td><td>Change anything at all</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rule">
+          <span class="k">Key rotation overlaps, never cuts over</span>
+          <p>Creating a new key leaves the old one live. Both work until the customer revokes the old one themselves. A hard cutover means somebody's storefront stops generating at 2am, and they will remember that longer than they remember the feature.</p>
+        </div>
+
+        <div class="rule note">
+          <span class="k">Quotas warn before they bite</span>
+          <p>A soft limit emails and shows a banner. The hard limit returns <code>429</code> with <code>RateLimit-Reset</code> and <code>Retry-After</code>, both documented. Nobody should discover a quota by watching their queue back up.</p>
+        </div>
+      </section>
+
+      <!-- ============ ADMIN PORTAL ============ -->
+      <section id="admin">
+        <span class="sec-num">04</span>
+        <h2>Admin portal</h2>
+        <span class="host">admin.anystudio.ai</span>
+        <p class="intro">Internal only. One principle runs through all of it: staff can read nearly everything and change nearly nothing without giving a reason that gets written down.</p>
+
+        <h3>What support actually does, in order</h3>
+        <ol class="walk">
+          <li><b>A customer says a generation looks wrong</b><span>Support searches by phone number, email or request id.</span></li>
+          <li><b>Opens the job</b><span>Input, provider, model, credit cost, timings, error, output — the whole record, without touching the customer's account.</span></li>
+          <li><b>Reproduces it</b><span>Re-runs the job against the same provider, or against a different one, on the company's credits rather than the customer's.</span></li>
+          <li><b>Fixes the money</b><span>A refund is an <code>ADJUSTMENT</code> row with a reason string. Nothing is edited. Above a threshold it needs a second person.</span></li>
+          <li><b>Everything is written down</b><span>Every step above leaves an audit row: who, what, when, from which address, and why.</span></li>
+        </ol>
+
+        <h3>Areas</h3>
+        <div class="areas">
+          <div class="area"><span class="nm">Operations</span><span class="dt">Queue depth, jobs running and failed, provider health and latency, and today's provider spend against revenue.</span></div>
+          <div class="area"><span class="nm">People &amp; workspaces</span><span class="dt">Search, plan, balance, flags. Read-only impersonation that is time-boxed, logged, and visible in the customer's own security log.</span></div>
+          <div class="area"><span class="nm">Ledgers</span><span class="dt">Any wallet's full history. Adjustments require a reason and append a row — the ledger is never edited.</span></div>
+          <div class="area"><span class="nm">Generations</span><span class="dt">Inspect and re-run any job. The only honest way to answer "why did it do that".</span></div>
+          <div class="area"><span class="nm">Providers</span><span class="dt">Enable, disable, reroute models, set cost per model, watch circuit breakers. Config rows, so a provider outage is a toggle rather than a deploy.</span></div>
+          <div class="area"><span class="nm">Plans &amp; pricing</span><span class="dt">Plan definitions, price per market, credit cost per operation — versioned and effective-dated so old invoices still reconcile.</span></div>
+          <div class="area"><span class="nm">Payments</span><span class="dt">Transactions, failures, refunds and disputes across Flutterwave and Paddle.</span></div>
+          <div class="area"><span class="nm">Organizations</span><span class="dt">Commitment, usage, overage, contract state. Issue credits, adjust rate limits.</span></div>
+          <div class="area"><span class="nm">Abuse</span><span class="dt">Flagged generations, repeat offenders, blocked numbers. Free-tier farming lands here first.</span></div>
+          <div class="area"><span class="nm">Feature flags</span><span class="dt">Per workspace and per organization, so a risky change reaches ten accounts before ten thousand.</span></div>
+          <div class="area"><span class="nm">Audit log</span><span class="dt">Immutable, searchable, exportable. The one thing in this portal with no delete.</span></div>
+          <div class="area"><span class="nm">System</span><span class="dt">Migration state, queue lag, storage use, connection pools.</span></div>
+        </div>
+
+        <h3>Staff roles</h3>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Role</th><th>Adds</th></tr></thead>
+            <tbody>
+              <tr><td><b>Support</b></td><td>Read everything; resend verification; read-only impersonation</td></tr>
+              <tr><td><b>Operator</b></td><td>Re-run jobs, refund up to a capped amount, resolve abuse flags</td></tr>
+              <tr><td><b>Admin</b></td><td>Provider routing, plans and pricing, organization limits</td></tr>
+              <tr><td><b>Superadmin</b></td><td>Manage staff accounts and roles. Two people minimum, never one</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rule warn">
+          <span class="k">Non-negotiable</span>
+          <p>Mandatory TOTP on every staff account. Two-hour idle sessions. Step-up re-authentication before any money movement or role change. A reason string on every mutation.</p>
+          <p>Impersonation is read-only by default and always visible to the customer afterwards. If staff need to act as someone, that is a separate, louder permission — not a checkbox on the same screen.</p>
+        </div>
+      </section>
+
+      <!-- ============ LOGGING ============ -->
+      <section id="logging">
+        <span class="sec-num">05</span>
+        <h2>Logging you can actually debug from.</h2>
+        <p class="intro">Pino, JSON, one line per event. The goal is that a customer quotes a code from an error screen and support finds the exact request in one search.</p>
+
+        <ul class="plain">
+          <li><b>Every request gets a ULID</b> returned in <code>x-request-id</code> and shown in the UI on any error. It propagates into the queued job, so one id covers the whole chain from tap to generated file.</li>
+          <li><b>Fixed context on every line</b> — request id, workspace, actor (user id, or api key plus merchant), route, status, duration, credit cost.</li>
+          <li><b>Warn means recovered but notable</b> — a provider fell back, a retry succeeded, a soft quota was crossed, a webhook needed a second attempt. If nobody would act on it, it is info.</li>
+          <li><b>Errors are logged once</b>, at the boundary, with the stack. Log-and-rethrow at every layer turns one failure into five and buries the cause.</li>
+          <li><b>Sinks</b> — stdout to the host, shipped to Better Stack or Axiom. Not Datadog at this size; the bill outgrows the value.</li>
+        </ul>
+
+        <h3>Redaction</h3>
+        <p class="intro">Two layers, because a named list alone always misses something eventually.</p>
+<pre><span class="c">// packages/shared/src/logging/redact.ts</span>
+<span class="c">// Layer 1 — exact paths pino strips before serialising.</span>
+<span class="k">export const</span> REDACT_PATHS = [
+  <span class="s">'req.headers.authorization'</span>, <span class="s">'req.headers.cookie'</span>, <span class="s">'res.headers["set-cookie"]'</span>,
+  <span class="s">'req.headers["x-api-key"]'</span>, <span class="s">'*.password'</span>, <span class="s">'*.secret'</span>, <span class="s">'*.token'</span>,
+  <span class="s">'*.refreshToken'</span>, <span class="s">'*.otp'</span>, <span class="s">'*.cardNumber'</span>, <span class="s">'*.signedUrl'</span>,
+  <span class="s">'req.body.imageBase64'</span>,
+]
+
+<span class="c">// Layer 2 — a deep scrub for anything the list did not predict.</span>
+<span class="c">// Keys matching this are replaced wherever they appear, at any depth.</span>
+<span class="k">const</span> SENSITIVE = <span class="s">/secret|token|password|passwd|api[-_]?key|authorization|otp|cvv|pan/i</span>
+
+<span class="c">// Identifiers are kept useful rather than deleted outright:</span>
+<span class="c">// phone  +2348012345678  →  +234****5678   (still matchable in support)</span>
+<span class="c">// email  ada@shop.ng     →  a**@shop.ng    (domain survives for debugging)</span></pre>
+
+        <div class="rule warn">
+          <span class="k">Two that are easy to miss</span>
+          <p>A <b>signed R2 URL is a credential</b>. Logging one hands anyone with log access the file. Log the object key, never the signed link.</p>
+          <p>Prompts must be logged — they are how a bad generation gets diagnosed — but they carry whatever the customer typed, which includes phone numbers and addresses. The scrub runs over prompt text too.</p>
+        </div>
+      </section>
+
+      <!-- ============ RATE LIMITS ============ -->
+      <section id="limits">
+        <span class="sec-num">06</span>
+        <h2>Rate limiting, per surface.</h2>
+        <p class="intro">Redis token buckets with a burst of twice the steady rate, because merchants batch. One shared limit across all four surfaces would be either useless or hostile.</p>
+
+        <div class="tw">
+          <table>
+            <thead><tr><th>Surface</th><th>Keyed on</th><th class="num">Limit</th><th>On exceed</th></tr></thead>
+            <tbody>
+              <tr><td>Sign-in</td><td>IP + account</td><td class="num">5 / min, 10 / hr</td><td>429, then lockout with email</td></tr>
+              <tr><td>OTP send</td><td>Phone number</td><td class="num">3 / hr</td><td>429, cooldown shown in UI</td></tr>
+              <tr><td>App reads</td><td>User</td><td class="num">120 / min</td><td>429, retry transparently</td></tr>
+              <tr><td>Generation submit</td><td>Workspace</td><td class="num">3 concurrent</td><td>Queued, position shown</td></tr>
+              <tr><td>Org API</td><td>API key</td><td class="num">By plan tier</td><td>429 + rate-limit headers</td></tr>
+              <tr><td>Org API</td><td><em>and</em> merchant id</td><td class="num">Per-merchant ceiling</td><td>429 for that merchant only</td></tr>
+              <tr><td>Inbound webhooks</td><td>Not limited</td><td class="num">—</td><td>Signature + idempotent by event id</td></tr>
+              <tr><td>Admin</td><td>Staff account</td><td class="num">300 / min</td><td>429 <em>and</em> a security alert</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rule">
+          <span class="k">The second org limit is the important one</span>
+          <p>Limiting only by API key lets one runaway merchant on a marketplace consume the whole platform's quota and starve every other seller on it. The per-merchant ceiling means a bad integration hurts one shop, not the marketplace's entire catalogue.</p>
+        </div>
+
+        <div class="rule note">
+          <span class="k">An admin hitting a limit is a signal</span>
+          <p>Staff do not legitimately make three hundred requests a minute. That 429 raises an alert rather than just refusing the call, because the likeliest explanation is a compromised account.</p>
+        </div>
+      </section>
+
+      <!-- ============ SECURITY ============ -->
+      <section id="security">
+        <span class="sec-num">07</span>
+        <h2>Security</h2>
+        <p class="intro">The header policy already exists in <code>design/seo/next-headers.mjs</code>. These are the decisions that live in application code.</p>
+
+        <h3>CORS, per surface</h3>
+        <ul class="plain">
+          <li><b>App API</b> — an explicit allowlist of <code>app</code>, <code>org</code> and <code>admin</code> origins for the matching environment. No wildcards, credentials enabled.</li>
+          <li><b>Public org API</b> — <b>no CORS headers at all</b>. This is deliberate. Refusing browser calls means a merchant physically cannot ship their secret key in frontend JavaScript, which is the most common way API keys leak.</li>
+          <li><b>Marketing</b> — no credentialed endpoints, so nothing to allow.</li>
+        </ul>
+
+        <h3>Clickjacking and framing</h3>
+        <ul class="plain">
+          <li><code>frame-ancestors 'none'</code> plus <code>X-Frame-Options: DENY</code> on all four surfaces.</li>
+          <li>Nonce-based CSP per surface; the admin policy is the strictest and allows no third-party scripts whatsoever.</li>
+        </ul>
+
+        <h3>Sessions and secrets</h3>
+        <ul class="plain">
+          <li>Cookies are <code>__Host-</code> prefixed, HttpOnly, Secure, SameSite=Lax, host-scoped with no leading dot.</li>
+          <li>CSRF: double-submit token on every state-changing route for cookie-authenticated surfaces. The org API is bearer-authenticated, so CSRF does not apply there.</li>
+          <li>API key secrets are Argon2id hashes. Provider keys live in the host's secret manager and are never present in the web app's environment.</li>
+        </ul>
+
+        <div class="rule warn">
+          <span class="k">The hole I would have shipped</span>
+          <p>Organization onboarding asks the buyer to paste a product URL from their storefront, and the server fetches it. Unguarded, that is server-side request forgery — a link to <code>169.254.169.254</code> or an internal address, fetched by our own infrastructure with our own network position.</p>
+          <p>Every outbound fetch of a customer-supplied URL goes through one guarded client: public IPs only, no redirects to private ranges, DNS re-resolved after redirect, hard timeout, size cap. One helper, used everywhere, never <code>fetch()</code> directly.</p>
+        </div>
+
+        <div class="rule">
+          <span class="k">Uploads</span>
+          <p>Verify magic bytes rather than trusting the content type, cap dimensions and file size, and <b>strip EXIF</b> — phone photos carry GPS coordinates, and a seller posting a product should not be publishing their home address.</p>
+        </div>
+      </section>
+
+      <!-- ============ PIPELINE ============ -->
+      <section id="pipeline">
+        <span class="sec-num">08</span>
+        <h2>Pipeline, containers, migrations.</h2>
+
+        <h3>Images</h3>
+        <p class="intro">Multi-stage, non-root, one Dockerfile each for <code>api</code> and <code>worker</code>. The web app goes to Vercel and needs no image.</p>
+<pre><span class="c"># apps/api/Dockerfile — deps → build → runtime</span>
+<span class="k">FROM</span> node:22-slim <span class="k">AS</span> deps
+<span class="c"># pnpm fetch first, so a lockfile-only change reuses the layer</span>
+
+<span class="k">FROM</span> deps <span class="k">AS</span> build
+<span class="c"># prisma generate MUST run before tsc, or typecheck fails on missing client</span>
+<span class="k">RUN</span> pnpm db:generate && pnpm --filter @anystudio/api build
+
+<span class="k">FROM</span> node:22-slim <span class="k">AS</span> runtime
+<span class="k">USER</span> node
+<span class="k">HEALTHCHECK</span> CMD node -e <span class="s">"fetch('http://localhost:3001/health')"</span>
+<span class="k">CMD</span> [<span class="s">"node"</span>, <span class="s">"dist/main.js"</span>]</pre>
+
+        <h3>Migrations</h3>
+        <div class="rule warn">
+          <span class="k">Never in the start command</span>
+          <p>Two replicas booting together both run <code>prisma migrate deploy</code>, and concurrent migrations against one database is how a schema ends up half-applied.</p>
+          <p>Migrations run as a <b>separate one-shot release job</b> that must succeed before new containers roll. The application's start command only starts the application.</p>
+        </div>
+
+        <h3>Seeding</h3>
+        <p class="intro">Idempotent, upsert-only, safe to run on every deploy. Split by what it is for:</p>
+        <ul class="plain">
+          <li><b>Reference data, every environment</b> — plans, prices per market, credit costs per operation, provider and model rows. These are configuration the application reads, so they belong in the database rather than in constants.</li>
+          <li><b>Fixtures, guarded by <code>SEED_ENV=dev</code></b> — a demo workspace, a seeded wallet, sample products, one organization with a test key. Production refuses to run this branch.</li>
+        </ul>
+
+        <h3>CI</h3>
+<pre><span class="c"># .github/workflows/ci.yml</span>
+install → db:generate → lint → typecheck → test
+       → build (turbo, affected only)
+       → docker build + push  <span class="c">[main only]</span>
+       → migrate (one-shot job)
+       → deploy api + worker   <span class="c">[dev auto · prod on approval]</span></pre>
+        <p class="intro"><code>turbo-ignore</code> on Vercel so the marketing site does not rebuild when only the worker changed.</p>
+
+        <h3>Local</h3>
+        <p class="intro">One <code>docker-compose.yml</code> with Postgres, Redis, MinIO standing in for R2, and Mailpit for mail. <code>pnpm dev</code> brings up the API, the worker and all four Next.js apps on separate ports, seeded and ready.</p>
+      </section>
+
+      <!-- ============ FIRST ============ -->
+      <section id="first">
+        <span class="sec-num">09</span>
+        <h2>What I build first.</h2>
+        <p class="intro">In this order, because each one is hard to change later and cheap to get right now.</p>
+        <ol class="walk">
+          <li><b>Monorepo skeleton and Docker</b><span>Turborepo, pnpm workspaces, the two Dockerfiles, docker-compose, and CI that goes green on an empty app.</span></li>
+          <li><b>Prisma schema and the ledger</b><span>Every table from the data model, plus the Postgres functions that lock the wallet row and append debits and refunds in one transaction. Tested against concurrent spends before anything calls them.</span></li>
+          <li><b>Migrations and seeds</b><span>The release job, reference data, and the dev fixtures.</span></li>
+          <li><b>The API skeleton</b><span>Request ids, the logger with redaction, the rate-limit guards, CORS per surface, the health endpoint — the cross-cutting layer, before a single feature route.</span></li>
+          <li><b>Auth</b><span>Phone and email, sessions per surface, and the admin's separate stricter path.</span></li>
+        </ol>
+        <p class="close">Every route gets a comment block above it saying what it does, who may call it, what it costs in credits, and what it writes to the ledger. Not a description of the code — a description of the consequence.</p>
+      </section>
+
+    </main>
+  </div>
+</div>

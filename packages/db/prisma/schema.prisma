@@ -1,0 +1,515 @@
+// AnyStudio — identity, sessions, authorization and onboarding.
+//
+// THE CENTRAL DECISION IN THIS FILE
+// ---------------------------------
+// One human is one `User` row, everywhere. The same email, phone, password and
+// passkey work on app.anystudio.ai, org.anystudio.ai and admin.anystudio.ai —
+// that is the "same details" requirement, and it is met by sharing the
+// IDENTITY.
+//
+// Sessions are NOT shared. Every session is minted for exactly one surface and
+// is worthless on the others. If an app session could be presented to the admin
+// API, then one XSS on the customer app, or one unlocked laptop with an open
+// tab, is a full admin compromise. Shared identity is a convenience; a shared
+// session is a single point of total failure.
+//
+// Staff authority is a GRANT on the same user (`StaffGrant`), never a separate
+// account. Revoking staff access is one row, and it does not touch the person's
+// own workspace, their credits or their history.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext, pgcrypto]
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITY
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED // blocked by staff; can still sign in to read, cannot generate
+  DELETED   // soft, so the ledger and audit trail stay intact
+}
+
+/// One person. Credentials live here and on Identity; authority does not.
+/// Nothing in this model says what the user is allowed to do — that comes from
+/// WorkspaceMember (customer authority) and StaffGrant (staff authority).
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  /// citext: nobody should be locked out because they typed Ada@ instead of ada@
+  email           String?    @unique @db.Citext
+  emailVerifiedAt DateTime?
+  /// E.164. The free tier is keyed to a verified phone, so this is also the
+  /// abuse boundary, not just a contact detail.
+  phone           String?    @unique
+  phoneVerifiedAt DateTime?
+  /// Whether that phone is reachable on WhatsApp. Functional, NOT consent to
+  /// market — marketing consent is a Consent row and is asked separately.
+  phoneIsWhatsApp Boolean    @default(false)
+  name            String?
+  /// Argon2id. Null for accounts that only ever used Google, WhatsApp or a
+  /// passkey — absence of a password must never mean "any password works".
+  passwordHash    String?
+  status          UserStatus @default(ACTIVE)
+  /// Bumped on password change, MFA removal and "sign out everywhere". Any
+  /// session or refresh token minted before this instant is dead on arrival.
+  credentialEpoch Int        @default(0)
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  identities       Identity[]
+  mfaFactors       MfaFactor[]
+  recoveryCodes    RecoveryCode[]
+  sessions         Session[]
+  staffGrants      StaffGrant[]      @relation("StaffSubject")
+  grantsIssued     StaffGrant[]      @relation("StaffGrantor")
+  workspaceMembers WorkspaceMember[]
+  onboarding       OnboardingState[]
+  consents         Consent[]
+  authEvents       AuthEvent[]
+
+  @@index([status])
+  @@map("users")
+}
+
+enum IdentityProvider {
+  PASSWORD
+  GOOGLE
+  WHATSAPP // phone ownership proved by an OTP delivered over WhatsApp
+  PASSKEY
+}
+
+/// A way of proving you are a given User. Several rows per user is the point:
+/// it is what lets someone sign up on WhatsApp from a phone and later sign in
+/// with Google on a laptop and land in the same account.
+model Identity {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  provider    IdentityProvider
+  /// Google `sub`, the E.164 number, or the WebAuthn credential id.
+  providerUid String
+  /// Public key for PASSKEY, nothing for the rest. Never a secret in cleartext.
+  publicKey   String?
+  /// WebAuthn replay protection: a counter that goes backwards means a clone.
+  signCount   Int?             @default(0)
+  label       String?
+  lastUsedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@index([userId])
+  @@map("identities")
+}
+
+enum MfaType {
+  TOTP
+  WEBAUTHN
+  SMS // last resort only; SIM swap makes this the weakest factor we offer
+}
+
+/// A second factor. Staff are required to hold at least one non-SMS factor —
+/// enforced in application code, because "at least one of a filtered set" is
+/// not a constraint the database can express.
+model MfaFactor {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  type        MfaType
+  /// TOTP seed, encrypted with the app key. Never the raw seed.
+  secretEnc   String?
+  credentialId String?
+  label       String?
+  /// Unconfirmed factors do not count. A half-finished TOTP setup must never
+  /// be the thing standing between an attacker and the admin console.
+  confirmedAt DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, confirmedAt])
+  @@map("mfa_factors")
+}
+
+/// Single-use codes for a lost device. Hashed, because a leaked table of these
+/// is a leaked table of second factors.
+model RecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+// ---------------------------------------------------------------------------
+// SESSIONS — the isolation boundary
+// ---------------------------------------------------------------------------
+
+enum Surface {
+  APP   // app.anystudio.ai      — a person's own workspaces
+  ORG   // org.anystudio.ai      — organization members
+  ADMIN // admin.anystudio.ai    — staff only, MFA always
+}
+
+/// One row per signed-in browser, per surface.
+///
+/// Opaque random tokens, hashed at rest — not JWTs. Revocation has to be
+/// instant for staff, and a stateless token cannot be taken back. The cost is a
+/// lookup per request, which is one indexed read.
+model Session {
+  id        String  @id @default(uuid()) @db.Uuid
+  userId    String  @db.Uuid
+  /// The surface this session was minted FOR. An APP session presented to the
+  /// admin API is rejected — not upgraded, not re-prompted. Rejected.
+  surface   Surface
+  /// SHA-256 of the session token. The plaintext exists only in the cookie.
+  tokenHash String  @unique
+  /// Refresh tokens rotate on every use and belong to a family. Presenting an
+  /// already-rotated token means it was stolen, so the whole family dies.
+  refreshHash   String? @unique
+  refreshFamily String? @db.Uuid
+  /// 0 = password only, 1 = plus a verified factor, 2 = a factor within the
+  /// step-up window. Admin sessions are minted at 2 and decay to 1.
+  mfaLevel      Int     @default(0)
+  lastStepUpAt  DateTime?
+  /// Snapshot of User.credentialEpoch at mint. A mismatch kills the session,
+  /// which is how "sign out everywhere" works without walking every row.
+  credentialEpoch Int   @default(0)
+
+  ip        String?
+  userAgent String?
+  /// Coarse only — a city, never coordinates. Enough to say "a new sign-in from
+  /// Lagos" without building a location history of our own customers.
+  geoLabel  String?
+
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  idleExpiresAt    DateTime
+  absoluteExpiresAt DateTime
+  revokedAt        DateTime?
+  revokedReason    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, surface, revokedAt])
+  @@index([refreshFamily])
+  @@index([absoluteExpiresAt])
+  @@map("sessions")
+}
+
+/// Short-lived challenges: email verification, password reset, OTP, invitations.
+/// One table because they all behave the same way, and one place to get the
+/// expiry, single-use and hashing rules right is better than four.
+enum TokenPurpose {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  PHONE_OTP
+  MFA_CHALLENGE
+  STAFF_INVITE
+  WORKSPACE_INVITE
+  ORG_INVITE
+}
+
+model AuthToken {
+  id         String       @id @default(uuid()) @db.Uuid
+  purpose    TokenPurpose
+  /// Hashed. A reset link in a log or a support screenshot must be inert.
+  tokenHash  String       @unique
+  userId     String?      @db.Uuid
+  /// For invitations, where the recipient has no account yet.
+  email      String?      @db.Citext
+  phone      String?
+  payload    Json?
+  attempts   Int          @default(0)
+  maxAttempts Int         @default(5)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime     @default(now())
+  createdIp  String?
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("auth_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// AUTHORITY
+// ---------------------------------------------------------------------------
+
+enum StaffRole {
+  SUPPORT    // read, resend verification, read-only impersonation
+  OPERATOR   // + re-run jobs, refund up to a cap, resolve abuse flags
+  ADMIN      // + provider routing, plans and pricing, org limits
+  SUPERADMIN // + manage staff grants
+}
+
+/// Staff authority attached to an ordinary user.
+///
+/// Deliberately NOT a column on User: a grant has an issuer, a reason, an
+/// optional expiry and a revocation, and every one of those is something you
+/// need in an incident review. A boolean tells you nothing afterwards.
+model StaffGrant {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  role      StaffRole
+  /// Nobody grants themselves staff access — enforced in the policy layer, and
+  /// visible here because grantedById is never equal to userId in valid data.
+  grantedById String  @db.Uuid
+  reason      String
+  /// Contractors and temporary escalations should expire on their own.
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  user      User @relation("StaffSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User @relation("StaffGrantor", fields: [grantedById], references: [id])
+
+  @@index([userId, revokedAt])
+  @@map("staff_grants")
+}
+
+enum WorkspaceType {
+  PERSONAL
+  BUSINESS
+  ORGANIZATION
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  BILLING
+  AUDITOR
+}
+
+model Workspace {
+  id        String        @id @default(uuid()) @db.Uuid
+  type      WorkspaceType
+  name      String
+  /// Sets billing currency AND storage region. Changing it is a support action.
+  region    String        @default("ng")
+  currency  String        @default("NGN")
+  createdAt DateTime      @default(now())
+  deletedAt DateTime?
+
+  members    WorkspaceMember[]
+  onboarding OnboardingState[]
+
+  @@index([type])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String        @db.Uuid
+  userId      String        @db.Uuid
+  role        WorkspaceRole
+  invitedById String?       @db.Uuid
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ---------------------------------------------------------------------------
+// CONSENT — provable, because "we think they agreed" is not a defence
+// ---------------------------------------------------------------------------
+
+enum ConsentChannel {
+  WHATSAPP_MARKETING
+  EMAIL_MARKETING
+  SMS_MARKETING
+}
+
+/// Meta requires an affirmative, unbundled opt-in before any marketing template
+/// message, and requires the business to be able to produce it. So we store the
+/// EXACT WORDING SHOWN, not a version pointer to text we will later edit.
+model Consent {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @db.Uuid
+  channel     ConsentChannel
+  granted     Boolean
+  /// Verbatim copy of the sentence the person ticked.
+  wording     String
+  /// Where it happened — the signup page, the settings screen, a WhatsApp keyword.
+  sourceUrl   String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Append-only: withdrawing consent writes a new row with granted=false.
+  /// The current state is the newest row per channel. Never an UPDATE.
+  @@index([userId, channel, createdAt])
+  @@map("consents")
+}
+
+// ---------------------------------------------------------------------------
+// ONBOARDING TOUR
+// ---------------------------------------------------------------------------
+
+enum TourStatus {
+  PENDING
+  IN_PROGRESS
+  SKIPPED
+  COMPLETED
+}
+
+/// Whether a person has seen a given guided tour.
+///
+/// Server-side on purpose. localStorage would replay the whole tour every time
+/// someone opens a second browser or a new phone, which is exactly the "second
+/// login shouldn't show this" case. One row per user, per surface, per tour
+/// version.
+///
+/// The version is part of the key so that a genuinely redesigned portal can
+/// re-run its tour deliberately, rather than never again.
+model OnboardingState {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String     @db.Uuid
+  /// A staff member who is also a customer sees the app tour and the admin tour
+  /// once each — they are different products to learn.
+  surface     Surface
+  /// e.g. "app.first-run@2" — slug plus version.
+  tourKey     String
+  /// Null for admin, where the tour is about the console rather than a workspace.
+  workspaceId String?    @db.Uuid
+  status      TourStatus @default(PENDING)
+  stepIndex   Int        @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, surface, tourKey])
+  @@index([userId, surface])
+  @@map("onboarding_state")
+}
+
+// ---------------------------------------------------------------------------
+// AUTH AUDIT
+// ---------------------------------------------------------------------------
+
+enum AuthEventType {
+  LOGIN_SUCCEEDED
+  LOGIN_FAILED
+  LOGGED_OUT
+  MFA_CHALLENGED
+  MFA_FAILED
+  STEP_UP_COMPLETED
+  PASSWORD_CHANGED
+  MFA_ENROLLED
+  MFA_REMOVED
+  SESSION_REVOKED
+  REFRESH_REUSE_DETECTED
+  STAFF_GRANT_ISSUED
+  STAFF_GRANT_REVOKED
+  IMPERSONATION_STARTED
+  IMPERSONATION_ENDED
+}
+
+/// Every authentication event, for the customer's own security screen as much
+/// as for us. If a customer asks "did someone else sign in?", this answers it.
+///
+/// REFRESH_REUSE_DETECTED is the row that matters most: it means a refresh
+/// token was replayed, which means it was stolen.
+model AuthEvent {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String?       @db.Uuid
+  type      AuthEventType
+  surface   Surface?
+  /// Correlates with the request id in the logs, so one string finds both.
+  requestId String?
+  ip        String?
+  userAgent String?
+  /// Never credentials, tokens or OTPs. Reason codes and identifiers only.
+  detail    Json?
+  createdAt DateTime      @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("auth_events")
+}
+
+// ---------------------------------------------------------------------------
+// RUNTIME CONFIGURATION
+//
+// These three are read by the application at request time, which is why they
+// are rows and not constants: changing a price, a credit cost or which provider
+// serves a capability must be an action in the admin console, not a deploy.
+// The seed keeps them current in every environment.
+// ---------------------------------------------------------------------------
+
+/// What one operation costs a customer, in credits.
+model CreditCost {
+  code      String   @id  /// e.g. "video.reel"
+  credits   Int
+  label     String
+  updatedAt DateTime @updatedAt
+
+  @@map("credit_costs")
+}
+
+/// A subscription tier. Prices are fixed per market and never converted at the
+/// day's rate, so a seller budgeting in naira sees the same number every month.
+model Plan {
+  code          String   @id
+  credits       Int
+  /// { "USD": 29, "NGN": 39000, "GBP": 24 }
+  priceByMarket Json
+  /// Effective-dated so historical invoices still reconcile after a price change.
+  effectiveFrom DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("plans")
+}
+
+enum ProviderCapability {
+  IMAGE
+  EDIT
+  VIDEO
+  DUB
+  TEXT
+}
+
+/// One routable provider model. `priority` picks the default and the fallback
+/// order; `enabled` is the switch an operator throws during an outage.
+model ProviderModel {
+  key         String             @id  /// "higgsfield:kling3_0"
+  capability  ProviderCapability
+  priority    Int                @default(10)
+  /// Our cost per call in minor units of the billing currency — the input to
+  /// the margin figure on the operations dashboard.
+  costPerCall Int
+  enabled     Boolean            @default(true)
+  /// Set by the circuit breaker; cleared automatically or by an operator.
+  breakerOpenedAt DateTime?
+  updatedAt   DateTime           @updatedAt
+
+  @@index([capability, enabled, priority])
+  @@map("provider_models")
+}

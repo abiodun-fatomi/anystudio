@@ -22,3 +22,12 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# --- AnyStudio ---
+node_modules/
+dist/
+.next/
+.turbo/
+.env.local
+coverage/
+.DS_Store

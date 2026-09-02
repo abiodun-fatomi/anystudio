@@ -1,0 +1,10 @@
+# https://anystudio.ai/.well-known/security.txt
+# RFC 9116. Update Expires before it lapses — an expired file is treated as absent.
+
+Contact: mailto:security@anystudio.ai
+Contact: https://wa.me/17753032588
+Expires: 2027-09-01T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://anystudio.ai/.well-known/security.txt
+Policy: https://anystudio.ai/security
+Acknowledgments: https://anystudio.ai/security/thanks
