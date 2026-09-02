@@ -1,0 +1,102 @@
+# https://anystudio.ai/robots.txt
+
+# ---------------------------------------------------------------
+# Search engines
+# ---------------------------------------------------------------
+User-agent: *
+Allow: /
+# Account screens carry no rankable content and an indexed sign-in page
+# is a phishing target. Blocked here and noindex'd in the markup.
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot
+Disallow: /reset
+Disallow: /app/
+Disallow: /org/
+Disallow: /api/
+Disallow: /*?token=
+Disallow: /*?session=
+Disallow: /*?email=
+
+# ---------------------------------------------------------------
+# Answer engines and AI assistants
+#
+# These are allowed deliberately. AnyStudio is discovered by people
+# asking an assistant "how do I make product photos look professional",
+# and a blocked crawler cannot cite you. If you later decide your
+# marketing copy should not be used as training data, change the
+# training crawlers (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended,
+# CCBot, Bytespider, Meta-ExternalAgent) to Disallow and leave the
+# retrieval crawlers (OAI-SearchBot, ChatGPT-User, Claude-SearchBot,
+# Claude-User, PerplexityBot) allowed — retrieval is what earns citations.
+# ---------------------------------------------------------------
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# ---------------------------------------------------------------
+# Scrapers with no user-facing product to send traffic back
+# ---------------------------------------------------------------
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+Sitemap: https://anystudio.ai/sitemap.xml
