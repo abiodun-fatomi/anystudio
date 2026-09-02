@@ -1,0 +1,25 @@
+{
+  "name": "AnyStudio",
+  "short_name": "AnyStudio",
+  "description": "Turn one product photo into branded images, captions and reels.",
+  "id": "/",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EFECF1",
+  "theme_color": "#EFECF1",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "photo", "productivity", "shopping"],
+  "icons": [
+    { "src": "/favicon.svg",   "sizes": "any",     "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png",  "sizes": "192x192", "type": "image/png",     "purpose": "any" },
+    { "src": "/icon-512.png",  "sizes": "512x512", "type": "image/png",     "purpose": "any" },
+    { "src": "/icon-512.png",  "sizes": "512x512", "type": "image/png",     "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New generation", "url": "/app/new" },
+    { "name": "My library",     "url": "/app/library" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "note": "Showcase media used by the landing, org and auth pages. Left: the file name under apps/web/public/shots/. Right: the object on the generation CDN it came from (see design/assets.json for what each one is). scripts/fetch-shots.sh downloads them; scripts/sync-prototypes.mjs rewrites the CDN links in the prototypes to these paths.",
+  "base": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9",
+  "files": {
+    "source.webp":      "hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp",
+    "ravi-1.webp":      "hf_20260901_100625_ac6a5163-9b02-4749-9aa1-88ef4f99309e_min.webp",
+    "ravi-2.webp":      "hf_20260901_100709_76c9dda3-bd71-4133-b679-5031d24d6c4a_min.webp",
+    "bimbo.webp":       "hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp",
+    "kicks.webp":       "hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d_min.webp",
+    "reel-poster.webp": "hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp",
+    "edit-teal.webp":   "hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp",
+    "edit-white.webp":  "hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb_min.webp",
+    "edit-sand.webp":   "hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp",
+    "reel.mp4":         "hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4",
+    "reel-2.mp4":       "hf_20260902_033730_e88d408d-ad4b-4938-a379-3f1a8041e6e5.mp4"
+  }
+}

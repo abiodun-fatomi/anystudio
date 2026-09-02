@@ -2,7 +2,8 @@
  * Cloudflare Workers config for the user portal (app.anystudio.ai).
  *
  * One Worker per environment, each bound to one git branch by Workers
- * Builds, each owning one hostname. The environment name is what
+ * Builds, each owning two hostnames: the marketing site and the app
+ * (middleware.ts routes by host). The environment name is what
  * `wrangler deploy --env <name>` selects, and it becomes the Worker name
  * suffix in the dashboard: anystudio-app-development, -staging, -production.
  *
@@ -20,24 +21,37 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // html_handling "none": serve files exactly as named. The default rewrites
+  // /org.html to /org at the edge, which fights the host routing in
+  // middleware.ts (a rewrite to a .html file would bounce back as a redirect).
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS", "html_handling": "none" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "workers_dev": false,
 
   "env": {
     "development": {
       "name": "anystudio-app-development",
-      "routes": [{ "pattern": "app.dev.anystudio.ai", "custom_domain": true }],
+      "routes": [
+        { "pattern": "app.dev.anystudio.ai", "custom_domain": true },
+        { "pattern": "dev.anystudio.ai", "custom_domain": true }
+      ],
       "vars": { "NEXTJS_ENV": "development", "APP_ENV": "development" }
     },
     "staging": {
       "name": "anystudio-app-staging",
-      "routes": [{ "pattern": "app.staging.anystudio.ai", "custom_domain": true }],
+      "routes": [
+        { "pattern": "app.staging.anystudio.ai", "custom_domain": true },
+        { "pattern": "staging.anystudio.ai", "custom_domain": true }
+      ],
       "vars": { "NEXTJS_ENV": "production", "APP_ENV": "staging" }
     },
     "production": {
       "name": "anystudio-app-production",
-      "routes": [{ "pattern": "app.anystudio.ai", "custom_domain": true }],
+      "routes": [
+        { "pattern": "app.anystudio.ai", "custom_domain": true },
+        { "pattern": "anystudio.ai", "custom_domain": true },
+        { "pattern": "www.anystudio.ai", "custom_domain": true }
+      ],
       "vars": { "NEXTJS_ENV": "production", "APP_ENV": "production" }
     }
   }
