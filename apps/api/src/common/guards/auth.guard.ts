@@ -57,8 +57,11 @@ export class AuthGuard implements CanActivate {
 
     const wantWs = this.reflector.getAllAndOverride<WorkspaceRole>(META.workspaceRole, targets);
     if (wantWs) {
+      // Express 5 types a param as string | string[], because a wildcard
+      // segment can repeat. A workspace id that arrived more than once is a
+      // malformed request, not an authorization question.
       const wsId = req.params.workspaceId;
-      if (!wsId) throw new UnauthorizedError();
+      if (typeof wsId !== 'string' || !wsId) throw new UnauthorizedError();
       assertWorkspaceRole(actor, wsId, wantWs);
     }
 

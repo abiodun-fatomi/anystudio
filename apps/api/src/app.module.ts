@@ -32,6 +32,8 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    // '{*path}' is Express 5's spelling of "every route". A bare '*' was
+    // valid in Express 4 and throws in path-to-regexp 8.
+    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
   }
 }

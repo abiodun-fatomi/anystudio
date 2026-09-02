@@ -10,6 +10,24 @@ import { REDACT_PATHS } from './redact';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/**
+ * Human-readable logs in development, JSON everywhere else.
+ *
+ * pino-pretty is a devDependency, so it is absent from production images by
+ * design — and a logger must never be the reason a process refuses to start.
+ * If it cannot be resolved we fall back to JSON instead of throwing, which is
+ * also what saves a production container that was built with NODE_ENV unset.
+ */
+function devTransport(): LoggerOptions['transport'] {
+  if (isProd) return undefined;
+  try {
+    require.resolve('pino-pretty');
+    return { target: 'pino-pretty', options: { colorize: true, singleLine: false } };
+  } catch {
+    return undefined;
+  }
+}
+
 export const loggerOptions: LoggerOptions = {
   level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
   redact: { paths: REDACT_PATHS, censor: '[redacted]' },
@@ -21,7 +39,7 @@ export const loggerOptions: LoggerOptions = {
   timestamp: pino.stdTimeFunctions.isoTime,
   formatters: { level: (label) => ({ level: label }) },
   // Readable in development, machine-parseable everywhere else.
-  transport: isProd ? undefined : { target: 'pino-pretty', options: { colorize: true, singleLine: false } },
+  transport: devTransport(),
 };
 
 export const logger = pino(loggerOptions);
