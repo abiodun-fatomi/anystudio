@@ -8,3 +8,4 @@
 
 export * from './auth/surfaces';
 export * from './onboarding/tours';
+export * from './billing/credits';

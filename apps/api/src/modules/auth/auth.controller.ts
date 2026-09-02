@@ -14,9 +14,11 @@ import { Body, Controller, Get, Post, Req, Res, HttpCode } from '@nestjs/common'
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthService } from './auth.service';
+import { RegistrationService } from './registration.service';
+import { PasswordResetService } from './password-reset.service';
 import { SessionService, COOKIE } from './session.service';
 import { Public, CurrentActor, RequireSurface, RequireStepUp } from '../../common/guards';
-import type { Actor } from '../../common/policy/policy';
+import type { Actor, SessionActor } from '../../common/policy/policy';
 
 const identifier = z
   .string()
@@ -30,7 +32,109 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly registration: RegistrationService,
+    private readonly resets: PasswordResetService,
   ) {}
+
+  /**
+   * Ask for a password reset link.
+   *
+   * WHAT     Emails a single-use, 30-minute link to the address — if it is
+   *          one we know. The response is 200 and empty either way.
+   * WHO      Anyone. Public. Rate limited to 3/hour per IP and per address.
+   * COSTS    Nothing.
+   * WRITES   A PASSWORD_RESET AuthToken (hashed) and retires any earlier ones.
+   */
+  @Public()
+  @Post('forgot')
+  @HttpCode(200)
+  async forgot(@Req() req: Request, @Body() body: unknown) {
+    const { email } = z.object({ email: z.string().trim().toLowerCase().email().max(320) }).parse(body);
+    const appOrigin = process.env.ORIGIN_APP;
+    if (!appOrigin) throw new Error('ORIGIN_APP is not set');
+    await this.resets.request(email, appOrigin, req);
+    return { status: 'sent' as const };
+  }
+
+  /**
+   * Finish a password reset.
+   *
+   * WHAT     Sets the new password and ends every session on every surface.
+   * WHO      Anyone holding a live reset token.
+   * COSTS    Nothing. Rate limited to 5/hour per IP.
+   * WRITES   The user's passwordHash and credentialEpoch; revokes sessions;
+   *          consumes the token; one AuthEvent (PASSWORD_CHANGED).
+   */
+  @Public()
+  @Post('reset')
+  @HttpCode(200)
+  async reset(@Req() req: Request, @Body() body: unknown) {
+    const input = z.object({ token: z.string().min(20).max(200), password: z.string().min(8).max(400) }).parse(body);
+    const ok = await this.resets.complete(input.token, input.password, req);
+    return ok ? { status: 'reset' as const } : { status: 'invalid_token' as const };
+  }
+
+  /**
+   * Create an account.
+   *
+   * WHAT     Registers a person with email, phone and password; creates their
+   *          personal workspace, its wallet and the welcome credits; records
+   *          the marketing consent answer verbatim; signs them in on the APP
+   *          surface.
+   * WHO      Anyone. Public. APP surface only — organizations and staff are
+   *          created by invitation, never by a public form.
+   * COSTS    Nothing to the caller. Rate limited to 3/hour per IP.
+   * WRITES   User, Identity, Workspace, WorkspaceMember, Wallet, one PROMO
+   *          LedgerEntry, one Consent row, one AuthEvent (SIGNED_UP), and the
+   *          session — all in one transaction except the session.
+   *
+   * A duplicate email or phone returns 409 with no field named. Sign-up is the
+   * other half of the login oracle: "this number is taken" confirms an account
+   * exists just as surely as "wrong password" would.
+   */
+  @Public()
+  @Post('register')
+  @HttpCode(201)
+  async register(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: unknown) {
+    const input = z
+      .object({
+        name: z.string().trim().min(1).max(120),
+        email: z.string().trim().toLowerCase().email().max(320),
+        phone: z.string().trim().min(7).max(24),
+        password: z.string().min(8).max(400),
+        phoneIsWhatsApp: z.boolean().default(false),
+        marketing: z.object({ granted: z.boolean(), wording: z.string().min(1).max(500) }),
+        sourceUrl: z.string().url().max(500).optional(),
+      })
+      .parse(body);
+
+    const surface = this.auth.surfaceFromOrigin(req);
+    if (surface !== 'APP') {
+      // Not a 403 with an explanation: on the org and admin hosts this route
+      // simply does not exist.
+      return { status: 'not_available' as const };
+    }
+
+    const outcome = await this.registration.register(
+      { ...input, phone: RegistrationService.normalisePhone(input.phone) },
+      req,
+    );
+    if (outcome.kind === 'conflict') {
+      res.status(409);
+      return { status: 'conflict' as const, message: 'An account already exists with those details. Try signing in.' };
+    }
+
+    const issued = await this.sessions.mint({
+      userId: outcome.user.id,
+      surface,
+      mfaLevel: 1,
+      credentialEpoch: outcome.user.credentialEpoch,
+      ip: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
+    });
+    this.auth.setCookies(res, surface, issued);
+    return { status: 'signed_in' as const, next: '/welcome' };
+  }
 
   /**
    * Begin sign-in.
@@ -150,7 +254,7 @@ export class AuthController {
    */
   @Post('step-up')
   @HttpCode(200)
-  async stepUp(@CurrentActor() actor: Actor, @Req() req: Request, @Body() body: unknown) {
+  async stepUp(@CurrentActor() actor: SessionActor, @Req() req: Request, @Body() body: unknown) {
     const input = z.object({ code: z.string().min(6).max(400) }).parse(body);
     const ok = await this.auth.verifyStepUp(actor, input.code, req);
     return { status: ok ? ('ok' as const) : ('invalid_code' as const) };
@@ -183,7 +287,7 @@ export class AuthController {
       this.auth.clearCookies(res, surface);
       return { status: 'reauthenticate' as const, reason: 'session_conflict' };
     }
-    if (out.result === 'invalid') {
+    if (out.result !== 'ok') {
       this.auth.clearCookies(res, surface);
       return { status: 'invalid' as const };
     }
@@ -203,7 +307,7 @@ export class AuthController {
    */
   @Post('logout')
   @HttpCode(204)
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentActor() actor: Actor) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentActor() actor: SessionActor) {
     await this.auth.logout(actor, req);
     this.auth.clearCookies(res, actor.surface);
   }

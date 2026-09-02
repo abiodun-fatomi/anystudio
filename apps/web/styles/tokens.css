@@ -1,0 +1,41 @@
+/* AnyStudio design tokens — the same system as the prototypes in design/.
+   Three theme states: bare :root is light; prefers-color-scheme redefines only
+   the tokens when no explicit choice is stamped; [data-theme] wins either way. */
+:root{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF; --sunk:#E9E5ED;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --ok:#0F7B4F; --ok-wash:#DDF1E7; --warn:#8A5A00; --warn-wash:#FBEFD8;
+  --danger:#B3261E; --danger-wash:#FBE3E1;
+  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --r:4px; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F0C13; --surface:#171320; --surface-2:#241E2B; --sunk:#1B1622;
+    --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+    --line:#352C3E; --line-soft:#2A2332;
+    --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+    --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+    --ok:#4FCB8F; --ok-wash:#10301F; --warn:#E8B65C; --warn-wash:#2E2411;
+    --danger:#FF8A80; --danger-wash:#3A1512;
+    --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F0C13; --surface:#171320; --surface-2:#241E2B; --sunk:#1B1622;
+  --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+  --line:#352C3E; --line-soft:#2A2332;
+  --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+  --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+  --ok:#4FCB8F; --ok-wash:#10301F; --warn:#E8B65C; --warn-wash:#2E2411;
+  --danger:#FF8A80; --danger-wash:#3A1512;
+  --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+  color-scheme:dark;
+}

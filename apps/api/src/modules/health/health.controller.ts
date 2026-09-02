@@ -9,7 +9,9 @@
 
 import { Controller, Get } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { Public } from '../../common/guards';
 
+@Public()
 @Controller()
 export class HealthController {
   constructor(private readonly db: PrismaClient) {}

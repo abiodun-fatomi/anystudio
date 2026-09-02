@@ -43,6 +43,13 @@ export interface Actor {
   impersonating: boolean;
 }
 
+/**
+ * An Actor as the guard actually attaches it: it always knows which session
+ * it came from. Handlers that act on the session itself (logout, step-up)
+ * take this; everything else takes the narrower Actor.
+ */
+export type SessionActor = Actor & { sessionId: string };
+
 export class PolicyError extends Error {
   constructor(
     readonly code:

@@ -20,7 +20,9 @@ FROM deps AS build
 COPY . .
 RUN pnpm install --frozen-lockfile --offline
 RUN pnpm db:generate
-RUN pnpm --filter @anystudio/api build
+# `...` = the package and everything it depends on, in topological order,
+# so @anystudio/shared is compiled to dist before this app is.
+RUN pnpm --filter @anystudio/api... build
 RUN pnpm --filter @anystudio/api --prod deploy /out
 
 # ---- runtime ----------------------------------------------------------------

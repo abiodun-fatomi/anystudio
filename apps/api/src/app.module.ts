@@ -1,21 +1,34 @@
-import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import { RequestIdMiddleware } from './common/http/request-id.middleware';
-import { HealthController } from './modules/health/health.controller';
-
 /**
- * One Prisma client for the process. Creating one per module exhausts the
- * connection pool under load, which shows up as intermittent timeouts that look
- * like a database problem and are not.
+ * Composition root.
+ *
+ * Global pieces are registered here once — the auth guard, the exception
+ * filter, the request-id middleware — so no module can opt out by omission.
+ * Feature modules own their controllers and services and import only what
+ * they need (dependency inversion: LedgerModule exposes LedgerService, and
+ * WalletsModule depends on that interface, not on Prisma tables).
  */
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'production' ? ['warn', 'error'] : ['warn', 'error'],
-});
+
+import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { PrismaModule } from './prisma/prisma.module';
+import { MailModule } from './common/mail/mail.module';
+import { RequestIdMiddleware } from './common/http/request-id.middleware';
+import { HttpExceptionFilter } from './common/errors/http-exception.filter';
+import { AuthGuard } from './common/guards';
+import { HealthController } from './modules/health/health.controller';
+import { AuthModule } from './modules/auth/auth.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { LedgerModule } from './modules/ledger/ledger.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 
 @Module({
+  imports: [PrismaModule, MailModule, AuthModule, OnboardingModule, LedgerModule, WalletsModule, WorkspacesModule],
   controllers: [HealthController],
-  providers: [{ provide: PrismaClient, useValue: prisma }],
-  exports: [PrismaClient],
+  providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

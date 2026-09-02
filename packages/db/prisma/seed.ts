@@ -18,8 +18,16 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 const db = new PrismaClient();
+
+/**
+ * The dev account's password. Printed by the seed, never used anywhere real:
+ * fixtures() only runs with SEED_ENV=dev and production refuses that outright.
+ */
+const DEV_PASSWORD = 'anystudio-dev';
+const DEV_WALLET_ID = '00000000-0000-4000-8000-000000000003';
 
 /** What each operation costs. Referenced by generation jobs; never hard-coded. */
 const CREDIT_COSTS = [
@@ -105,6 +113,19 @@ async function fixtures() {
     update: {},
   });
 
+  // A wallet with credits in it, moved through the same Postgres function as
+  // every real movement — the seed gets no back door into the ledger either.
+  // The idempotency key makes a second seed run a no-op rather than a second grant.
+  await db.wallet.upsert({
+    where: { workspaceId: ws.id },
+    create: { id: DEV_WALLET_ID, workspaceId: ws.id, currency: 'NGN' },
+    update: {},
+  });
+  await db.$queryRaw`
+    SELECT * FROM ledger_apply(
+      ${DEV_WALLET_ID}::uuid, 'PROMO'::"LedgerKind", 1000, 'seed:dev-wallet', NULL::uuid, 'Seeded development credits', NULL::uuid
+    )`;
+
   // Staff access on the SAME user. Note grantedById is the user itself here,
   // which the policy layer forbids at runtime — acceptable only as a bootstrap,
   // and it is exactly why real grants record who issued them.
@@ -120,7 +141,7 @@ async function fixtures() {
     update: {},
   });
 
-  console.log('fixtures: dev@anystudio.test — owner of Bimbo Fabrics AND superadmin');
+  console.log(`fixtures: dev@anystudio.test / ${DEV_PASSWORD} — owner of Bimbo Fabrics (1000 credits) AND superadmin`);
   console.log('          use it to check that the console refuses to action its own workspace');
 }
 

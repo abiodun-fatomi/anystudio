@@ -42,9 +42,9 @@ async function bootstrap(): Promise<void> {
 
   // Behind Render/Cloudflare, so req.ip must come from the forwarded header —
   // otherwise every rate limit sees one proxy address and limits everyone at once.
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
-
-  app.disable?.('x-powered-by');
+  const express = app.getHttpAdapter().getInstance() as import('express').Express;
+  express.set('trust proxy', 1);
+  express.disable('x-powered-by');
 
   /**
    * Graceful shutdown. SIGTERM arrives on every deploy; without this an

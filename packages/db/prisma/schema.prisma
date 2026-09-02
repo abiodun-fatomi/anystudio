@@ -18,7 +18,8 @@
 // own workspace, their credits or their history.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
@@ -304,11 +305,16 @@ model Workspace {
   /// Sets billing currency AND storage region. Changing it is a support action.
   region    String        @default("ng")
   currency  String        @default("NGN")
+  /// The welcome questions: what they sell, how they sell it, the tone they
+  /// want. Free-form JSON because it feeds prompts, not queries, and the
+  /// questions will change more often than we want to migrate.
+  profile   Json?
   createdAt DateTime      @default(now())
   deletedAt DateTime?
 
   members    WorkspaceMember[]
   onboarding OnboardingState[]
+  wallet     Wallet?
 
   @@index([type])
   @@map("workspaces")
@@ -413,6 +419,7 @@ model OnboardingState {
 // ---------------------------------------------------------------------------
 
 enum AuthEventType {
+  SIGNED_UP
   LOGIN_SUCCEEDED
   LOGIN_FAILED
   LOGGED_OUT
@@ -512,4 +519,67 @@ model ProviderModel {
 
   @@index([capability, enabled, priority])
   @@map("provider_models")
+}
+
+// ---------------------------------------------------------------------------
+// CREDITS — the ledger
+//
+// There is no balance column anywhere. The balance is the sum of a wallet's
+// entries, and `balanceAfter` is denormalised onto each row for cheap reads and
+// for detecting drift. Debits and refunds go through Postgres functions that
+// lock the wallet row and append inside one transaction — never through
+// application code holding two statements. This is the single decision in the
+// codebase that cannot be fixed retroactively: you cannot reconstruct a history
+// you never wrote.
+// ---------------------------------------------------------------------------
+
+/// One wallet per workspace. Holds nothing but identity and currency; the
+/// money is in the entries.
+model Wallet {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @unique @db.Uuid
+  currency    String   @default("NGN")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries   LedgerEntry[]
+
+  @@map("wallets")
+}
+
+enum LedgerKind {
+  PURCHASE   // credits bought or granted by a plan renewal
+  DEBIT      // spent on a generation
+  REFUND     // returned after a failed generation
+  PROMO      // free tier, campaigns
+  EXPIRY     // plan credits that lapsed
+  ADJUSTMENT // staff correction — always with a reason, never an edit
+}
+
+/// Append-only. No UPDATE, no DELETE — enforced by a trigger in the migration,
+/// so not even a superuser session through the ORM can rewrite history.
+model LedgerEntry {
+  id             String     @id @default(uuid()) @db.Uuid
+  walletId       String     @db.Uuid
+  kind           LedgerKind
+  /// Signed. Negative for DEBIT and EXPIRY, positive for everything else.
+  delta          Int
+  /// The wallet balance after this row was applied. Denormalised on purpose.
+  balanceAfter   Int
+  /// The generation, payment or staff action this row belongs to.
+  referenceId    String?    @db.Uuid
+  /// Supplied by the caller. Unique per wallet, so a double-tapped button or a
+  /// retried webhook short-circuits to the existing row instead of spending twice.
+  idempotencyKey String
+  reason         String?
+  /// Staff user id for ADJUSTMENT rows; null otherwise.
+  actorId        String?    @db.Uuid
+  createdAt      DateTime   @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+
+  @@unique([walletId, idempotencyKey])
+  @@index([walletId, createdAt])
+  @@index([referenceId])
+  @@map("ledger_entries")
 }

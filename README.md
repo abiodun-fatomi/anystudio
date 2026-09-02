@@ -3,9 +3,10 @@
 One product photo in. Branded images, a written description, captions and a
 short reel out — on WhatsApp, with no app to install, and on the web.
 
-> **Status: pre-alpha.** The design prototypes are complete and the backend
-> foundation is in place. Nothing here has been deployed and the API does not
-> yet serve a request.
+> **Status: pre-alpha.** The design prototypes are complete, the API boots and
+> serves auth, registration, password reset, onboarding and the credit ledger,
+> and the user portal has sign-in, sign-up, welcome and Today screens. Nothing
+> has been deployed yet.
 
 ---
 
@@ -41,7 +42,8 @@ pnpm infra:up             # Postgres, Redis, MinIO, Mailpit — then migrate + s
 pnpm dev
 ```
 
-`pnpm infra:up` leaves you with a working account: `dev@anystudio.test`, which is
+`pnpm infra:up` leaves you with a working account: `dev@anystudio.test` (password
+`anystudio-dev`, 1000 credits), which is
 **both** the owner of a demo workspace **and** a superadmin. That combination is
 deliberate — it is the case the authorization rules have to get right, and
 testing the two roles separately hides the interesting bug.
@@ -100,12 +102,15 @@ console rather than a deploy.
 
 The foundation is here; most of the product is not.
 
-- The auth **service** behind the controller — password verification with uniform
-  timing, TOTP, and the guards that assemble the actor
-- The logger with redaction, and the rate-limit guards
-- The credit ledger's Postgres functions — wallet-row locking, idempotency
+- Rate-limit guards (Redis token buckets per surface, key and merchant)
+- Email verification and WhatsApp OTP; WebAuthn passkeys
 - Generation pipeline, provider abstraction, publishing integrations
-- The four Next.js apps behind the prototypes
+- The org and admin portals, and everything in the user portal past Today
+
+**Done:** auth (sessions, MFA, step-up, refresh rotation), registration with
+consent capture, password reset, onboarding tours, the append-only ledger and
+its Postgres functions, redacting logger, CORS/helmet, and the user-portal
+shell with sign-in, sign-up, forgot/reset, welcome and Today.
 
 `.github/workflows/ci.yml` is intentionally absent from the initial commit and
 must be added by hand.
