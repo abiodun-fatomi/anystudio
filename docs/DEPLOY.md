@@ -91,15 +91,24 @@ Do production last, and only after `api.staging` answers `/ready`.
 
 ### 2.5 Promoting code between environments
 
-Plain git; nothing to click:
+Nobody pushes to `development`, `staging` or `production` directly — not
+even the owner. A GitHub ruleset (Settings → Rules → Rulesets) requires a
+pull request for all three, blocks force-pushes and deletions, and has an
+empty bypass list. Every build is therefore the result of a merge, which is
+the thing that shows up in history with a reviewer and a green check.
 
-```
-git push origin development:staging      # dev → staging
-git push origin staging:production       # staging → production
-```
+| Change | Branch to open the PR from | Into | Merge method |
+|---|---|---|---|
+| A feature or fix | `feat/…` or `fix/…` | `development` | Squash |
+| Promote to staging | `development` | `staging` | **Merge commit** |
+| Promote to production | `staging` | `production` | **Merge commit** |
 
-Fast-forward only. If a push is refused, someone committed directly to the
-target branch — rebase, never force.
+Promotion PRs must be *merge commits*, never squashes: squashing rewrites the
+commits, the environment branches diverge, and the next promotion PR shows
+every old change again and conflicts on all of them.
+
+Workers Builds treats a merge as a push to the branch, so the matching
+environment Worker builds and deploys the moment the PR is merged.
 
 ---
 
