@@ -1,0 +1,122 @@
+# Render blueprint — the API and worker for one environment.
+#
+# Two services from one repo, deployed and scaled independently: provider calls
+# in the worker take tens of seconds and must never compete with webhook
+# acknowledgements on the API, which have to return fast or the sender retries
+# and we process the event twice.
+#
+# Migrations are a `preDeployCommand`, which Render runs ONCE before new
+# instances start. Never in the start command — two replicas booting together
+# would both run `migrate deploy` against the same database, which is how a
+# schema ends up half-applied.
+
+previewsEnabled: false
+
+services:
+  - type: web
+    name: anystudio-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt          # closest Render region to Lagos and to Europe
+    healthCheckPath: /health   # liveness, not /ready — see health.controller.ts
+    preDeployCommand: pnpm db:deploy
+    autoDeploy: false          # deploys are driven by CI, not by every push
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: api
+      - key: PORT
+        value: "3001"
+      - key: APP_ENV
+        sync: false            # "dev" or "production" — set per environment
+      - key: GIT_SHA
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      # Secrets: set in the Render dashboard, never in this file.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService: { type: redis, name: anystudio-redis, property: connectionString }
+      - key: APP_KEY
+        sync: false
+      - key: ORIGIN_APP
+        sync: false
+      - key: ORIGIN_ORG
+        sync: false
+      - key: ORIGIN_ADMIN
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: HIGGSFIELD_API_KEY
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false
+      - key: FLUTTERWAVE_WEBHOOK_SECRET
+        sync: false
+      - key: PADDLE_API_KEY
+        sync: false
+      - key: PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        sync: false
+
+  - type: worker
+    name: anystudio-worker
+    runtime: docker
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: worker
+      - key: APP_ENV
+        sync: false
+      - key: GIT_SHA
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService: { type: redis, name: anystudio-redis, property: connectionString }
+      - key: APP_KEY
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: HIGGSFIELD_API_KEY
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+
+  - type: redis
+    name: anystudio-redis
+    plan: starter
+    region: frankfurt
+    # BullMQ jobs must survive a restart — a dropped queue is a customer whose
+    # credits were spent on a generation that never came back.
+    maxmemoryPolicy: noeviction
+    ipAllowList: []            # private network only

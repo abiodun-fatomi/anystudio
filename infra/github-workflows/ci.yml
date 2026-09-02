@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [development, staging, production]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: anystudio
+          POSTGRES_PASSWORD: anystudio
+          POSTGRES_DB: anystudio_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U anystudio" --health-interval 5s
+          --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      APP_KEY: dGVzdC1rZXktbm90LWZvci1wcm9kdWN0aW9uLXVzZS1vbmx5MA==
+      ORIGIN_APP: http://localhost:3000
+      ORIGIN_ORG: http://localhost:3002
+      ORIGIN_ADMIN: http://localhost:3003
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+
+      # Before lint and typecheck, never after: every app imports the generated
+      # client, so without this the failures point at the wrong place.
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      # Catches a schema edited without a matching migration — the change that
+      # works locally and fails on deploy.
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @anystudio/db exec prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" --exit-code
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm db:deploy
+      - run: pnpm db:seed
+        env: { SEED_ENV: dev }
+      - run: pnpm test
+      - run: pnpm build
+
+  images:
+    needs: check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    strategy:
+      matrix: { app: [api, worker] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/${{ matrix.app }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
