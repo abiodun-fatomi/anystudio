@@ -1,0 +1,104 @@
+name: Web
+
+# Builds and deploys the web portal to Cloudflare Workers from GitHub, so the
+# build is visible on the commit, the PR and the Deployments tab, and so a
+# production deploy can wait for a human on the `production` environment.
+#
+#   development → anystudio-app-development   dev.anystudio.ai / app.dev.…
+#   staging     → anystudio-app-staging       staging.… / app.staging.…
+#   production  → anystudio-app-production    anystudio.ai / app.anystudio.ai
+#
+# Cloudflare's own Git integration must be disconnected from these Workers,
+# otherwise every merge deploys twice.
+
+on:
+  push:
+    branches: [development, staging, production]
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - package.json
+      - tsconfig.base.json
+      - .github/workflows/web-deploy.yml
+  pull_request:
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a deploy half way
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    # Build-time values differ per environment (Next inlines them), so the
+    # job binds to the GitHub environment named after the branch and reads
+    # its variables. Pull requests build against development's values.
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'development' || github.ref_name }}
+    env:
+      API_ORIGIN: ${{ vars.API_ORIGIN }}
+      NEXT_PUBLIC_ADMIN_ORIGIN: ${{ vars.NEXT_PUBLIC_ADMIN_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @anystudio/shared build && pnpm --filter @anystudio/web typecheck
+
+      - name: Build for Cloudflare
+        run: pnpm --filter @anystudio/web cf:build
+
+      - name: Keep the build for the deploy job
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-next-${{ github.sha }}
+          path: apps/web/.open-next
+          retention-days: 3
+          include-hidden-files: true
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Required reviewers on the `production` environment are the release
+    # gate; development and staging deploy as soon as the build is green.
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ vars.WEB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --filter @anystudio/web
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: open-next-${{ github.sha }}
+          path: apps/web/.open-next
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: deploy --env ${{ github.ref_name }}
