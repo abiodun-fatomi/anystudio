@@ -12,21 +12,33 @@
  * on one hostname is visible on the other — the split costs nothing.
  *
  * On localhost there is no host split; everything is reachable on one origin.
+ *
+ * Nothing here is configured per environment. The API and admin hostnames
+ * are derived from the request's own hostname, which is why one build of
+ * this app deploys unchanged to development, staging and production.
  */
 import { NextResponse, type NextRequest } from 'next/server';
+import { isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 /** Paths that belong to the portal. Anything else on the marketing host is content. */
 const APP_PREFIXES = ['/login', '/signup', '/forgot', '/reset', '/welcome', '/today', '/create', '/library',
   '/products', '/brand', '/publishing', '/insights', '/billing', '/settings', '/api'];
 
-const isLocal = (host: string) => /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-
 export function middleware(req: NextRequest) {
   const host = req.headers.get('host') ?? '';
   const { pathname, search } = req.nextUrl;
 
+  // Same-origin API: /api/* is proxied to this environment's API host, so
+  // cookies stay first-party and there is no CORS preflight. The target is
+  // derived from the hostname (lib/hosts.ts), not configured anywhere.
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    const target = new URL(pathname.slice(4) || '/', siblingOrigin(host, 'api'));
+    target.search = search;
+    return NextResponse.rewrite(target);
+  }
+
   // No host split locally: the landing is "/" and the portal is everything else.
-  if (isLocal(host)) return NextResponse.next();
+  if (isLocalHost(host)) return NextResponse.next();
 
   // www → apex, permanently. One canonical host per environment.
   if (host.startsWith('www.')) {

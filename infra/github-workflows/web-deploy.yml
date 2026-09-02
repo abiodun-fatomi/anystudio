@@ -40,14 +40,9 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    # Build-time values differ per environment (Next inlines them), so the
-    # job binds to the GitHub environment named after the branch and reads
-    # its variables. Pull requests build against development's values.
-    environment:
-      name: ${{ github.event_name == 'pull_request' && 'development' || github.ref_name }}
-    env:
-      API_ORIGIN: ${{ vars.API_ORIGIN }}
-      NEXT_PUBLIC_ADMIN_ORIGIN: ${{ vars.NEXT_PUBLIC_ADMIN_ORIGIN }}
+    # One build for every environment: the app derives its API and admin
+    # hostnames from the request host (apps/web/lib/hosts.ts), so nothing is
+    # inlined at build time and no per-environment variables exist here.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -81,7 +76,7 @@ jobs:
     # gate; development and staging deploy as soon as the build is green.
     environment:
       name: ${{ github.ref_name }}
-      url: ${{ vars.WEB_URL }}
+      url: ${{ github.ref_name == 'production' && 'https://anystudio.ai' || format('https://{0}.anystudio.ai', github.ref_name) }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

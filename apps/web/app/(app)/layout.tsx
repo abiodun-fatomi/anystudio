@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMe } from '@/lib/useMe';
 import { GuidedTour } from '@/components/GuidedTour';
+import { siblingOrigin } from '@/lib/hosts';
 import styles from './app.module.css';
 
 const NAV = [
@@ -40,7 +41,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className={styles.foot}>
           <strong>{ws?.name ?? 'No workspace yet'}</strong>
           <span className="mono">{ws ? `${ws.type} · ${ws.currency}` : ''}</span>
-          {me.canSwitchToStaff && <a href={process.env.NEXT_PUBLIC_ADMIN_ORIGIN ?? '#'} className={styles.staff}>Staff console →</a>}
+          {me.canSwitchToStaff && (
+            <a href={siblingOrigin(window.location.host, 'admin')} className={styles.staff}>Staff console →</a>
+          )}
         </div>
       </aside>
       <main className={styles.main}>{children}</main>

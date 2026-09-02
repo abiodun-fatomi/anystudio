@@ -26,16 +26,14 @@ Repository secrets (Settings → Secrets and variables → Actions):
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → Overview, right-hand column |
 | `CLOUDFLARE_API_TOKEN` | My Profile → API Tokens → Create → template **Edit Cloudflare Workers**, then add **Zone → DNS → Edit** and **Zone → SSL and Certificates → Edit** for `anystudio.ai` (custom domains create records and certificates) |
 
-Three GitHub environments (Settings → Environments), each with variables:
+No per-environment variables. The app derives its API and admin hostnames
+from the request host, and the Worker's own runtime values live in
+`apps/web/wrangler.jsonc` under each environment's `vars`.
 
-| Environment | `API_ORIGIN` | `NEXT_PUBLIC_ADMIN_ORIGIN` | `WEB_URL` |
-|---|---|---|---|
-| `development` | `https://api.dev.anystudio.ai` | `https://admin.dev.anystudio.ai` | `https://dev.anystudio.ai` |
-| `staging` | `https://api.staging.anystudio.ai` | `https://admin.staging.anystudio.ai` | `https://staging.anystudio.ai` |
-| `production` | `https://api.anystudio.ai` | `https://admin.anystudio.ai` | `https://anystudio.ai` |
-
-On `production`, add yourself under **Required reviewers**: that is what makes
-a production deploy wait for a click.
+One GitHub environment matters: create **`production`** (Settings →
+Environments) and add yourself under **Required reviewers** — that is what
+makes a production deploy wait for a click. `development` and `staging` are
+created automatically the first time the workflow deploys to them.
 
 Finally disconnect Cloudflare's own Git build on each Worker (Worker →
 Settings → Build → Disconnect), or every merge deploys twice.
