@@ -40,8 +40,8 @@ const LINKS = [
 
 /** Sections that left the landing page, and where they went. */
 const PROMOTED = [
-  { id: 'pricing', path: '/pricing', label: 'Pricing' },
-  { id: 'api', path: '/developers', label: 'For platforms' },
+  { id: 'pricing', path: '/pricing' },
+  { id: 'api', path: '/developers' },
 ];
 
 // --------------------------------------------------------------- helpers
@@ -139,15 +139,7 @@ for (const { id } of PROMOTED) {
   if (!promoted.has(id)) throw new Error(`design/landing.html has no <section id="${id}">`);
 }
 
-/** Renumber what is left, so the contact-sheet motif has no holes in it. */
-let n = 0;
-const landingBody = kept.join('\n').replace(/(class="mono num"[^>]*>)Frame \d+(<)/g,
-  (_m, open, close) => `${open}Frame ${String(++n).padStart(2, '0')}${close}`);
-
-/** A promoted section is no longer a frame of that sheet; it is the page. */
-function standalone(id, label) {
-  return promoted.get(id).replace(/(class="mono num"[^>]*>)Frame \d+(<)/, `$1${label}$2`);
-}
+const landingBody = kept.join('\n');
 
 const PAGES = [
   {
@@ -157,13 +149,13 @@ const PAGES = [
     description: 'Send one phone photo on WhatsApp and get back branded product images, a written description and a short reel — ready to post. Three generations free, no card.',
   },
   {
-    path: '/pricing', name: 'pricing', symbol: 'PRICING', body: standalone('pricing', 'Pricing'), keepAnchors: false,
+    path: '/pricing', name: 'pricing', symbol: 'PRICING', body: promoted.get('pricing'), keepAnchors: false,
     title: 'Pricing — AnyStudio',
     ogTitle: 'Pay for what you make. Nothing else.',
     description: 'Three generations free, no card. After that a plan or a one-off top-up, priced per market. Credits from top-ups never expire.',
   },
   {
-    path: '/developers', name: 'developers', symbol: 'DEVELOPERS', body: standalone('api', 'For platforms'), keepAnchors: false,
+    path: '/developers', name: 'developers', symbol: 'DEVELOPERS', body: promoted.get('api'), keepAnchors: false,
     title: 'For platforms — AnyStudio',
     ogTitle: 'Content for every merchant, from one integration.',
     description: 'One API call turns a merchant’s phone photo into storefront-ready images and a description no other listing is using. Test keys work immediately, on 500 free credits.',
