@@ -92,7 +92,7 @@ console rather than a deploy.
 |---|---|
 | `docs/ANYSTUDIO.md` | Product spec, architecture, data model, release sequence |
 | `docs/PORTALS.html` | The three portals — flows, feature maps, logging, rate limits, security |
-| `design/landing.html` | Marketing page prototype |
+| `design/landing.html` | Marketing prototype. `scripts/sync-prototypes.mjs` splits it into `/`, `/pricing` and `/developers` |
 | `design/auth.html` | Sign in, sign up, forgot and reset password |
 | `design/org.html` | Organization signup, both branches, and the sales door |
 

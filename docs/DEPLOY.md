@@ -71,7 +71,7 @@ for the 5–15 minutes that takes.
 
 ### 2.3 Check
 
-- `https://dev.anystudio.ai` — the landing page
+- `https://dev.anystudio.ai` — the landing page, `/pricing`, `/developers`, `/org`
 - `https://app.dev.anystudio.ai/login` — the sign-in page
 - `curl -I https://app.dev.anystudio.ai` → `server: cloudflare`
 
