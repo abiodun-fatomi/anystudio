@@ -39,6 +39,17 @@ services:
       # Secrets: set in the Render dashboard, never in this file.
       - key: DATABASE_URL
         sync: false
+      # Direct (unpooled) connection. Used by `db:deploy` only — see schema.prisma.
+      - key: DIRECT_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       - key: REDIS_URL
         fromService: { type: redis, name: anystudio-redis, property: connectionString }
       - key: APP_KEY
@@ -94,6 +105,17 @@ services:
       - key: GIT_SHA
         sync: false
       - key: DATABASE_URL
+        sync: false
+      # Direct (unpooled) connection. Used by `db:deploy` only — see schema.prisma.
+      - key: DIRECT_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: REDIS_URL
         fromService: { type: redis, name: anystudio-redis, property: connectionString }

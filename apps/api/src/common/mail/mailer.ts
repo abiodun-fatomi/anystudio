@@ -45,6 +45,38 @@ export class SmtpMailer extends Mailer {
 }
 
 /**
+ * Resend, over its REST API.
+ *
+ * No SDK: the whole surface we use is one POST, and a dependency that wraps
+ * one fetch is a dependency to patch for no gain. A non-2xx throws with the
+ * provider's own message, because "why did that email not arrive" is a
+ * question you answer at 2am with whatever the log kept.
+ */
+@Injectable()
+export class ResendMailer extends Mailer {
+  constructor(private readonly apiKey: string, private readonly from: string) { super(); }
+
+  /** Send one message. Throws on refusal; callers decide whether that is fatal. */
+  async send(mail: Mail): Promise<void> {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from: this.from,
+        to: [mail.to],
+        subject: mail.subject,
+        text: mail.text,
+        ...(mail.html ? { html: mail.html } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Resend refused the message (${res.status}): ${detail.slice(0, 300)}`);
+    }
+  }
+}
+
+/**
  * No transport configured: log it. The body is logged at debug only, because
  * a reset link in an INFO log shipped to a third party is a credential leak.
  */
@@ -56,9 +88,18 @@ export class LogMailer extends Mailer {
   }
 }
 
-/** Pick an implementation from the environment. The composition root calls this once. */
+/**
+ * Pick an implementation from the environment. The composition root calls this
+ * once.
+ *
+ * Order is deliberate: a real provider beats a local relay beats a log. So a
+ * deployed environment that has RESEND_API_KEY sends for real, `pnpm dev`
+ * with docker-compose up gets Mailpit, and a bare checkout still boots and
+ * prints what it would have sent instead of failing at the first signup.
+ */
 export function mailerFromEnv(env: NodeJS.ProcessEnv): Mailer {
-  const url = env.SMTP_URL;
-  if (!url) return new LogMailer();
-  return new SmtpMailer(url, env.MAIL_FROM ?? 'AnyStudio <no-reply@anystudio.ai>');
+  const from = env.MAIL_FROM ?? 'AnyStudio <no-reply@anystudio.ai>';
+  if (env.RESEND_API_KEY) return new ResendMailer(env.RESEND_API_KEY, from);
+  if (env.SMTP_URL) return new SmtpMailer(env.SMTP_URL, from);
+  return new LogMailer();
 }

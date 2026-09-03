@@ -103,6 +103,8 @@ export const api = {
     logout: () => request<void>('POST', '/auth/logout'),
     /** Always resolves 'sent', whether or not the address exists. */
     forgot: (email: string) => request<{ status: 'sent' }>('POST', '/auth/forgot', { email }),
+    verify: (token: string) => request<{ status: 'verified' | 'invalid_token' }>('POST', '/auth/verify', { token }),
+    resendVerification: () => request<{ status: 'sent' }>('POST', '/auth/verify/resend'),
     reset: (token: string, password: string) =>
       request<{ status: 'reset' | 'invalid_token' }>('POST', '/auth/reset', { token, password }),
   },

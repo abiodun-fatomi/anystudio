@@ -18,6 +18,7 @@ import { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { hashPassword } from '../../common/crypto/password';
 import { Mailer } from '../../common/mail/mailer';
+import { passwordReset } from '../../common/mail/templates';
 import { logger } from '../../common/logging/logger';
 
 const RESET_TTL_MS = 30 * 60_000;
@@ -64,18 +65,7 @@ export class PasswordResetService {
 
     const link = `${appOrigin}/reset?token=${token}`;
     await this.mailer
-      .send({
-        to: email,
-        subject: 'Reset your AnyStudio password',
-        text: [
-          `Hi${user.name ? ` ${user.name.split(' ')[0]}` : ''},`,
-          '',
-          'Someone asked to reset the password on your AnyStudio account. If that was you, open this link within 30 minutes:',
-          link,
-          '',
-          "If it wasn't you, ignore this — your password has not changed and nobody can use this link without your inbox.",
-        ].join('\n'),
-      })
+      .send(passwordReset(email, user.name, link))
       .catch((err: unknown) => logger.error({ err }, 'password reset mail failed'));
   }
 

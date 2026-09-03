@@ -17,6 +17,19 @@ function key(): Buffer {
   return k;
 }
 
+/**
+ * Prove the key is usable, at boot.
+ *
+ * Without this the first encrypt is what discovers a bad APP_KEY — so a
+ * misconfigured deployment goes green, passes its health check, and then
+ * fails on someone's first sign-in with a 500 and no obvious cause. The API
+ * already refuses to start without CORS origins; a key it cannot encrypt
+ * with belongs in the same category.
+ */
+export function assertAppKey(): void {
+  key();
+}
+
 /** Encrypts to a compact `iv.tag.ciphertext` string, all base64url. */
 export function encrypt(plain: string): string {
   const iv = randomBytes(12);

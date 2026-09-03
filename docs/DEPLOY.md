@@ -211,3 +211,56 @@ certificate is three problems at once; behind a plain hostname it is one.
   is the only limit on `/auth/*` for now.
 - The **staging** branch exists but has no CI or approval gate yet beyond what
   `infra/github-workflows/` defines for development and production.
+
+---
+
+## 9. Sign in with Google, mail, and Supabase
+
+### 9.1 Google OAuth client
+
+Google Cloud Console → APIs & Services → Credentials → **Create OAuth client
+ID** → *Web application*.
+
+**Authorised redirect URIs** — the callback is on the *app's* hostname, not the
+API's, so the handshake cookie stays first-party. Add one per surface you have:
+
+```
+http://localhost:3000/api/auth/google/callback
+https://app.dev.anystudio.ai/api/auth/google/callback
+https://app.staging.anystudio.ai/api/auth/google/callback
+https://app.anystudio.ai/api/auth/google/callback
+```
+
+Put the client id and secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` on
+the API service. With either missing, the button returns people to `/login`
+with a message instead of failing — a half-configured client never half-works.
+
+**The admin surface does not accept Google.** Google proves an email; it does
+not prove a second factor, and `SessionService` refuses an ADMIN session below
+`mfaLevel` 2. Staff sign in with a password and a factor.
+
+### 9.2 Resend
+
+resend.com → add `anystudio.ai` → it gives you DKIM, SPF and a return-path
+record for Cloudflare DNS. Verify, create an API key, set `RESEND_API_KEY` and
+`MAIL_FROM` on the API and worker.
+
+The mailer picks a transport in this order: Resend if `RESEND_API_KEY` is set,
+otherwise `SMTP_URL` (Mailpit locally), otherwise it logs what it would have
+sent. So a fresh checkout boots and signs people up without any mail config.
+
+### 9.3 Supabase
+
+Two projects, never one database with two schemas: `anystudio-dev` and
+`anystudio-prod`. From Project Settings → Database, take **both** strings:
+
+| Env var | Supabase string | Why |
+|---|---|---|
+| `DATABASE_URL` | Transaction pooler, port 6543 | Every request the API serves |
+| `DIRECT_URL` | Direct connection, port 5432 | Migrations only |
+
+Migrations run DDL and take advisory locks, and neither survives a transaction
+pooler — that is the whole reason `schema.prisma` declares `directUrl`. Point
+both at the pooler and `db:deploy` will hang or half-apply.
+
+Locally the two are the same string; `docker-compose` has no pooler.

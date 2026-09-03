@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { AuthService } from './auth.service';
 import { RegistrationService } from './registration.service';
 import { PasswordResetService } from './password-reset.service';
+import { VerificationService } from './verification.service';
 import { SessionService, COOKIE } from './session.service';
 import { Public, CurrentActor, RequireSurface, RequireStepUp } from '../../common/guards';
 import type { Actor, SessionActor } from '../../common/policy/policy';
@@ -34,6 +35,7 @@ export class AuthController {
     private readonly sessions: SessionService,
     private readonly registration: RegistrationService,
     private readonly resets: PasswordResetService,
+    private readonly verification: VerificationService,
   ) {}
 
   /**
@@ -50,9 +52,42 @@ export class AuthController {
   @HttpCode(200)
   async forgot(@Req() req: Request, @Body() body: unknown) {
     const { email } = z.object({ email: z.string().trim().toLowerCase().email().max(320) }).parse(body);
-    const appOrigin = process.env.ORIGIN_APP;
-    if (!appOrigin) throw new Error('ORIGIN_APP is not set');
-    await this.resets.request(email, appOrigin, req);
+    await this.resets.request(email, this.auth.publicOrigin(req), req);
+    return { status: 'sent' as const };
+  }
+
+  /**
+   * Confirm an email address.
+   *
+   * WHAT     Consumes the link from the welcome email and marks the address
+   *          verified.
+   * WHO      Anyone holding a live token. Public — the person may be reading
+   *          their email on a device that is not signed in.
+   * COSTS    Nothing. Rate limited to 10/hour per IP.
+   * WRITES   User.emailVerifiedAt, and consumes the token.
+   */
+  @Public()
+  @Post('verify')
+  @HttpCode(200)
+  async verify(@Body() body: unknown) {
+    const { token } = z.object({ token: z.string().min(20).max(200) }).parse(body);
+    const ok = await this.verification.complete(token);
+    return ok ? { status: 'verified' as const } : { status: 'invalid_token' as const };
+  }
+
+  /**
+   * Send the confirmation link again.
+   *
+   * WHAT     Issues a fresh link and retires the previous one.
+   * WHO      The signed-in owner of the address. Requiring a session keeps
+   *          this from being a way to mail strangers on our behalf.
+   * COSTS    Nothing. Rate limited to 3/hour per account.
+   * WRITES   A new EMAIL_VERIFY token; consumes any earlier ones.
+   */
+  @Post('verify/resend')
+  @HttpCode(202)
+  async resendVerification(@Req() req: Request, @CurrentActor() actor: SessionActor) {
+    await this.verification.issue(actor.userId, this.auth.publicOrigin(req), req, 'resend');
     return { status: 'sent' as const };
   }
 
@@ -123,6 +158,11 @@ export class AuthController {
       res.status(409);
       return { status: 'conflict' as const, message: 'An account already exists with those details. Try signing in.' };
     }
+
+    // Awaited so a transport error is logged against this request, but the
+    // service never throws: the account exists, and a failed send must not be
+    // reported to someone who just signed up successfully.
+    await this.verification.issue(outcome.user.id, this.auth.publicOrigin(req), req, 'welcome');
 
     const issued = await this.sessions.mint({
       userId: outcome.user.id,

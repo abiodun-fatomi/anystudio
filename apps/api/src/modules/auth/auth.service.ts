@@ -40,11 +40,38 @@ export class AuthService {
    * An unknown origin is treated as APP with credentials refused upstream by
    * CORS; it never resolves to ADMIN.
    */
+  /**
+   * The public origin the browser is actually on.
+   *
+   * Requests reach this service through the web app's /api proxy, so the Host
+   * header names the API, not the site. The proxy forwards the real one; the
+   * Origin and Referer headers are the fallbacks, and neither is present on a
+   * top-level navigation — which is precisely when the OAuth handshake needs
+   * to know where to send someone back to.
+   */
+  publicOrigin(req: Request): string {
+    const forwarded = req.get('x-anystudio-origin');
+    if (forwarded && /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(forwarded)) return forwarded;
+    const origin = req.get('origin');
+    if (origin) return origin;
+    try {
+      return new URL(req.get('referer') ?? '').origin;
+    } catch {
+      return process.env.ORIGIN_APP ?? '';
+    }
+  }
+
+  /**
+   * Which surface this request belongs to.
+   *
+   * Derived from the origin and matched against a fixed map — never read from
+   * a request body, because a caller must not be able to ask for an admin
+   * session by typing "ADMIN" into JSON.
+   */
   surfaceFromOrigin(req: Request): Surface {
     const raw = process.env.APP_ENV;
     const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
-    const origin = req.get('origin') ?? req.get('referer') ?? '';
-    return surfaceForOrigin(origin, env) ?? 'APP';
+    return surfaceForOrigin(this.publicOrigin(req), env) ?? 'APP';
   }
 
   /**

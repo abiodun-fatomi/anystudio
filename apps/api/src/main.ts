@@ -9,10 +9,15 @@ import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { assertAppKey } from './common/crypto/encrypt';
 import { corsOptions } from './common/http/cors';
 import { logger } from './common/logging/logger';
 
 async function bootstrap(): Promise<void> {
+  // Refuse to start on a key we cannot encrypt with, rather than
+  // discovering it on someone's first sign-in.
+  assertAppKey();
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true, cors: false });
 
   /**
