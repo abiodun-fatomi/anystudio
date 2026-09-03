@@ -4,9 +4,9 @@
  *   anystudio.ai        (dev.anystudio.ai / staging.anystudio.ai)  — marketing
  *   app.anystudio.ai    (app.dev… / app.staging…)                  — the portal
  *
- * The marketing host serves the landing and organization pages (route
- * handlers returning the finished documents) and bounces every app route
- * across to the app host. The app host has no
+ * The marketing host serves the landing, pricing, developer and organization
+ * pages (route handlers returning the finished documents) and bounces every
+ * app route across to the app host. The app host does the reverse. The app host has no
  * landing: "/" goes straight to Today, and Today's own auth check sends a
  * signed-out visitor to /login. Cookies are __Host- scoped, so nothing set
  * on one hostname is visible on the other — the split costs nothing.
@@ -19,6 +19,9 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { isLocalHost, siblingOrigin } from '@/lib/hosts';
+
+/** The marketing pages. On the app host these belong to the other hostname. */
+const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
 
 /** Paths that belong to the portal. Anything else on the marketing host is content. */
 const APP_PREFIXES = ['/login', '/signup', '/forgot', '/reset', '/welcome', '/today', '/create', '/library',
@@ -48,12 +51,20 @@ export function middleware(req: NextRequest) {
   const onApp = host.startsWith('app.');
 
   if (onApp) {
+    // The portal has no landing: "/" goes to Today, and Today's own auth check
+    // sends a signed-out visitor to /login.
     if (pathname === '/') return NextResponse.redirect(new URL('/today', req.url), 307);
+    // A marketing page reached on the app host belongs on the marketing one —
+    // otherwise the same content answers on two hostnames and splits its own
+    // search ranking.
+    if (MARKETING_PATHS.includes(pathname)) {
+      return NextResponse.redirect(`https://${host.slice(4)}${pathname}${search}`, 307);
+    }
     return NextResponse.next();
   }
 
-  // Marketing host from here on. "/" and "/org" are real routes (app/route.ts,
-  // app/org/route.ts); the portal's routes are bounced to the app host.
+  // Marketing host from here on. The marketing paths are real routes
+  // (app/route.ts, app/org/route.ts, …); the portal's are bounced across.
   if (APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.redirect(`https://app.${host}${pathname}${search}`, 307);
   }
