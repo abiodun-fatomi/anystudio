@@ -2,38 +2,42 @@
  * Composition root.
  *
  * Global pieces are registered here once — the auth guard, the exception
- * filter, the request-id middleware — so no module can opt out by omission.
- * Feature modules own their controllers and services and import only what
- * they need (dependency inversion: LedgerModule exposes LedgerService, and
- * WalletsModule depends on that interface, not on Prisma tables).
+ * filter, the response envelope, the request-id middleware — so no module can
+ * opt out by omission. Feature modules own their controllers and services and
+ * import only what they need.
  */
-
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { PrismaModule } from './prisma/prisma.module';
-import { MailModule } from './common/mail/mail.module';
-import { RequestIdMiddleware } from './common/http/request-id.middleware';
-import { HttpExceptionFilter } from './common/errors/http-exception.filter';
-import { AuthGuard } from './common/guards';
+import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { PrismaModule } from '../config/database/prisma.module';
+import { RequestIdMiddleware } from '../config/globals/RequestMiddleWareId';
+import { GlobalExceptionFilter } from '../config/globals/exceptionHandler';
+import { ResponseEnvelopeInterceptor } from '../config/globals/responseEnvelope';
+import { MailModule } from './utils/mail.module';
+import { AuthGuard } from './modules/auth/guards/auth.guard';
 import { HealthController } from './modules/health/health.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
-import { WalletsModule } from './modules/wallets/wallets.module';
-import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { WalletModule } from './modules/wallet/wallet.module';
+import { WorkspaceModule } from './modules/workspace/workspace.module';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuthModule, OnboardingModule, LedgerModule, WalletsModule, WorkspacesModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule, MailModule,
+    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule,
+  ],
   controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
-    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    // '{*path}' is Express 5's spelling of "every route". A bare '*' was
-    // valid in Express 4 and throws in path-to-regexp 8.
+    // '{*path}' is Express 5's spelling of "every route".
     consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
   }
 }

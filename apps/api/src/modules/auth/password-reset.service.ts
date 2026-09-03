@@ -16,10 +16,10 @@ import { Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
-import { hashPassword } from '../../common/crypto/password';
-import { Mailer } from '../../common/mail/mailer';
-import { passwordReset } from '../../common/mail/templates';
-import { logger } from '../../common/logging/logger';
+import { hashPassword } from '../../utils/crypto/password';
+import { Mailer } from '../../utils/mail-service';
+import { passwordReset } from '../../assets/email-templates';
+import { logger } from '../../../config/logger';
 
 const RESET_TTL_MS = 30 * 60_000;
 

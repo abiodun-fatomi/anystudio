@@ -4,9 +4,11 @@ One product photo in. Branded images, a written description, captions and a
 short reel out — on WhatsApp, with no app to install, and on the web.
 
 > **Status: pre-alpha.** The design prototypes are complete, the API boots and
-> serves auth, registration, password reset, onboarding and the credit ledger,
-> and the user portal has sign-in, sign-up, welcome and Today screens. Nothing
-> has been deployed yet.
+> serves auth (password and Google), registration with a verification email,
+> password reset, onboarding and the credit ledger, and the user portal has
+> sign-in, sign-up, welcome and Today screens. The web portal deploys to
+> Cloudflare Workers and the API to Render, both from GitHub Actions —
+> see `docs/DEPLOY.md`.
 
 ---
 
@@ -23,6 +25,42 @@ packages/
 design/       Static HTML prototypes of the landing, auth and org flows
 docs/         The product and architecture spec, and the portal blueprint
 ```
+
+### Inside `apps/api`
+
+```
+config/                     Cross-cutting setup, imported by main.ts and app.module.ts
+  database/                 PrismaModule — one client, connected once
+  globals/                  GlobalExceptionFilter, response envelope, request id, error classes, shared interfaces
+  logger/                   pino, with redaction
+  rate-limit/               The limits table, per route
+  security/                 helmet, compression, cookies, CORS, body limit
+  swagger/                  /api/v1/docs, off in production
+src/
+  main.ts                   Bootstrap: /api prefix, URI versioning, validation pipe
+  app.module.ts             Wires modules and the global guard, filter and interceptor
+  modules/<name>/           One folder per feature
+    <name>.controller.ts    Routes only: decorators, DTOs in, service call out
+    <name>.service.ts       All of the logic
+    <name>.dto.ts           class-validator + Swagger, the request contract
+    <name>.types.ts         What the service returns
+    <name>.module.ts
+    guards/ decorators/ providers/   where a module has them (auth does)
+  utils/                    helpers (successResponse), enums, constants, crypto, mail-service
+  assets/email-templates/   One file per email
+```
+
+**Controllers are thin, services are fat.** A controller declares the route,
+validates the body through its DTO and calls exactly one service method; every
+decision lives in the service, where a test can reach it without HTTP.
+
+**Every response has the same shape.** `{ status, message, data }` on success;
+`{ status, message, error, data: null, fields?, requestId }` on failure. The
+web client (`apps/web/lib/api.ts`) unwraps `data` and throws on the rest.
+
+**Routes are versioned in the path**: `/api/v1/auth/login`. Only `/health`
+and `/ready` sit outside it, because a platform healthcheck must find them
+without knowing our conventions.
 
 **Why a monorepo.** The credit cost the interface quotes and the credit cost the
 API charges must be the same number. Splitting the backend into its own
@@ -70,7 +108,7 @@ See `packages/db/prisma/schema.prisma` and `apps/api/src/modules/auth`.
 **Staff cannot action their own workspace.** Because one person can be both a
 customer and staff, an operator could otherwise refund credits to themselves and
 it would look like ordinary authorised work in the audit log. `assertNoSelfDealing`
-in `apps/api/src/common/policy/policy.ts` refuses it; a colleague does it instead.
+in `apps/api/src/modules/auth/policy.ts` refuses it; a colleague does it instead.
 
 **The ledger is append-only and has no balance column.** Every purchase, debit,
 refund and adjustment is a row; the balance is derived. You cannot reconstruct a
@@ -103,17 +141,18 @@ console rather than a deploy.
 The foundation is here; most of the product is not.
 
 - Rate-limit guards (Redis token buckets per surface, key and merchant)
-- Email verification and WhatsApp OTP; WebAuthn passkeys
+- WhatsApp OTP; WebAuthn passkeys
 - Generation pipeline, provider abstraction, publishing integrations
 - The org and admin portals, and everything in the user portal past Today
 
-**Done:** auth (sessions, MFA, step-up, refresh rotation), registration with
-consent capture, password reset, onboarding tours, the append-only ledger and
+**Done:** auth (sessions, MFA, step-up, refresh rotation, Sign in with
+Google), registration with consent capture and email verification, password
+reset, transactional mail (Resend), onboarding tours, the append-only ledger and
 its Postgres functions, redacting logger, CORS/helmet, and the user-portal
 shell with sign-in, sign-up, forgot/reset, welcome and Today.
 
-`.github/workflows/ci.yml` is intentionally absent from the initial commit and
-must be added by hand.
+Workflows that cannot be pushed by an integration token are staged in
+`infra/github-workflows/` with instructions for moving them.
 
 ---
 

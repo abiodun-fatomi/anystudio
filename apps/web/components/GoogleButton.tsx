@@ -8,7 +8,7 @@
 import styles from '@/app/(auth)/auth.module.css';
 
 export function GoogleButton({ next, label }: { next?: string; label: string }) {
-  const href = `/api/auth/google/start${next ? `?next=${encodeURIComponent(next)}` : ''}`;
+  const href = `/api/v1/auth/google/start${next ? `?next=${encodeURIComponent(next)}` : ''}`;
   return (
     <a className={styles.google} href={href}>
       <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true">

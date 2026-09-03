@@ -7,7 +7,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, TourStatus } from '@prisma/client';
 import { TOURS, FIRST_RUN_BY_SURFACE, type TourDefinition, type TourStep } from '@anystudio/shared';
-import type { Actor } from '../../common/policy/policy';
+import type { Actor } from '../auth/policy';
 
 @Injectable()
 export class OnboardingService {

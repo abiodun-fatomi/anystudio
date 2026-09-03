@@ -16,9 +16,9 @@ import { Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
-import { Mailer } from '../../common/mail/mailer';
-import { welcomeAndVerify, verifyEmail } from '../../common/mail/templates';
-import { logger } from '../../common/logging/logger';
+import { Mailer } from '../../utils/mail-service';
+import { welcomeAndVerify, verifyEmail } from '../../assets/email-templates';
+import { logger } from '../../../config/logger';
 
 /** Long enough to survive a night's sleep, short enough that a leaked inbox ages out. */
 const TTL_MS = 24 * 60 * 60_000;

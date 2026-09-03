@@ -39,7 +39,6 @@ export default function SignupPage() {
         sourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
       });
       if (r.status === 'signed_in') router.replace(r.next);
-      else if (r.status === 'conflict') setError(r.message);
       else setError('Sign-up is not available on this site.');
     } catch (err) {
       if (err instanceof ApiError) {

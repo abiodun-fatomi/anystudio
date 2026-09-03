@@ -7,12 +7,17 @@
  * service into a down one.
  */
 
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res, VERSION_NEUTRAL } from '@nestjs/common';
+import type { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { Public } from '../../common/guards';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators';
 
+@ApiTags('health')
 @Public()
-@Controller()
+// Outside /api and outside versioning: a platform healthcheck must find
+// these without knowing our conventions, and they must never move.
+@Controller({ path: '', version: VERSION_NEUTRAL })
 export class HealthController {
   constructor(private readonly db: PrismaClient) {}
 
@@ -25,12 +30,16 @@ export class HealthController {
    * WRITES   Nothing.
    */
   @Get('health')
+  @ApiOperation({ summary: 'Liveness: the process is up. Checks nothing external.' })
   health() {
     return {
       status: 'ok',
       service: process.env.SERVICE_NAME ?? 'api',
       env: process.env.APP_ENV ?? 'local',
-      release: process.env.GIT_SHA?.slice(0, 7) ?? 'dev',
+      // Render sets RENDER_GIT_COMMIT on every git-backed service; a Docker
+      // build elsewhere passes GIT_SHA. The deploy's smoke test compares this
+      // to the commit it just shipped.
+      release: (process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT)?.slice(0, 7) ?? 'dev',
       uptime: Math.round(process.uptime()),
     };
   }
@@ -45,14 +54,19 @@ export class HealthController {
    * WRITES   Nothing.
    */
   @Get('ready')
-  async ready() {
+  @ApiOperation({ summary: 'Readiness: the database answers. Used by the load balancer.' })
+  async ready(@Res({ passthrough: true }) res: Response) {
     const started = Date.now();
     try {
       await this.db.$queryRaw`SELECT 1`;
       return { status: 'ready', dbMs: Date.now() - started };
     } catch {
-      // Deliberately no error detail — this endpoint is public, and a database
-      // hostname or driver version in the body is free reconnaissance.
+      // 503, not 200-with-a-sad-body: a load balancer reads the status code,
+      // not the JSON, and would otherwise keep routing to an instance that
+      // cannot serve. Deliberately no error detail — this endpoint is public,
+      // and a database hostname or driver version in the body is free
+      // reconnaissance.
+      res.status(HttpStatus.SERVICE_UNAVAILABLE);
       return { status: 'degraded', dbMs: Date.now() - started };
     }
   }

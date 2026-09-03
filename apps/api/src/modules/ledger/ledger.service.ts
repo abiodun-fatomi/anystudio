@@ -13,7 +13,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, type LedgerEntry, type LedgerKind } from '@prisma/client';
-import { InsufficientCreditsError, NotFoundError } from '../../common/errors/app-error';
+import { InsufficientCreditsError, NotFoundError } from '../../../config/globals/errors';
 
 /** What a caller must supply to move credits. */
 export interface LedgerMove {

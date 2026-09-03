@@ -35,7 +35,8 @@ export function middleware(req: NextRequest) {
   // cookies stay first-party and there is no CORS preflight. The target is
   // derived from the hostname (lib/hosts.ts), not configured anywhere.
   if (pathname === '/api' || pathname.startsWith('/api/')) {
-    const target = new URL(pathname.slice(4) || '/', siblingOrigin(host, 'api'));
+    // The API owns the /api/v1/... prefix itself, so the path passes through unchanged.
+    const target = new URL(pathname, siblingOrigin(host, 'api'));
     target.search = search;
     // The API sees this host as its own once the rewrite lands, so tell it
     // where the browser really is. Origin and Referer are absent on a

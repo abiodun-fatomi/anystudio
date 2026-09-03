@@ -16,9 +16,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type User } from '@prisma/client';
 import type { Request } from 'express';
 import { SIGNUP_PROMO_CREDITS, signupGrantKey } from '@anystudio/shared';
-import { hashPassword } from '../../common/crypto/password';
-import { ValidationError } from '../../common/errors/app-error';
-import { logger } from '../../common/logging/logger';
+import { hashPassword } from '../../utils/crypto/password';
+import { ValidationError } from '../../../config/globals/errors';
+import { logger } from '../../../config/logger';
 import { LedgerService } from '../ledger/ledger.service';
 
 export interface RegistrationInput {
