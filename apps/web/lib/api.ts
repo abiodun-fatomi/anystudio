@@ -85,6 +85,32 @@ export interface Workspace {
 
 export interface WalletSummary { walletId: string; currency: string; balance: number }
 
+export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+
+export interface GenerationRow {
+  id: string; workspaceId: string; capability: string; kind: 'STANDALONE' | 'PARENT' | 'CHILD'; parentId: string | null;
+  costCode: string; credits: number; status: GenerationStatus; providerKey: string | null;
+  input: Record<string, unknown>; outputs: GenerationOutputRow[] | null;
+  stage: string | null; progress: number; failureKind: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null;
+  children?: GenerationRow[];
+}
+
+export interface GenerationOutputRow {
+  key: string; role: 'image' | 'variant' | 'video' | 'audio' | 'text' | 'thumb' | 'mask'; mime: string;
+  bytes?: number; width?: number; height?: number; durationMs?: number; size?: string; text?: unknown;
+}
+
+export interface GenerationView { generation: GenerationRow; message?: string }
+export interface GenerationResult { generation: GenerationRow; balance: number }
+export interface Quote { costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }
+
+export interface MediaAssetRow {
+  id: string; workspaceId: string; kind: 'SOURCE' | 'OUTPUT' | 'DERIVED'; status: 'PENDING' | 'READY' | 'REJECTED';
+  key: string; mime: string | null; bytes: number | null; width: number | null; height: number | null; filename: string | null; createdAt: string;
+}
+
+export interface PresignedUpload { assetId: string; key: string; url: string; method: 'PUT'; headers: Record<string, string>; expiresInSec: number }
+
 export interface LedgerRow {
   id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string;
 }
@@ -115,6 +141,34 @@ export const api = {
     /** Merge-patch the welcome answers. */
     patchProfile: (id: string, patch: WorkspaceProfile) =>
       request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),
+  },
+  media: {
+    presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
+      request<PresignedUpload>('POST', `/workspaces/${workspaceId}/media/uploads`, file),
+    complete: (workspaceId: string, assetId: string) =>
+      request<MediaAssetRow>('POST', `/workspaces/${workspaceId}/media/uploads/complete`, { assetId }),
+    list: (workspaceId: string, opts: { kind?: 'SOURCE' | 'OUTPUT'; cursor?: string; take?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.kind) q.set('kind', opts.kind);
+      if (opts.cursor) q.set('cursor', opts.cursor);
+      if (opts.take) q.set('take', String(opts.take));
+      return request<MediaAssetRow[]>('GET', `/workspaces/${workspaceId}/media${q.size ? `?${q}` : ''}`);
+    },
+    urls: (workspaceId: string, keys: string[]) =>
+      request<{ urls: Record<string, string>; expiresInSec: number }>('POST', `/workspaces/${workspaceId}/media/urls`, { keys }),
+    remove: (workspaceId: string, assetId: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/media/${assetId}`),
+  },
+  generations: {
+    quote: (workspaceId: string, capability: string, costCode?: string) =>
+      request<Quote>('GET', `/workspaces/${workspaceId}/generations/quote?capability=${capability}${costCode ? `&costCode=${costCode}` : ''}`),
+    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string; costCode?: string }) =>
+      request<GenerationResult>('POST', `/workspaces/${workspaceId}/generations`, body),
+    get: (workspaceId: string, id: string) => request<GenerationView>('GET', `/workspaces/${workspaceId}/generations/${id}`),
+    history: (workspaceId: string, cursor?: string) =>
+      request<GenerationRow[]>('GET', `/workspaces/${workspaceId}/generations${cursor ? `?cursor=${cursor}` : ''}`),
+    cancel: (workspaceId: string, id: string) => request<GenerationRow>('POST', `/workspaces/${workspaceId}/generations/${id}/cancel`),
+    /** Same-origin, so the session cookie rides along with EventSource. */
+    streamUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/generations/${id}/stream`,
   },
   wallet: {
     summary: (workspaceId: string) =>

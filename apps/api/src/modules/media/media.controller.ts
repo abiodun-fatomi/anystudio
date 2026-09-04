@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { MediaService } from './media.service';
-import { CompleteUploadDto, MediaListQueryDto, PresignUploadDto, ReadUrlQueryDto } from './media.dto';
+import { CompleteUploadDto, MediaListQueryDto, PresignUploadDto, ReadUrlQueryDto, ReadUrlsDto } from './media.dto';
 import { CurrentActor, RequireWorkspaceRole } from '../auth/decorators';
 import type { SessionActor } from '../auth/policy';
 
@@ -45,6 +45,16 @@ export class MediaController {
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
   async url(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() query: ReadUrlQueryDto) {
     return { url: await this.media.readUrl(workspaceId, query.key), expiresInSec: 15 * 60 };
+  }
+
+  @Post('/urls')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiOperation({ summary: 'Short-lived URLs for many objects at once — a result card has an image, its sizes and a thumbnail' })
+  @ApiParam({ name: 'workspaceId', format: 'uuid' })
+  @ApiBody({ type: ReadUrlsDto })
+  async urls(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Body() body: ReadUrlsDto) {
+    const urls = await this.media.readUrls(workspaceId, body.keys);
+    return { urls, expiresInSec: 15 * 60 };
   }
 
   @Delete('/:assetId')

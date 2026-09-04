@@ -173,6 +173,15 @@ export class MediaService {
     return this.signRead(key);
   }
 
+  /** Many at once; a key the workspace does not own is left out, never an error for the whole batch. */
+  async readUrls(workspaceId: string, keys: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    await Promise.all(
+      [...new Set(keys)].filter((k) => k.startsWith(`${workspaceId}/`)).map(async (k) => { out[k] = await this.signRead(k); }),
+    );
+    return out;
+  }
+
   /** Unchecked signing for the worker, which has already loaded the row. */
   async signRead(key: string, ttlSec = READ_TTL_SEC): Promise<string> {
     return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: ttlSec });
