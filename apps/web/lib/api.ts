@@ -111,6 +111,13 @@ export interface MediaAssetRow {
 
 export interface PresignedUpload { assetId: string; key: string; url: string; method: 'PUT'; headers: Record<string, string>; expiresInSec: number }
 
+export interface BrandKitRow {
+  workspaceId: string; businessName?: string | null; logoKey?: string | null; palette?: string[] | null;
+  fontDisplay?: string | null; fontBody?: string | null; tone?: string | null;
+  watermark?: { enabled?: boolean; position?: 'tr' | 'tl' | 'br' | 'bl'; opacity?: number } | null;
+  showPrice?: boolean; defaultSizes?: string[] | null; empty?: true;
+}
+
 export interface LedgerRow {
   id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string;
 }
@@ -169,6 +176,10 @@ export const api = {
     cancel: (workspaceId: string, id: string) => request<GenerationRow>('POST', `/workspaces/${workspaceId}/generations/${id}/cancel`),
     /** Same-origin, so the session cookie rides along with EventSource. */
     streamUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/generations/${id}/stream`,
+  },
+  brand: {
+    get: (workspaceId: string) => request<BrandKitRow>('GET', `/workspaces/${workspaceId}/brand`),
+    patch: (workspaceId: string, patch: Partial<BrandKitRow>) => request<BrandKitRow>('PATCH', `/workspaces/${workspaceId}/brand`, patch),
   },
   wallet: {
     summary: (workspaceId: string) =>

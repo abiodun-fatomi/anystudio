@@ -25,6 +25,7 @@ export const PROVIDER_ERROR_KINDS = [
   'CONTENT_REJECTED', // the vendor's policy refused the input — no retry, refund, explain
   'INVALID_INPUT', // our request was malformed — a bug, no retry, refund, alert
   'PROVIDER_DOWN', // auth failure, 404 on the model, sustained 5xx — open the breaker
+  'LOW_QUALITY', // the vendor answered, but what it made failed our own check — refund, no retry beyond the pipeline's own
 ] as const;
 export type ProviderErrorKind = (typeof PROVIDER_ERROR_KINDS)[number];
 
@@ -53,6 +54,7 @@ export const CUSTOMER_MESSAGE: Record<ProviderErrorKind, string> = {
   CONTENT_REJECTED: 'That image or text could not be used. Your credits are back. Try a different photo or wording.',
   INVALID_INPUT: 'Something about that request did not work. Your credits are back and we have been notified.',
   PROVIDER_DOWN: 'This tool is briefly unavailable. Your credits are back — try again shortly.',
+  LOW_QUALITY: 'We could not make a version that kept your product looking right. Your credits are back — try a clearer photo or a simpler scene.',
 };
 
 /** A file the adapter can read: a short-lived signed URL, or bytes when the vendor needs an upload. */
