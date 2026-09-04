@@ -75,6 +75,28 @@ export interface GoogleProfile {
 
 const b64url = (b: Buffer): string => b.toString('base64url');
 
+/**
+ * Reduce a caller-supplied return path to something that cannot leave this
+ * origin.
+ *
+ * `//evil.example` is the obvious one and is usually the only one guarded
+ * against. `/\evil.example` is the one that gets missed: browsers normalise
+ * backslashes to forward slashes in a URL path, so it resolves to
+ * `https://evil.example/` exactly like the double slash — which turns our own
+ * callback into an open redirect. Someone is sent a link, signs in for real,
+ * and lands on an attacker's page still believing they are mid-flow.
+ *
+ * Control characters are refused too: a newline in a Location header is a
+ * response-splitting attempt, whatever the framework does about it.
+ */
+export function safeReturnPath(next: string): string {
+  if (!next.startsWith('/')) return '/';
+  if (/^\/[/\\]/.test(next)) return '/';
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(next)) return '/';
+  return next;
+}
+
 @Injectable()
 export class GoogleProvider {
   constructor(private readonly db: PrismaClient) {}
@@ -102,7 +124,7 @@ export class GoogleProvider {
       v: b64url(randomBytes(32)),
       n: b64url(randomBytes(16)),
       f: surface,
-      r: next.startsWith('/') && !next.startsWith('//') ? next : '/',
+      r: safeReturnPath(next),
       o: origin,
       t: Date.now(),
     };

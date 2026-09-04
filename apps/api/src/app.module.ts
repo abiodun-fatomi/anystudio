@@ -10,6 +10,8 @@ import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from '../config/database/prisma.module';
+import { RateLimitModule } from '../config/rate-limit/rate-limit.module';
+import { RateLimitGuard } from '../config/rate-limit/rate-limit.guard';
 import { RequestIdMiddleware } from '../config/globals/RequestMiddleWareId';
 import { GlobalExceptionFilter } from '../config/globals/exceptionHandler';
 import { ResponseEnvelopeInterceptor } from '../config/globals/responseEnvelope';
@@ -26,11 +28,12 @@ import { GenerationModule } from './modules/generation/generation.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule, MailModule,
+    PrismaModule, MailModule, RateLimitModule,
     AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule,
   ],
   controllers: [HealthController],
   providers: [
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
