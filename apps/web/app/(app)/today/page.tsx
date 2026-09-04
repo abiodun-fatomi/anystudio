@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useMe } from '@/lib/useMe';
+import { useApp } from '@/lib/app-context';
 import { api, type LedgerRow, type WalletSummary } from '@/lib/api';
 import styles from './today.module.css';
 
@@ -25,8 +25,7 @@ const KIND_LABEL: Record<string, string> = {
 const fmtDelta = (n: number): string => (n > 0 ? `+${n.toLocaleString()}` : n.toLocaleString());
 
 export default function TodayPage() {
-  const { me } = useMe();
-  const ws = me?.workspaces[0];
+  const { me, workspace: ws, setBalance } = useApp();
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,12 +35,11 @@ export default function TodayPage() {
     if (!ws) return;
     let live = true;
     Promise.all([api.wallet.summary(ws.id), api.wallet.history(ws.id)])
-      .then(([w, h]) => { if (live) { setWallet(w); setRows(h.rows.slice(0, 8)); } })
+      .then(([w, h]) => { if (live) { setWallet(w); setBalance(w.balance); setRows(h.rows.slice(0, 8)); } })
       .catch(() => { if (live) setError('Could not load your credits just now.'); });
     return () => { live = false; };
-  }, [ws]);
+  }, [ws, setBalance]);
 
-  if (!me) return null;
   const first = me.user.name?.split(' ')[0];
   const sheetsLeft = wallet ? Math.floor(wallet.balance / SHEET_COST) : null;
 
@@ -78,7 +76,7 @@ export default function TodayPage() {
           <h2>Make your first product sheet.</h2>
           <p>One photo, a name and a price. About a minute. It comes back here and on WhatsApp.</p>
         </div>
-        <Link href="/create" className="btn" data-tour="create-cta">Create a sheet</Link>
+        <Link href="/studio" className="btn" data-tour="create-cta">Open the studio</Link>
       </section>
 
       <section className={styles.section}>

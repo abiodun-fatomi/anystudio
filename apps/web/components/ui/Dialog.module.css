@@ -1,0 +1,26 @@
+.dialog{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface-2);color:var(--ink);padding:0;
+  width:min(520px,calc(100vw - var(--s-6)));max-height:min(85dvh,720px);box-shadow:var(--elev-3);overflow:hidden;flex-direction:column}
+/* display is set only when open: a closed <dialog> must stay display:none, which the UA rule provides */
+.dialog[open]{display:flex}
+.dialog::backdrop{background:rgba(10,7,12,.55);backdrop-filter:blur(2px)}
+.dialog[open]{animation:rise var(--dur) var(--ease)}
+.dialog[open]::backdrop{animation:fade var(--dur) var(--ease)}
+.dialog.wide{width:min(840px,calc(100vw - var(--s-6)))}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s-4);padding:var(--s-5) var(--s-5) 0}
+.title{font-family:var(--f-display);font-size:var(--t-6);font-weight:700;letter-spacing:-.02em;line-height:var(--lh-tight)}
+.desc{color:var(--muted);font-size:var(--t-3);margin-top:var(--s-2);line-height:var(--lh-snug)}
+.body{padding:var(--s-4) var(--s-5);overflow:auto;flex:1;min-height:0}
+.foot{display:flex;justify-content:flex-end;gap:var(--s-2);padding:0 var(--s-5) var(--s-5);flex-wrap:wrap}
+.close{flex:none;margin:-6px -8px 0 0}
+
+/* a sheet is the same element, docked to an edge */
+.sheet{width:min(480px,100vw);max-width:100vw;max-height:100dvh;height:100dvh;margin:0 0 0 auto;border-radius:0;border-width:0 0 0 1px}
+.sheet[open]{animation:slideIn var(--dur-slow) var(--ease)}
+.sheet.bottom{width:100vw;height:auto;max-height:92dvh;margin:auto 0 0;border-radius:var(--r-xl) var(--r-xl) 0 0;border-width:1px 0 0}
+.sheet.bottom[open]{animation:slideUp var(--dur-slow) var(--ease)}
+@keyframes slideIn{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes slideUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@media(max-width:640px){
+  .dialog:not(.sheet){width:100vw;max-height:92dvh;margin:auto 0 0;border-radius:var(--r-xl) var(--r-xl) 0 0;border-width:1px 0 0}
+  .dialog:not(.sheet)[open]{animation:slideUp var(--dur-slow) var(--ease)}
+}
