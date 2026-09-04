@@ -17,7 +17,7 @@
  * that is not part of a deploy drifts until it is wrong.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma, type ProviderCapability, type WorkspaceType } from '@prisma/client';
 
 const db = new PrismaClient();
 
@@ -32,10 +32,22 @@ const DEV_WALLET_ID = '00000000-0000-4000-8000-000000000003';
 const CREDIT_COSTS = [
   { code: 'image.storefront',   credits: 10,  label: 'Branded product image' },
   { code: 'image.background',   credits: 10,  label: 'Background replacement' },
+  { code: 'image.bg_remove',    credits: 2,   label: 'Background removal' },
+  { code: 'image.upscale',      credits: 3,   label: 'Upscale' },
+  { code: 'image.relight',      credits: 5,   label: 'Relight and shadow' },
   { code: 'text.description',   credits: 2,   label: 'Product description' },
   { code: 'text.caption',       credits: 1,   label: 'Social caption' },
+  // A reel is 5–8 seconds of provider video. At launch pricing a credit is
+  // about $0.015, so 120 credits is ~$1.80 — which is UNDER the cost of a
+  // premium model (Veo ~$2–3 per 8 s) and about even with Sora 2 / Wan 2.5.
+  // Video routing therefore defaults to the budget tier; see PROVIDERS.
   { code: 'video.reel',         credits: 120, label: 'Reel ad' },
+  { code: 'video.stitch',       credits: 20,  label: 'Assemble a multi-shot ad' },
+  { code: 'video.ad_30s',       credits: 480, label: '30-second ad (four shots)' },
   { code: 'video.translate',    credits: 90,  label: 'Voiceover in another language' },
+  { code: 'video.lipsync',      credits: 150, label: 'Lip sync' },
+  { code: 'audio.voiceover',    credits: 8,   label: 'Voiceover' },
+  { code: 'audio.music',        credits: 40,  label: 'Full song' },
 ];
 
 /**
@@ -52,13 +64,112 @@ const PLANS = [
 /**
  * Provider routing. `priority` picks the default and the fallback order, so a
  * failing provider is demoted from the admin console without a release.
+ *
+ * `costPerCall` is OUR cost in minor units of USD (cents), from the vendor's
+ * September 2026 price list — the input to the margin figure. `config` is
+ * what the adapter reads: the vendor's model id and any defaults. A row is
+ * only `enabled` once its `licenceNote` records that reselling the output to
+ * customers is permitted; a row with no note is routable in dev and nowhere
+ * else. See docs/PROVIDERS.md for the reasoning behind each choice.
+ *
+ * `workspaceType` narrows a row to one tier. Background removal is the worked
+ * example: BiRefNet is 36× cheaper, Bria is trained only on licensed data, and
+ * an ORGANIZATION customer's procurement team asks about exactly that.
  */
-const PROVIDERS = [
-  { key: 'higgsfield:recraft_v4_1',    capability: 'IMAGE', priority: 10, costPerCall: 28,  enabled: true },
-  { key: 'higgsfield:seedream_v5_pro', capability: 'EDIT',  priority: 10, costPerCall: 42,  enabled: true },
-  { key: 'higgsfield:kling3_0',        capability: 'VIDEO', priority: 10, costPerCall: 310, enabled: true },
-  { key: 'heygen:translate',           capability: 'DUB',   priority: 10, costPerCall: 190, enabled: true },
-  { key: 'fal:flux-schnell',           capability: 'IMAGE', priority: 20, costPerCall: 19,  enabled: true },
+const PROVIDERS: Array<{
+  key: string;
+  capability: ProviderCapability;
+  priority: number;
+  costPerCall: number;
+  enabled: boolean;
+  workspaceType?: WorkspaceType;
+  config?: Prisma.InputJsonObject;
+  licenceNote?: string;
+}> = [
+  // ---- image editing: put the product in a new scene, keep it identical ----
+  { key: 'vertex:gemini-3-pro-image', capability: 'IMAGE_EDIT', priority: 10, costPerCall: 13, enabled: true,
+    config: { model: 'gemini-3-pro-image-preview' },
+    licenceNote: 'Google Cloud generative AI indemnification covers GA Vertex models; paid-tier inputs are not used for training. Checked 2026-09-04.' },
+  { key: 'fal:seedream-4.5-edit', capability: 'IMAGE_EDIT', priority: 20, costPerCall: 4, enabled: true,
+    config: { endpoint: 'fal-ai/bytedance/seedream/v4.5/edit' },
+    licenceNote: 'fal.ai commercial terms; output ownership retained by caller. ByteDance enterprise terms not separately verified. Checked 2026-09-04.' },
+  { key: 'bfl:flux-kontext-pro', capability: 'IMAGE_EDIT', priority: 30, costPerCall: 4, enabled: true,
+    config: { endpoint: 'flux-kontext-pro' },
+    licenceNote: 'BFL paid API grants commercial rights on outputs. Checked 2026-09-04.' },
+
+  // ---- image generation: scenes, flyers, posters --------------------------
+  { key: 'vertex:gemini-3-pro-image', capability: 'IMAGE_GENERATE', priority: 10, costPerCall: 13, enabled: true,
+    config: { model: 'gemini-3-pro-image-preview' },
+    licenceNote: 'As above. Checked 2026-09-04.' },
+  { key: 'fal:flux-2-pro', capability: 'IMAGE_GENERATE', priority: 20, costPerCall: 5, enabled: true,
+    config: { endpoint: 'fal-ai/flux-2-pro' },
+    licenceNote: 'BFL commercial licence via fal.ai. Checked 2026-09-04.' },
+
+  // ---- background removal ---------------------------------------------------
+  { key: 'replicate:birefnet', capability: 'BACKGROUND_REMOVE', priority: 10, costPerCall: 1, enabled: true,
+    config: { model: '851-labs/background-remover' },
+    licenceNote: 'BiRefNet weights MIT-family; training-data provenance not documented — not for the ORGANIZATION tier. Checked 2026-09-04.' },
+  { key: 'fal:bria-rmbg-2', capability: 'BACKGROUND_REMOVE', priority: 5, costPerCall: 2, enabled: true, workspaceType: 'ORGANIZATION',
+    config: { endpoint: 'fal-ai/bria/background/remove' },
+    licenceNote: 'Bria trains only on licensed data and sells enterprise resale terms. Checked 2026-09-04.' },
+
+  // ---- background replace, relight, shadow ---------------------------------
+  { key: 'photoroom:edit', capability: 'BACKGROUND_REPLACE', priority: 10, costPerCall: 10, enabled: true,
+    config: { shadow: 'ai.soft', relight: true },
+    licenceNote: 'Photoroom API is sold for embedding in third-party products. Checked 2026-09-04.' },
+  { key: 'vertex:gemini-3-pro-image', capability: 'BACKGROUND_REPLACE', priority: 20, costPerCall: 13, enabled: true,
+    config: { model: 'gemini-3-pro-image-preview' }, licenceNote: 'As above.' },
+  { key: 'photoroom:edit', capability: 'RELIGHT', priority: 10, costPerCall: 10, enabled: true,
+    config: { relight: true }, licenceNote: 'As above.' },
+
+  // ---- upscale ---------------------------------------------------------------
+  { key: 'fal:clarity-upscaler', capability: 'UPSCALE', priority: 10, costPerCall: 6, enabled: true,
+    config: { endpoint: 'fal-ai/clarity-upscaler' },
+    licenceNote: 'Open weights served under fal.ai commercial terms. Checked 2026-09-04.' },
+
+  // ---- image to video --------------------------------------------------------
+  // Budget tier first: at 120 credits a reel sells for ~$1.80, and the premium
+  // models cost more than that per clip. Promote Veo when the price is raised.
+  { key: 'fal:wan-2.5-i2v', capability: 'IMAGE_TO_VIDEO', priority: 10, costPerCall: 80, enabled: true,
+    config: { endpoint: 'fal-ai/wan-25-preview/image-to-video', resolution: '720p' },
+    licenceNote: 'Open-weight lineage served under fal.ai commercial terms. Checked 2026-09-04.' },
+  { key: 'openai:sora-2', capability: 'IMAGE_TO_VIDEO', priority: 20, costPerCall: 80, enabled: true,
+    config: { model: 'sora-2', size: '720x1280' },
+    licenceNote: 'OpenAI API commercial terms permit resale of outputs. Checked 2026-09-04.' },
+  { key: 'vertex:veo-3.1-fast', capability: 'IMAGE_TO_VIDEO', priority: 30, costPerCall: 260, enabled: true,
+    config: { model: 'veo-3.1-fast-generate-preview' },
+    licenceNote: 'Google Cloud generative AI indemnification (GA models). Native audio. Checked 2026-09-04.' },
+  // Kling: cheapest per second in the market and NOT routable. Its terms (§4.6)
+  // forbid commercial use of outputs without written permission and (§4.5)
+  // require "Kling AI" attribution. Enable only with that permission on file.
+  { key: 'higgsfield:kling3_0', capability: 'IMAGE_TO_VIDEO', priority: 90, costPerCall: 31, enabled: false,
+    licenceNote: 'BLOCKED: Kling ToS §4.6 forbids commercial use of outputs without written permission; §4.5 requires attribution. Ask Higgsfield whether their route carries a pass-through licence. Checked 2026-09-04.' },
+
+  // ---- copy ------------------------------------------------------------------
+  { key: 'google:gemini-2.5-flash-lite', capability: 'TEXT_GENERATE', priority: 10, costPerCall: 1, enabled: true,
+    config: { model: 'gemini-2.5-flash-lite' },
+    licenceNote: 'Gemini API paid tier; outputs owned by caller. Checked 2026-09-04.' },
+  { key: 'anthropic:claude-haiku-4.5', capability: 'TEXT_GENERATE', priority: 20, costPerCall: 2, enabled: true,
+    config: { model: 'claude-haiku-4-5' },
+    licenceNote: 'Anthropic commercial terms; outputs owned by caller. Checked 2026-09-04.' },
+
+  // ---- stitching is ours: ffmpeg in the worker, no vendor ----------------------
+  { key: 'local:ffmpeg', capability: 'VIDEO_STITCH', priority: 10, costPerCall: 0, enabled: true,
+    licenceNote: 'No third party involved.' },
+
+  // ---- later phases: declared so the router knows they exist, disabled -------
+  { key: 'elevenlabs:flash', capability: 'VOICEOVER', priority: 10, costPerCall: 5, enabled: false,
+    config: { model: 'eleven_flash_v2_5' }, licenceNote: 'Commercial from Starter tier. Yoruba not listed — see spitch. Checked 2026-09-04.' },
+  { key: 'spitch:tts', capability: 'VOICEOVER', priority: 20, costPerCall: 5, enabled: false,
+    licenceNote: 'Yoruba, Igbo, Hausa. Priced by direct quote; not yet on contract.' },
+  { key: 'mubert:track', capability: 'MUSIC', priority: 10, costPerCall: 15, enabled: false,
+    licenceNote: 'Paid tiers include sub-licensing and monetized content. Not yet on contract.' },
+  { key: 'elevenlabs:dubbing-v1', capability: 'DUB', priority: 10, costPerCall: 50, enabled: false,
+    licenceNote: '$0.50/min clean, 29 languages. Not yet on contract.' },
+  { key: 'heygen:translate', capability: 'DUB', priority: 20, costPerCall: 190, enabled: false,
+    licenceNote: 'Per-minute credit cost not public; sales conversation needed.' },
+  { key: 'sync:lipsync-2', capability: 'LIPSYNC', priority: 10, costPerCall: 260, enabled: false,
+    licenceNote: 'Per-minute; consent gate required before enabling. Not yet on contract.' },
 ];
 
 async function reference() {
@@ -73,7 +184,7 @@ async function reference() {
     });
   }
   for (const pr of PROVIDERS) {
-    await db.providerModel.upsert({ where: { key: pr.key }, create: pr, update: pr });
+    await db.providerModel.upsert({ where: { key_capability: { key: pr.key, capability: pr.capability } }, create: pr, update: pr });
   }
   console.log(`reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PROVIDERS.length} models`);
 }
