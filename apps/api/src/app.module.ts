@@ -24,11 +24,14 @@ import { LedgerModule } from './modules/ledger/ledger.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { GenerationModule } from './modules/generation/generation.module';
+import { QueueModule } from './modules/queue/queue.module';
+import { ProviderModule } from './modules/provider/provider.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule, MailModule, RateLimitModule,
+    PrismaModule, MailModule, RateLimitModule, QueueModule, ProviderModule, MediaModule,
     AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule,
   ],
   controllers: [HealthController],

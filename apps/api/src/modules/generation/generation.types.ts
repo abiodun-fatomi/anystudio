@@ -6,26 +6,52 @@
  * HTTP, and it should not have to construct a DTO to do it.
  */
 
-import type { Generation } from '@prisma/client';
+import type { Generation, GenerationKind } from '@prisma/client';
+import type { Capability, GenerationOutput, ProviderErrorKind } from '@anystudio/shared';
 
 /** Everything needed to reserve credits and write the row. */
 export interface GenerationRequest {
   workspaceId: string;
   requestedById: string;
-  /** A CreditCost code, e.g. "image.sheet" or "video.reel". */
-  costCode: string;
-  /** R2 object keys and prompt parameters. Never URLs — see the schema. */
-  input: Record<string, unknown>;
+  /** What is being asked for. Decides the queue, the router's candidates and the pipeline. */
+  capability: Capability;
+  /**
+   * The capability's parameters, already validated against its schema in
+   * packages/shared. Storage keys, never URLs — see the schema comments.
+   */
+  params: Record<string, unknown>;
+  /**
+   * Supplied by the client, unique per workspace. A retried request with the
+   * same key returns the existing row instead of creating and charging a
+   * second one. Optional only for rows the system creates for itself.
+   */
+  clientKey?: string;
+  /** A CreditCost code. Defaults to the capability's usual code. */
+  costCode?: string;
+  /** For shots of a plan: the PARENT row. */
+  parentId?: string;
+  kind?: GenerationKind;
 }
 
 /** How a generation finished, from the worker's point of view. */
 export interface GenerationOutcome {
   providerKey?: string;
   providerJobId?: string;
-  /** R2 object keys of what was produced. */
-  outputs?: Record<string, unknown>;
+  /** What was produced, as storage keys and small inline text. */
+  outputs?: GenerationOutput[];
   /** Operator-facing. Never rendered to the customer. */
   failureReason?: string;
+  /** Which of the five kinds it failed with; picks the customer's sentence. */
+  failureKind?: ProviderErrorKind | 'TIMEOUT' | 'INTERNAL';
+  /** What the vendor charged us, in minor units, when known. */
+  providerCostMinor?: number;
+}
+
+/** A generation as the API returns it: the row plus the sentence the customer should read. */
+export interface GenerationView {
+  generation: Generation;
+  /** Set on FAILED rows: what happened and what to do, never the vendor's words. */
+  message?: string;
 }
 
 /**
