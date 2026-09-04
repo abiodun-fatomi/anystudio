@@ -164,6 +164,7 @@ export interface CheckoutOut { paymentId: string; reference: string; provider: P
 
 export const api = {
   billing: {
+    config: () => request<{ paddle: { clientToken: string; environment: 'sandbox' | 'production' } | null; gateways: PaymentProvider[] }>('GET', '/billing/config'),
     catalogue: (workspaceId: string) => request<Catalogue>('GET', `/workspaces/${workspaceId}/billing/catalogue`),
     checkout: (workspaceId: string, body: { kind: 'pack' | 'plan'; code: string; interval?: 'month' | 'year' }) => request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/checkout`, body),
     verify: (workspaceId: string, paymentId: string, providerRef?: string) => request<PaymentView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/verify`, providerRef ? { providerRef } : {}),

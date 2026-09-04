@@ -66,6 +66,12 @@ export class BillingController {
   @ApiOperation({ summary: 'Stop the plan at the end of the paid period' })
   cancel(@CurrentActor() actor: Actor, @Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Req() req: Request) { return this.billing.cancelSubscription(actor, workspaceId, req); }
 
+  /** Public, non-secret: what the web app needs to open a Paddle checkout. One build, every environment. */
+  @Public()
+  @Get('/billing/config')
+  @ApiOperation({ summary: 'Client-side payment configuration (public tokens only)' })
+  config() { return this.billing.clientConfig(); }
+
   // ---- webhooks: no session, signature-checked inside, always 200 once recorded.
 
   @Public()

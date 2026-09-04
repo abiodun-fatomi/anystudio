@@ -6,12 +6,14 @@
  * reports completion, we go to /billing/return, which asks the API to
  * verify with Paddle before believing anything.
  *
- * NEXT_PUBLIC_PADDLE_CLIENT_TOKEN is a public, client-side token (not the
- * API key); NEXT_PUBLIC_PADDLE_ENV is "sandbox" or "live".
+ * The client token (public by design — it opens checkouts, it cannot read
+ * anything) comes from the API at runtime, so one web build serves every
+ * environment; nothing about payments is baked in at build time.
  */
 import { Suspense, useEffect, useState } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
+import { api } from '@/lib/api';
 import { Button, EmptyState } from '@/components/ui';
 
 declare global {
@@ -28,10 +30,12 @@ function Pay() {
   const params = useSearchParams();
   const txn = params.get('_ptxn');
   const ref = params.get('ref');
-  const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
-  const env = process.env.NEXT_PUBLIC_PADDLE_ENV === 'live' ? 'production' : 'sandbox';
+  const [cfg, setCfg] = useState<{ clientToken: string; environment: 'sandbox' | 'production' } | null | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { api.billing.config().then((c) => setCfg(c.paddle)).catch(() => setCfg(null)); }, []);
+  const token = cfg?.clientToken;
+  const env = cfg?.environment ?? 'sandbox';
 
   useEffect(() => {
     if (!ready || !txn || !token || !window.Paddle) return;
@@ -52,7 +56,8 @@ function Pay() {
   }, [ready, txn, token, env, ref]);
 
   if (!txn) return <EmptyState title="Nothing to pay" body="Start from Add credits." actions={<Button href="/billing/plans">Add credits</Button>} />;
-  if (!token) return <EmptyState title="Card payments are not switched on here" body="NEXT_PUBLIC_PADDLE_CLIENT_TOKEN is not set for this environment." actions={<Button variant="ghost" href="/billing/plans">Back</Button>} />;
+  if (cfg === undefined) return null;
+  if (!token) return <EmptyState title="Card payments are not switched on here" body="The Paddle client token is not configured for this environment." actions={<Button variant="ghost" href="/billing/plans">Back</Button>} />;
   if (problem) return <EmptyState title="Could not open the payment form" body={problem} actions={<><Button href="/billing/plans">Try again</Button><Button variant="ghost" href="/billing">Credits</Button></>} />;
   return (
     <>

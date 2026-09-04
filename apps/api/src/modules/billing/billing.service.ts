@@ -45,6 +45,14 @@ export class BillingService {
     private readonly auth: AuthService,
   ) {}
 
+  // ----------------------------------------------------------------- config
+
+  /** Paddle's client-side token is public by design (it opens checkouts, it cannot read anything). The API key never leaves the server. */
+  clientConfig() {
+    const token = process.env.PADDLE_CLIENT_TOKEN;
+    return { paddle: token ? { clientToken: token, environment: process.env.PADDLE_ENV === 'live' ? 'production' : 'sandbox' } : null, gateways: (['FLUTTERWAVE', 'PADDLE', 'STUB'] as const).filter((p) => this.gateways.has(p)) };
+  }
+
   // -------------------------------------------------------------- catalogue
 
   /** Packs and plans priced in the workspace's currency, and what it is on today. */
