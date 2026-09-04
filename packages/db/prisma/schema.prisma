@@ -18,9 +18,27 @@
 // own workspace, their credits or their history.
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
+
+// EXTENSIONS ARE CREATED IN SQL, NOT DECLARED HERE
+//
+// `citext` and `pgcrypto` are created by the _init migration with plain
+// CREATE EXTENSION statements, and `@db.Citext` below works because the type
+// exists in the database — the native type does not need Prisma to manage the
+// extension.
+//
+// They used to be declared with `extensions = [citext, pgcrypto]` under the
+// `postgresqlExtensions` preview feature, and that is what broke CI: with the
+// declaration present, `migrate diff --from-migrations` compares extension
+// metadata after replaying the migrations and reports both as still needing to
+// be added, every time. Phantom drift on a schema that is in fact correct —
+// the migrations apply cleanly and the citext columns are created.
+//
+// Declaring them bought nothing (Prisma does not create extensions on
+// `migrate deploy` from a declaration alone) and cost a permanently red drift
+// check, which is worse than useless: a check that always fails is one nobody
+// reads on the day it means something.
 
 datasource db {
   provider = "postgresql"
@@ -33,7 +51,6 @@ datasource db {
   /// else does. Falls back to DATABASE_URL when unset, which is right both
   /// locally and on a Render database with no pool in front of it yet.
   directUrl  = env("DIRECT_URL")
-  extensions = [citext, pgcrypto]
 }
 
 // ---------------------------------------------------------------------------
