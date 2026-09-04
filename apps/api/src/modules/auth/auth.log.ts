@@ -51,7 +51,26 @@ export type AuthEventName =
   | 'auth.verify_resend'
   | 'auth.google'
   | 'auth.refresh'
-  | 'auth.signout';
+  | 'auth.signout'
+  // Account settings — same vocabulary, so one query finds a person's whole story.
+  | 'account.reauth'
+  | 'account.profile'
+  | 'account.email_change'
+  | 'account.password'
+  | 'account.mfa'
+  | 'account.recovery_codes'
+  | 'account.sessions'
+  | 'account.identity'
+  | 'account.notifications'
+  | 'account.export'
+  | 'account.delete'
+  | 'member.invite'
+  | 'member.accept'
+  | 'member.role'
+  | 'member.remove'
+  | 'member.transfer'
+  | 'workspace.update'
+  | 'workspace.delete';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 

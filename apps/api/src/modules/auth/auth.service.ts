@@ -422,7 +422,7 @@ export class AuthService {
    */
   async actorFor(userId: string, surface: Surface, session: { id: string; mfaLevel: number; lastStepUpAt: Date | null }): Promise<Actor & { sessionId: string }> {
     const [members, staffRole] = await Promise.all([
-      this.db.workspaceMember.findMany({ where: { userId }, select: { workspaceId: true, role: true } }),
+      this.db.workspaceMember.findMany({ where: { userId, workspace: { deletedAt: null } }, select: { workspaceId: true, role: true } }),
       this.activeStaffRole(userId),
     ]);
     return {
@@ -441,7 +441,7 @@ export class AuthService {
   async landingFor(userId: string, surface: Surface): Promise<string> {
     if (surface === 'ADMIN') return '/operations';
     if (surface === 'ORG') return '/overview';
-    const first = await this.db.workspaceMember.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } });
+    const first = await this.db.workspaceMember.findFirst({ where: { userId, workspace: { deletedAt: null } }, orderBy: { createdAt: 'asc' } });
     return first ? '/today' : '/welcome';
   }
 
@@ -449,7 +449,7 @@ export class AuthService {
   async describeActor(actor: Actor): Promise<Record<string, unknown>> {
     const user = await this.db.user.findUniqueOrThrow({
       where: { id: actor.userId },
-      select: { id: true, name: true, email: true, phone: true, phoneIsWhatsApp: true, createdAt: true },
+      select: { id: true, name: true, email: true, phone: true, phoneIsWhatsApp: true, avatarKey: true, locale: true, timezone: true, deleteRequestedAt: true, createdAt: true },
     });
     const workspaces = await this.db.workspace.findMany({
       where: { id: { in: [...actor.workspaceRoles.keys()] } },

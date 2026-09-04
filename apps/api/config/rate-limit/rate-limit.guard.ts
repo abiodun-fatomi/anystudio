@@ -27,6 +27,7 @@ import type { Request, Response } from 'express';
 import { DEFAULT_RATE_RULE, RATE_LIMITS, type RateRule } from './rate-limit.config';
 import { RATE_LIMIT_STORE, type RateLimitStore } from './rate-limit.tokens';
 import { RateLimitedError } from '../globals/errors';
+import { createHash } from 'node:crypto';
 import { logger } from '../logger';
 import type { AuthenticatedRequest } from '../globals/interface';
 
@@ -99,6 +100,13 @@ export class RateLimitGuard implements CanActivate {
       case 'account': {
         const actor = (req as AuthenticatedRequest).actor;
         if (actor?.userId) return actor.userId;
+        // This guard runs before the session is resolved, so on a signed-in
+        // route the actor is not there yet. The session cookie is: a hash of
+        // it is a stable per-session subject, which is close enough to
+        // per-account for a brake on credential guessing.
+        const cookies = (req as Request & { cookies?: Record<string, string> }).cookies ?? {};
+        const session = Object.entries(cookies).find(([k]) => k.startsWith('__Host-as_') && !k.endsWith('_r'))?.[1];
+        if (session) return `s:${createHash('sha256').update(session).digest('hex').slice(0, 32)}`;
         const body = req.body as { email?: unknown; identifier?: unknown } | undefined;
         const claimed = body?.email ?? body?.identifier;
         return typeof claimed === 'string' && claimed ? claimed.toLowerCase().slice(0, 200) : null;

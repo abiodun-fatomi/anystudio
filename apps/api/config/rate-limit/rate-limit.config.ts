@@ -33,6 +33,16 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   'POST /api/v1/auth/verify/resend':  [{ limit: 3, windowSec: 3600, scope: 'account' }],
   'GET /api/v1/auth/google/start':    [{ limit: 10, windowSec: 60, scope: 'ip' }],
   'POST /api/v1/auth/step-up':        [{ limit: 5, windowSec: 300, scope: 'account' }],
+  // Account settings: each of these re-proves a credential, and a wrong guess is a guess.
+  'POST /api/v1/me/email':            [{ limit: 5, windowSec: 3600, scope: 'account' }],
+  'POST /api/v1/me/email/confirm':    [{ limit: 10, windowSec: 3600, scope: 'ip' }],
+  'POST /api/v1/me/password':         [{ limit: 5, windowSec: 900, scope: 'account' }],
+  'POST /api/v1/me/mfa/confirm':      [{ limit: 10, windowSec: 300, scope: 'account' }],
+  'DELETE /api/v1/me/mfa':            [{ limit: 5, windowSec: 900, scope: 'account' }],
+  'POST /api/v1/me/mfa/recovery-codes': [{ limit: 5, windowSec: 900, scope: 'account' }],
+  'POST /api/v1/me/delete':           [{ limit: 5, windowSec: 3600, scope: 'account' }],
+  'GET /api/v1/me/export':            [{ limit: 5, windowSec: 3600, scope: 'account' }],
+  'POST /api/v1/workspaces/invites/accept': [{ limit: 10, windowSec: 3600, scope: 'ip' }],
   // Organization API (issued keys), per key and per merchant behind the key.
   'POST /api/v1/generations':         [{ limit: 60, windowSec: 60, scope: 'apiKey' }, { limit: 10, windowSec: 60, scope: 'merchant' }],
 };
