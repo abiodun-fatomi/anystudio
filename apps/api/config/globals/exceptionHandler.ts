@@ -42,6 +42,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (err instanceof AppError) {
       body = { status: err.status, error: err.code, message: err.message, data: null, ...(err.details ?? {}) };
+      // A service-level ValidationError names fields in `details`; expose them
+      // in the same `fields` shape as class-validator so a form shows them inline.
+      if (err.code === 'invalid_input' && err.details) {
+        body.fields = Object.entries(err.details).filter(([, v]) => typeof v === 'string').map(([path, message]) => ({ path, message: String(message) }));
+      }
       if (err.code === 'rate_limited' && typeof err.details?.retryAfterSec === 'number') {
         res.setHeader('Retry-After', String(err.details.retryAfterSec));
       }

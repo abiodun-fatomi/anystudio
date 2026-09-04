@@ -149,7 +149,7 @@ export class AccountService {
     });
 
     const origin = this.auth.publicOrigin(req);
-    await this.send(emailChangeConfirm(newEmail, user.name, `${origin}/settings/email?token=${token}`), 'EMAIL_CHANGE');
+    await this.send(emailChangeConfirm(newEmail, user.name, `${origin}/email-change?token=${token}`), 'EMAIL_CHANGE');
     if (user.email) await this.send(emailChangeNotice(user.email, user.name, newEmail, `${origin}/settings/security`), 'EMAIL_CHANGE_NOTICE');
     await this.event(user.id, 'EMAIL_CHANGE_REQUESTED', actor.surface, req, { to: maskEmail(newEmail) });
     authLog('account.email_change', 'succeeded', { userId: user.id, stage: 'requested' }, req);
