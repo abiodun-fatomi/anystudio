@@ -4,6 +4,13 @@
 
 FROM node:22-slim AS deps
 RUN corepack enable
+# openssl in the BUILD stage, not just the runtime one: `prisma generate`
+# chooses which query-engine binary to embed by detecting the libssl version,
+# and node:22-slim ships none. Without this it silently picks the
+# openssl-1.1.x engine and bakes it into an image whose runtime has openssl 3,
+# where it then fails to load.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY packages/db/package.json     packages/db/
