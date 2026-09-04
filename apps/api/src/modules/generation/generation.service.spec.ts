@@ -16,6 +16,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { GenerationService } from './generation.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { MediaService } from '../media/media.service';
+import { QueueService } from '../queue/queue.service';
 import { AppError } from '../../../config/globals/errors';
 
 const url = process.env.DATABASE_URL;
@@ -24,7 +26,8 @@ const suite = url ? describe : describe.skip;
 suite('GenerationService', () => {
   const db = new PrismaClient();
   const ledger = new LedgerService(db);
-  const service = new GenerationService(db, ledger);
+  // No REDIS_URL in tests: the queue is a no-op and the row is the only truth — exactly the degraded mode.
+  const service = new GenerationService(db, ledger, new MediaService(db), new QueueService());
 
   let workspaceId: string;
   let userId: string;
@@ -64,7 +67,8 @@ suite('GenerationService', () => {
     walletId = wallet.id;
   });
 
-  const request = () => service.request({ workspaceId, requestedById: userId, costCode: COST, input: { key: 'a.webp' } });
+  const request = (clientKey: string = crypto.randomUUID()) =>
+    service.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', costCode: COST, clientKey, params: { productName: 'Ankara tote' } });
 
   it('debits the credits when the generation is requested, not when it succeeds', async () => {
     const { generation, balance } = await request();
@@ -116,7 +120,7 @@ suite('GenerationService', () => {
   it('keeps the credits when the generation succeeds', async () => {
     const { generation } = await request();
     await service.start(generation.id);
-    const done = await service.succeed(generation.id, { outputs: { keys: ['out.webp'] }, providerJobId: 'p-1' });
+    const done = await service.succeed(generation.id, { outputs: [{ key: 'out.webp', role: 'image', mime: 'image/webp' }], providerJobId: 'p-1' });
 
     expect(done.status).toBe('SUCCEEDED');
     expect(done.providerJobId).toBe('p-1');
@@ -128,7 +132,7 @@ suite('GenerationService', () => {
     await service.start(generation.id);
     await service.fail(generation.id, { failureReason: 'timed out' });
 
-    await expect(service.succeed(generation.id, { outputs: {} })).rejects.toBeInstanceOf(AppError);
+    await expect(service.succeed(generation.id, { outputs: [] })).rejects.toBeInstanceOf(AppError);
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
   });
 
@@ -181,10 +185,52 @@ suite('GenerationService', () => {
     expect(row.status).toBe('RUNNING');
   });
 
+  it('returns the same row for the same clientKey, and charges once', async () => {
+    const a = await request('tap-tap');
+    const b = await request('tap-tap');
+
+    expect(b.generation.id).toBe(a.generation.id);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - PRICE);
+  });
+
+  it('refuses a request whose params do not fit the capability, before any money moves', async () => {
+    await expect(
+      service.request({ workspaceId, requestedById: userId, capability: 'IMAGE_EDIT', costCode: COST, clientKey: 'bad', params: { prompt: 'x' } }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(await db.generation.count({ where: { workspaceId } })).toBe(0);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
+  it('puts a running generation back on the shelf without touching its credits', async () => {
+    const { generation } = await request();
+    await service.start(generation.id);
+    await service.requeue(generation.id, 'vendor hiccup');
+
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    expect(row.status).toBe('QUEUED');
+    expect(row.attempts).toBe(1);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - PRICE);
+
+    // And the dispatcher sees it as an orphan once it is old enough.
+    await db.generation.update({ where: { id: generation.id }, data: { createdAt: new Date(Date.now() - 60_000) } });
+    // No Redis in tests, so nothing is dispatched — but nothing throws either.
+    expect(await service.redispatchOrphans()).toEqual([]);
+  });
+
+  it('tells the customer what happened in plain words, never the vendor\'s', async () => {
+    const { generation } = await request();
+    await service.start(generation.id);
+    await service.fail(generation.id, { failureReason: 'fal.ai: HTTP 429 quota exceeded for model x', failureKind: 'RATE_LIMITED' });
+
+    const view = await service.get(workspaceId, generation.id);
+    expect(view.message).toMatch(/credits are back/);
+    expect(view.message).not.toMatch(/fal|429|quota/);
+  });
+
   it('never drifts: the derived balance always equals the sum of the entries', async () => {
     const a = await request();
     await service.start(a.generation.id);
-    await service.succeed(a.generation.id, { outputs: {} });
+    await service.succeed(a.generation.id, { outputs: [] });
 
     const b = await request();
     await service.start(b.generation.id);

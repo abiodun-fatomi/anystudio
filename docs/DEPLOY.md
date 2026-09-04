@@ -136,17 +136,14 @@ push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-dep
    | Variable | Value |
    |---|---|
    | `RENDER_API_SERVICE_ID` | `srv-…` of `anystudio-api-dev` |
-   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — **omit it**: `render.yaml` creates no worker yet (see below) |
+   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — the blueprint creates it; set this so the workflow deploys the worker after the API |
    | `API_URL` | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.2); then delete it |
 
-   The worker variable is optional and should be left unset for now. The
-   queue has no consumers and the API never imports ioredis, so a worker
-   service on Render would be a paid instance doing nothing; `render.yaml`
-   therefore creates only the API and its Postgres. The worker's code is
-   still typechecked, tested and built into an image on every run — only its
-   deploy is skipped. When the generation pipeline lands, add the service to
-   `render.yaml` and set this variable; the workflow picks it up with no
-   change.
+   The worker is the API image started with `node dist/src/worker/main.js`
+   (one Dockerfile, two commands — see `apps/api/Dockerfile`). `render.yaml`
+   declares it alongside a Key Value instance for the queue. Redis is an
+   accelerator, not a dependency: with it unreachable the API still accepts
+   generations and the worker runs QUEUED rows straight from Postgres.
 
    Same for `staging` and `production` with their services.
 5. Merge something into `development` that touches `apps/api/**`, or run the

@@ -342,6 +342,8 @@ model Workspace {
   onboarding  OnboardingState[]
   wallet      Wallet?
   generations Generation[]
+  media       MediaAsset[]
+  brandKit    BrandKit?
 
   @@index([type])
   @@map("workspaces")
@@ -522,18 +524,31 @@ model Plan {
   @@map("plans")
 }
 
+/// One value per thing the product can make. Mirrors CAPABILITIES in
+/// packages/shared — the API imports both, so drift fails typecheck.
 enum ProviderCapability {
-  IMAGE
-  EDIT
-  VIDEO
+  IMAGE_GENERATE
+  IMAGE_EDIT
+  BACKGROUND_REMOVE
+  BACKGROUND_REPLACE
+  RELIGHT
+  UPSCALE
+  IMAGE_TO_VIDEO
+  VIDEO_STITCH
+  TEXT_GENERATE
+  VOICEOVER
+  MUSIC
   DUB
-  TEXT
+  LIPSYNC
 }
 
-/// One routable provider model. `priority` picks the default and the fallback
-/// order; `enabled` is the switch an operator throws during an outage.
+/// One routable provider model FOR ONE CAPABILITY. The same vendor model can
+/// serve several capabilities (an edit model also replaces backgrounds), each
+/// as its own row with its own priority, cost and switch — so demoting it for
+/// video does not demote it for images. `priority` picks the default and the
+/// fallback order; `enabled` is the switch an operator throws during an outage.
 model ProviderModel {
-  key         String             @id  /// "higgsfield:kling3_0"
+  key         String             /// "vertex:gemini-3-pro-image" — what the adapter registry answers to
   capability  ProviderCapability
   priority    Int                @default(10)
   /// Our cost per call in minor units of the billing currency — the input to
@@ -542,8 +557,20 @@ model ProviderModel {
   enabled     Boolean            @default(true)
   /// Set by the circuit breaker; cleared automatically or by an operator.
   breakerOpenedAt DateTime?
+  /// When set, this row only serves workspaces of this type. An ORGANIZATION
+  /// tier can be routed to a provider with licensed training data while the
+  /// personal tier uses the cheap one — as a row, not a branch in code.
+  workspaceType WorkspaceType?
+  /// Vendor-specific settings the adapter reads: model id, endpoint, defaults.
+  /// Changing a model version is an edit here, not a deploy.
+  config      Json?
+  /// The commercial-resale terms this row was approved under, in prose, with
+  /// a date. A row with no note has not been checked and must not be enabled
+  /// for customer traffic.
+  licenceNote String?
   updatedAt   DateTime           @updatedAt
 
+  @@id([key, capability])
   @@index([capability, enabled, priority])
   @@map("provider_models")
 }
@@ -638,12 +665,31 @@ enum GenerationStatus {
 }
 
 /// One request for generated media, from click to outputs.
+enum GenerationKind {
+  STANDALONE // one request, one result
+  PARENT     // a plan whose work is done by its children — a 30-second ad
+  CHILD      // one shot of a parent; refunded and retried on its own
+}
+
 model Generation {
   id          String @id @default(uuid()) @db.Uuid
   workspaceId String @db.Uuid
   /// Who asked. Kept even after they leave the workspace — the ledger entry
   /// points at this row, and an audit that cannot name a person is not one.
   requestedById String @db.Uuid
+
+  /// What was asked for. Decides the queue, the router's candidate list and
+  /// which pipeline the worker runs.
+  capability ProviderCapability
+  kind       GenerationKind     @default(STANDALONE)
+  /// For CHILD rows: the PARENT whose plan this shot belongs to. A failed shot
+  /// refunds and retries itself; the parent only ever waits on its children.
+  parentId   String?            @db.Uuid
+  /// Supplied by the client and unique per workspace, so a double-tapped
+  /// button or a retried request returns the row that already exists instead
+  /// of creating — and charging for — a second one. Null only for rows the
+  /// system creates for itself (children of a plan).
+  clientKey  String?
 
   /// The CreditCost code this was priced against, e.g. "video.reel".
   costCode String
@@ -680,6 +726,20 @@ model Generation {
   /// Operator-facing. Never rendered to the customer verbatim — provider
   /// errors leak model names, quotas and sometimes prompt text.
   failureReason String?
+  /// Which of the five ProviderError kinds it failed with, when it did. This,
+  /// not failureReason, chooses the sentence the customer sees.
+  failureKind   String?
+
+  /// The stage the worker last reported and how far along it is, 0–100.
+  /// Written so a studio that reconnects after a lost stream — or after Redis
+  /// went away — can render the truth from the row alone.
+  stage    String?
+  progress Int     @default(0)
+
+  /// What the vendor actually charged us for this row, in minor units, when
+  /// the adapter knows it. Margin on the operations dashboard is credits sold
+  /// minus the sum of this.
+  providerCostMinor Int?
 
   createdAt  DateTime  @default(now())
   startedAt  DateTime?
@@ -687,12 +747,104 @@ model Generation {
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   requestedBy User      @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  parent      Generation?  @relation("GenerationChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Generation[] @relation("GenerationChildren")
+  assets      MediaAsset[]
 
+  /// One row per client request, per workspace.
+  @@unique([workspaceId, clientKey])
   /// The customer's history screen, newest first.
   @@index([workspaceId, createdAt])
   /// The sweeper: everything unfinished, oldest first.
   @@index([status, heartbeatAt])
   /// Provider webhooks and support lookups arrive with this and nothing else.
   @@index([providerJobId])
+  /// A parent collecting its shots.
+  @@index([parentId])
   @@map("generations")
+}
+
+// ---------------------------------------------------------------------------
+// MEDIA — what customers upload and what the pipeline produces
+//
+// The browser uploads straight to storage against a presigned URL; the API
+// never proxies bytes. A row is written when the upload is announced and
+// promoted to READY only after the API has looked at the object itself —
+// its real content type by magic bytes, its size, its dimensions — because a
+// file name is a claim, not a fact.
+// ---------------------------------------------------------------------------
+
+enum MediaKind {
+  SOURCE  // uploaded by a customer
+  OUTPUT  // produced by a generation
+  DERIVED // thumbnails, proxies, masks — recreatable, expendable
+}
+
+enum MediaStatus {
+  PENDING  // presigned, not yet seen
+  READY    // verified and usable
+  REJECTED // wrong type, too large, or failed the content gate
+}
+
+model MediaAsset {
+  id           String      @id @default(uuid()) @db.Uuid
+  workspaceId  String      @db.Uuid
+  uploadedById String?     @db.Uuid
+  generationId String?     @db.Uuid
+  kind         MediaKind
+  status       MediaStatus @default(PENDING)
+  /// The storage object key. Unique: one object, one row.
+  key          String      @unique
+  /// Verified from the bytes, never from the upload's declared type.
+  mime         String?
+  bytes        Int?
+  width        Int?
+  height       Int?
+  durationMs   Int?
+  /// SHA-256 of the object, so the same photo uploaded twice can be found.
+  sha256       String?
+  /// The name the customer gave the file — for the library, never for storage.
+  filename     String?
+  createdAt    DateTime    @default(now())
+  /// Soft delete; the object is removed by a lifecycle job after a grace period.
+  deletedAt    DateTime?
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  generation Generation? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, sha256])
+  @@index([generationId])
+  @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------------
+// BRAND KIT — applied to every generation in a workspace
+//
+// Text, price and the logo are composited by us, deterministically, never
+// asked of an image model — a model cannot be trusted to spell a price.
+// ---------------------------------------------------------------------------
+
+model BrandKit {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @unique @db.Uuid
+  businessName String?
+  /// Storage key of the logo, a MediaAsset the customer uploaded.
+  logoKey      String?
+  /// Up to six hex colours, primary first.
+  palette      Json?
+  fontDisplay  String?
+  fontBody     String?
+  /// Free prose the copy pipeline conditions on: "warm, direct, no slang".
+  tone         String?
+  /// { enabled, position: "br" | "bl" | "tr" | "tl", opacity }
+  watermark    Json?
+  showPrice    Boolean  @default(true)
+  /// Default export sizes, as ExportSize keys from packages/shared.
+  defaultSizes Json?
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("brand_kits")
 }

@@ -32,9 +32,12 @@
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
-import { generationDebitKey } from '@anystudio/shared';
+import { CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, type Capability, type ProviderErrorKind } from '@anystudio/shared';
+import { EXPECTED_MS } from '../provider/adapters/base';
 import { LedgerService } from '../ledger/ledger.service';
-import { ConflictError, NotFoundError } from '../../../config/globals/errors';
+import { MediaService } from '../media/media.service';
+import { QueueService } from '../queue/queue.service';
+import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import {
   STALE_AFTER_MS,
@@ -42,13 +45,19 @@ import {
   type GenerationOutcome,
   type GenerationRequest,
   type GenerationResult,
+  type GenerationView,
 } from './generation.types';
+
+/** A QUEUED row this old with no job behind it is re-dispatched by the worker. */
+export const DISPATCH_AFTER_MS = 20 * 1000;
 
 @Injectable()
 export class GenerationService {
   constructor(
     private readonly db: PrismaClient,
     private readonly ledger: LedgerService,
+    private readonly media: MediaService,
+    private readonly queue: QueueService,
   ) {}
 
   /**
@@ -58,10 +67,43 @@ export class GenerationService {
    * customer who cannot afford it never gets a half-created generation. The
    * price is read from CreditCost here and COPIED onto the row — an operator
    * changing the price later must not alter what this customer was charged.
+   *
+   * IDEMPOTENT BY CLIENT KEY
+   * ------------------------
+   * The same (workspace, clientKey) returns the row that already exists. The
+   * unique index is what enforces it — not a read-then-write, which two
+   * concurrent requests would both pass.
+   *
+   * THE QUEUE COMES LAST, AND CANNOT FAIL THE REQUEST
+   * -------------------------------------------------
+   * The row and the debit are committed first. Only then is the id put on
+   * the queue, and if that fails (Redis down, network blip) the request still
+   * succeeds: the worker's dispatcher re-reads QUEUED rows and picks it up.
    */
   async request(req: GenerationRequest): Promise<GenerationResult> {
-    const cost = await this.db.creditCost.findUnique({ where: { code: req.costCode } });
-    if (!cost) throw new NotFoundError(`credit cost "${req.costCode}"`);
+    // Validate before touching money.
+    const parsed = parseCapabilityParams(req.capability, req.params);
+    if (!parsed.ok) throw new ValidationError(parsed.issues);
+    const params = parsed.params as Record<string, unknown>;
+
+    // Every storage key named in the params must be a READY object this workspace owns.
+    for (const [name, value] of Object.entries(params)) {
+      const keys = name.endsWith('Key') && typeof value === 'string' ? [value] : name.endsWith('Keys') && Array.isArray(value) ? (value as string[]) : [];
+      for (const key of keys) await this.media.requireReady(req.workspaceId, key);
+    }
+
+    if (req.clientKey) {
+      const existing = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
+      if (existing) {
+        logger.info({ generationId: existing.id, workspaceId: req.workspaceId, clientKey: req.clientKey }, 'generation request replayed; returning the existing row');
+        const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
+        return { generation: existing, balance: wallet ? await this.ledger.balance(wallet.id) : 0 };
+      }
+    }
+
+    const costCode = req.costCode ?? DEFAULT_COST_CODE[req.capability];
+    const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
+    if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
@@ -69,36 +111,77 @@ export class GenerationService {
     // One transaction: the row and the debit commit together or not at all.
     // A row without its debit is free work; a debit without its row is a
     // charge nobody can explain.
-    const generation = await this.db.$transaction(async (tx) => {
-      const row = await tx.generation.create({
-        data: {
-          workspaceId: req.workspaceId,
-          requestedById: req.requestedById,
-          costCode: cost.code,
-          credits: cost.credits,
-          input: req.input as Prisma.InputJsonObject,
-        },
+    let generation: Generation;
+    try {
+      generation = await this.db.$transaction(async (tx) => {
+        const row = await tx.generation.create({
+          data: {
+            workspaceId: req.workspaceId,
+            requestedById: req.requestedById,
+            capability: req.capability,
+            kind: req.kind ?? 'STANDALONE',
+            parentId: req.parentId ?? null,
+            clientKey: req.clientKey ?? null,
+            costCode: cost.code,
+            credits: cost.credits,
+            stage: 'queued',
+            input: params as Prisma.InputJsonObject,
+          },
+        });
+
+        await this.ledger.debit(
+          {
+            walletId: wallet.id,
+            amount: cost.credits,
+            idempotencyKey: generationDebitKey(row.id),
+            referenceId: row.id,
+            reason: cost.label,
+          },
+          tx,
+        );
+
+        return row;
       });
+    } catch (err) {
+      // Two requests raced on the same clientKey: the loser returns the winner's row.
+      if (req.clientKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
+        if (winner) return { generation: winner, balance: await this.ledger.balance(wallet.id) };
+      }
+      throw err;
+    }
 
-      await this.ledger.debit(
-        {
-          walletId: wallet.id,
-          amount: cost.credits,
-          idempotencyKey: generationDebitKey(row.id),
-          referenceId: row.id,
-          reason: cost.label,
-        },
-        tx,
-      );
-
-      return row;
-    });
-
+    const balance = await this.ledger.balance(wallet.id);
     logger.info(
-      { generationId: generation.id, workspaceId: req.workspaceId, costCode: cost.code, credits: cost.credits },
-      'generation requested',
+      { generationId: generation.id, workspaceId: req.workspaceId, capability: req.capability, costCode: cost.code, credits: cost.credits, balance, parentId: req.parentId },
+      'generation requested: row written, credits held',
     );
-    return { generation, balance: await this.ledger.balance(wallet.id) };
+
+    // After the commit, never inside it. See the file comment.
+    await this.queue.enqueue(generation.id, req.capability);
+    return { generation, balance };
+  }
+
+  /**
+   * What a generation would cost, before the customer commits. The studio
+   * shows this next to the button; the balance after is what the customer
+   * is really deciding about.
+   */
+  async quote(workspaceId: string, capability: Capability, costCode?: string): Promise<{ costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }> {
+    const code = costCode ?? DEFAULT_COST_CODE[capability];
+    const cost = await this.db.creditCost.findUnique({ where: { code } });
+    if (!cost) throw new NotFoundError(`credit cost "${code}"`);
+    const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
+    if (!wallet) throw new NotFoundError('wallet');
+    const balance = await this.ledger.balance(wallet.id);
+    return { costCode: cost.code, credits: cost.credits, label: cost.label, balance, balanceAfter: balance - cost.credits, expectedMs: EXPECTED_MS[capability] };
+  }
+
+  /** One generation, only if the workspace owns it. */
+  async get(workspaceId: string, id: string): Promise<GenerationView> {
+    const row = await this.db.generation.findUnique({ where: { id }, include: { children: { orderBy: { createdAt: 'asc' } } } });
+    if (!row || row.workspaceId !== workspaceId) throw new NotFoundError('generation');
+    return { generation: row, message: customerMessage(row) };
   }
 
   /**
@@ -138,6 +221,18 @@ export class GenerationService {
     });
   }
 
+  /**
+   * Put a RUNNING row back on the shelf for another attempt. Only the worker
+   * calls this, and only for failures whose kind says retrying could help.
+   * The attempt count already went up in start(); it is never reset.
+   */
+  async requeue(id: string, reason: string): Promise<void> {
+    await this.db.generation.updateMany({
+      where: { id, status: 'RUNNING' },
+      data: { status: 'QUEUED', heartbeatAt: null, stage: 'queued', progress: 0, failureReason: reason.slice(0, 2000) },
+    });
+  }
+
   /** Outputs are stored. The debit stands; there is nothing to refund. */
   async succeed(id: string, outcome: GenerationOutcome): Promise<Generation> {
     const row = await this.claimTerminal(id);
@@ -146,9 +241,12 @@ export class GenerationService {
       data: {
         status: 'SUCCEEDED',
         finishedAt: new Date(),
-        outputs: (outcome.outputs ?? {}) as Prisma.InputJsonObject,
+        stage: 'done',
+        progress: 100,
+        outputs: (outcome.outputs ?? []) as unknown as Prisma.InputJsonArray,
         ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
         ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
+        ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
       },
     });
   }
@@ -162,9 +260,12 @@ export class GenerationService {
       data: {
         status: 'FAILED',
         finishedAt: new Date(),
+        stage: 'failed',
         failureReason: outcome.failureReason ?? null,
+        failureKind: outcome.failureKind ?? null,
         ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
         ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
+        ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
       },
     });
   }
@@ -176,17 +277,43 @@ export class GenerationService {
    * our side whatever the customer wants, and pretending otherwise would mean
    * refunding work we have already paid for.
    */
-  async cancel(id: string): Promise<Generation> {
+  async cancel(id: string, workspaceId?: string): Promise<Generation> {
     const row = await this.db.generation.findUnique({ where: { id } });
-    if (!row) throw new NotFoundError('generation');
+    if (!row || (workspaceId && row.workspaceId !== workspaceId)) throw new NotFoundError('generation');
     if (row.status !== 'QUEUED') {
       throw new ConflictError('That generation has already started and cannot be cancelled.');
     }
     await this.refund(row, 'cancelled before it started');
+    logger.info({ generationId: id, workspaceId: row.workspaceId, credits: row.credits }, 'generation cancelled; credits returned');
     return this.db.generation.update({
       where: { id },
-      data: { status: 'CANCELLED', finishedAt: new Date() },
+      data: { status: 'CANCELLED', finishedAt: new Date(), stage: 'failed' },
     });
+  }
+
+  /**
+   * Rows that are QUEUED but were never picked up — because the enqueue
+   * failed, Redis lost the job, or the worker was down. The dispatcher calls
+   * this on a timer and puts each one back on its queue; the job id is the
+   * row id, so a row that WAS enqueued and is simply waiting is not doubled.
+   */
+  async redispatchOrphans(now = new Date()): Promise<string[]> {
+    const cutoff = new Date(now.getTime() - DISPATCH_AFTER_MS);
+    const rows = await this.db.generation.findMany({
+      where: { status: 'QUEUED', createdAt: { lt: cutoff } },
+      select: { id: true, capability: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+    const dispatched: string[] = [];
+    for (const row of rows) {
+      const result = await this.queue.enqueue(row.id, row.capability);
+      if (result.queued) dispatched.push(row.id);
+    }
+    if (dispatched.length) {
+      logger.warn({ count: dispatched.length, oldest: rows[0]?.createdAt, dispatched: dispatched.slice(0, 20) }, 'dispatcher re-queued generations that had no job behind them');
+    }
+    return dispatched;
   }
 
   /**
@@ -224,10 +351,10 @@ export class GenerationService {
     return reclaimed;
   }
 
-  /** The customer's history, newest first. */
+  /** The customer's history, newest first. Children ride inside their parent, not beside it. */
   async history(workspaceId: string, take = 50, cursor?: string): Promise<Generation[]> {
     return this.db.generation.findMany({
-      where: { workspaceId },
+      where: { workspaceId, kind: { not: 'CHILD' } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
@@ -263,4 +390,13 @@ export class GenerationService {
       reason,
     });
   }
+}
+
+/** The sentence a customer reads on a failed row. Never the vendor's words. */
+export function customerMessage(row: Generation): string | undefined {
+  if (row.status !== 'FAILED') return undefined;
+  const kind = row.failureKind as ProviderErrorKind | 'TIMEOUT' | 'INTERNAL' | null;
+  if (kind && kind in CUSTOMER_MESSAGE) return CUSTOMER_MESSAGE[kind as ProviderErrorKind];
+  if (kind === 'TIMEOUT') return 'That took too long and was stopped. Your credits are back — try again.';
+  return 'Something went wrong on our side. Your credits are back and we have been notified.';
 }

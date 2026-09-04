@@ -1,4 +1,11 @@
-# AnyStudio API — multi-stage, non-root, no build tooling in the final image.
+# AnyStudio API and worker — one image, two commands.
+#
+#   node dist/src/main.js          the API (default)
+#   node dist/src/worker/main.js   the queue worker
+#
+# One image because the worker runs the same generation, ledger and provider
+# code as the API; two builds would be two places for a money rule to drift.
+# Render's worker service points at this Dockerfile with a dockerCommand.
 #
 # The one ordering rule that matters: `prisma generate` MUST run before tsc.
 # Without the generated client, typecheck fails on every import of @prisma/client
@@ -63,7 +70,9 @@ ENV NODE_ENV=production
 # instead of being cut off mid-deploy.
 # openssl: the Prisma engines link against libssl, which the slim image
 # does not ship. Without it the first query fails with a load error.
-RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates openssl \
+# ffmpeg: the worker stitches ads, cuts previews and grabs video thumbnails
+# with it. ~90 MB, paid once per image; the API process never calls it.
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates openssl ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # /out already carries dist, node_modules with a generated Prisma client, and

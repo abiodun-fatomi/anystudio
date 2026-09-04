@@ -35,6 +35,12 @@ importers:
       '@anystudio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@aws-sdk/client-s3':
+        specifier: ^3.1126.0
+        version: 3.1126.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1126.0
+        version: 3.1126.0
       '@nestjs/common':
         specifier: ^12.0.1
         version: 12.0.1(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -56,6 +62,9 @@ importers:
       argon2:
         specifier: ^0.41.0
         version: 0.41.1
+      bullmq:
+        specifier: ^5.13.0
+        version: 5.81.4
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -95,6 +104,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4(@types/node@22.20.1)
     devDependencies:
       '@nestjs/cli':
         specifier: ^12.0.0
@@ -120,6 +132,9 @@ importers:
       pino-pretty:
         specifier: ^13.0.0
         version: 13.1.3
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.13
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -163,46 +178,6 @@ importers:
       wrangler:
         specifier: ^4.128.0
         version: 4.128.0
-
-  apps/worker:
-    dependencies:
-      '@anystudio/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@anystudio/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@prisma/client':
-        specifier: ^5.20.0
-        version: 5.22.0(prisma@5.22.0)
-      bullmq:
-        specifier: ^5.13.0
-        version: 5.81.4
-      ioredis:
-        specifier: ^5.4.1
-        version: 5.11.1
-      pino:
-        specifier: ^9.4.0
-        version: 9.14.0
-      prisma:
-        specifier: ^5.20.0
-        version: 5.22.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.7.0
-        version: 22.20.1
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.13
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-      vite:
-        specifier: ^8.2.2
-        version: 8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/db:
     dependencies:
@@ -343,6 +318,10 @@ packages:
     resolution: {integrity: sha512-kqwNBIGNxGVhINwgN/UQfdsQkaMjbu9PFV2EhATWouV+RT60uMjK9JENgLDwbgJmEVbbnPsh9HaZ5KKwPSdiDg==}
     engines: {node: '>=20.0.0'}
 
+  '@aws-sdk/client-s3@3.1126.0':
+    resolution: {integrity: sha512-9v+D5TOnISyWDBkY5N+lSeQ3/pPNi1bltpd7wfY2nALO7GoGq9QbRQ8KyI4j/ctnnHq40otqV5KWKYARdYI0vg==}
+    engines: {node: '>=20.0.0'}
+
   '@aws-sdk/client-s3@3.984.0':
     resolution: {integrity: sha512-7ny2Slr93Y+QniuluvcfWwyDi32zWQfznynL56Tk0vVh7bWrvS/odm8WP2nInKicRVNipcJHY2YInur6Q/9V0A==}
     engines: {node: '>=20.0.0'}
@@ -449,6 +428,10 @@ packages:
 
   '@aws-sdk/region-config-resolver@3.972.48':
     resolution: {integrity: sha512-BtAEcBbPNJedgLHxAVQ4RXk+LZfQtutQcxU9Oea3b6UHW7G4uWmd0PeZL1HOWmnR8oRMB3aiaD1am5kThav0yQ==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/s3-request-presigner@3.1126.0':
+    resolution: {integrity: sha512-QeLZT7ynBL1ZxyreCF8alGG5iOExGg62erNnfgo/woAaw6wsIrJ5ceLynCBKASViqzdoU+Zn73E6PY7FjCO5kA==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/signature-v4-multi-region@3.984.0':
@@ -2023,6 +2006,7 @@ packages:
   '@smithy/node-http-handler@4.12.0':
     resolution: {integrity: sha512-0mq1pHadfyXCYCqm2cNpbjNIT+fbaUpNxewZb/YNr2L0IrEVMOb8gM/Fl4K6XvHCW3uSNDFwPl/+iKm0bx9jYg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Depreacted due to a memory leak issue https://github.com/smithy-lang/smithy-typescript/issues/2258
 
   '@smithy/protocol-http@5.6.2':
     resolution: {integrity: sha512-Asd04MaxODN6FNY8EPTeCAM4kPNi3jDUAjZU0Y4F9rHvpLUrrUo7KLcxFgSthywFr6dZfIyDLIJda6jxmVTk5w==}
@@ -4424,6 +4408,20 @@ snapshots:
       '@smithy/util-waiter': 4.6.2
       tslib: 2.8.1
 
+  '@aws-sdk/client-s3@3.1126.0':
+    dependencies:
+      '@aws-sdk/checksums': 3.1000.29
+      '@aws-sdk/core': 3.977.9
+      '@aws-sdk/credential-provider-node': 3.972.82
+      '@aws-sdk/middleware-sdk-s3': 3.972.75
+      '@aws-sdk/signature-v4-multi-region': 3.996.46
+      '@aws-sdk/types': 3.974.5
+      '@smithy/core': 3.33.3
+      '@smithy/fetch-http-handler': 5.7.2
+      '@smithy/node-http-handler': 4.12.0
+      '@smithy/types': 4.17.2
+      tslib: 2.8.1
+
   '@aws-sdk/client-s3@3.984.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
@@ -4716,6 +4714,15 @@ snapshots:
   '@aws-sdk/region-config-resolver@3.972.48':
     dependencies:
       '@aws-sdk/core': 3.977.9
+      tslib: 2.8.1
+
+  '@aws-sdk/s3-request-presigner@3.1126.0':
+    dependencies:
+      '@aws-sdk/core': 3.977.9
+      '@aws-sdk/signature-v4-multi-region': 3.996.46
+      '@aws-sdk/types': 3.974.5
+      '@smithy/core': 3.33.3
+      '@smithy/types': 4.17.2
       tslib: 2.8.1
 
   '@aws-sdk/signature-v4-multi-region@3.984.0':
@@ -7753,7 +7760,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
       '@types/node': 22.20.1
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:
