@@ -182,6 +182,8 @@ envVarGroups:
         sync: false
       - key: HIGGSFIELD_API_KEY
         sync: false
+      - key: HIGGSFIELD_API_SECRET
+        sync: false
       - key: HEYGEN_API_KEY
         sync: false
       - key: FLUTTERWAVE_SECRET_KEY

@@ -33,6 +33,8 @@ export interface Tool {
   narrative: Record<string, string>;
   fields: Field[];
   defaults: Record<string, unknown>;
+  /** A tool whose price depends on its settings names the CreditCost code; otherwise the capability's default applies. */
+  costCodeFor?: (values: Record<string, unknown>) => string | undefined;
 }
 
 const SIZE_OPTIONS = Object.entries(EXPORT_SIZES).map(([id, s]) => ({ id: id as ExportSize, label: `${s.aspect} · ${s.width}×${s.height}`, short: id.replace('_', ' ') }));
@@ -113,15 +115,20 @@ export const TOOLS: Tool[] = [
     defaults: { task: 'product_copy', language: 'en', platforms: ['instagram', 'whatsapp_status'] },
   },
   {
-    id: 'video', label: 'Make a reel', short: 'Video', icon: 'publish', capability: 'IMAGE_TO_VIDEO', needsSource: true,
-    narrative: { queued: 'Waiting for a video slot', preparing: 'Reading your photo', routing: 'Choosing a video model', generating: 'Rendering your reel — this takes a few minutes', composing: 'Finishing', storing: 'Saving your video', done: 'Done' },
+    id: 'video', label: 'Make a video', short: 'Video', icon: 'publish', capability: 'IMAGE_TO_VIDEO', needsSource: true,
+    narrative: { queued: 'Waiting for a video slot', preparing: 'Reading your photo', routing: 'Choosing a video model', generating: 'Rendering — this takes a few minutes', waiting: 'Shots are rendering', composing: 'Stitching the shots, adding captions and the end card', storing: 'Saving your video', done: 'Done' },
     fields: [
-      { key: 'prompt', kind: 'text', label: 'What happens', placeholder: 'The camera slowly pushes in as light sweeps across the fabric', rows: 3, maxLength: 600, required: true },
+      { key: 'shots', kind: 'segment', label: 'Length', options: [{ id: '1', label: 'Reel · 5–8 s' }, { id: '2', label: 'Ad · 15 s' }, { id: '4', label: 'Ad · 30 s' }] },
+      { key: 'format', kind: 'select', label: 'Ad format', options: [{ value: 'reveal', label: 'Product reveal' }, { value: 'benefits', label: 'Three benefits' }, { value: 'before_after', label: 'Before and after' }, { value: 'unboxing', label: 'Unboxing' }, { value: 'price_drop', label: 'Price drop' }, { value: 'ugc', label: 'Filmed by a customer' }] },
+      { key: 'prompt', kind: 'text', label: 'What happens', placeholder: 'The camera slowly pushes in as light sweeps across the fabric', rows: 3, maxLength: 600, required: true, hint: 'For an ad, this is your direction to the planner; each shot gets its own prompt.' },
       { key: 'motion', kind: 'text', label: 'Camera', placeholder: 'slow push-in · orbit · tilt up · rack focus', maxLength: 200 },
-      { key: 'durationSec', kind: 'segment', label: 'Length', options: [{ id: '5', label: '5 s' }, { id: '8', label: '8 s' }] },
+      { key: 'durationSec', kind: 'segment', label: 'Reel length', options: [{ id: '5', label: '5 s' }, { id: '8', label: '8 s' }] },
       { key: 'aspect', kind: 'segment', label: 'Shape', options: [{ id: '9:16', label: '9:16' }, { id: '1:1', label: '1:1' }, { id: '16:9', label: '16:9' }] },
+      { key: 'productName', kind: 'text', label: 'Product name', placeholder: 'For the end card', maxLength: 120 },
+      { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000 — shown on the end card', maxLength: 40 },
     ],
-    defaults: { durationSec: 5, aspect: '9:16', audio: false },
+    defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false },
+    costCodeFor: (v) => (Number(v.shots) === 4 ? 'video.ad_30s' : Number(v.shots) === 2 ? 'video.ad_15s' : undefined),
   },
 ];
 

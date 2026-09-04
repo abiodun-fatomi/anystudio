@@ -43,7 +43,11 @@ const CREDIT_COSTS = [
   // Video routing therefore defaults to the budget tier; see PROVIDERS.
   { code: 'video.reel',         credits: 120, label: 'Reel ad' },
   { code: 'video.stitch',       credits: 20,  label: 'Assemble a multi-shot ad' },
+  { code: 'video.ad_15s',       credits: 260, label: '15-second ad (two shots)' },
   { code: 'video.ad_30s',       credits: 480, label: '30-second ad (four shots)' },
+  // A shot of a multi-shot ad. The PARENT row holds the price; its children
+  // are work units, not money units, and carry zero credits by design.
+  { code: 'video.shot',         credits: 0,   label: 'One shot of an ad' },
   { code: 'video.translate',    credits: 90,  label: 'Voiceover in another language' },
   { code: 'video.lipsync',      credits: 150, label: 'Lip sync' },
   { code: 'audio.voiceover',    credits: 8,   label: 'Voiceover' },
@@ -139,6 +143,11 @@ const PROVIDERS: Array<{
   { key: 'vertex:veo-3.1-fast', capability: 'IMAGE_TO_VIDEO', priority: 30, costPerCall: 260, enabled: true,
     config: { model: 'veo-3.1-fast-generate-preview' },
     licenceNote: 'Google Cloud generative AI indemnification (GA models). Native audio. Checked 2026-09-04.' },
+  // Higgsfield's own DoP models (not Kling — a different row). Off until
+  // their resale terms are on file; the adapter is ready.
+  { key: 'higgsfield:dop-turbo', capability: 'IMAGE_TO_VIDEO', priority: 40, costPerCall: 60, enabled: false,
+    config: { model: 'dop-turbo' },
+    licenceNote: 'Higgsfield platform terms not yet reviewed for resale; enable after confirmation. Checked 2026-09-04.' },
   // Kling: cheapest per second in the market and NOT routable. Its terms (§4.6)
   // forbid commercial use of outputs without written permission and (§4.5)
   // require "Kling AI" attribution. Enable only with that permission on file.

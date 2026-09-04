@@ -15,6 +15,8 @@ import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
 import { copyPipeline } from './copy';
 import { brandedImagePipeline } from './image';
+import { adPipeline } from './ad';
+import type { GenerationService } from '../../modules/generation/generation.service';
 
 export interface PipelineContext {
   row: Generation;
@@ -27,6 +29,10 @@ export interface PipelineContext {
   media: MediaService;
   /** For pipelines that keep their own rows — copy fingerprints. Never for money. */
   db: PrismaClient;
+  /** For a parent that creates children. */
+  generations: GenerationService;
+  /** True on a parent's second run, after its children finished. */
+  resume: boolean;
   callProvider: (
     input: Omit<ProviderInput, 'config'>,
     opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
@@ -42,6 +48,8 @@ export interface PipelineContext {
 
 export interface PipelineResult {
   artifacts: ProviderArtifact[];
+  /** A parent that dispatched children and steps aside; the runner leaves it RUNNING at stage 'waiting'. */
+  waiting?: boolean;
   providerKey?: string;
   providerJobId?: string;
   costMinor?: number;
@@ -66,6 +74,8 @@ export class Pipelines {
   };
 
   run(ctx: PipelineContext): Promise<PipelineResult> {
+    // A multi-shot video is a plan, not a call. Its children are ordinary single-shot rows.
+    if (ctx.row.capability === 'IMAGE_TO_VIDEO' && ctx.row.kind === 'PARENT') return adPipeline(ctx);
     const pipeline = this.byCapability[ctx.row.capability] ?? passthrough;
     return pipeline(ctx);
   }

@@ -49,7 +49,7 @@ suite('GenerationRunner', () => {
   let workspaceId: string;
   let userId: string;
   let walletId: string;
-  const START = 500;
+  const START = 800;
 
   beforeAll(async () => {
     await db.$connect();
@@ -58,6 +58,11 @@ suite('GenerationRunner', () => {
     // The stub serves everything, at two priorities so fallback can be exercised.
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'TEXT_GENERATE' } }, create: { key: 'stub:any', capability: 'TEXT_GENERATE', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_EDIT' } }, create: { key: 'stub:any', capability: 'IMAGE_EDIT', priority: 10, costPerCall: 4 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO' } }, create: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO', priority: 10, costPerCall: 80 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'VIDEO_STITCH' } }, create: { key: 'stub:any', capability: 'VIDEO_STITCH', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    for (const c of [{ code: 'video.ad_15s', credits: 260, label: 'Ad' }, { code: 'video.shot', credits: 0, label: 'Shot' }]) {
+      await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
+    }
   });
   afterAll(async () => { await events.onModuleDestroy(); await db.$disconnect(); });
 
@@ -137,6 +142,55 @@ suite('GenerationRunner', () => {
     expect(await runner.run(generation.id)).toBe('skipped');
     expect(await ledger.balance(walletId)).toBe(START);
   });
+
+  it('runs a two-shot ad: parent plans and steps aside, shots run, the last one wakes it, it assembles', async () => {
+    const { generation: parent } = await generations.request({ workspaceId, requestedById: userId, capability: 'IMAGE_TO_VIDEO', clientKey: 'ad-1', params: { sourceKey: `${workspaceId}/2026/09/uploads/src.png`, prompt: 'show the bag', shots: 2, format: 'reveal', productName: 'Ankara tote', price: '₦12,000' } });
+    expect(parent.kind).toBe('PARENT');
+    expect(parent.costCode).toBe('video.ad_15s');
+    expect(await ledger.balance(walletId)).toBe(START - 260);
+
+    // First run: the plan is written and two children exist; the parent is RUNNING at 'waiting'.
+    expect(await runner.run(parent.id)).toBe('waiting');
+    const children = await db.generation.findMany({ where: { parentId: parent.id }, orderBy: { createdAt: 'asc' } });
+    expect(children).toHaveLength(2);
+    expect(children.every((c) => c.kind === 'CHILD' && c.credits === 0 && c.status === 'QUEUED')).toBe(true);
+    expect((await db.generation.findUniqueOrThrow({ where: { id: parent.id } })).stage).toBe('waiting');
+
+    // The shots render (stub video needs ffmpeg; present in CI and the worker image).
+    expect(await runner.run(children[0]!.id)).toBe('succeeded');
+    expect((await db.generation.findUniqueOrThrow({ where: { id: parent.id } })).stage).toBe('waiting'); // one to go
+    expect(await runner.run(children[1]!.id)).toBe('succeeded');
+
+    // No Redis in tests, so the wake-up enqueue did nothing; the dispatcher's sweep finds it.
+    expect(await generations.wakeReadyParents()).toContain(parent.id);
+    expect(await runner.run(parent.id)).toBe('succeeded');
+
+    const done = await db.generation.findUniqueOrThrow({ where: { id: parent.id } });
+    const outputs = done.outputs as Array<{ role: string; key: string }>;
+    expect(outputs.some((o) => o.role === 'video')).toBe(true);
+    expect(done.providerCostMinor).toBe(160); // two shots at the row's 80, stitching free
+    expect(await ledger.balance(walletId)).toBe(START - 260);
+    // Children are hidden from the customer's history; the parent is one row.
+    expect((await generations.history(workspaceId)).map((g) => g.id)).toContain(parent.id);
+    expect((await generations.history(workspaceId)).map((g) => g.id)).not.toContain(children[0]!.id);
+  }, 60_000);
+
+  it('refunds the whole ad when a shot fails for good', async () => {
+    const { generation: parent } = await generations.request({ workspaceId, requestedById: userId, capability: 'IMAGE_TO_VIDEO', clientKey: 'ad-2', params: { sourceKey: `${workspaceId}/2026/09/uploads/src.png`, prompt: 'show the bag', shots: 2 } });
+    expect(await runner.run(parent.id)).toBe('waiting');
+    const children = await db.generation.findMany({ where: { parentId: parent.id } });
+    await db.providerModel.update({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO' } }, data: { config: { behaviour: 'fail:CONTENT_REJECTED' } } });
+    try {
+      for (const c of children) expect(await runner.run(c.id)).toBe('failed');
+    } finally {
+      await db.providerModel.update({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO' } }, data: { config: {} } });
+    }
+    await generations.wakeReadyParents();
+    expect(await runner.run(parent.id)).toBe('failed');
+    const done = await db.generation.findUniqueOrThrow({ where: { id: parent.id } });
+    expect(done.failureKind).toBe('CONTENT_REJECTED');
+    expect(await ledger.balance(walletId)).toBe(START); // the whole price, not three quarters of it
+  }, 60_000);
 
   it('streams the truth from the row when there is no Redis', async () => {
     const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey: 'evt-1', params: { productName: 'x' } });

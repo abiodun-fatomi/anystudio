@@ -51,6 +51,10 @@ import {
 /** A QUEUED row this old with no job behind it is re-dispatched by the worker. */
 export const DISPATCH_AFTER_MS = 20 * 1000;
 
+const VIDEO_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'VIDEO_STITCH', 'DUB', 'LIPSYNC']);
+/** Parents and standalone videos per workspace per rolling day. Operators raise it per customer, not globally. */
+const VIDEO_DAILY_LIMIT = Number(process.env.VIDEO_DAILY_LIMIT ?? 20);
+
 @Injectable()
 export class GenerationService {
   constructor(
@@ -92,6 +96,18 @@ export class GenerationService {
       for (const key of keys) await this.media.requireReady(req.workspaceId, key);
     }
 
+    // Video is where a bug becomes a five-figure invoice. A per-workspace
+    // daily count is the cheapest guardrail that fails closed; the
+    // provider-level kill switch is ProviderModel.enabled.
+    if (VIDEO_CAPABILITIES.has(req.capability) && req.kind !== 'CHILD') {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const today = await this.db.generation.count({ where: { workspaceId: req.workspaceId, capability: { in: [...VIDEO_CAPABILITIES] }, kind: { not: 'CHILD' }, createdAt: { gte: since } } });
+      if (today >= VIDEO_DAILY_LIMIT) {
+        logger.warn({ workspaceId: req.workspaceId, today, limit: VIDEO_DAILY_LIMIT }, 'daily video limit reached');
+        throw new ValidationError({ capability: `That is ${VIDEO_DAILY_LIMIT} videos in a day — the daily limit. It resets tomorrow.` });
+      }
+    }
+
     if (req.clientKey) {
       const existing = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
       if (existing) {
@@ -101,7 +117,10 @@ export class GenerationService {
       }
     }
 
-    const costCode = req.costCode ?? DEFAULT_COST_CODE[req.capability];
+    // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
+    const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
+    const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
+    const costCode = req.costCode ?? (shots === 4 ? 'video.ad_30s' : shots === 2 ? 'video.ad_15s' : DEFAULT_COST_CODE[req.capability]);
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
@@ -119,7 +138,7 @@ export class GenerationService {
             workspaceId: req.workspaceId,
             requestedById: req.requestedById,
             capability: req.capability,
-            kind: req.kind ?? 'STANDALONE',
+            kind,
             parentId: req.parentId ?? null,
             clientKey: req.clientKey ?? null,
             costCode: cost.code,
@@ -160,6 +179,60 @@ export class GenerationService {
     // After the commit, never inside it. See the file comment.
     await this.queue.enqueue(generation.id, req.capability);
     return { generation, balance };
+  }
+
+  /**
+   * A shot of a plan. Written by the PARENT's pipeline, never by a customer:
+   * the parent holds the price, so a child carries zero credits and touches
+   * no ledger. It is still a real row — routed, retried, swept and refunded
+   * (of nothing) exactly like any other — so a lost shot is a sweep, not a
+   * support ticket.
+   */
+  async createChild(parent: Generation, capability: Capability, params: Record<string, unknown>, index: number): Promise<Generation> {
+    const child = await this.db.generation.create({
+      data: {
+        workspaceId: parent.workspaceId,
+        requestedById: parent.requestedById,
+        capability,
+        kind: 'CHILD',
+        parentId: parent.id,
+        clientKey: `${parent.id}:shot:${index}`,
+        costCode: 'video.shot',
+        credits: 0,
+        stage: 'queued',
+        input: params as Prisma.InputJsonObject,
+      },
+    });
+    await this.queue.enqueue(child.id, capability);
+    return child;
+  }
+
+  /**
+   * A parent that dispatched its shots and stepped aside. The row stays
+   * RUNNING with stage 'waiting'; the children's heartbeats keep it alive;
+   * the last child to finish puts it back on the queue to assemble.
+   */
+  async wait(id: string): Promise<void> {
+    await this.db.generation.updateMany({ where: { id, status: 'RUNNING' }, data: { stage: 'waiting', progress: 20, heartbeatAt: new Date() } });
+  }
+
+  /**
+   * Claim a waiting parent for its second run. Conditional on stage
+   * 'waiting', so two children finishing at once cannot both assemble it.
+   */
+  async resume(id: string): Promise<Generation | null> {
+    const { count } = await this.db.generation.updateMany({
+      where: { id, status: 'RUNNING', kind: 'PARENT', stage: 'waiting' },
+      data: { stage: 'composing', heartbeatAt: new Date() },
+    });
+    if (count === 0) return null;
+    return this.db.generation.findUnique({ where: { id } });
+  }
+
+  /** A child checked in: its parent is alive too. */
+  async touchParent(childId: string): Promise<void> {
+    const child = await this.db.generation.findUnique({ where: { id: childId }, select: { parentId: true } });
+    if (child?.parentId) await this.db.generation.updateMany({ where: { id: child.parentId, status: 'RUNNING' }, data: { heartbeatAt: new Date() } });
   }
 
   /**
@@ -283,7 +356,7 @@ export class GenerationService {
   /** It ended badly. Give the credits back. */
   async fail(id: string, outcome: GenerationOutcome): Promise<Generation> {
     const row = await this.claimTerminal(id);
-    await this.refund(row, outcome.failureReason ?? 'generation failed');
+    if (row.credits > 0) await this.refund(row, outcome.failureReason ?? 'generation failed');
     return this.db.generation.update({
       where: { id: row.id },
       data: {
@@ -312,7 +385,7 @@ export class GenerationService {
     if (row.status !== 'QUEUED') {
       throw new ConflictError('That generation has already started and cannot be cancelled.');
     }
-    await this.refund(row, 'cancelled before it started');
+    if (row.credits > 0) await this.refund(row, 'cancelled before it started');
     logger.info({ generationId: id, workspaceId: row.workspaceId, credits: row.credits }, 'generation cancelled; credits returned');
     return this.db.generation.update({
       where: { id },
@@ -378,6 +451,27 @@ export class GenerationService {
     }
     if (reclaimed.length) logger.warn({ count: reclaimed.length, reclaimed }, 'generations reclaimed by the sweeper');
     return reclaimed;
+  }
+
+  /**
+   * Parents whose shots have all finished but that nobody woke — the wake-up
+   * enqueue failed, or the worker that ran the last shot died between the
+   * update and the enqueue. The dispatcher calls this on its timer. Returns
+   * what it queued so the direct-mode worker can run them itself.
+   */
+  async wakeReadyParents(): Promise<string[]> {
+    const parents = await this.db.generation.findMany({
+      where: { status: 'RUNNING', kind: 'PARENT', stage: 'waiting', children: { none: { status: { in: ['QUEUED', 'RUNNING'] } } } },
+      select: { id: true, capability: true },
+      take: 50,
+    });
+    const woken: string[] = [];
+    for (const p of parents) {
+      const r = await this.queue.enqueue(p.id, p.capability);
+      if (r.queued) woken.push(p.id);
+    }
+    if (woken.length) logger.warn({ count: woken.length, woken }, 'dispatcher woke parents whose shots had all finished');
+    return parents.map((p) => p.id);
   }
 
   /** The customer's history, newest first. Children ride inside their parent, not beside it. */

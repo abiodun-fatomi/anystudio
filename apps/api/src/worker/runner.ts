@@ -46,6 +46,8 @@ import { ProviderRouter, type RouteCandidate } from '../modules/provider/provide
 import { QueueService } from '../modules/queue/queue.service';
 import { fetchBytes } from '../modules/provider/adapters/http';
 import { Pipelines, type PipelineContext } from './pipelines';
+
+const TERMINAL = ['SUCCEEDED', 'FAILED', 'CANCELLED'] as const;
 import { storeArtifacts } from './outputs';
 
 /** Vendor-time ceiling per capability. Generous where GPUs are involved. */
@@ -69,7 +71,7 @@ const MAX_ATTEMPTS = 3;
 const HEARTBEAT_MS = 20_000;
 const RETRY_DELAY_MS = [0, 15_000, 60_000];
 
-export type RunOutcome = 'succeeded' | 'failed' | 'requeued' | 'skipped';
+export type RunOutcome = 'succeeded' | 'failed' | 'requeued' | 'skipped' | 'waiting';
 
 @Injectable()
 export class GenerationRunner {
@@ -84,7 +86,13 @@ export class GenerationRunner {
   ) {}
 
   async run(generationId: string): Promise<RunOutcome> {
-    const row = await this.generations.start(generationId);
+    let resume = false;
+    let row = await this.generations.start(generationId);
+    if (!row) {
+      // Not QUEUED. A waiting parent whose shots have all finished is the one legitimate reason to run again.
+      row = await this.generations.resume(generationId);
+      if (row) resume = true;
+    }
     if (!row) {
       logger.debug({ generationId }, 'job dropped: row is not QUEUED (already running, finished, or gone)');
       return 'skipped';
@@ -92,7 +100,10 @@ export class GenerationRunner {
     const log = logger.child({ generationId, workspaceId: row.workspaceId, capability: row.capability, attempt: row.attempts });
     log.info({ costCode: row.costCode, credits: row.credits, kind: row.kind, parentId: row.parentId }, 'generation started');
 
-    const heartbeat = setInterval(() => void this.generations.heartbeat(generationId), HEARTBEAT_MS);
+    const heartbeat = setInterval(() => {
+      void this.generations.heartbeat(generationId);
+      if (row!.parentId) void this.generations.touchParent(generationId); // a child alive means its parent is alive
+    }, HEARTBEAT_MS);
     const abort = new AbortController();
     const startedAt = Date.now();
 
@@ -127,10 +138,19 @@ export class GenerationRunner {
         stage: (stage, progress, detail) => this.events.stage(generationId, stage, progress, detail),
         media: this.media,
         db: this.db,
+        generations: this.generations,
+        resume,
       };
 
-      await this.events.stage(generationId, 'generating', 15);
+      await this.events.stage(generationId, resume ? 'composing' : 'generating', resume ? 60 : 15);
       const produced = await this.pipelines.run(ctx);
+
+      if (produced.waiting) {
+        await this.generations.wait(generationId);
+        await this.events.stage(generationId, 'waiting', 20, 'shots are rendering');
+        log.info({ elapsedMs: Date.now() - startedAt }, 'parent dispatched its shots and stepped aside');
+        return 'waiting';
+      }
 
       await this.events.stage(generationId, 'storing', 90);
       const outputs = await storeArtifacts(this.media, row, produced.artifacts);
@@ -150,6 +170,25 @@ export class GenerationRunner {
     } finally {
       clearInterval(heartbeat);
       abort.abort();
+      if (row.parentId) await this.wakeParent(row.parentId, generationId, log);
+    }
+  }
+
+  /**
+   * A shot finished (or failed for good). Tell the parent's stream, and if
+   * every sibling is terminal, put the parent back on the queue to assemble.
+   * The parent's `resume()` claim is conditional, so two shots finishing in
+   * the same instant cannot both wake it.
+   */
+  private async wakeParent(parentId: string, childId: string, log: typeof logger): Promise<void> {
+    const siblings = await this.db.generation.findMany({ where: { parentId }, select: { id: true, status: true } });
+    const done = siblings.filter((s) => (TERMINAL as readonly string[]).includes(s.status)).length;
+    await this.events.stage(parentId, 'waiting', Math.round(20 + (done / Math.max(1, siblings.length)) * 40), `shot ${done} of ${siblings.length} done`).catch(() => undefined);
+    if (done < siblings.length) return;
+    const parent = await this.db.generation.findUnique({ where: { id: parentId }, select: { status: true, stage: true, capability: true } });
+    if (parent?.status === 'RUNNING' && parent.stage === 'waiting') {
+      await this.queue.enqueue(parentId, parent.capability);
+      log.info({ parentId, childId, shots: siblings.length }, 'last shot finished; parent queued to assemble');
     }
   }
 

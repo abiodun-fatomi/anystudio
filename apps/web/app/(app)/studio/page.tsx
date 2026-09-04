@@ -73,7 +73,7 @@ function Studio() {
     const p = coerceParams(t, v);
     if (t.needsSource || src) { if (src) p.sourceKey = src; }
     if (t.needsSource && !src) { setBusy(false); return; }
-    const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: src ?? undefined });
+    const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: src ?? undefined, costCode: t.costCodeFor?.(p) });
     setBusy(false);
     if (!r.ok) {
       if (r.status === 402) toast({ title: 'Not enough credits', body: 'Top up and this will be here waiting.', tone: 'warn', action: { label: 'Top up', onClick: () => router.push('/billing/plans') } });

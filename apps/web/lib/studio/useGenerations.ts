@@ -96,13 +96,13 @@ export function useGenerations() {
   useEffect(() => () => { for (const es of streams.current.values()) es.close(); }, []);
 
   /** Ask for a generation. The card exists before the request is answered. */
-  const create = useCallback(async (input: { toolId: string; capability: string; params: Record<string, unknown>; credits: number; sourceKey?: string }) => {
+  const create = useCallback(async (input: { toolId: string; capability: string; params: Record<string, unknown>; credits: number; sourceKey?: string; costCode?: string }) => {
     const clientKey = crypto.randomUUID();
     const card: GenerationCard = { clientKey, id: null, toolId: input.toolId, capability: input.capability, credits: input.credits, status: 'requesting', stage: 'queued', progress: 0, outputs: [], urls: {}, params: input.params, sourceKey: input.sourceKey, createdAt: Date.now() };
     setCards((cs) => [card, ...cs].slice(0, MAX_CARDS));
     spend(input.credits);
     try {
-      const { generation: g, balance } = await api.generations.create(workspace.id, { capability: input.capability, params: input.params, clientKey });
+      const { generation: g, balance } = await api.generations.create(workspace.id, { capability: input.capability, params: input.params, clientKey, costCode: input.costCode });
       setBalance(balance);
       patch(clientKey, (c) => ({ ...c, id: g.id, status: g.status, credits: g.credits }));
       if (g.status === 'QUEUED' || g.status === 'RUNNING') watch(clientKey, g.id);

@@ -43,7 +43,7 @@ export class StubProvider extends BaseProvider {
 
     switch (input.capability) {
       case 'TEXT_GENERATE':
-        return { providerKey: this.key, providerJobId: jobId, artifacts: [{ mime: 'application/json', role: 'text', text: stubCopy(input) }] };
+        return { providerKey: this.key, providerJobId: jobId, artifacts: [{ mime: 'application/json', role: 'text', text: stubText(input) }] };
       case 'IMAGE_TO_VIDEO':
       case 'VIDEO_STITCH':
       case 'DUB':
@@ -82,6 +82,26 @@ async function stubAudio() {
   } catch (err) {
     throw new ProviderError('PROVIDER_DOWN', `stub audio needs ffmpeg: ${err instanceof Error ? err.message : err}`, 'stub:any');
   }
+}
+
+/** The shape the pipeline asked for: copy, a shot plan, or one field. */
+function stubText(input: ProviderInput) {
+  const task = (input.params as { task?: string }).task;
+  if (task === 'shot_plan') {
+    return {
+      hook: 'Stub: the hook',
+      shots: [
+        { prompt: 'Stub shot one: the product on a table', motion: 'slow push-in', durationSec: 8, caption: 'Made for you' },
+        { prompt: 'Stub shot two: the product in hand', motion: 'orbit', durationSec: 8, caption: 'Every day' },
+        { prompt: 'Stub shot three: the product close', motion: 'tilt up', durationSec: 8, caption: 'Built to last' },
+        { prompt: 'Stub shot four: the product settled', motion: 'hold', durationSec: 5, caption: 'Order today' },
+      ],
+      endCard: { text: 'Stub end card', price: (input.params as { price?: string }).price },
+      music: { mood: 'joyful', tempo: 'mid' },
+    };
+  }
+  if (task === 'field') return { value: `Stub rewrite of ${(input.params as { field?: string }).field ?? 'a field'}` };
+  return stubCopy(input);
 }
 
 function stubCopy(input: ProviderInput) {

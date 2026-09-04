@@ -21,6 +21,8 @@ import { OpenAiProvider } from './adapters/openai.adapter';
 import { AnthropicProvider } from './adapters/anthropic.adapter';
 import { BflProvider } from './adapters/bfl.adapter';
 import { LocalProvider } from './adapters/local.adapter';
+import { HiggsfieldProvider } from './adapters/higgsfield.adapter';
+import { HeyGenProvider } from './adapters/heygen.adapter';
 
 @Injectable()
 export class ProviderRegistry {
@@ -43,6 +45,8 @@ export class ProviderRegistry {
       { present: Boolean(env.OPENAI_API_KEY), make: () => OpenAiProvider.all(env.OPENAI_API_KEY!) },
       { present: Boolean(env.ANTHROPIC_API_KEY), make: () => AnthropicProvider.all(env.ANTHROPIC_API_KEY!) },
       { present: Boolean(env.BFL_API_KEY), make: () => BflProvider.all(env.BFL_API_KEY!) },
+      { present: Boolean(env.HIGGSFIELD_API_KEY && env.HIGGSFIELD_API_SECRET), make: () => HiggsfieldProvider.all(env.HIGGSFIELD_API_KEY!, env.HIGGSFIELD_API_SECRET!) },
+      { present: Boolean(env.HEYGEN_API_KEY), make: () => HeyGenProvider.all(env.HEYGEN_API_KEY!) },
     ];
 
     for (const c of candidates) {
