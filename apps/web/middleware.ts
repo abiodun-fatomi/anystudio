@@ -24,7 +24,7 @@ import { isLocalHost, siblingOrigin } from '@/lib/hosts';
 const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
 
 /** Paths that belong to the portal. Anything else on the marketing host is content. */
-const APP_PREFIXES = ['/login', '/signup', '/forgot', '/reset', '/welcome', '/today', '/studio', '/create', '/library',
+const APP_PREFIXES = ['/login', '/signup', '/forgot', '/reset', '/verify', '/email-change', '/invite', '/welcome', '/today', '/studio', '/create', '/library',
   '/products', '/brand', '/publishing', '/insights', '/billing', '/settings', '/api'];
 
 export function middleware(req: NextRequest) {

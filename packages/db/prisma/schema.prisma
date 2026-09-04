@@ -79,6 +79,21 @@ model User {
   /// market — marketing consent is a Consent row and is asked separately.
   phoneIsWhatsApp Boolean    @default(false)
   name            String?
+  /// Storage key of a READY MediaAsset the person uploaded as their picture.
+  avatarKey       String?
+  /// BCP 47 (en, fr, pt-BR, yo). Drives the copy pipeline's default language
+  /// and the UI once it is translated; null means "whatever the browser says".
+  locale          String?
+  /// IANA zone, for "sent at 9am your time" and the security screen's timestamps.
+  timezone        String?
+  /// Notification switches. JSON because the set of switches will change more
+  /// often than we want to migrate; the shape is documented in account.dto.ts.
+  prefs           Json?
+  /// Set when the person asks to delete the account. Thirty days later a
+  /// scheduled job anonymises it; signing in and cancelling before then clears
+  /// this. Nothing is destroyed at request time, because most requests are
+  /// made in a bad hour and regretted in a good one.
+  deleteRequestedAt DateTime?
   /// Argon2id. Null for accounts that only ever used Google, WhatsApp or a
   /// passkey — absence of a password must never mean "any password works".
   passwordHash    String?
@@ -249,6 +264,7 @@ enum TokenPurpose {
   STAFF_INVITE
   WORKSPACE_INVITE
   ORG_INVITE
+  EMAIL_CHANGE
 }
 
 model AuthToken {
@@ -465,6 +481,12 @@ enum AuthEventType {
   STAFF_GRANT_REVOKED
   IMPERSONATION_STARTED
   IMPERSONATION_ENDED
+  EMAIL_CHANGE_REQUESTED
+  EMAIL_CHANGED
+  IDENTITY_UNLINKED
+  RECOVERY_CODES_REGENERATED
+  ACCOUNT_DELETION_REQUESTED
+  ACCOUNT_DELETION_CANCELLED
 }
 
 /// Every authentication event, for the customer's own security screen as much

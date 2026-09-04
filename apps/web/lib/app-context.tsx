@@ -34,6 +34,8 @@ interface AppState {
   refund: (credits: number) => void;
   setBalance: (n: number) => void;
   refreshBalance: () => Promise<void>;
+  /** Re-read /auth/me: after a rename, a profile edit, joining or leaving a workspace. */
+  refreshMe: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -89,6 +91,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => ch.close();
   }, []);
 
+  const refreshMe = useCallback(async () => {
+    try { setMe(await api.auth.me()); } catch { /* the old picture stands until the next load */ }
+  }, []);
+
   const signOut = useCallback(async () => {
     try { await api.auth.logout(); } catch { /* the cookie may already be gone; leave anyway */ }
     try { new BroadcastChannel(SIGNOUT_CHANNEL).postMessage('signed-out'); } catch { /* no other tabs then */ }
@@ -115,9 +121,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refund: (c) => setBalanceState((b) => (b === null ? b : b + c)),
       setBalance: setBalanceState,
       refreshBalance,
+      refreshMe,
       signOut,
     };
-  }, [me, workspaceId, balance, refreshBalance, signOut]);
+  }, [me, workspaceId, balance, refreshBalance, refreshMe, signOut]);
 
   if (failed) {
     return (

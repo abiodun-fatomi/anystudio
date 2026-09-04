@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
  * Every response is an envelope: `{ status, message, data }` on success,
@@ -50,7 +50,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 // ---------------------------------------------------------------- shapes
 
 export interface Me {
-  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  user: { id: string; name: string | null; email: string | null; phone: string | null; avatarKey?: string | null; locale?: string | null; timezone?: string | null; deleteRequestedAt?: string | null };
   surface: 'APP' | 'ORG' | 'ADMIN';
   workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string }>;
   canSwitchToStaff: boolean;
@@ -124,7 +124,60 @@ export interface LedgerRow {
 
 // ---------------------------------------------------------------- calls
 
+// ---------------------------------------------------------------- account
+
+export interface Profile {
+  id: string; name: string | null; email: string | null; emailVerifiedAt: string | null; phone: string | null; phoneVerifiedAt: string | null;
+  phoneIsWhatsApp: boolean; avatarKey: string | null; avatarUrl: string | null; locale: string | null; timezone: string | null;
+  createdAt: string; lastLoginAt: string | null; hasPassword: boolean;
+  mfa: { enabled: boolean; factors: Array<{ id: string; type: string; label: string | null; confirmedAt: string | null; lastUsedAt: string | null }>; recoveryCodesLeft: number };
+  identities: Array<{ id: string; provider: 'PASSWORD' | 'GOOGLE' | 'WHATSAPP' | 'PASSKEY'; label: string | null; lastUsedAt: string | null; createdAt: string }>;
+  pendingEmail: { email: string | null; expiresAt: string } | null;
+  deletion: { requestedAt: string; deleteOn: string } | null;
+}
+export interface SessionRow { id: string; surface: string; userAgent: string | null; geoLabel: string | null; createdAt: string; lastSeenAt: string; current: boolean; device: string | null }
+export interface ActivityRow { id: string; type: string; surface: string | null; ip: string | null; userAgent: string | null; detail: Record<string, unknown> | null; createdAt: string; device: string | null }
+export interface NotificationSwitches { generationDoneEmail: boolean; generationDoneWhatsApp: boolean; lowCreditsEmail: boolean; weeklyDigest: boolean }
+export interface ConsentState { granted: boolean; wording: string | null; at: string | null }
+export interface Notifications { switches: NotificationSwitches; emailMarketing: ConsentState; whatsappMarketing: ConsentState }
+export interface Reauth { currentPassword?: string; code?: string }
+export interface MemberRow { userId: string; role: string; joinedAt: string; name: string | null; email: string | null; lastLoginAt: string | null }
+export interface InviteRow { id: string; email: string | null; role: string; expiresAt: string; createdAt: string }
+export type GrantableRole = 'ADMIN' | 'MEMBER' | 'BILLING' | 'AUDITOR';
+
 export const api = {
+  account: {
+    profile: () => request<Profile>('GET', '/me/profile'),
+    updateProfile: (patch: { name?: string; avatarKey?: string | null; locale?: string | null; timezone?: string | null }) =>
+      request<{ id: string; name: string | null; avatarKey: string | null; locale: string | null; timezone: string | null }>('PATCH', '/me/profile', patch),
+    requestEmailChange: (email: string, reauth: Reauth) => request<{ status: 'sent' }>('POST', '/me/email', { email, ...reauth }),
+    confirmEmailChange: (token: string) => request<{ status: 'changed' | 'invalid_token' }>('POST', '/me/email/confirm', { token }),
+    changePassword: (newPassword: string, reauth: Reauth) => request<{ status: 'changed'; otherSessionsEnded: number }>('POST', '/me/password', { newPassword, ...reauth }),
+    mfaEnrol: () => request<{ factorId: string; secret: string; uri: string }>('POST', '/me/mfa/enrol'),
+    mfaConfirm: (code: string) => request<{ status: 'enabled'; recoveryCodes: string[] }>('POST', '/me/mfa/confirm', { code }),
+    mfaDisable: (reauth: Reauth) => request<{ status: 'disabled' }>('DELETE', '/me/mfa', reauth),
+    recoveryCodes: (code: string) => request<{ recoveryCodes: string[] }>('POST', '/me/mfa/recovery-codes', { code }),
+    sessions: () => request<SessionRow[]>('GET', '/me/sessions'),
+    revokeSession: (id: string) => request<{ status: 'revoked' }>('DELETE', `/me/sessions/${id}`),
+    revokeOtherSessions: () => request<{ status: 'revoked'; count: number }>('POST', '/me/sessions/revoke-others'),
+    unlinkIdentity: (id: string) => request<{ status: 'unlinked' }>('DELETE', `/me/identities/${id}`),
+    activity: () => request<ActivityRow[]>('GET', '/me/security/activity'),
+    notifications: () => request<Notifications>('GET', '/me/notifications'),
+    updateNotifications: (body: { switches?: Partial<NotificationSwitches>; emailMarketing?: { granted: boolean; wording: string }; whatsappMarketing?: { granted: boolean; wording: string }; sourceUrl?: string }) =>
+      request<Notifications>('PUT', '/me/notifications', body),
+    export: () => request<Record<string, unknown>>('GET', '/me/export'),
+    requestDeletion: (reauth: Reauth) => request<{ status: 'scheduled'; deleteOn: string }>('POST', '/me/delete', { ...reauth, confirm: 'DELETE' }),
+    cancelDeletion: () => request<{ status: 'kept' }>('POST', '/me/delete/cancel'),
+  },
+  members: {
+    list: (workspaceId: string) => request<{ members: MemberRow[]; invites: InviteRow[] }>('GET', `/workspaces/${workspaceId}/members`),
+    invite: (workspaceId: string, email: string, role: GrantableRole) => request<InviteRow>('POST', `/workspaces/${workspaceId}/members/invites`, { email, role }),
+    cancelInvite: (workspaceId: string, inviteId: string) => request<{ status: 'cancelled' }>('DELETE', `/workspaces/${workspaceId}/members/invites/${inviteId}`),
+    accept: (token: string) => request<{ status: 'joined'; workspace: { id: string; name: string; type: string }; role: string } | { status: 'invalid_token' } | { status: 'wrong_account'; invitedEmail: string | null }>('POST', '/workspaces/invites/accept', { token }),
+    setRole: (workspaceId: string, userId: string, role: GrantableRole) => request<{ userId: string; role: string }>('PATCH', `/workspaces/${workspaceId}/members/${userId}`, { role }),
+    remove: (workspaceId: string, userId: string) => request<{ status: 'removed' }>('DELETE', `/workspaces/${workspaceId}/members/${userId}`),
+    transfer: (workspaceId: string, userId: string) => request<{ status: 'transferred'; ownerId: string }>('POST', `/workspaces/${workspaceId}/members/transfer`, { userId }),
+  },
   auth: {
     /** Password step. May return mfa_required. */
     login: (identifier: string, password: string) =>
@@ -148,6 +201,8 @@ export const api = {
     /** Merge-patch the welcome answers. */
     patchProfile: (id: string, patch: WorkspaceProfile) =>
       request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),
+    rename: (id: string, name: string) => request<{ id: string; name: string }>('PATCH', `/workspaces/${id}`, { name }),
+    remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
   },
   media: {
     presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>

@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export const CHANNELS = ['whatsapp', 'instagram', 'tiktok', 'facebook', 'jiji', 'shop', 'market'] as const;
 export const TONES = ['warm', 'direct', 'playful', 'premium'] as const;
@@ -22,4 +22,14 @@ export class WorkspaceProfileDto {
   @ApiPropertyOptional({ enum: TONES, description: 'How captions should sound' })
   @IsOptional() @IsIn(TONES)
   tone?: Tone;
+}
+
+export class WorkspaceUpdateDto {
+  @ApiPropertyOptional({ maxLength: 80 }) @IsOptional() @IsString() @IsNotEmpty() @MaxLength(80)
+  name?: string;
+}
+
+export class WorkspaceDeleteDto {
+  @ApiProperty({ description: 'The workspace name, typed exactly' }) @IsString() @IsNotEmpty() @MaxLength(80)
+  confirmName: string;
 }
