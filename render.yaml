@@ -1,41 +1,100 @@
-# Render blueprint — the API, the queue worker and Redis, for all three
-# environments. Import it ONCE (Render → New → Blueprint → this repo) and it
-# creates nine resources; re-syncing it after an edit updates them.
+# Render blueprint — the development environment.
 #
-#   development → anystudio-api-dev       anystudio-worker-dev       anystudio-redis-dev
-#   staging     → anystudio-api-staging   anystudio-worker-staging   anystudio-redis-staging
-#   production  → anystudio-api           anystudio-worker           anystudio-redis
+# Import it once (Render → New → Blueprint → this repo, branch `development`)
+# and it creates exactly two billable things: the API and its Postgres.
 #
-# Two services per environment, deployed and scaled independently: provider
-# calls in the worker take tens of seconds and must never compete with
-# webhook acknowledgements on the API, which have to return fast or the
-# sender retries and we process the event twice.
+#   anystudio-api-dev   web service   api.dev.anystudio.ai
+#   anystudio-db-dev    postgres      private network only
 #
-# Deploys are NOT triggered by Render (`autoDeploy: false`). The `API`
-# GitHub workflow deploys a commit only after it has passed the checks, pins
-# that exact commit, and waits for it to be live — see docs/DEPLOY.md §3.
+# WHY ONLY DEV, AND ONLY THE API
+# ------------------------------
+# A blueprint creates everything it declares the moment it is synced, and an
+# idle service bills exactly like a busy one. Staging and production do not
+# exist yet — by the branch flow in docs/DEPLOY.md they are weeks away — and
+# the queue worker has no consumers registered, so deploying it today would
+# pay for a process whose only behaviour is a heartbeat. The API never
+# imports ioredis, so there is no Redis here either.
 #
-# Migrations are the `preDeployCommand`, which Render runs ONCE per deploy,
-# in the new image, before any new instance starts. Never in the start
-# command — two replicas booting together would both run `migrate deploy`
-# against the same database, which is how a schema ends up half-applied.
+# What to add, and when:
+#   the generation pipeline lands  → anystudio-worker-dev + anystudio-kv-dev
+#   first promotion to staging     → copy the dev block, s/-dev/-staging/,
+#                                    branch: staging, APP_ENV: staging
+#   first production release       → same again, and turn on
+#                                    highAvailability + a real disk size
 #
-# Secrets are `sync: false`: Render asks for them on first import and keeps
-# them in the dashboard. They are never in this file, and the env groups
-# below are how the same list is set once per environment rather than once
-# per service. The three groups are identical on purpose: what differs
-# between environments is the values, and those live in the dashboard.
+# DEPLOYS ARE NOT TRIGGERED HERE
+# ------------------------------
+# `autoDeploy: false` on purpose. The `API` GitHub workflow deploys a commit
+# only after it has passed the checks, pins that exact commit, waits for it
+# to be live, and then proves through Cloudflare that the running process is
+# the one it shipped. Turning auto-deploy on would race that.
+#
+# MIGRATIONS RUN ONCE PER DEPLOY
+# ------------------------------
+# `preDeployCommand` runs in the new image before any new instance starts.
+# Never in the start command — two replicas booting together would both run
+# `migrate deploy` against the same database, which is how a schema ends up
+# half-applied.
 
 previewsEnabled: false
 
+databases:
+  - name: anystudio-db-dev
+    region: frankfurt            # same region as the API: private network, one hop
+    postgresMajorVersion: "18"
+    plan: 0.1c-256mb             # 0.1 CPU / 256 MB / 15 GB — the dev floor, ~$10.50/mo
+    # Empty list = reachable only from Render services in this region. The
+    # database that holds password hashes and the credit ledger gets no
+    # public endpoint at all. To connect a GUI from your laptop, add your IP
+    # here temporarily rather than opening it permanently.
+    ipAllowList: []
+
+services:
+  - type: web
+    name: anystudio-api-dev
+    runtime: docker
+    branch: development
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter                # pre-deploy commands are not available on free instances
+    region: frankfurt            # must match the database's region to reach it privately
+    healthCheckPath: /health     # liveness, not /ready — see health.controller.ts
+    preDeployCommand: npm run db:deploy
+    autoDeploy: false
+    envVars:
+      # Injected by Render, never typed by a human and never in this file.
+      #
+      # Both point at the direct connection today, which is correct while one
+      # instance serves dev. When you scale past one instance, set
+      # `connectionPool: pgbouncer` on the database above and change
+      # DATABASE_URL alone to `connectionPoolString` — migrations must keep
+      # using the direct string, because DDL and advisory locks do not survive
+      # a transaction pooler. That split is why schema.prisma declares
+      # `directUrl`.
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - fromGroup: anystudio-dev
+      - key: APP_ENV
+        value: dev
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: api
+      - key: PORT
+        value: "3001"
+      - key: LOG_LEVEL
+        value: debug
+
 envVarGroups:
+  # Render prompts for each of these on first sync and stores them in the
+  # dashboard. They are `sync: false` so no value ever lives in this file.
+  # The group is shared by every dev service, so the worker inherits it
+  # unchanged when it arrives.
   - name: anystudio-dev
     envVars:
-      - key: APP_KEY                    # openssl rand -base64 32 — encrypts TOTP seeds and the OAuth handshake cookie
-        sync: false
-      - key: DATABASE_URL               # Supabase: transaction pooler, port 6543
-        sync: false
-      - key: DIRECT_URL                 # Supabase: direct connection, port 5432 — migrations only
+      - key: APP_KEY                    # openssl rand -base64 32 — encrypts TOTP seeds and the Google handshake cookie
         sync: false
       - key: ORIGIN_APP                 # https://app.dev.anystudio.ai
         sync: false
@@ -77,270 +136,3 @@ envVarGroups:
         sync: false
       - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
         sync: false
-  - name: anystudio-staging
-    envVars:
-      - key: APP_KEY                    # openssl rand -base64 32 — encrypts TOTP seeds and the OAuth handshake cookie
-        sync: false
-      - key: DATABASE_URL               # Supabase: transaction pooler, port 6543
-        sync: false
-      - key: DIRECT_URL                 # Supabase: direct connection, port 5432 — migrations only
-        sync: false
-      - key: ORIGIN_APP                 # https://app.staging.anystudio.ai
-        sync: false
-      - key: ORIGIN_ORG                 # https://org.staging.anystudio.ai
-        sync: false
-      - key: ORIGIN_ADMIN               # https://admin.staging.anystudio.ai
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: MAIL_FROM                  # "AnyStudio <hello@anystudio.ai>"
-        sync: false
-      - key: R2_ENDPOINT
-        sync: false
-      - key: R2_BUCKET
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: HIGGSFIELD_API_KEY
-        sync: false
-      - key: HEYGEN_API_KEY
-        sync: false
-      - key: FLUTTERWAVE_SECRET_KEY
-        sync: false
-      - key: FLUTTERWAVE_WEBHOOK_SECRET
-        sync: false
-      - key: PADDLE_API_KEY
-        sync: false
-      - key: PADDLE_WEBHOOK_SECRET
-        sync: false
-      - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: WHATSAPP_ACCESS_TOKEN
-        sync: false
-      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
-        sync: false
-  - name: anystudio-production
-    envVars:
-      - key: APP_KEY                    # openssl rand -base64 32 — encrypts TOTP seeds and the OAuth handshake cookie
-        sync: false
-      - key: DATABASE_URL               # Supabase: transaction pooler, port 6543
-        sync: false
-      - key: DIRECT_URL                 # Supabase: direct connection, port 5432 — migrations only
-        sync: false
-      - key: ORIGIN_APP                 # https://app.anystudio.ai
-        sync: false
-      - key: ORIGIN_ORG                 # https://org.anystudio.ai
-        sync: false
-      - key: ORIGIN_ADMIN               # https://admin.anystudio.ai
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: MAIL_FROM                  # "AnyStudio <hello@anystudio.ai>"
-        sync: false
-      - key: R2_ENDPOINT
-        sync: false
-      - key: R2_BUCKET
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: HIGGSFIELD_API_KEY
-        sync: false
-      - key: HEYGEN_API_KEY
-        sync: false
-      - key: FLUTTERWAVE_SECRET_KEY
-        sync: false
-      - key: FLUTTERWAVE_WEBHOOK_SECRET
-        sync: false
-      - key: PADDLE_API_KEY
-        sync: false
-      - key: PADDLE_WEBHOOK_SECRET
-        sync: false
-      - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: WHATSAPP_ACCESS_TOKEN
-        sync: false
-      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
-        sync: false
-
-services:
-  # ---------------------------------------------------------------- development
-  - type: web
-    name: anystudio-api-dev
-    runtime: docker
-    branch: development
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
-    plan: starter               # pre-deploy commands are not available on free instances
-    region: frankfurt           # closest Render region to Lagos and to Europe
-    healthCheckPath: /health    # liveness, not /ready — see health.controller.ts
-    preDeployCommand: npm run db:deploy
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-dev
-      - key: APP_ENV
-        value: dev
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: api
-      - key: PORT
-        value: "3001"
-      - key: LOG_LEVEL
-        value: debug
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis-dev, property: connectionString }
-
-  - type: worker
-    name: anystudio-worker-dev
-    runtime: docker
-    branch: development
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
-    plan: starter
-    region: frankfurt
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-dev
-      - key: APP_ENV
-        value: dev
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: worker
-      - key: LOG_LEVEL
-        value: debug
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis-dev, property: connectionString }
-
-  - type: redis
-    name: anystudio-redis-dev
-    plan: free
-    region: frankfurt
-    # BullMQ jobs must survive a restart — a dropped queue is a customer whose
-    # credits were spent on a generation that never came back.
-    maxmemoryPolicy: noeviction
-    ipAllowList: []             # private network only
-
-  # -------------------------------------------------------------------- staging
-  - type: web
-    name: anystudio-api-staging
-    runtime: docker
-    branch: staging
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
-    plan: starter
-    region: frankfurt
-    healthCheckPath: /health
-    preDeployCommand: npm run db:deploy
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-staging
-      - key: APP_ENV
-        value: staging
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: api
-      - key: PORT
-        value: "3001"
-      - key: LOG_LEVEL
-        value: info
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis-staging, property: connectionString }
-
-  - type: worker
-    name: anystudio-worker-staging
-    runtime: docker
-    branch: staging
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
-    plan: starter
-    region: frankfurt
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-staging
-      - key: APP_ENV
-        value: staging
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: worker
-      - key: LOG_LEVEL
-        value: info
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis-staging, property: connectionString }
-
-  - type: redis
-    name: anystudio-redis-staging
-    plan: starter
-    region: frankfurt
-    maxmemoryPolicy: noeviction
-    ipAllowList: []
-
-  # ----------------------------------------------------------------- production
-  - type: web
-    name: anystudio-api
-    runtime: docker
-    branch: production
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
-    plan: starter
-    region: frankfurt
-    healthCheckPath: /health
-    preDeployCommand: npm run db:deploy
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-production
-      - key: APP_ENV
-        value: production
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: api
-      - key: PORT
-        value: "3001"
-      - key: LOG_LEVEL
-        value: info
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis, property: connectionString }
-
-  - type: worker
-    name: anystudio-worker
-    runtime: docker
-    branch: production
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
-    plan: starter
-    region: frankfurt
-    autoDeploy: false
-    envVars:
-      - fromGroup: anystudio-production
-      - key: APP_ENV
-        value: production
-      - key: NODE_ENV
-        value: production
-      - key: SERVICE_NAME
-        value: worker
-      - key: LOG_LEVEL
-        value: info
-      - key: REDIS_URL
-        fromService: { type: redis, name: anystudio-redis, property: connectionString }
-
-  - type: redis
-    name: anystudio-redis
-    plan: starter
-    region: frankfurt
-    maxmemoryPolicy: noeviction
-    ipAllowList: []

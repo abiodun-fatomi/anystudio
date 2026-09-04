@@ -24,13 +24,14 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  /// The pooled connection (Supabase's pgbouncer on :6543, or plain Postgres
-  /// locally). Every request the API serves goes through this.
+  /// Every request the API serves goes through this one. On Render it is the
+  /// database's direct connection string today, and becomes the pgbouncer
+  /// pool string the moment more than one instance runs.
   url        = env("DATABASE_URL")
-  /// The direct connection (:5432). Migrations run DDL and advisory locks,
-  /// neither of which survives a transaction pooler — so `migrate deploy`
-  /// uses this one and nothing else does. Falls back to DATABASE_URL when
-  /// unset, which is right for a local Postgres with no pooler in front.
+  /// Migrations only. They run DDL and take advisory locks, neither of which
+  /// survives a transaction pooler, so `migrate deploy` uses this and nothing
+  /// else does. Falls back to DATABASE_URL when unset, which is right both
+  /// locally and on a Render database with no pool in front of it yet.
   directUrl  = env("DIRECT_URL")
   extensions = [citext, pgcrypto]
 }

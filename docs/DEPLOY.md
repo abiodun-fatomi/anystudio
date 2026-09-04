@@ -11,7 +11,7 @@
 |---|---|---|
 | Web surfaces (app, org, admin, marketing) | **Cloudflare Workers**, via the OpenNext adapter | Domain, DNS, R2 and the API proxy are already on Cloudflare; the free tier allows commercial use; a custom domain on a Worker creates its own DNS record and certificate |
 | API + queue worker | **Render** (Frankfurt) | NestJS is a long-running Node process with a Prisma connection pool — not a fit for Workers |
-| Postgres | **Supabase** | One project per environment |
+| Postgres | **Render** (same region as the API) | Private network, so the database has no public endpoint |
 | Media | **Cloudflare R2** | One bucket per environment |
 
 Three environments, three branches, three of every Worker:
@@ -195,10 +195,9 @@ Only the account owner can do these; none can be automated from here.
 | Service | For | Notes |
 |---|---|---|
 | **Cloudflare** | DNS, Workers (web), R2 (media), WAF | One account; the zone is already here |
-| **Render** | API + worker + Redis | Import `render.yaml` as a Blueprint once; it creates dev, staging and production |
+| **Render** | API, Postgres, later the worker and Redis | Import `render.yaml` as a Blueprint; today it creates the dev API and its database |
 | **Google Cloud** | Sign in with Google | One OAuth client, all redirect URIs on it (section 9.1) |
 | **Resend** | transactional mail | Verify `anystudio.ai`, one API key (section 9.2) |
-| **Supabase** | Postgres | One project per environment — never one database with two schemas |
 | **Cloudflare R2** | media | One bucket per environment, with a `dev/` prefix on the staging one |
 | **Flutterwave / Paddle** | payments | Not needed until Phase 5 |
 
@@ -206,15 +205,17 @@ Only the account owner can do these; none can be automated from here.
 
 ## 5. Secrets, per environment
 
-Set in the Render **Env Group** for the environment (`anystudio-dev`,
-`anystudio-staging`, `anystudio-production`), which both the API and the
-worker read. Never in the repo, never in a GitHub secret, never in a chat.
+Set in the Render **Env Group** for the environment (`anystudio-dev` today),
+which every service in that environment reads. Never in the repo, never in a
+GitHub secret, never in a chat.
+
+`DATABASE_URL` and `DIRECT_URL` are **not** in this list: Render injects them
+from the database itself (`fromDatabase` in `render.yaml`), so nobody ever
+copies a connection string by hand.
 
 | Secret | Notes |
 |---|---|
 | `APP_KEY` | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment |
-| `DATABASE_URL` | Supabase → Project Settings → Database → **Transaction pooler**, port 6543 |
-| `DIRECT_URL` | Same page → **Direct connection**, port 5432. Migrations only (section 9.3) |
 | `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN` | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Section 9.1. With either missing the button degrades to a message, never to a half-working flow |
 | `RESEND_API_KEY` / `MAIL_FROM` | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain |
@@ -246,9 +247,9 @@ automatic and the branch protection is decorative.
 ## 7. Order of operations
 
 1. Section 2.1–2.3: the development web Worker, on `app.dev.anystudio.ai`
-2. Create the Supabase `anystudio-dev` project and copy both connection strings
-3. Section 3: import the blueprint, set the Render secrets and the GitHub
-   variables, deploy, then `api.dev.anystudio.ai`
+2. Section 3: import the blueprint — it creates the dev API and its Postgres
+   together — then set the env group, the GitHub variables, deploy, and add
+   `api.dev.anystudio.ai`
 4. Sign up on `app.dev.anystudio.ai/signup` — landing on `/welcome` proves the whole chain
 5. Repeat for staging
 6. Only then production
@@ -275,7 +276,7 @@ certificate is three problems at once; behind a plain hostname it is one.
 
 ---
 
-## 9. Sign in with Google, mail, and Supabase
+## 9. Sign in with Google, mail, and the database
 
 ### 9.1 Google OAuth client
 
@@ -313,18 +314,31 @@ The mailer picks a transport in this order: Resend if `RESEND_API_KEY` is set,
 otherwise `SMTP_URL` (Mailpit locally), otherwise it logs what it would have
 sent. So a fresh checkout boots and signs people up without any mail config.
 
-### 9.3 Supabase
+### 9.3 The database
 
-One project per environment, never one database with two schemas:
-`anystudio-dev`, `anystudio-staging`, `anystudio-prod`. From Project Settings → Database, take **both** strings:
+Render creates it from `render.yaml` and injects `DATABASE_URL` and
+`DIRECT_URL` into the API. There is nothing to copy and no connection string
+to keep anywhere.
 
-| Env var | Supabase string | Why |
-|---|---|---|
-| `DATABASE_URL` | Transaction pooler, port 6543 | Every request the API serves |
-| `DIRECT_URL` | Direct connection, port 5432 | Migrations only |
+Three things worth knowing about how it is configured:
 
-Migrations run DDL and take advisory locks, and neither survives a transaction
-pooler — that is the whole reason `schema.prisma` declares `directUrl`. Point
-both at the pooler and `db:deploy` will hang or half-apply.
+**It has no public endpoint.** `ipAllowList: []` means only Render services
+in `frankfurt` can reach it. That is deliberate for a database holding
+password hashes and the credit ledger. To point a GUI at it from your
+laptop, add your own IP to that list temporarily and take it out again —
+do not leave it open.
 
-Locally the two are the same string; `docker-compose` has no pooler.
+**The API and the database must stay in the same region.** They talk over
+Render's private network; put them in different regions and the traffic goes
+out over the public internet instead, which is both slower and no longer
+private.
+
+**Pooling is off until you need it.** Both `DATABASE_URL` and `DIRECT_URL`
+point at the direct connection while one instance serves dev. When you scale
+past one instance, set `connectionPool: pgbouncer` on the database and change
+`DATABASE_URL` alone to `connectionPoolString`. Migrations must keep the
+direct string — DDL and advisory locks do not survive a transaction pooler,
+which is the whole reason `schema.prisma` declares `directUrl`. Point both at
+a pooler and `db:deploy` will hang or half-apply.
+
+Locally, `docker-compose` has no pooler and the two are the same string.
