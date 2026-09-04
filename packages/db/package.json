@@ -6,7 +6,7 @@
   "scripts": {
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
-    "deploy": "prisma migrate deploy",
+    "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "reset": "prisma migrate reset --force",
     "lint": "eslint . --max-warnings 0"
