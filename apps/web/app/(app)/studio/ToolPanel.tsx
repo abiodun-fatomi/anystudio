@@ -19,12 +19,13 @@ export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy 
 }) {
   const { workspace, balance } = useApp();
   const [quote, setQuote] = useState<Quote | null>(null);
+  const costCode = tool.costCodeFor?.(values);
   useEffect(() => {
     let live = true;
     setQuote(null);
-    api.generations.quote(workspace.id, tool.capability).then((q) => { if (live) setQuote(q); }).catch(() => undefined);
+    api.generations.quote(workspace.id, tool.capability, costCode).then((q) => { if (live) setQuote(q); }).catch(() => undefined);
     return () => { live = false; };
-  }, [workspace.id, tool.capability]);
+  }, [workspace.id, tool.capability, costCode]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;
@@ -55,7 +56,7 @@ export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy 
 
           <div className={styles.generate}>
             <Button full size="lg" loading={busy} disabled={blocked} onClick={() => quote && onGenerate(quote)} title={why ?? undefined}>
-              {tool.id === 'copy' ? 'Write it' : tool.id === 'video' ? 'Make the reel' : 'Make it'}
+              {tool.id === 'copy' ? 'Write it' : tool.id === 'video' ? (Number(values.shots) > 1 ? 'Make the ad' : 'Make the reel') : 'Make it'}
             </Button>
             {why && <p className={styles.quoteNote} style={{ marginTop: 'var(--s-2)', textAlign: 'center' }}>{why}</p>}
           </div>

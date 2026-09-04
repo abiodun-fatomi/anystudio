@@ -140,6 +140,7 @@ export class WorkerSupervisor {
 
       if (!this.directMode) {
         await this.generations.redispatchOrphans();
+        await this.generations.wakeReadyParents();
         return;
       }
       await this.runDirect();
@@ -157,7 +158,9 @@ export class WorkerSupervisor {
       orderBy: { createdAt: 'asc' },
       take: limit - this.directBusy,
     });
-    for (const { id } of rows) {
+    // Waiting parents whose shots are done run here too; the enqueue inside wakeReadyParents is a no-op without Redis.
+    const parents = (await this.generations.wakeReadyParents()).slice(0, Math.max(0, limit - this.directBusy - rows.length)).map((id) => ({ id }));
+    for (const { id } of [...rows, ...parents]) {
       this.directBusy++;
       void this.runner
         .run(id)

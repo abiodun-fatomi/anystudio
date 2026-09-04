@@ -26,7 +26,7 @@ route to the stub adapter without any key at all.
 | `OPENAI_API_KEY` | OpenAI | platform.openai.com → API keys (org must have Sora access) | Sora 2 image-to-video | $0.10/s at 720p |
 | `ANTHROPIC_API_KEY` | Anthropic | console.anthropic.com → API keys | Claude Haiku 4.5 for brand-voice copy | $1/$5 per 1M tokens |
 | `BFL_API_KEY` | Black Forest Labs | api.bfl.ai → sign up | Flux Kontext Pro — budget edit tier | $0.04/image |
-| `HIGGSFIELD_API_KEY` | Higgsfield | already held | **Prototyping only.** The Kling row is disabled: Kling's ToS §4.6 forbids commercial use of outputs without written permission and §4.5 requires attribution. Ask Higgsfield in writing whether their route carries a pass-through licence. | — |
+| `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET` | Higgsfield | platform.higgsfield.ai → API keys | Their own DoP image-to-video models (`higgsfield:dop-turbo`, row disabled until resale terms are on file). The Kling row through them stays disabled: Kling's ToS §4.6 forbids commercial use without written permission and §4.5 requires attribution. | ~$0.60/clip (verify) |
 | `HEYGEN_API_KEY` | HeyGen | already held | Dubbing and avatars (Phase 11) | per-minute; not public, sales call |
 
 Later phases, not yet needed: ElevenLabs (`ELEVENLABS_API_KEY` — voiceover, dubbing v1, music), Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract), sync.so (lip sync).
@@ -69,6 +69,16 @@ Later phases, not yet needed: ElevenLabs (`ELEVENLABS_API_KEY` — voiceover, du
 - **Copyrightability** — purely AI-generated output likely fails the human-authorship test in US law. Do not promise exclusivity; say so in the terms.
 - **Platform disclosure** — Instagram and TikTok require AI-content labelling. Publishing phase obligation.
 
-## The video margin problem (open)
+## Video pricing (settled for launch)
 
-Seeded plans put a credit at ~$0.015 (business: 2,400 credits for $29). `video.reel` at 120 credits is ~$1.80. Wan 2.5 and Sora 2 clear that; Veo 3.1 Fast (~$2–3.20 per 8 s) does not. The seed routes budget-first for this reason. Repricing `video.reel` or promoting Veo is a row change.
+A credit is ~$0.015 at launch (business: 2,400 for $29).
+
+| Product | Credits | Sells for | Provider cost (budget route) | Margin |
+|---|---|---|---|---|
+| `video.reel` (one shot, 5–8 s) | 120 | ~$1.80 | Wan 2.5 720p ~$0.50–0.80 · Sora 2 ~$0.40–0.80 | ~55–75% |
+| `video.ad_15s` (two 8 s shots + stitch) | 260 | ~$3.90 | ~$1.60 + a planner call | ~58% |
+| `video.ad_30s` (four shots + stitch) | 480 | ~$7.20 | ~$2.90 + a planner call | ~60% |
+
+Veo 3.1 Fast (~$2–3.20 per 8 s) does not clear the reel price and stays at priority 30 — a fallback, not the default — until the reel is repriced or a premium tier exists. Promoting it is a row edit. Stitching is ours (ffmpeg) and costs nothing at the vendor.
+
+`VIDEO_DAILY_LIMIT` (default 20 parents/standalone videos per workspace per rolling day) is the guardrail that fails closed; `ProviderModel.enabled` is the kill switch.

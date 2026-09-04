@@ -90,6 +90,7 @@ export const GENERATION_STAGES = [
   'routing', // choosing a provider
   'generating', // the provider is working
   'composing', // our own post-processing: composite, text, sizes, stitch
+  'waiting', // a parent whose shots are rendering; it holds no worker while it waits
   'storing', // outputs written to storage
   'done',
   'failed',
@@ -206,6 +207,21 @@ export const capabilityParams = {
     /** Camera and motion hints the shot planner fills in. */
     motion: z.string().max(300).optional(),
     audio: z.boolean().default(false),
+    /**
+     * More than one shot makes this a PARENT: a plan is written, each shot is
+     * its own CHILD generation rendered in parallel, and the parent stitches
+     * them with captions, a bed and an end card. 1 = a single reel.
+     */
+    shots: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
+    /** The ad's shape, for the planner. */
+    format: z.enum(['reveal', 'benefits', 'before_after', 'unboxing', 'price_drop', 'ugc']).default('reveal'),
+    /** Words for the end card; the price comes from the copy fields when present. */
+    productName: z.string().max(120).optional(),
+    price: z.string().max(40).optional(),
+    details: z.string().max(800).optional(),
+    /** Shot-level fields the planner writes; a customer never sets them. */
+    caption: z.string().max(120).optional(),
+    shotIndex: z.number().int().min(0).max(7).optional(),
   }),
   VIDEO_STITCH: z.object({
     /** Ordered shot keys — each one an IMAGE_TO_VIDEO output. */
@@ -288,7 +304,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   BACKGROUND_REPLACE: 'image.background',
   RELIGHT: 'image.relight',
   UPSCALE: 'image.upscale',
-  IMAGE_TO_VIDEO: 'video.reel',
+  IMAGE_TO_VIDEO: 'video.reel', // a multi-shot ad prices itself under video.ad_15s / video.ad_30s
   VIDEO_STITCH: 'video.stitch',
   TEXT_GENERATE: 'text.description',
   VOICEOVER: 'audio.voiceover',
