@@ -47,6 +47,12 @@ jobs:
       # _prisma_migrations rows, and refuses with P3005 "the database schema
       # is not empty". The check and the thing it checks need separate ground.
       SHADOW_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_shadow?schema=public
+      # schema.prisma declares `directUrl`, so EVERY command that resolves the
+      # datasource needs this too — migrate deploy, the seed, and any test that
+      # constructs a PrismaClient. Without it Prisma stops at P1012 before it
+      # opens a connection. There is no pooler here, so it is the same server
+      # as DATABASE_URL; on Render the two genuinely differ.
+      DIRECT_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
       REDIS_URL: redis://localhost:6379
       ORIGIN_APP: http://localhost:3000
       ORIGIN_ORG: http://localhost:3002
