@@ -73,6 +73,15 @@ jobs:
     # anything may be written here — GitHub prints a step's env verbatim.
     env:
       DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      # A SEPARATE database for the drift check.
+      #
+      # `migrate diff --from-migrations` replays every migration into the
+      # shadow database to work out what the schema should look like, and
+      # leaves it there. Point it at DATABASE_URL and the next step —
+      # `db:deploy` — finds a database that already has tables but no
+      # _prisma_migrations rows, and refuses with P3005 "the database schema
+      # is not empty". The check and the thing it checks need separate ground.
+      SHADOW_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_shadow?schema=public
       DIRECT_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
       ORIGIN_APP: http://localhost:3000
       ORIGIN_ORG: http://localhost:3002
@@ -95,6 +104,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
+      - name: Create the shadow database
+        run: PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_shadow'
+
       # A schema edited without a matching migration works locally and fails
       # on deploy. Catch it here, where it is a red check and not an outage.
       - name: Migrations match the schema
@@ -102,7 +114,7 @@ jobs:
           pnpm --filter @anystudio/db exec prisma migrate diff \
             --from-migrations ./prisma/migrations \
             --to-schema-datamodel ./prisma/schema.prisma \
-            --shadow-database-url "$DATABASE_URL" --exit-code
+            --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
 
       - name: Migrations apply cleanly
         run: pnpm db:deploy
