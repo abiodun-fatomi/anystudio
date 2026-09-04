@@ -1,5 +1,13 @@
 -- The credit ledger's invariants live in the database, not the application.
 -- An ORM can be bypassed; a trigger cannot.
+--
+-- A NOTE ON IDENTIFIERS, because it has already cost one failed deploy:
+-- schema.prisma maps TABLE names to snake_case with @@map, but leaves FIELD
+-- names alone. So the tables are `ledger_entries` and `wallets` while the
+-- columns are "walletId", "balanceAfter", "idempotencyKey" and friends —
+-- mixed case, and therefore double-quoted everywhere in raw SQL. Written
+-- unquoted, Postgres folds them to lowercase and the statement fails with
+-- `column "balance_after" does not exist`.
 
 -- ---------------------------------------------------------------------------
 -- 1. Append-only. Nothing rewrites history, whoever is asking.
@@ -62,15 +70,15 @@ BEGIN
 
   -- Idempotency, checked under the lock.
   SELECT * INTO v_existing FROM ledger_entries
-   WHERE wallet_id = p_wallet_id AND idempotency_key = p_idempotency_key;
+   WHERE "walletId" = p_wallet_id AND "idempotencyKey" = p_idempotency_key;
   IF FOUND THEN
     RETURN v_existing;
   END IF;
 
-  SELECT COALESCE(balance_after, 0) INTO v_balance
+  SELECT COALESCE("balanceAfter", 0) INTO v_balance
     FROM ledger_entries
-   WHERE wallet_id = p_wallet_id
-   ORDER BY created_at DESC, id DESC
+   WHERE "walletId" = p_wallet_id
+   ORDER BY "createdAt" DESC, id DESC
    LIMIT 1;
   v_balance := COALESCE(v_balance, 0);
 
@@ -80,7 +88,7 @@ BEGIN
   END IF;
 
   INSERT INTO ledger_entries
-    (id, wallet_id, kind, delta, balance_after, reference_id, idempotency_key, reason, actor_id, created_at)
+    (id, "walletId", kind, delta, "balanceAfter", "referenceId", "idempotencyKey", reason, "actorId", "createdAt")
   VALUES
     (gen_random_uuid(), p_wallet_id, p_kind, p_delta, v_balance + p_delta,
      p_reference_id, p_idempotency_key, p_reason, p_actor_id, now())
@@ -96,14 +104,14 @@ END $$;
 CREATE OR REPLACE FUNCTION ledger_balance(p_wallet_id uuid) RETURNS integer
 LANGUAGE sql STABLE AS $$
   SELECT COALESCE((
-    SELECT balance_after FROM ledger_entries
-     WHERE wallet_id = p_wallet_id
-     ORDER BY created_at DESC, id DESC LIMIT 1
+    SELECT "balanceAfter" FROM ledger_entries
+     WHERE "walletId" = p_wallet_id
+     ORDER BY "createdAt" DESC, id DESC LIMIT 1
   ), 0);
 $$;
 
 CREATE OR REPLACE FUNCTION ledger_drift(p_wallet_id uuid) RETURNS integer
 LANGUAGE sql STABLE AS $$
   SELECT ledger_balance(p_wallet_id)
-       - COALESCE((SELECT SUM(delta) FROM ledger_entries WHERE wallet_id = p_wallet_id), 0);
+       - COALESCE((SELECT SUM(delta) FROM ledger_entries WHERE "walletId" = p_wallet_id), 0);
 $$;
