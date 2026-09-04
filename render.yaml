@@ -56,7 +56,7 @@ services:
     branch: development
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    plan: starter                # pre-deploy commands are not available on free instances
+    plan: 0.5c-512mb             # 0.5 CPU / 512 MB. Not free: pre-deploy commands need a paid instance
     region: frankfurt            # must match the database's region to reach it privately
     healthCheckPath: /health     # liveness, not /ready — see health.controller.ts
     preDeployCommand: npm run db:deploy
