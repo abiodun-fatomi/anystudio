@@ -1,23 +1,28 @@
 # Render blueprint — the development environment.
 #
 # Import it once (Render → New → Blueprint → this repo, branch `development`)
-# and it creates exactly two billable things: the API and its Postgres.
+# and it creates four billable things: the API, the worker, Postgres and the
+# Redis (Key Value) the queue rides on.
 #
-#   anystudio-api-dev   web service   api.dev.anystudio.ai
-#   anystudio-db-dev    postgres      private network only
+#   anystudio-api-dev      web service   api.dev.anystudio.ai
+#   anystudio-worker-dev   worker        no HTTP; the queue consumer
+#   anystudio-db-dev       postgres      private network only
+#   anystudio-kv-dev       key value     private network only
 #
-# WHY ONLY DEV, AND ONLY THE API
-# ------------------------------
+# WHY ONLY DEV
+# ------------
 # A blueprint creates everything it declares the moment it is synced, and an
 # idle service bills exactly like a busy one. Staging and production do not
-# exist yet — by the branch flow in docs/DEPLOY.md they are weeks away — and
-# the queue worker has no consumers registered, so deploying it today would
-# pay for a process whose only behaviour is a heartbeat. The API never
-# imports ioredis, so there is no Redis here either.
+# exist yet — by the branch flow in docs/DEPLOY.md they are weeks away.
+#
+# THE WORKER IS THE API IMAGE WITH A DIFFERENT COMMAND
+# ----------------------------------------------------
+# Same Dockerfile, `dockerCommand: node dist/src/worker/main.js`. The worker
+# needs Redis for its queue but not for correctness: with Redis down it runs
+# QUEUED rows straight from Postgres (see src/worker/supervisor.ts).
 #
 # What to add, and when:
-#   the generation pipeline lands  → anystudio-worker-dev + anystudio-kv-dev
-#   first promotion to staging     → copy the dev block, s/-dev/-staging/,
+#   first promotion to staging     → copy the dev blocks, s/-dev/-staging/,
 #                                    branch: staging, APP_ENV: staging
 #   first production release       → same again, and turn on
 #                                    highAvailability + a real disk size
@@ -50,6 +55,14 @@ databases:
     ipAllowList: []
 
 services:
+  # The queue. Free plan is fine for dev: a job is an id and a heartbeat.
+  # Private only — nothing outside Render's network needs it.
+  - type: keyvalue
+    name: anystudio-kv-dev
+    region: frankfurt
+    plan: free
+    ipAllowList: []
+
   - type: web
     name: anystudio-api-dev
     runtime: docker
@@ -75,6 +88,8 @@ services:
         fromDatabase: { name: anystudio-db-dev, property: connectionString }
       - key: DIRECT_URL
         fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
       - fromGroup: anystudio-dev
       - key: APP_ENV
         value: dev
@@ -86,6 +101,38 @@ services:
         value: "3001"
       - key: LOG_LEVEL
         value: debug
+
+  - type: worker
+    name: anystudio-worker-dev
+    runtime: docker
+    branch: development
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: starter
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
+      - fromGroup: anystudio-dev
+      - key: APP_ENV
+        value: dev
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: worker
+      - key: LOG_LEVEL
+        value: debug
+      # Concurrency per weight class. Video holds a slot for minutes.
+      - key: WORKER_FAST_CONCURRENCY
+        value: "6"
+      - key: WORKER_HEAVY_CONCURRENCY
+        value: "2"
 
 envVarGroups:
   # Render prompts for each of these on first sync and stores them in the
@@ -117,6 +164,21 @@ envVarGroups:
       - key: R2_ACCESS_KEY_ID
         sync: false
       - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      # ---- AI providers: see docs/PROVIDERS.md for where each comes from ----
+      - key: FAL_KEY
+        sync: false
+      - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: PHOTOROOM_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: BFL_API_KEY
         sync: false
       - key: HIGGSFIELD_API_KEY
         sync: false

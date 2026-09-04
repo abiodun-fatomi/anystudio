@@ -9,8 +9,9 @@ name: API
 #   staging     → anystudio-api-staging  api.staging.anystudio.ai
 #   production  → anystudio-api          api.anystudio.ai
 #
-# A queue worker deploys alongside the API in any environment that sets
-# RENDER_WORKER_SERVICE_ID. None do today — see the `deploy` job.
+# The queue worker is the SAME image as the API started with a different
+# command (node dist/src/worker/main.js). It deploys alongside the API in any
+# environment that sets RENDER_WORKER_SERVICE_ID — see the `deploy` job.
 #
 # Render's own auto-deploy is off (`autoDeploy: false` in render.yaml), so a
 # commit reaches an environment only through this file, and only after the
@@ -26,7 +27,6 @@ on:
     branches: [development, staging, production]
     paths:
       - apps/api/**
-      - apps/worker/**
       - packages/db/**
       - packages/shared/**
       - pnpm-lock.yaml
@@ -39,7 +39,6 @@ on:
   pull_request:
     paths:
       - apps/api/**
-      - apps/worker/**
       - packages/db/**
       - packages/shared/**
       - pnpm-lock.yaml
@@ -123,20 +122,19 @@ jobs:
         run: pnpm db:deploy
 
       - name: Typecheck
-        run: pnpm --filter @anystudio/shared build && pnpm --filter "@anystudio/api" --filter "@anystudio/worker" typecheck
+        run: pnpm --filter @anystudio/shared build && pnpm --filter "@anystudio/api" typecheck
 
       - name: Test
-        run: pnpm --filter "@anystudio/api" --filter "@anystudio/worker" test
+        run: pnpm --filter "@anystudio/api" test
 
       - name: Build
-        run: pnpm --filter "@anystudio/api" --filter "@anystudio/worker" build
+        run: pnpm --filter "@anystudio/api" build
 
       # The image Render builds is this Dockerfile; build it here too so a
       # broken Dockerfile fails the PR rather than the deploy.
       - name: Docker image builds
         run: |
-          docker build -f apps/api/Dockerfile    -t anystudio-api:ci    .
-          docker build -f apps/worker/Dockerfile -t anystudio-worker:ci .
+          docker build -f apps/api/Dockerfile -t anystudio-api:ci .
 
   deploy:
     name: Deploy
@@ -153,13 +151,10 @@ jobs:
     #   API_URL                   optional; only until api.<env>.anystudio.ai exists
     # and one repository secret: RENDER_API_KEY.
     #
-    # The worker is optional because render.yaml does not create one yet. The
-    # queue has no consumers and the API never imports ioredis, so a worker
-    # service would be a paid instance doing nothing. The worker's code, its
-    # Dockerfile and its tests are still built and run in `check` above — only
-    # the deploy is skipped. Add RENDER_WORKER_SERVICE_ID to an environment
-    # (after adding the service to render.yaml) and the step below starts
-    # deploying it, with no change to this file.
+    # The worker is optional per environment: render.yaml declares it for dev
+    # (anystudio-worker-dev, same Dockerfile, worker command). Set
+    # RENDER_WORKER_SERVICE_ID on an environment and the step below deploys
+    # it after the API, with no change to this file.
     environment:
       name: ${{ github.ref_name }}
       url: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
