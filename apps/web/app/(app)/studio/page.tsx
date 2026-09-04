@@ -40,7 +40,7 @@ function Studio() {
   const [values, setValues] = useState<Record<string, Record<string, unknown>>>({});
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { cards, create, cancel, dismiss, hydrate, resolveUrls } = useGenerations();
+  const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField } = useGenerations();
 
   useEffect(() => { void hydrate(); }, [hydrate]);
 
@@ -146,7 +146,7 @@ function Studio() {
         ) : (
           <div className={styles.grid}>
             {cards.map((c) => (
-              <ResultCard key={c.clientKey} card={c} onUseAsSource={useAsSource} onSendToVideo={sendToVideo} onAgain={again} onCancel={(k) => void cancel(k)} onDismiss={dismiss} onRefreshUrls={(k, keys) => void resolveUrls(k, keys)} />
+              <ResultCard key={c.clientKey} card={c} onUseAsSource={useAsSource} onSendToVideo={sendToVideo} onAgain={again} onCancel={(k) => void cancel(k)} onDismiss={dismiss} onRefreshUrls={(k, keys) => void resolveUrls(k, keys)} onEditText={(k, f, v) => void editText(k, f, v)} onRegenerateField={regenerateField} />
             ))}
           </div>
         )}

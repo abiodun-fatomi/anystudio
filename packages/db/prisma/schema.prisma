@@ -344,6 +344,7 @@ model Workspace {
   generations Generation[]
   media       MediaAsset[]
   brandKit    BrandKit?
+  fingerprints CopyFingerprint[]
 
   @@index([type])
   @@map("workspaces")
@@ -816,6 +817,34 @@ model MediaAsset {
   @@index([workspaceId, sha256])
   @@index([generationId])
   @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------------
+// COPY FINGERPRINTS — no two merchants get the same description
+//
+// An organisation submitting a catalogue must not receive near-identical
+// descriptions for near-identical products: search engines fold duplicate
+// text, and a marketplace page that reads like the next one sells neither.
+// Each description is fingerprinted (MinHash over word shingles — sixty-four
+// small integers) and compared against the workspace's recent ones before it
+// is accepted. A near-duplicate is written again with the offending phrasing
+// quoted back to the model. No vendor, no embedding service, milliseconds.
+// ---------------------------------------------------------------------------
+
+model CopyFingerprint {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  generationId String   @db.Uuid
+  /// The seller's own id for the product, when given, so re-running the same product is not a duplicate of itself.
+  productKey   String?
+  /// Sixty-four MinHash values over word 3-grams of the long description.
+  minhash      Int[]
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("copy_fingerprints")
 }
 
 // ---------------------------------------------------------------------------

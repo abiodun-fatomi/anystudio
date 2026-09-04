@@ -7,6 +7,7 @@
  * size, use as the source, send to video, do it again, copy the caption.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { COPY_FIELDS } from '@anystudio/shared';
 import type { GenerationOutputRow } from '@/lib/api';
 import { toolById } from '@/lib/studio/tools';
 import type { GenerationCard } from '@/lib/studio/useGenerations';
@@ -17,7 +18,7 @@ import styles from './studio.module.css';
 const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = { requesting: 'warn', QUEUED: 'warn', RUNNING: 'accent', SUCCEEDED: 'ok', FAILED: 'danger', CANCELLED: undefined };
 const STATUS_LABEL: Record<GenerationCard['status'], string> = { requesting: 'Sending', QUEUED: 'Queued', RUNNING: 'Working', SUCCEEDED: 'Done', FAILED: 'Failed', CANCELLED: 'Cancelled' };
 
-export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCancel, onDismiss, onRefreshUrls }: {
+export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCancel, onDismiss, onRefreshUrls, onEditText, onRegenerateField }: {
   card: GenerationCard;
   onUseAsSource: (key: string) => void;
   onSendToVideo: (key: string) => void;
@@ -25,6 +26,8 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
   onCancel: (clientKey: string) => void;
   onDismiss: (clientKey: string) => void;
   onRefreshUrls: (clientKey: string, keys: string[]) => void;
+  onEditText: (clientKey: string, field: string, value: string) => void;
+  onRegenerateField: (clientKey: string, field: string, instruction: string) => Promise<{ ok: boolean; message?: string }>;
 }) {
   const tool = toolById(card.toolId);
   const live = card.status === 'requesting' || card.status === 'QUEUED' || card.status === 'RUNNING';
@@ -82,7 +85,7 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
         </div>
       )}
 
-      {text && <CopyView text={text} />}
+      {text && <CopyView text={text} editable={card.status === 'SUCCEEDED' && Boolean(card.id)} onEdit={(f, v) => onEditText(card.clientKey, f, v)} onRegenerate={(f, i) => onRegenerateField(card.clientKey, f, i)} />}
 
       {!live && missingUrls.length > 0 && (
         <Button variant="ghost" size="sm" onClick={() => onRefreshUrls(card.clientKey, missingUrls)}>Refresh previews</Button>
@@ -108,35 +111,85 @@ interface CopyText {
   seo?: { title?: string; metaDescription?: string };
 }
 
-function CopyView({ text }: { text: CopyText }) {
+function CopyView({ text, editable, onEdit, onRegenerate }: { text: CopyText; editable: boolean; onEdit: (field: string, value: string) => void; onRegenerate: (field: string, instruction: string) => Promise<{ ok: boolean; message?: string }> }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const copy = async (label: string, value: string) => {
     try { await navigator.clipboard.writeText(value); toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 }); }
     catch { toast({ title: 'Could not copy', body: 'Select the text and copy it yourself.', tone: 'warn' }); }
   };
-  const fields: Array<[string, string]> = [];
-  if (text.description?.long) fields.push(['Description', text.description.long]);
-  for (const [platform, caption] of Object.entries(text.captions ?? {})) fields.push([platformLabel(platform), caption]);
-  if (text.hashtags) { const all = [...(text.hashtags.broad ?? []), ...(text.hashtags.niche ?? []), ...(text.hashtags.local ?? [])]; if (all.length) fields.push(['Hashtags', all.join(' ')]); }
-  if (expanded && text.description?.short) fields.push(['Short description', text.description.short]);
-  if (expanded && text.altText) fields.push(['Alt text', text.altText]);
-  if (expanded && text.seo?.title) fields.push(['SEO title', text.seo.title]);
-  if (expanded && text.seo?.metaDescription) fields.push(['Meta description', text.seo.metaDescription]);
+  const fields: Array<{ path: string; value: string }> = [];
+  const get = (path: string): string | undefined => path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), text) as string | undefined;
+  for (const path of ['description.long', 'captions.instagram', 'captions.tiktok', 'captions.whatsapp_status', 'captions.facebook', 'captions.x']) { const v = get(path); if (v) fields.push({ path, value: v }); }
+  if (text.hashtags) { const all = [...(text.hashtags.broad ?? []), ...(text.hashtags.niche ?? []), ...(text.hashtags.local ?? [])]; if (all.length) fields.push({ path: 'hashtags', value: all.join(' ') }); }
+  if (expanded) for (const path of ['description.short', 'altText', 'seo.title', 'seo.metaDescription']) { const v = get(path); if (v) fields.push({ path, value: v }); }
   return (
     <div className={styles.copyBlock}>
-      {fields.map(([label, value]) => (
-        <div key={label} className={styles.copyField}>
-          <div className={styles.copyFieldHead}><span>{label}</span><Button variant="link" size="sm" onClick={() => void copy(label, value)}>Copy</Button></div>
-          <div className={styles.copyText}>{value}</div>
-        </div>
+      {fields.map((f) => (
+        <CopyField key={f.path} path={f.path} value={f.value} editable={editable && Boolean(COPY_FIELDS[f.path])} onCopy={() => void copy(COPY_FIELDS[f.path]?.label ?? 'Hashtags', f.value)} onEdit={(v) => onEdit(f.path, v)} onRegenerate={(i) => onRegenerate(f.path, i)} />
       ))}
       <Button variant="link" size="sm" onClick={() => setExpanded((e) => !e)} style={{ justifySelf: 'start' }}>{expanded ? 'Less' : 'More: short description, alt text, SEO'}</Button>
     </div>
   );
 }
 
-const platformLabel = (p: string) => ({ instagram: 'Instagram', tiktok: 'TikTok', whatsapp_status: 'WhatsApp Status', facebook: 'Facebook', x: 'X' } as Record<string, string>)[p] ?? p;
+/** One field: read, or edit in place with the original shown for comparison, or ask for a rewrite with a note. */
+function CopyField({ path, value, editable, onCopy, onEdit, onRegenerate }: { path: string; value: string; editable: boolean; onCopy: () => void; onEdit: (v: string) => void; onRegenerate: (instruction: string) => Promise<{ ok: boolean; message?: string }> }) {
+  const { toast } = useToast();
+  const spec = COPY_FIELDS[path];
+  const label = spec?.label ?? 'Hashtags';
+  const [mode, setMode] = useState<'read' | 'edit' | 'ask'>('read');
+  const [draft, setDraft] = useState(value);
+  const [original] = useState(value);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const changed = value !== original;
+  const over = spec ? draft.length > spec.max : false;
+
+  const rewrite = async () => {
+    setBusy(true);
+    const r = await onRegenerate(note.trim());
+    setBusy(false);
+    if (r.ok) { setMode('read'); setNote(''); toast({ title: `${label} rewritten`, body: '1 credit.', tone: 'ok', durationMs: 2500 }); }
+    else toast({ title: 'Could not rewrite', body: r.message, tone: 'danger' });
+  };
+
+  return (
+    <div className={styles.copyField}>
+      <div className={styles.copyFieldHead}>
+        <span>{label}{changed && <em style={{ marginLeft: 8, fontStyle: 'normal', color: 'var(--accent)' }}>· edited</em>}</span>
+        <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
+          {editable && mode === 'read' && <Button variant="link" size="sm" onClick={() => { setDraft(value); setMode('edit'); }}>Edit</Button>}
+          {editable && mode === 'read' && <Button variant="link" size="sm" onClick={() => setMode('ask')}>Rewrite · 1 cr</Button>}
+          <Button variant="link" size="sm" onClick={onCopy}>Copy</Button>
+        </span>
+      </div>
+      {mode === 'read' && <div className={styles.copyText}>{value}</div>}
+      {mode === 'edit' && (
+        <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
+          <textarea className={styles.copyText} style={{ font: 'inherit', fontSize: 'var(--t-2)', resize: 'vertical', minHeight: 96, maxHeight: 'none', color: 'var(--ink)' }} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={`Edit ${label}`} />
+          {changed && <details><summary style={{ fontSize: 'var(--t-1)', color: 'var(--muted)', cursor: 'pointer' }}>What it said before</summary><div className={styles.copyText} style={{ marginTop: 6, color: 'var(--muted)' }}>{original}</div></details>}
+          <div style={{ display: 'flex', gap: 'var(--s-2)', alignItems: 'center' }}>
+            <Button size="sm" onClick={() => { onEdit(draft); setMode('read'); }} disabled={over || !draft.trim()}>Save</Button>
+            <Button size="sm" variant="ghost" onClick={() => setMode('read')}>Cancel</Button>
+            {spec && <span className="mono" style={{ marginLeft: 'auto', color: over ? 'var(--danger)' : undefined }}>{draft.length} / {spec.max}</span>}
+          </div>
+        </div>
+      )}
+      {mode === 'ask' && (
+        <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
+          <div className={styles.copyText}>{value}</div>
+          <input className={styles.copyText} style={{ font: 'inherit', fontSize: 'var(--t-2)', color: 'var(--ink)' }} placeholder="What should change? e.g. shorter, mention the free delivery, less formal" value={note} onChange={(e) => setNote(e.target.value)} maxLength={400} aria-label={`How to rewrite ${label}`} onKeyDown={(e) => { if (e.key === 'Enter') void rewrite(); }} />
+          <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
+            <Button size="sm" loading={busy} onClick={() => void rewrite()}>Rewrite for 1 credit</Button>
+            <Button size="sm" variant="ghost" onClick={() => setMode('read')} disabled={busy}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const sizeLabel = (v: GenerationOutputRow) => ({ feed_square: 'Feed 1:1', feed_portrait: 'Feed 4:5', story: 'Story', landscape: 'Landscape', marketplace: 'Marketplace' } as Record<string, string>)[v.size ?? ''] ?? v.size ?? 'Size';
 
 /** "12s" ticking while live, frozen after. Uses a re-render tick only while needed. */

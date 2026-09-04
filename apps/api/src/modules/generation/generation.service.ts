@@ -32,7 +32,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
-import { CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, type Capability, type ProviderErrorKind } from '@anystudio/shared';
+import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
@@ -175,6 +175,35 @@ export class GenerationService {
     if (!wallet) throw new NotFoundError('wallet');
     const balance = await this.ledger.balance(wallet.id);
     return { costCode: cost.code, credits: cost.credits, label: cost.label, balance, balanceAfter: balance - cost.credits, expectedMs: EXPECTED_MS[capability] };
+  }
+
+  /**
+   * The seller edited a piece of generated copy. The stored text output is
+   * updated at that path so the library and a later re-run see the words
+   * they actually posted. Only text outputs, only known fields, only on a
+   * finished row — a running generation would overwrite it anyway.
+   */
+  async editText(workspaceId: string, id: string, field: string, value: string): Promise<Generation> {
+    const spec = COPY_FIELDS[field];
+    if (!spec) throw new ValidationError({ field: `Unknown field "${field}"` });
+    if (value.length > spec.max) throw new ValidationError({ value: `Keep ${spec.label} under ${spec.max} characters.` });
+    const row = await this.db.generation.findUnique({ where: { id } });
+    if (!row || row.workspaceId !== workspaceId) throw new NotFoundError('generation');
+    if (row.status !== 'SUCCEEDED') throw new ConflictError('That generation has not finished.');
+    const outputs = (row.outputs as unknown as GenerationOutput[] | null) ?? [];
+    const text = outputs.find((o) => o.role === 'text');
+    if (!text || typeof text.text !== 'object' || text.text === null) throw new NotFoundError('text output');
+    const doc = structuredClone(text.text) as Record<string, unknown>;
+    const path = field.split('.');
+    let cur: Record<string, unknown> = doc;
+    for (const part of path.slice(0, -1)) {
+      if (typeof cur[part] !== 'object' || cur[part] === null) cur[part] = {};
+      cur = cur[part] as Record<string, unknown>;
+    }
+    cur[path[path.length - 1]!] = value;
+    const next = outputs.map((o) => (o === text ? { ...o, text: doc } : o));
+    logger.info({ generationId: id, workspaceId, field }, 'copy edited by the seller');
+    return this.db.generation.update({ where: { id }, data: { outputs: next as unknown as Prisma.InputJsonArray } });
   }
 
   /** One generation, only if the workspace owns it. */

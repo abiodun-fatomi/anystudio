@@ -7,12 +7,12 @@
  * stop watching when the client does, or every closed studio tab would keep
  * a Redis subscription alive.
  */
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { GenerationService } from './generation.service';
 import { GenerationEvents } from './generation.events';
-import { CreateGenerationDto, GenerationHistoryQueryDto, QuoteQueryDto } from './generation.dto';
+import { CreateGenerationDto, EditTextDto, GenerationHistoryQueryDto, QuoteQueryDto } from './generation.dto';
 import { CurrentActor, RequireWorkspaceRole } from '../auth/decorators';
 import type { SessionActor } from '../auth/policy';
 
@@ -77,6 +77,16 @@ export class GenerationController {
   @ApiResponse({ status: 409, description: 'Already started' })
   cancel(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Param('generationId', ParseUUIDPipe) generationId: string) {
     return this.generations.cancel(generationId, workspaceId);
+  }
+
+  @Patch('/:generationId/text')
+  @RequireWorkspaceRole('MEMBER')
+  @ApiOperation({ summary: 'Save an edit the seller made to one piece of generated copy' })
+  @ApiParam({ name: 'workspaceId', format: 'uuid' })
+  @ApiParam({ name: 'generationId', format: 'uuid' })
+  @ApiBody({ type: EditTextDto })
+  editText(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Param('generationId', ParseUUIDPipe) generationId: string, @Body() body: EditTextDto) {
+    return this.generations.editText(workspaceId, generationId, body.field, body.value);
   }
 
   @Get('/:generationId/stream')

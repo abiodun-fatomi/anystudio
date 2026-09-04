@@ -126,6 +126,7 @@ export class GenerationRunner {
         },
         stage: (stage, progress, detail) => this.events.stage(generationId, stage, progress, detail),
         media: this.media,
+        db: this.db,
       };
 
       await this.events.stage(generationId, 'generating', 15);
