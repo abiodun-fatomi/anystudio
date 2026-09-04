@@ -20,6 +20,7 @@ import { decrypt } from '../../utils/crypto/encrypt';
 import { ConflictError } from '../../../config/globals/errors';
 import type { Actor } from './policy';
 import { logger } from '../../../config/logger';
+import { authLog } from './auth.log';
 
 import { RegistrationService } from './registration.service';
 import { PasswordResetService } from './password-reset.service';
@@ -63,6 +64,7 @@ export class AuthService {
   async register(dto: RegisterDto, req: Request, res: Response) {
     const surface = this.surfaceFromOrigin(req);
     if (surface !== 'APP') {
+      authLog('auth.register', 'refused', { reason: 'wrong_surface', surface }, req);
       return Helpers.successResponse<RegisterResult>(200, 'Sign-up is not available here', { status: 'not_available' });
     }
 
@@ -77,10 +79,14 @@ export class AuthService {
     );
     // Not a success envelope with a 409 on it: a conflict is an error, and the
     // client handles every error through one path.
-    if (outcome.kind === 'conflict') throw new ConflictError(MESSAGES.CONFLICT);
+    if (outcome.kind === 'conflict') {
+      authLog('auth.register', 'refused', { reason: 'already_exists' }, req);
+      throw new ConflictError(MESSAGES.CONFLICT);
+    }
 
     await this.verification.issue(outcome.user.id, this.publicOrigin(req), req, VerificationFlavour.Welcome);
     await this.issueSession(outcome.user, surface, 1, req, res);
+    authLog('auth.register', 'succeeded', { userId: outcome.user.id, surface, mfa: 1 }, req);
     return Helpers.successResponse<RegisterResult>(201, MESSAGES.REGISTERED, { status: 'signed_in', next: '/welcome' });
   }
 
@@ -94,13 +100,18 @@ export class AuthService {
 
     // One shape, one timing profile, whatever went wrong.
     if (outcome.kind === 'rejected') {
+      // No userId on purpose: the response does not reveal whether the account
+      // exists, and neither should the line describing it.
+      authLog('auth.login', 'refused', { reason: 'invalid_credentials', surface }, req);
       return Helpers.successResponse<LoginResult>(200, MESSAGES.INVALID_CREDENTIALS, { status: 'invalid_credentials' });
     }
     if (outcome.kind === 'mfa_required') {
+      authLog('auth.login', 'succeeded', { reason: 'mfa_required', surface, factors: outcome.factors }, req);
       return Helpers.successResponse<LoginResult>(200, MESSAGES.MFA_REQUIRED,
         { status: 'mfa_required', challengeId: outcome.challengeId, factors: outcome.factors });
     }
     await this.issueSession(outcome.user, surface, outcome.mfaLevel, req, res);
+    authLog('auth.login', 'succeeded', { userId: outcome.user.id, surface, mfa: outcome.mfaLevel }, req);
     return Helpers.successResponse<LoginResult>(200, MESSAGES.SIGNED_IN,
       { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
   }
@@ -114,9 +125,11 @@ export class AuthService {
     const surface = this.surfaceFromOrigin(req);
     const outcome = await this.verifySecondFactor(dto.challengeId, dto.code, req);
     if (outcome.kind === 'rejected') {
+      authLog('auth.mfa', 'refused', { reason: 'invalid_code', surface }, req);
       return Helpers.successResponse<MfaResult>(200, MESSAGES.INVALID_CODE, { status: 'invalid_code' });
     }
     await this.issueSession(outcome.user, surface, 2, req, res);
+    authLog('auth.mfa', 'succeeded', { userId: outcome.user.id, surface, mfa: 2 }, req);
     return Helpers.successResponse<MfaResult>(200, MESSAGES.SIGNED_IN,
       { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
   }
@@ -124,18 +137,25 @@ export class AuthService {
   /** Confirm a fresh second factor for the current session. */
   async stepUp(actor: Actor & { sessionId: string }, dto: StepUpDto, req: Request) {
     const ok = await this.verifyStepUp(actor, dto.code, req);
+    authLog('auth.step_up', ok ? 'succeeded' : 'refused',
+      { userId: actor.userId, surface: actor.surface, ...(ok ? {} : { reason: 'invalid_code' }) }, req);
     return Helpers.successResponse(200, ok ? MESSAGES.OK : MESSAGES.INVALID_CODE, { status: ok ? 'ok' : 'invalid_code' });
   }
 
   /** Ask for a reset link. Same answer whether or not the address exists. */
   async forgotPassword(dto: ForgotPasswordDto, req: Request) {
+    // Always 'succeeded': whether the address exists is exactly what this
+    // endpoint refuses to disclose, and a log that distinguished the two
+    // cases would disclose it to anyone reading the log.
     await this.resets.request(dto.email.toLowerCase(), this.publicOrigin(req), req);
+    authLog('auth.forgot', 'succeeded', {}, req);
     return Helpers.successResponse(200, MESSAGES.RESET_SENT, { status: 'sent' });
   }
 
   /** Finish a reset. Ends every session on every surface. */
   async resetPassword(dto: ResetPasswordDto, req: Request) {
     const ok = await this.resets.complete(dto.token, dto.password, req);
+    authLog('auth.reset', ok ? 'succeeded' : 'refused', ok ? {} : { reason: 'invalid_token' }, req);
     return Helpers.successResponse(200, ok ? MESSAGES.RESET_DONE : MESSAGES.INVALID_TOKEN,
       { status: ok ? 'reset' : 'invalid_token' });
   }
@@ -143,6 +163,7 @@ export class AuthService {
   /** Consume a confirmation link. */
   async verifyEmail(dto: VerifyEmailDto) {
     const ok = await this.verification.complete(dto.token);
+    authLog('auth.verify', ok ? 'succeeded' : 'refused', ok ? {} : { reason: 'invalid_token' });
     return Helpers.successResponse(200, ok ? MESSAGES.VERIFIED : MESSAGES.INVALID_TOKEN,
       { status: ok ? 'verified' : 'invalid_token' });
   }
@@ -150,6 +171,7 @@ export class AuthService {
   /** Send the confirmation link again, to the signed-in owner only. */
   async resendVerification(actor: Actor, req: Request) {
     await this.verification.issue(actor.userId, this.publicOrigin(req), req, VerificationFlavour.Resend);
+    authLog('auth.verify_resend', 'succeeded', { userId: actor.userId }, req);
     return Helpers.successResponse(202, MESSAGES.VERIFICATION_SENT, { status: 'sent' });
   }
 
@@ -165,11 +187,15 @@ export class AuthService {
     }
     const out = await this.sessions.rotate(token, surface);
     if (out.result === 'reuse_detected') {
+      // The loudest line in this file. A replayed refresh token means two
+      // parties hold it: either a stolen session or a bug that duplicated one.
+      authLog('auth.refresh', 'refused', { reason: 'reuse_detected', surface }, req);
       await this.onRefreshReuse(token, req);
       this.clearCookies(res, surface);
       return Helpers.successResponse<RefreshResult>(200, 'Please sign in again', { status: 'reauthenticate', reason: 'session_conflict' });
     }
     if (out.result !== 'ok') {
+      authLog('auth.refresh', 'refused', { reason: out.result, surface }, req);
       this.clearCookies(res, surface);
       return Helpers.successResponse<RefreshResult>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid' });
     }
@@ -180,12 +206,14 @@ export class AuthService {
   /** Sign out of this surface only. */
   async signOut(actor: Actor & { sessionId: string }, req: Request, res: Response): Promise<void> {
     await this.logout(actor, req);
+    authLog('auth.signout', 'succeeded', { userId: actor.userId, surface: actor.surface }, req);
     this.clearCookies(res, actor.surface);
   }
 
   /** Sign out everywhere: bumps the credential epoch, which retires every session. */
   async signOutEverywhere(actor: Actor, res: Response): Promise<void> {
     await this.sessions.revokeAllForUser(actor.userId, 'user_requested');
+    authLog('auth.signout', 'succeeded', { userId: actor.userId, surface: actor.surface, scope: 'everywhere' });
     this.clearCookies(res, actor.surface);
   }
 
@@ -195,10 +223,16 @@ export class AuthService {
    */
   googleStart(q: GoogleStartQueryDto, req: Request, res: Response): void {
     if (!this.google.configured) {
+      // An operator problem, not a visitor's: the button was shown because the
+      // page cannot know, and the credentials are missing from this
+      // environment. Error, so it reaches whoever can set them.
+      authLog('auth.google', 'failed', { reason: GoogleSignInError.Unavailable }, req);
       res.redirect(302, `/login?error=${GoogleSignInError.Unavailable}`);
       return;
     }
-    const { url, cookie } = this.google.begin(this.publicOrigin(req), this.surfaceFromOrigin(req), q.next ?? '/');
+    const surface = this.surfaceFromOrigin(req);
+    const { url, cookie } = this.google.begin(this.publicOrigin(req), surface, q.next ?? '/');
+    authLog('auth.google', 'succeeded', { reason: 'redirected_to_consent', surface }, req);
     res.cookie(OAUTH_COOKIE, cookie, OAUTH_COOKIE_OPTS);
     res.redirect(302, url);
   }
@@ -216,7 +250,7 @@ export class AuthService {
     res.clearCookie(OAUTH_COOKIE, { ...OAUTH_COOKIE_OPTS, maxAge: undefined });
 
     const fail = (reason: GoogleSignInError): void => {
-      logger.warn({ reason }, 'google sign-in did not complete');
+      authLog('auth.google', 'refused', { reason, surface: state?.f }, req);
       res.redirect(302, `/login?error=${reason}`);
     };
 
@@ -224,14 +258,21 @@ export class AuthService {
     if (!state || !q.code || !q.state) return fail(GoogleSignInError.Expired);
     if (!GoogleProvider.matches(q.state, state.s)) return fail(GoogleSignInError.State);
 
+    // Refused here, before the code is exchanged and before any account is
+    // created or linked. Checked at the end instead, an ADMIN attempt would
+    // still mint a user and attach a Google identity to it on its way to
+    // being turned away — real state written by a flow that never succeeds.
+    if (state.f === 'ADMIN') return fail(GoogleSignInError.MfaRequired);
+
     const profile = await this.google.exchange(q.code, state);
     if (!profile) return fail(GoogleSignInError.Rejected);
 
     const resolved = await this.google.resolveUser(profile, req);
     if (!resolved) return fail(GoogleSignInError.EmailUnverified);
-    if (state.f === 'ADMIN') return fail(GoogleSignInError.MfaRequired);
 
     await this.issueSession(resolved.user, state.f, 1, req, res);
+    authLog('auth.google', 'succeeded',
+      { userId: resolved.user.id, surface: state.f, mfa: 1, created: resolved.created }, req);
     const landing = resolved.created ? '/welcome' : await this.landingFor(resolved.user.id, state.f);
     res.redirect(302, state.r !== '/' ? state.r : landing);
   }

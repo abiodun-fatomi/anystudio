@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { GoogleProvider } from './google.provider';
+import { GoogleProvider, safeReturnPath } from './google.provider';
 
 // The provider only touches the database in resolveUser, which is not under
 // test here; a bare object is enough for the handshake helpers.
@@ -46,5 +46,33 @@ describe('GoogleProvider handshake', () => {
     expect(GoogleProvider.matches('abc', 'abc')).toBe(true);
     expect(GoogleProvider.matches('abc', 'abd')).toBe(false);
     expect(GoogleProvider.matches('abc', 'ab')).toBe(false);
+  });
+});
+
+describe('safeReturnPath', () => {
+  it('keeps a path inside the app', () => {
+    expect(safeReturnPath('/today')).toBe('/today');
+    expect(safeReturnPath('/')).toBe('/');
+    expect(safeReturnPath('/library?tab=reels')).toBe('/library?tab=reels');
+  });
+
+  it('refuses anything that resolves to another origin', () => {
+    // The double slash is the obvious one. The backslash is the one that gets
+    // missed: browsers normalise it, so "/\evil" resolves exactly like
+    // "//evil" and turns the callback into an open redirect.
+    for (const hostile of ['//evil.example', '/\\evil.example', '/\\\\evil.example', '\\\\evil.example',
+                           'https://evil.example', '//evil.example/path']) {
+      expect(safeReturnPath(hostile), hostile).toBe('/');
+    }
+  });
+
+  it('refuses control characters, which is how a Location header gets split', () => {
+    expect(safeReturnPath('/today\nLocation: https://evil.example')).toBe('/');
+    expect(safeReturnPath('/today\r\nSet-Cookie: a=b')).toBe('/');
+  });
+
+  it('is what begin() applies to the return path', () => {
+    const p = provider();
+    expect(p.readState(p.begin('https://app.anystudio.ai', 'APP', '/\\evil.example').cookie)?.r).toBe('/');
   });
 });
