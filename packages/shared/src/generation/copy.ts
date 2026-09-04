@@ -127,3 +127,25 @@ export const SHOT_PLAN_JSON_SCHEMA: Record<string, unknown> = {
   },
   required: ['hook', 'shots', 'endCard'],
 };
+
+/** One field, written again. */
+export const fieldOutputSchema = z.object({ value: z.string().min(1).max(3000) });
+export const FIELD_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { value: { type: 'string', description: 'The rewritten text, and nothing else' } },
+  required: ['value'],
+};
+
+/** Labels and limits for the fields a seller can rewrite one at a time. */
+export const COPY_FIELDS: Record<string, { label: string; max: number }> = {
+  'description.long': { label: 'Description', max: 1500 },
+  'description.short': { label: 'Short description', max: 220 },
+  'captions.instagram': { label: 'Instagram caption', max: PLATFORM_LIMITS.instagram.caption },
+  'captions.tiktok': { label: 'TikTok caption', max: PLATFORM_LIMITS.tiktok.caption },
+  'captions.whatsapp_status': { label: 'WhatsApp Status caption', max: PLATFORM_LIMITS.whatsapp_status.caption },
+  'captions.facebook': { label: 'Facebook caption', max: PLATFORM_LIMITS.facebook.caption },
+  'captions.x': { label: 'X post', max: PLATFORM_LIMITS.x.caption },
+  altText: { label: 'Alt text', max: 250 },
+  'seo.title': { label: 'SEO title', max: 70 },
+  'seo.metaDescription': { label: 'Meta description', max: 160 },
+};

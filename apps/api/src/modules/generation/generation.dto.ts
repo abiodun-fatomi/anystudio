@@ -47,3 +47,13 @@ export class QuoteQueryDto {
   @IsOptional() @IsString() @MaxLength(60)
   costCode?: string;
 }
+
+export class EditTextDto {
+  @ApiProperty({ example: 'captions.instagram', description: 'A key of COPY_FIELDS in packages/shared' })
+  @IsString() @MaxLength(60)
+  field!: string;
+
+  @ApiProperty({ maxLength: 3000 })
+  @IsString() @MaxLength(3000)
+  value!: string;
+}

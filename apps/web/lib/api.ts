@@ -174,6 +174,8 @@ export const api = {
     history: (workspaceId: string, cursor?: string) =>
       request<GenerationRow[]>('GET', `/workspaces/${workspaceId}/generations${cursor ? `?cursor=${cursor}` : ''}`),
     cancel: (workspaceId: string, id: string) => request<GenerationRow>('POST', `/workspaces/${workspaceId}/generations/${id}/cancel`),
+    editText: (workspaceId: string, id: string, field: string, value: string) =>
+      request<GenerationRow>('PATCH', `/workspaces/${workspaceId}/generations/${id}/text`, { field, value }),
     /** Same-origin, so the session cookie rides along with EventSource. */
     streamUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/generations/${id}/stream`,
   },

@@ -9,7 +9,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import type { BrandKit, Generation, Workspace } from '@prisma/client';
+import type { BrandKit, Generation, PrismaClient, Workspace } from '@prisma/client';
 import type { Capability, GenerationStage, ProviderArtifact, ProviderFile, ProviderInput, ProviderResult } from '@anystudio/shared';
 import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
@@ -25,6 +25,8 @@ export interface PipelineContext {
   budgetMs: number;
   log: Logger;
   media: MediaService;
+  /** For pipelines that keep their own rows — copy fingerprints. Never for money. */
+  db: PrismaClient;
   callProvider: (
     input: Omit<ProviderInput, 'config'>,
     opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },

@@ -219,7 +219,15 @@ export const capabilityParams = {
   }),
   TEXT_GENERATE: z.object({
     /** What to write. The worker builds the prompt; the customer never sees it. */
-    task: z.enum(['product_copy', 'shot_plan', 'lyrics', 'caption_only']).default('product_copy'),
+    task: z.enum(['product_copy', 'shot_plan', 'lyrics', 'field']).default('product_copy'),
+    /** For task 'field': which part of an earlier copy result to write again, e.g. "captions.instagram". */
+    field: z.string().max(60).optional(),
+    /** For task 'field': what is there now, so the rewrite is a change and not a repeat. */
+    previous: z.string().max(3000).optional(),
+    /** For task 'field': what the seller wants different. */
+    instruction: z.string().max(400).optional(),
+    /** A stable id for the product (SKU, listing id) so a catalogue's descriptions are compared per product, not per photo. */
+    productKey: z.string().max(120).optional(),
     sourceKey: objectKey.optional(),
     productName: z.string().max(120).optional(),
     details: z.string().max(2000).optional(),

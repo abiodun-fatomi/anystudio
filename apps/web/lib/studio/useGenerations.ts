@@ -136,6 +136,49 @@ export function useGenerations() {
     setCards((cs) => cs.filter((c) => c.clientKey !== clientKey));
   }, []);
 
+  /** The seller changed a piece of copy by hand: keep it on the card and on the row. */
+  const editText = useCallback(async (clientKey: string, field: string, value: string) => {
+    const card = cards.find((c) => c.clientKey === clientKey);
+    patch(clientKey, (c) => ({ ...c, outputs: c.outputs.map((o) => (o.role === 'text' ? { ...o, text: setPath(o.text, field, value) } : o)) }));
+    if (card?.id) { try { await api.generations.editText(workspace.id, card.id, field, value); } catch { /* the card keeps the edit; the row catches up on the next save */ } }
+  }, [cards, workspace.id, patch]);
+
+  /**
+   * Write one field again, for one credit. A small hidden generation is
+   * created and polled to its end; the new text replaces the field on the
+   * card and is saved to the row. The card's own stream is not involved.
+   */
+  const regenerateField = useCallback(async (clientKey: string, field: string, instruction: string): Promise<{ ok: boolean; message?: string }> => {
+    const card = cards.find((c) => c.clientKey === clientKey);
+    if (!card?.id) return { ok: false, message: 'Nothing to rewrite yet.' };
+    const text = card.outputs.find((o) => o.role === 'text')?.text as Record<string, unknown> | undefined;
+    const previous = String(getPath(text, field) ?? '');
+    const p = card.params;
+    spend(1);
+    try {
+      const { generation: g, balance } = await api.generations.create(workspace.id, {
+        capability: 'TEXT_GENERATE', costCode: 'text.caption', clientKey: crypto.randomUUID(),
+        params: { task: 'field', field, previous, instruction, productName: p.productName, price: p.price, language: p.language ?? 'en', sourceKey: card.sourceKey },
+      });
+      setBalance(balance);
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const { generation: row, message } = await api.generations.get(workspace.id, g.id);
+        if (row.status === 'SUCCEEDED') {
+          const out = (row.outputs ?? []).find((o) => o.role === 'text')?.text as { value?: string } | undefined;
+          if (out?.value) { await editText(clientKey, field, out.value); return { ok: true }; }
+          return { ok: false, message: 'Nothing came back. Your credit is refunded.' };
+        }
+        if (row.status === 'FAILED' || row.status === 'CANCELLED') { void refreshBalance(); return { ok: false, message: message ?? 'That did not work. Your credit is back.' }; }
+      }
+      return { ok: false, message: 'That is taking too long. Check the library in a moment.' };
+    } catch (err) {
+      void refreshBalance();
+      return { ok: false, message: err instanceof ApiError ? err.message : 'Could not reach AnyStudio.' };
+    }
+  }, [cards, workspace.id, spend, setBalance, refreshBalance, editText]);
+
   /** Recent history on load, so a returning tab sees what it made. */
   const hydrate = useCallback(async () => {
     try {
@@ -158,9 +201,24 @@ export function useGenerations() {
     } catch { /* an empty pane is fine */ }
   }, [workspace.id, watch, resolveUrls]);
 
-  return { cards, create, cancel, dismiss, hydrate, resolveUrls };
+  return { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField };
 }
 
 function toolFor(capability: string): string {
   return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer' } as Record<string, string>)[capability] ?? 'scene';
+}
+
+function getPath(obj: unknown, path: string): unknown {
+  let cur: unknown = obj;
+  for (const part of path.split('.')) { if (cur === null || typeof cur !== 'object') return undefined; cur = (cur as Record<string, unknown>)[part]; }
+  return cur;
+}
+
+function setPath(obj: unknown, path: string, value: unknown): unknown {
+  const root = structuredClone((obj ?? {}) as Record<string, unknown>);
+  const parts = path.split('.');
+  let cur = root;
+  for (const part of parts.slice(0, -1)) { if (typeof cur[part] !== 'object' || cur[part] === null) cur[part] = {}; cur = cur[part] as Record<string, unknown>; }
+  cur[parts[parts.length - 1]!] = value;
+  return root;
 }
