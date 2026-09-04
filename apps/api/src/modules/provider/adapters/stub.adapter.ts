@@ -7,9 +7,14 @@
  * MP4 (when ffmpeg is present) and real structured text, so downstream code
  * cannot tell it from a vendor.
  *
- * `config.behaviour` on the ProviderModel row (or params._stub in tests)
- * makes it misbehave on purpose: 'fail:RATE_LIMITED', 'slow:5000', 'hang'.
- * That is how the breaker, the fallback order and the sweeper get exercised.
+ * `config.behaviour` on the ProviderModel row makes it misbehave on
+ * purpose: 'fail:RATE_LIMITED', 'slow:5000', 'hang'. That is how the
+ * breaker, the fallback order and the sweeper get exercised. It has to be
+ * the row: params are validated against the capability's schema, which
+ * strips anything it does not know, so a marker in params never arrives.
+ *
+ * It reports no cost: the row's costPerCall stands in, as it does for any
+ * vendor whose API does not say what a call cost.
  */
 
 import { execFile } from 'node:child_process';
@@ -26,7 +31,7 @@ export class StubProvider extends BaseProvider {
   }
 
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
-    const behaviour = String(input.config.behaviour ?? (input.params as { _stub?: string })._stub ?? 'ok');
+    const behaviour = String(input.config.behaviour ?? 'ok');
     if (behaviour.startsWith('fail:')) {
       throw new ProviderError(behaviour.slice(5) as ProviderErrorKind, `stub asked to fail with ${behaviour.slice(5)}`, this.key);
     }
@@ -38,17 +43,17 @@ export class StubProvider extends BaseProvider {
 
     switch (input.capability) {
       case 'TEXT_GENERATE':
-        return { providerKey: this.key, providerJobId: jobId, costMinor: 0, artifacts: [{ mime: 'application/json', role: 'text', text: stubCopy(input) }] };
+        return { providerKey: this.key, providerJobId: jobId, artifacts: [{ mime: 'application/json', role: 'text', text: stubCopy(input) }] };
       case 'IMAGE_TO_VIDEO':
       case 'VIDEO_STITCH':
       case 'DUB':
       case 'LIPSYNC':
-        return { providerKey: this.key, providerJobId: jobId, costMinor: 0, artifacts: [await stubVideo(input.capability)] };
+        return { providerKey: this.key, providerJobId: jobId, artifacts: [await stubVideo(input.capability)] };
       case 'VOICEOVER':
       case 'MUSIC':
-        return { providerKey: this.key, providerJobId: jobId, costMinor: 0, artifacts: [await stubAudio()] };
+        return { providerKey: this.key, providerJobId: jobId, artifacts: [await stubAudio()] };
       default:
-        return { providerKey: this.key, providerJobId: jobId, costMinor: 0, artifacts: [await stubImage(input.capability)] };
+        return { providerKey: this.key, providerJobId: jobId, artifacts: [await stubImage(input.capability)] };
     }
   }
 }
