@@ -110,18 +110,20 @@ required reviewer on the `production` environment, exactly like the web.
 
 ```
 push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-deploy step)
-                            ▶ worker
+                            ▶ worker (only where RENDER_WORKER_SERVICE_ID is set)
                             ▶ smoke: /health.release == sha, /ready == ready
 ```
 
 ### 3.1 One-time setup on Render
 
 1. Render → **New** → **Blueprint** → this repo → it reads `render.yaml` and
-   creates nine resources: an API, a worker and a Redis for each of dev,
-   staging and production. Each service tracks its own branch and has
-   auto-deploy **off**.
-2. It asks for every `sync: false` value in the three env groups
-   (`anystudio-dev`, `anystudio-staging`, `anystudio-production`). Fill in
+   creates two resources: `anystudio-api-dev` and its Postgres,
+   `anystudio-db-dev`. The service tracks `development` and has auto-deploy
+   **off**. Staging and production are added to `render.yaml` when they are
+   needed — an idle paid instance per environment costs money from the day it
+   is created, not from the day it is used.
+2. It asks for every `sync: false` value in the `anystudio-dev` env group.
+   Fill in
    what you have (section 5); anything you do not have yet can stay empty and
    be added later under **Env Groups**. The API refuses to start without
    `APP_KEY`, `DATABASE_URL` and the three `ORIGIN_*`.
@@ -134,8 +136,17 @@ push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-dep
    | Variable | Value |
    |---|---|
    | `RENDER_API_SERVICE_ID` | `srv-…` of `anystudio-api-dev` |
-   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` |
+   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — **omit it**: `render.yaml` creates no worker yet (see below) |
    | `API_URL` | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.2); then delete it |
+
+   The worker variable is optional and should be left unset for now. The
+   queue has no consumers and the API never imports ioredis, so a worker
+   service on Render would be a paid instance doing nothing; `render.yaml`
+   therefore creates only the API and its Postgres. The worker's code is
+   still typechecked, tested and built into an image on every run — only its
+   deploy is skipped. When the generation pipeline lands, add the service to
+   `render.yaml` and set this variable; the workflow picks it up with no
+   change.
 
    Same for `staging` and `production` with their services.
 5. Merge something into `development` that touches `apps/api/**`, or run the

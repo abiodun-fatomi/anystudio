@@ -5,9 +5,12 @@ name: API
 # on the commit, the PR and the Deployments tab, and a production deploy waits
 # for a human on the `production` environment.
 #
-#   development → anystudio-api-dev      + anystudio-worker-dev      api.dev.anystudio.ai
-#   staging     → anystudio-api-staging  + anystudio-worker-staging  api.staging.anystudio.ai
-#   production  → anystudio-api          + anystudio-worker          api.anystudio.ai
+#   development → anystudio-api-dev      api.dev.anystudio.ai
+#   staging     → anystudio-api-staging  api.staging.anystudio.ai
+#   production  → anystudio-api          api.anystudio.ai
+#
+# A queue worker deploys alongside the API in any environment that sets
+# RENDER_WORKER_SERVICE_ID. None do today — see the `deploy` job.
 #
 # Render's own auto-deploy is off (`autoDeploy: false` in render.yaml), so a
 # commit reaches an environment only through this file, and only after the
@@ -143,12 +146,20 @@ jobs:
     # Required reviewers on the `production` environment are the release
     # gate; development and staging deploy as soon as the check is green.
     #
-    # Each environment carries three variables (Settings → Environments →
+    # Each environment carries these variables (Settings → Environments →
     # <name> → Environment variables), none of them secret:
-    #   RENDER_API_SERVICE_ID     srv-… of the API service on Render
-    #   RENDER_WORKER_SERVICE_ID  srv-… of the worker service on Render
+    #   RENDER_API_SERVICE_ID     srv-… of the API service on Render — required
+    #   RENDER_WORKER_SERVICE_ID  srv-… of the worker — OPTIONAL, see below
     #   API_URL                   optional; only until api.<env>.anystudio.ai exists
     # and one repository secret: RENDER_API_KEY.
+    #
+    # The worker is optional because render.yaml does not create one yet. The
+    # queue has no consumers and the API never imports ioredis, so a worker
+    # service would be a paid instance doing nothing. The worker's code, its
+    # Dockerfile and its tests are still built and run in `check` above — only
+    # the deploy is skipped. Add RENDER_WORKER_SERVICE_ID to an environment
+    # (after adding the service to render.yaml) and the step below starts
+    # deploying it, with no change to this file.
     environment:
       name: ${{ github.ref_name }}
       url: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
@@ -166,10 +177,12 @@ jobs:
           missing=()
           [ -n "$RENDER_API_KEY" ]                        || missing+=(RENDER_API_KEY)
           [ -n "${{ vars.RENDER_API_SERVICE_ID }}" ]      || missing+=(RENDER_API_SERVICE_ID)
-          [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]   || missing+=(RENDER_WORKER_SERVICE_ID)
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing for the '${{ github.ref_name }}' environment: ${missing[*]}. See docs/DEPLOY.md §3."
             exit 1
+          fi
+          if [ -z "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]; then
+            echo "::notice::No RENDER_WORKER_SERVICE_ID for '${{ github.ref_name }}': deploying the API only."
           fi
 
       # The API first: its pre-deploy step runs the migrations, so by the time
@@ -178,6 +191,7 @@ jobs:
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_API_SERVICE_ID }}" "${{ github.sha }}"
 
       - name: Deploy worker
+        if: vars.RENDER_WORKER_SERVICE_ID != ''
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_WORKER_SERVICE_ID }}" "${{ github.sha }}"
 
       # Render saying "live" means the new instance answered its health check
