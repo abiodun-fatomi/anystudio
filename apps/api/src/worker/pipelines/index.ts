@@ -29,6 +29,12 @@ export interface PipelineContext {
     input: Omit<ProviderInput, 'config'>,
     opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
   ) => Promise<ProviderResult>;
+  /** Route and call a DIFFERENT capability — a pipeline that cuts out before it edits. */
+  callCapability: (
+    capability: Capability,
+    input: Omit<ProviderInput, 'config' | 'capability'>,
+    opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
+  ) => Promise<ProviderResult>;
   stage: (stage: GenerationStage, progress: number, detail?: string) => Promise<void>;
 }
 

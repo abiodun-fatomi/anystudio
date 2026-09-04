@@ -142,7 +142,7 @@ export function useGenerations() {
       const rows = await api.generations.history(workspace.id);
       const recent = rows.slice(0, 12);
       const fromRow = (g: GenerationRow): GenerationCard => ({
-        clientKey: g.id, id: g.id, toolId: toolFor(g.capability), capability: g.capability, credits: g.credits, status: g.status,
+        clientKey: g.id, id: g.id, toolId: g.capability === 'IMAGE_EDIT' && g.input.preserveProduct === false ? 'restyle' : toolFor(g.capability), capability: g.capability, credits: g.credits, status: g.status,
         stage: (g.stage as GenerationStage) ?? (g.status === 'SUCCEEDED' ? 'done' : g.status === 'QUEUED' ? 'queued' : 'generating'), progress: g.progress,
         outputs: g.outputs ?? [], urls: {}, params: g.input, sourceKey: typeof g.input.sourceKey === 'string' ? g.input.sourceKey : undefined, createdAt: new Date(g.createdAt).getTime(),
       });
@@ -162,5 +162,5 @@ export function useGenerations() {
 }
 
 function toolFor(capability: string): string {
-  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video' } as Record<string, string>)[capability] ?? 'scene';
+  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer' } as Record<string, string>)[capability] ?? 'scene';
 }

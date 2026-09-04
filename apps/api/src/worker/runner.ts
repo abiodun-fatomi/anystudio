@@ -119,6 +119,11 @@ export class GenerationRunner {
         budgetMs: BUDGET_MS[row.capability],
         log,
         callProvider: (input, opts) => this.callWithFallback(decision.candidates, input, { ...opts, generationId }, log),
+        callCapability: async (capability, input, opts) => {
+          const d = await this.router.route(capability, workspace.type, { generationId });
+          if (d.candidates.length === 0) throw new ProviderError('PROVIDER_DOWN', `no provider available for ${capability}`, 'router');
+          return this.callWithFallback(d.candidates, { ...input, capability }, { ...opts, generationId }, log);
+        },
         stage: (stage, progress, detail) => this.events.stage(generationId, stage, progress, detail),
         media: this.media,
       };

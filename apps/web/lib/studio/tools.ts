@@ -10,7 +10,7 @@
 import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
-export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video';
+export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle';
 
 export type Field =
   | { key: string; kind: 'text'; label: string; placeholder?: string; hint?: string; maxLength?: number; rows?: number; required?: boolean }
@@ -79,6 +79,26 @@ export const TOOLS: Tool[] = [
       { key: 'factor', kind: 'segment', label: 'Enlarge', options: [{ id: '2', label: '2×' }, { id: '4', label: '4×' }] },
     ],
     defaults: { factor: 2 },
+  },
+  {
+    id: 'restyle', label: 'Restyle', short: 'Restyle', icon: 'swap', capability: 'IMAGE_EDIT', needsSource: true,
+    narrative: { ...IMAGE_STAGES, generating: 'Restyling your photo', composing: 'Cutting every size' },
+    fields: [
+      { key: 'prompt', kind: 'text', label: 'How should it look?', placeholder: 'Warm film look, golden hour, soft grain', rows: 3, maxLength: 600, required: true, hint: 'For a personal photo or a flyer you already have. The whole image can change.' },
+      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
+    ],
+    defaults: { preserveProduct: false, aspect: '1:1', sizes: ['feed_square', 'story'], brand: { showPrice: false, showBusinessName: false } },
+  },
+  {
+    id: 'flyer', label: 'Make a flyer', short: 'Flyer', icon: 'today', capability: 'IMAGE_GENERATE', needsSource: false,
+    narrative: { queued: 'Waiting for a slot', preparing: 'Reading your brief', routing: 'Choosing a model', generating: 'Designing your flyer', composing: 'Finishing', storing: 'Saving', done: 'Done' },
+    fields: [
+      { key: 'prompt', kind: 'text', label: 'What is it for?', placeholder: 'Birthday brunch for Tolu, Saturday 12 October, 1pm, Lekki. Bold, joyful, gold and green.', rows: 4, maxLength: 1200, required: true, hint: 'Say the occasion, the date, the place and the feeling. Words on the flyer come out best when you write them exactly.' },
+      { key: 'style', kind: 'select', label: 'Style', options: [{ value: 'bold poster, big type, flat colour', label: 'Bold poster' }, { value: 'elegant, minimal, lots of space', label: 'Elegant' }, { value: 'playful, illustrated, bright', label: 'Playful' }, { value: 'photographic, premium, cinematic', label: 'Premium photo' }, { value: 'traditional Nigerian motifs, ankara patterns, warm', label: 'Traditional' }] },
+      { key: 'aspect', kind: 'segment', label: 'Shape', options: [{ id: '9:16', label: 'Status 9:16' }, { id: '4:5', label: 'Feed 4:5' }, { id: '1:1', label: 'Square' }] },
+    ],
+    defaults: { aspect: '9:16', count: 1, style: 'bold poster, big type, flat colour' },
   },
   {
     id: 'copy', label: 'Write the listing', short: 'Copy', icon: 'library', capability: 'TEXT_GENERATE', needsSource: false,
