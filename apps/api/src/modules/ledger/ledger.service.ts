@@ -48,9 +48,14 @@ export class LedgerService {
    *
    * Throws InsufficientCreditsError if the balance would go negative — the
    * caller shows the top-up screen and, crucially, keeps the user's input.
+   *
+   * Takes an optional transaction client so a caller can write its own row and
+   * charge for it atomically. GenerationService does exactly that: a row
+   * without its debit is free work, and a debit without its row is a charge
+   * nobody can explain.
    */
-  async debit(m: LedgerMove): Promise<LedgerEntry> {
-    return this.apply('DEBIT', -Math.abs(m.amount), m);
+  async debit(m: LedgerMove, tx?: LedgerClient): Promise<LedgerEntry> {
+    return this.apply('DEBIT', -Math.abs(m.amount), m, undefined, tx);
   }
 
   /**
