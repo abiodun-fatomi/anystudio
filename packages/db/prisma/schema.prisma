@@ -84,6 +84,7 @@ model User {
   onboarding       OnboardingState[]
   consents         Consent[]
   authEvents       AuthEvent[]
+  generations      Generation[]
 
   @@index([status])
   @@map("users")
@@ -321,8 +322,9 @@ model Workspace {
   deletedAt DateTime?
 
   members    WorkspaceMember[]
-  onboarding OnboardingState[]
-  wallet     Wallet?
+  onboarding  OnboardingState[]
+  wallet      Wallet?
+  generations Generation[]
 
   @@index([type])
   @@map("workspaces")
@@ -590,4 +592,90 @@ model LedgerEntry {
   @@index([walletId, createdAt])
   @@index([referenceId])
   @@map("ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// GENERATIONS — the unit of work, and the unit of money
+//
+// A generation is a ROW BEFORE IT IS A JOB. The row is written and the credits
+// are debited in one transaction, before any provider is called; the queue only
+// carries the id. That ordering is the whole design, and it is chosen against
+// the failure that actually costs money: Redis loses the job, or a worker dies
+// mid-call, and a customer has paid for something that never arrives. With the
+// row as the source of truth a lost job is a sweep and a retry. With the queue
+// as the source of truth it is a support ticket and a manual refund.
+//
+// Credits are held, not spent: a DEBIT at request time, a REFUND if it ends
+// badly. The ledger is append-only, so "giving the credits back" is a new row
+// that says so — never an edit, never a deletion. The onboarding tour already
+// promises this out loud ("a failed generation gives the credits straight
+// back"), which makes it a commitment rather than an intention.
+// ---------------------------------------------------------------------------
+
+enum GenerationStatus {
+  QUEUED    // row written, credits debited, nothing dispatched yet
+  RUNNING   // a worker owns it and has called the provider
+  SUCCEEDED // outputs stored; the debit stands
+  FAILED    // ended badly; credits refunded
+  CANCELLED // withdrawn before a provider was called; credits refunded
+}
+
+/// One request for generated media, from click to outputs.
+model Generation {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @db.Uuid
+  /// Who asked. Kept even after they leave the workspace — the ledger entry
+  /// points at this row, and an audit that cannot name a person is not one.
+  requestedById String @db.Uuid
+
+  /// The CreditCost code this was priced against, e.g. "video.reel".
+  costCode String
+  /// What it actually cost, captured at request time. Prices are rows and
+  /// operators change them; a later change must never rewrite what this
+  /// customer was charged.
+  credits Int
+
+  status GenerationStatus @default(QUEUED)
+
+  /// The routable model that served it, e.g. "higgsfield:kling3_0". Null until
+  /// routed, so a provider outage that prevents routing is still a real row
+  /// with a real refund rather than a silent nothing.
+  providerKey String?
+  /// The provider's own job id. The only way to reconcile a charge on their
+  /// invoice with a generation on ours, and what support asks for first.
+  providerJobId String?
+
+  /// Inputs and outputs as R2 object keys, never as URLs — URLs expire, are
+  /// environment-specific, and would pin us to one storage host forever.
+  input   Json
+  outputs Json?
+
+  /// Incremented on each dispatch. A generation that has burned its retries
+  /// fails for good rather than looping on a provider that will never answer.
+  attempts Int @default(0)
+
+  /// Refreshed by the worker while it holds the job. This, not startedAt, is
+  /// what the sweeper reads: a legitimate video generation can run for minutes,
+  /// and a fixed timeout would either kill honest work or wait forever on a
+  /// dead worker.
+  heartbeatAt DateTime?
+
+  /// Operator-facing. Never rendered to the customer verbatim — provider
+  /// errors leak model names, quotas and sometimes prompt text.
+  failureReason String?
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requestedBy User      @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  /// The customer's history screen, newest first.
+  @@index([workspaceId, createdAt])
+  /// The sweeper: everything unfinished, oldest first.
+  @@index([status, heartbeatAt])
+  /// Provider webhooks and support lookups arrive with this and nothing else.
+  @@index([providerJobId])
+  @@map("generations")
 }

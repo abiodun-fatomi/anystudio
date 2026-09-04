@@ -19,3 +19,13 @@ export const SIGNUP_PROMO_CREDITS = 150;
 
 /** Idempotency key for the signup grant, so a retried registration cannot double-credit. */
 export const signupGrantKey = (workspaceId: string): string => `signup:${workspaceId}`;
+
+/**
+ * Idempotency key for a generation's debit.
+ *
+ * The generation id, not a random value: a client that retries a request it
+ * already made — a double-tapped button, a flaky connection, a queue
+ * redelivery — resolves to the same key and `ledger_apply` returns the
+ * original row instead of spending twice.
+ */
+export const generationDebitKey = (generationId: string): string => `gen:${generationId}`;
