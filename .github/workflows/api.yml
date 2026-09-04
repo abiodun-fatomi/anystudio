@@ -1,0 +1,175 @@
+name: API
+
+# Builds, tests and deploys the API and the queue worker to Render from
+# GitHub, the same way `Web` deploys the portal to Cloudflare: the run shows
+# on the commit, the PR and the Deployments tab, and a production deploy waits
+# for a human on the `production` environment.
+#
+#   development → anystudio-api-dev      + anystudio-worker-dev      api.dev.anystudio.ai
+#   staging     → anystudio-api-staging  + anystudio-worker-staging  api.staging.anystudio.ai
+#   production  → anystudio-api          + anystudio-worker          api.anystudio.ai
+#
+# Render's own auto-deploy is off (`autoDeploy: false` in render.yaml), so a
+# commit reaches an environment only through this file, and only after the
+# `Check` job is green. The deploy pins the exact commit that was tested
+# (`commitId`), waits for Render to report it live, then proves the running
+# process is that commit by reading `release` from /health.
+#
+# Migrations run inside Render's pre-deploy step, once per deploy, before any
+# new instance starts — never here, and never in a start command.
+
+on:
+  push:
+    branches: [development, staging, production]
+    paths:
+      - apps/api/**
+      - apps/worker/**
+      - packages/db/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - package.json
+      - tsconfig.base.json
+      - render.yaml
+      - scripts/render-deploy.sh
+      - scripts/smoke-api.sh
+      - .github/workflows/api.yml
+  pull_request:
+    paths:
+      - apps/api/**
+      - apps/worker/**
+      - packages/db/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - render.yaml
+      - scripts/render-deploy.sh
+      - scripts/smoke-api.sh
+  workflow_dispatch:   # redeploy the head of the current branch by hand
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a deploy half way
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: anystudio
+          POSTGRES_PASSWORD: anystudio
+          POSTGRES_DB: anystudio_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U anystudio" --health-interval 5s
+          --health-timeout 5s --health-retries 12
+    # Fixtures, not secrets. The Postgres is a service container on the
+    # runner's loopback interface, destroyed with the job. Nothing that unlocks
+    # anything may be written here — GitHub prints a step's env verbatim.
+    env:
+      DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      DIRECT_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      ORIGIN_APP: http://localhost:3000
+      ORIGIN_ORG: http://localhost:3002
+      ORIGIN_ADMIN: http://localhost:3003
+    steps:
+      - uses: actions/checkout@v4
+      # No version here on purpose: it is read from package.json's
+      # packageManager field. Giving both is ERR_PNPM_BAD_PM_VERSION.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+
+      # Generated per run rather than written above, so no key-shaped literal
+      # ever exists in this file or in a build log.
+      - name: Generate a throwaway APP_KEY
+        run: echo "APP_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      # A schema edited without a matching migration works locally and fails
+      # on deploy. Catch it here, where it is a red check and not an outage.
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @anystudio/db exec prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" --exit-code
+
+      - name: Migrations apply cleanly
+        run: pnpm db:deploy
+
+      - name: Typecheck
+        run: pnpm --filter @anystudio/shared build && pnpm --filter "@anystudio/api" --filter "@anystudio/worker" typecheck
+
+      - name: Test
+        run: pnpm --filter "@anystudio/api" --filter "@anystudio/worker" test
+
+      - name: Build
+        run: pnpm --filter "@anystudio/api" --filter "@anystudio/worker" build
+
+      # The image Render builds is this Dockerfile; build it here too so a
+      # broken Dockerfile fails the PR rather than the deploy.
+      - name: Docker image builds
+        run: |
+          docker build -f apps/api/Dockerfile    -t anystudio-api:ci    .
+          docker build -f apps/worker/Dockerfile -t anystudio-worker:ci .
+
+  deploy:
+    name: Deploy
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Required reviewers on the `production` environment are the release
+    # gate; development and staging deploy as soon as the check is green.
+    #
+    # Each environment carries three variables (Settings → Environments →
+    # <name> → Environment variables), none of them secret:
+    #   RENDER_API_SERVICE_ID     srv-… of the API service on Render
+    #   RENDER_WORKER_SERVICE_ID  srv-… of the worker service on Render
+    #   API_URL                   optional; only until api.<env>.anystudio.ai exists
+    # and one repository secret: RENDER_API_KEY.
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      API_URL: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Environment is configured
+        run: |
+          missing=()
+          [ -n "$RENDER_API_KEY" ]                        || missing+=(RENDER_API_KEY)
+          [ -n "${{ vars.RENDER_API_SERVICE_ID }}" ]      || missing+=(RENDER_API_SERVICE_ID)
+          [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]   || missing+=(RENDER_WORKER_SERVICE_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing for the '${{ github.ref_name }}' environment: ${missing[*]}. See docs/DEPLOY.md §3."
+            exit 1
+          fi
+
+      # The API first: its pre-deploy step runs the migrations, so by the time
+      # the worker starts on the new code the schema it expects is there.
+      - name: Deploy API
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_API_SERVICE_ID }}" "${{ github.sha }}"
+
+      - name: Deploy worker
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_WORKER_SERVICE_ID }}" "${{ github.sha }}"
+
+      # Render saying "live" means the new instance answered its health check
+      # once. This proves it from the outside, through Cloudflare, and that
+      # the process serving traffic is the commit we just tested.
+      - name: Smoke test
+        run: bash scripts/smoke-api.sh "$API_URL" "${{ github.sha }}"

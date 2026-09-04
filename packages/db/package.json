@@ -8,7 +8,8 @@
     "migrate": "prisma migrate dev",
     "deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "reset": "prisma migrate reset --force"
+    "reset": "prisma migrate reset --force",
+    "lint": "eslint . --max-warnings 0"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

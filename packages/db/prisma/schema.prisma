@@ -23,8 +23,16 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
+  provider = "postgresql"
+  /// Every request the API serves goes through this one. On Render it is the
+  /// database's direct connection string today, and becomes the pgbouncer
+  /// pool string the moment more than one instance runs.
   url        = env("DATABASE_URL")
+  /// Migrations only. They run DDL and take advisory locks, neither of which
+  /// survives a transaction pooler, so `migrate deploy` uses this and nothing
+  /// else does. Falls back to DATABASE_URL when unset, which is right both
+  /// locally and on a Render database with no pool in front of it yet.
+  directUrl  = env("DIRECT_URL")
   extensions = [citext, pgcrypto]
 }
 

@@ -2,60 +2,53 @@
  * API entrypoint.
  *
  * Everything security-relevant is applied here, before any route exists, so a
- * new controller cannot accidentally opt out of it.
+ * new controller cannot accidentally opt out of it. The order is fixed:
+ * refuse-to-start checks, then hardening, then validation, then routes.
+ *
+ * Routes are versioned in the path — /api/v1/auth/login — except the two
+ * probes (/health, /ready), which a platform healthcheck must find without
+ * knowing our conventions.
  */
-
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { corsOptions } from './common/http/cors';
-import { logger } from './common/logging/logger';
+import { assertAppKey } from './utils/crypto/encrypt';
+import { BODY_LIMIT, configureSecurity } from '../config/security';
+import SwaggerConfig from '../config/swagger';
+import { logger } from '../config/logger';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, cors: false });
+  // Refuse to start on a key we cannot encrypt with, rather than discovering
+  // it on someone's first sign-in.
+  assertAppKey();
 
-  /**
-   * Headers. `frame-ancestors 'none'` and X-Frame-Options are the clickjacking
-   * controls; the full CSP is served by the web apps, not the API, because the
-   * API returns JSON and has no scripts to govern.
-   */
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'none'"],
-          frameAncestors: ["'none'"],
-          baseUri: ["'none'"],
-          formAction: ["'none'"],
-        },
-      },
-      hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
-      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-      crossOriginResourcePolicy: { policy: 'same-origin' },
-      // The API serves no HTML; this stops a browser from guessing otherwise.
-      xContentTypeOptions: true,
-    }),
-  );
-  app.use(cookieParser());
-  app.enableCors(corsOptions());
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    cors: false,
+    bodyParser: true,
+    rawBody: true, // webhook signature checks need the bytes as sent
+  });
+  app.useBodyParser('json', { limit: BODY_LIMIT });
 
-  // Behind Render/Cloudflare, so req.ip must come from the forwarded header —
-  // otherwise every rate limit sees one proxy address and limits everyone at once.
-  const express = app.getHttpAdapter().getInstance() as import('express').Express;
-  express.set('trust proxy', 1);
-  express.disable('x-powered-by');
+  configureSecurity(app);
 
-  /**
-   * Graceful shutdown. SIGTERM arrives on every deploy; without this an
-   * in-flight generation is cut off after its credits have already been spent
-   * with the provider.
-   */
+  // DTOs are the contract: unknown fields are stripped, types are coerced,
+  // and a body that fails its DTO never reaches a service.
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidUnknownValues: false }));
+
+  app.setGlobalPrefix('api', { exclude: ['health', 'ready'] });
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+
+  new SwaggerConfig().set(app);
+
+  // SIGTERM arrives on every deploy; without this an in-flight generation is
+  // cut off after its credits have already been spent with the provider.
   app.enableShutdownHooks();
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port, '0.0.0.0');
-  logger.info({ port, env: process.env.APP_ENV ?? 'local' }, 'api listening');
+  logger.info({ port, env: process.env.APP_ENV ?? 'local', docs: SwaggerConfig.enabled() ? '/api/v1/docs' : 'off' }, 'api listening');
 }
 
 bootstrap().catch((err) => {

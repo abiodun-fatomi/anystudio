@@ -35,9 +35,17 @@ export function middleware(req: NextRequest) {
   // cookies stay first-party and there is no CORS preflight. The target is
   // derived from the hostname (lib/hosts.ts), not configured anywhere.
   if (pathname === '/api' || pathname.startsWith('/api/')) {
-    const target = new URL(pathname.slice(4) || '/', siblingOrigin(host, 'api'));
+    // The API owns the /api/v1/... prefix itself, so the path passes through unchanged.
+    const target = new URL(pathname, siblingOrigin(host, 'api'));
     target.search = search;
-    return NextResponse.rewrite(target);
+    // The API sees this host as its own once the rewrite lands, so tell it
+    // where the browser really is. Origin and Referer are absent on a
+    // top-level navigation — which is exactly what the OAuth handshake is —
+    // and the API needs the public origin to build its redirect_uri and to
+    // decide which surface the request belongs to.
+    const headers = new Headers(req.headers);
+    headers.set('x-anystudio-origin', `${req.nextUrl.protocol}//${host}`);
+    return NextResponse.rewrite(target, { request: { headers } });
   }
 
   // No host split locally: the landing is "/" and the portal is everything else.

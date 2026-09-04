@@ -150,7 +150,7 @@ Built for e-commerce platforms serving many merchants.
                              │ REST + auth JWT
    WhatsApp ────webhook─────▶│
                     ┌────────▼─────────┐
-   Org customer ───▶│  NestJS (api)    │──────▶ PostgreSQL (Supabase)
+   Org customer ───▶│  NestJS (api)    │──────▶ PostgreSQL (Render)
    via API key      │  auth, billing,  │
                     │  metering, jobs  │──────▶ Redis (BullMQ)
                     └────────┬─────────┘                │
@@ -192,7 +192,7 @@ Turborepo with pnpm workspaces. A single Prisma schema means the credit ledger h
 | Animation | Motion (formerly Framer Motion) | Hybrid engine runs transform/opacity on the compositor |
 | Backend | NestJS (TypeScript) | Chosen for shipping speed; DI, guards and interceptors suit API-key auth and metering |
 | ORM | Prisma | Type-safe, shared schema, good migration story |
-| Database | PostgreSQL via Supabase | Auth, Postgres and RLS already wired |
+| Database | PostgreSQL on Render | Same region and private network as the API, so it needs no public endpoint |
 | Queue | Redis + BullMQ | Every generation is a job; nothing slow inside a request |
 | Storage | Cloudflare R2 + CDN | Zero egress fees — decisive when serving media into Nigeria |
 | AI providers | Own abstraction layer | Higgsfield, fal.ai, Replicate, HeyGen behind one interface |
@@ -627,7 +627,7 @@ These gate launch and take weeks. Start them before writing application code.
 ## 17. Open Decisions
 
 - Which provider becomes primary for image editing versus image-to-video, on cost per output rather than on demo quality
-- Whether Supabase remains the auth issuer once the NestJS API owns business logic, or whether auth moves in-house
+- ~~Whether Supabase remains the auth issuer~~ — settled: the API owns auth, with Google as an identity provider only
 - Credit expiry policy for plan credits versus purchased credits
 - Whether personal mode is free-forever with a watermark, or credit-metered like business mode
 - Refund policy for generations a user judges poor but which completed successfully

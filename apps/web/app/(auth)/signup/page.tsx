@@ -12,6 +12,8 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import { GoogleButton } from '@/components/GoogleButton';
+import styles from '../auth.module.css';
 
 /** The exact sentence stored with the consent row. Change it here and the record changes with it. */
 const MARKETING_WORDING = 'Send me tips and offers from AnyStudio on WhatsApp. About twice a month. Reply STOP to end it.';
@@ -37,7 +39,6 @@ export default function SignupPage() {
         sourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
       });
       if (r.status === 'signed_in') router.replace(r.next);
-      else if (r.status === 'conflict') setError(r.message);
       else setError('Sign-up is not available on this site.');
     } catch (err) {
       if (err instanceof ApiError) {
@@ -53,7 +54,12 @@ export default function SignupPage() {
       <h1 style={{ fontSize: 'clamp(27px,3.6vw,34px)', fontWeight: 800 }}>Start with three free generations.</h1>
       <p style={{ color: 'var(--muted)', marginTop: 10 }}>No card. Your phone number is your account.</p>
 
-      <div className="field" style={{ marginTop: 26 }}>
+      <div style={{ marginTop: 26 }}>
+        <GoogleButton label="Sign up with Google" />
+      </div>
+      <div className={styles.or}>or</div>
+
+      <div className="field">
         <label htmlFor="name">Your name</label>
         <input id="name" className="inp" autoComplete="name" value={form.name} onChange={set('name')} required />
       </div>

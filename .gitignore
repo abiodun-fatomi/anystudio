@@ -24,7 +24,7 @@ lerna-debug.log*
 .tmp
 
 # --- AnyStudio ---
-node_modules/
+node_modules
 dist/
 .next/
 .turbo/

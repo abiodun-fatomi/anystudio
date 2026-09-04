@@ -8,15 +8,35 @@ import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import { GoogleButton } from '@/components/GoogleButton';
+import styles from '../auth.module.css';
+
+/**
+ * What went wrong on the way back from Google, in words a person can act on.
+ * An unlisted code shows nothing: a stray query parameter should not put an
+ * alarming message in front of someone who is simply signing in.
+ */
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_declined: 'You cancelled the Google sign-in. You can try again, or use your password.',
+  google_expired: 'That took too long. Please try signing in with Google again.',
+  google_state: 'We could not verify that sign-in came from us. Please try again.',
+  google_rejected: 'Google could not confirm that account. Try again, or sign in with your password.',
+  google_email_unverified: 'That Google account has an unconfirmed email address, so we cannot use it to sign in.',
+  google_unavailable: 'Google sign-in is not set up yet. Please use your email and password.',
+  mfa_required: 'Staff accounts sign in with a password and a second factor, not with Google.',
+};
 
 function LoginForm() {
   const router = useRouter();
-  const next = useSearchParams().get('next');
+  const params = useSearchParams();
+  const next = params.get('next');
+  // The Google callback cannot render a page, so it returns here with a code.
+  const returned = params.get('error');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [challenge, setChallenge] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(GOOGLE_ERRORS[returned ?? ''] ?? null);
   const [busy, setBusy] = useState(false);
 
   /** Handles both steps; which one depends on whether a challenge is open. */
@@ -44,7 +64,12 @@ function LoginForm() {
 
       {!challenge ? (
         <>
-          <div className="field" style={{ marginTop: 26 }}>
+          <div style={{ marginTop: 26 }}>
+            <GoogleButton next={next ?? undefined} label="Continue with Google" />
+          </div>
+          <div className={styles.or}>or</div>
+
+          <div className="field">
             <label htmlFor="id">Email or phone</label>
             <input id="id" className="inp" autoComplete="username" inputMode="email"
               value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />

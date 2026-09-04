@@ -14,17 +14,23 @@ import type { Request, Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { surfaceForOrigin, type AppEnv } from '@anystudio/shared';
 import { SessionService, COOKIE, type IssuedSession } from './session.service';
-import { verifyPassword, needsRehash, hashPassword } from '../../common/crypto/password';
-import { verifyCode } from '../../common/crypto/totp';
-import { decrypt } from '../../common/crypto/encrypt';
-import { UnauthorizedError } from '../../common/errors/app-error';
-import type { Actor } from '../../common/policy/policy';
-import { logger } from '../../common/logging/logger';
+import { verifyPassword, needsRehash, hashPassword } from '../../utils/crypto/password';
+import { verifyCode } from '../../utils/crypto/totp';
+import { decrypt } from '../../utils/crypto/encrypt';
+import { ConflictError } from '../../../config/globals/errors';
+import type { Actor } from './policy';
+import { logger } from '../../../config/logger';
 
-type Verified =
-  | { kind: 'rejected' }
-  | { kind: 'mfa_required'; challengeId: string; factors: Array<'TOTP' | 'WEBAUTHN'> }
-  | { kind: 'signed_in'; user: User; mfaLevel: number };
+import { RegistrationService } from './registration.service';
+import { PasswordResetService } from './password-reset.service';
+import { VerificationService } from './verification.service';
+import { GoogleProvider, OAUTH_COOKIE, OAUTH_COOKIE_OPTS } from './providers/google.provider';
+import type { LoginDto, MfaDto, RegisterDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, StepUpDto,
+  GoogleStartQueryDto, GoogleCallbackQueryDto } from './auth.dto';
+import type { LoginResult, MfaResult, RegisterResult, RefreshResult, Verified } from './auth.types';
+import { Helpers } from '../../utils/helpers';
+import { MESSAGES } from '../../utils/constant';
+import { GoogleSignInError, VerificationFlavour } from '../../utils/enums';
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 
@@ -33,18 +39,249 @@ export class AuthService {
   constructor(
     private readonly db: PrismaClient,
     private readonly sessions: SessionService,
+    private readonly registration: RegistrationService,
+    private readonly resets: PasswordResetService,
+    private readonly verification: VerificationService,
+    private readonly google: GoogleProvider,
   ) {}
+
+  // ------------------------------------------------------------------
+  // Use cases. One per endpoint; the controller only names them.
+  // ------------------------------------------------------------------
+
+  /**
+   * Create an account and sign it in.
+   *
+   * Only the APP surface has a public sign-up: organizations and staff are
+   * created by invitation. Duplicate email or phone is reported as a single
+   * conflict — sign-up is the other half of the login oracle, and "that
+   * number is taken" confirms an account exists just as surely as "wrong
+   * password" would. The welcome email is sent before the session is minted
+   * so a mail failure is logged against this request, but it never fails the
+   * sign-up: the account exists, and the link can be re-sent.
+   */
+  async register(dto: RegisterDto, req: Request, res: Response) {
+    const surface = this.surfaceFromOrigin(req);
+    if (surface !== 'APP') {
+      return Helpers.successResponse<RegisterResult>(200, 'Sign-up is not available here', { status: 'not_available' });
+    }
+
+    const outcome = await this.registration.register(
+      {
+        name: dto.name, email: dto.email.toLowerCase(), password: dto.password,
+        phone: RegistrationService.normalisePhone(dto.phone),
+        phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
+        marketing: dto.marketing, sourceUrl: dto.sourceUrl,
+      },
+      req,
+    );
+    // Not a success envelope with a 409 on it: a conflict is an error, and the
+    // client handles every error through one path.
+    if (outcome.kind === 'conflict') throw new ConflictError(MESSAGES.CONFLICT);
+
+    await this.verification.issue(outcome.user.id, this.publicOrigin(req), req, VerificationFlavour.Welcome);
+    await this.issueSession(outcome.user, surface, 1, req, res);
+    return Helpers.successResponse<RegisterResult>(201, MESSAGES.REGISTERED, { status: 'signed_in', next: '/welcome' });
+  }
+
+  /**
+   * Password step of sign-in. Does NOT mint a session when a second factor
+   * is owed — and on the admin surface one always is.
+   */
+  async login(dto: LoginDto, req: Request, res: Response) {
+    const surface = this.surfaceFromOrigin(req);
+    const outcome = await this.verifyPassword(dto.identifier, dto.password, surface, req);
+
+    // One shape, one timing profile, whatever went wrong.
+    if (outcome.kind === 'rejected') {
+      return Helpers.successResponse<LoginResult>(200, MESSAGES.INVALID_CREDENTIALS, { status: 'invalid_credentials' });
+    }
+    if (outcome.kind === 'mfa_required') {
+      return Helpers.successResponse<LoginResult>(200, MESSAGES.MFA_REQUIRED,
+        { status: 'mfa_required', challengeId: outcome.challengeId, factors: outcome.factors });
+    }
+    await this.issueSession(outcome.user, surface, outcome.mfaLevel, req, res);
+    return Helpers.successResponse<LoginResult>(200, MESSAGES.SIGNED_IN,
+      { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
+  }
+
+  /**
+   * Second factor. The only path that can produce an ADMIN session, and
+   * SessionService refuses to mint one below mfaLevel 2, so there is no way
+   * around it.
+   */
+  async completeMfa(dto: MfaDto, req: Request, res: Response) {
+    const surface = this.surfaceFromOrigin(req);
+    const outcome = await this.verifySecondFactor(dto.challengeId, dto.code, req);
+    if (outcome.kind === 'rejected') {
+      return Helpers.successResponse<MfaResult>(200, MESSAGES.INVALID_CODE, { status: 'invalid_code' });
+    }
+    await this.issueSession(outcome.user, surface, 2, req, res);
+    return Helpers.successResponse<MfaResult>(200, MESSAGES.SIGNED_IN,
+      { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
+  }
+
+  /** Confirm a fresh second factor for the current session. */
+  async stepUp(actor: Actor & { sessionId: string }, dto: StepUpDto, req: Request) {
+    const ok = await this.verifyStepUp(actor, dto.code, req);
+    return Helpers.successResponse(200, ok ? MESSAGES.OK : MESSAGES.INVALID_CODE, { status: ok ? 'ok' : 'invalid_code' });
+  }
+
+  /** Ask for a reset link. Same answer whether or not the address exists. */
+  async forgotPassword(dto: ForgotPasswordDto, req: Request) {
+    await this.resets.request(dto.email.toLowerCase(), this.publicOrigin(req), req);
+    return Helpers.successResponse(200, MESSAGES.RESET_SENT, { status: 'sent' });
+  }
+
+  /** Finish a reset. Ends every session on every surface. */
+  async resetPassword(dto: ResetPasswordDto, req: Request) {
+    const ok = await this.resets.complete(dto.token, dto.password, req);
+    return Helpers.successResponse(200, ok ? MESSAGES.RESET_DONE : MESSAGES.INVALID_TOKEN,
+      { status: ok ? 'reset' : 'invalid_token' });
+  }
+
+  /** Consume a confirmation link. */
+  async verifyEmail(dto: VerifyEmailDto) {
+    const ok = await this.verification.complete(dto.token);
+    return Helpers.successResponse(200, ok ? MESSAGES.VERIFIED : MESSAGES.INVALID_TOKEN,
+      { status: ok ? 'verified' : 'invalid_token' });
+  }
+
+  /** Send the confirmation link again, to the signed-in owner only. */
+  async resendVerification(actor: Actor, req: Request) {
+    await this.verification.issue(actor.userId, this.publicOrigin(req), req, VerificationFlavour.Resend);
+    return Helpers.successResponse(202, MESSAGES.VERIFICATION_SENT, { status: 'sent' });
+  }
+
+  /**
+   * Rotate the refresh token. A replayed token means two parties hold it, so
+   * the whole family is revoked and the caller is told to sign in again.
+   */
+  async refresh(req: Request, res: Response) {
+    const surface = this.surfaceFromOrigin(req);
+    const token = req.cookies?.[`${COOKIE[surface]}_r`] as string | undefined;
+    if (!token) {
+      return Helpers.successResponse<RefreshResult>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid' });
+    }
+    const out = await this.sessions.rotate(token, surface);
+    if (out.result === 'reuse_detected') {
+      await this.onRefreshReuse(token, req);
+      this.clearCookies(res, surface);
+      return Helpers.successResponse<RefreshResult>(200, 'Please sign in again', { status: 'reauthenticate', reason: 'session_conflict' });
+    }
+    if (out.result !== 'ok') {
+      this.clearCookies(res, surface);
+      return Helpers.successResponse<RefreshResult>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid' });
+    }
+    this.setCookies(res, surface, out.issued);
+    return Helpers.successResponse<RefreshResult>(200, MESSAGES.OK, { status: 'ok' });
+  }
+
+  /** Sign out of this surface only. */
+  async signOut(actor: Actor & { sessionId: string }, req: Request, res: Response): Promise<void> {
+    await this.logout(actor, req);
+    this.clearCookies(res, actor.surface);
+  }
+
+  /** Sign out everywhere: bumps the credential epoch, which retires every session. */
+  async signOutEverywhere(actor: Actor, res: Response): Promise<void> {
+    await this.sessions.revokeAllForUser(actor.userId, 'user_requested');
+    this.clearCookies(res, actor.surface);
+  }
+
+  /**
+   * Begin sign-in with Google: redirect to consent, remembering the surface,
+   * the return path and the PKCE verifier in one encrypted cookie.
+   */
+  googleStart(q: GoogleStartQueryDto, req: Request, res: Response): void {
+    if (!this.google.configured) {
+      res.redirect(302, `/login?error=${GoogleSignInError.Unavailable}`);
+      return;
+    }
+    const { url, cookie } = this.google.begin(this.publicOrigin(req), this.surfaceFromOrigin(req), q.next ?? '/');
+    res.cookie(OAUTH_COOKIE, cookie, OAUTH_COOKIE_OPTS);
+    res.redirect(302, url);
+  }
+
+  /**
+   * Finish sign-in with Google. Every failure ends at /login with a short
+   * code rather than an error page — someone who declined the consent screen
+   * has done nothing wrong and should land somewhere they can try again.
+   *
+   * Google proves an email, never a second factor: the admin surface is
+   * refused here, so staff finish at the same challenge a password reaches.
+   */
+  async googleCallback(q: GoogleCallbackQueryDto, req: Request, res: Response): Promise<void> {
+    const state = this.google.readState(req.cookies?.[OAUTH_COOKIE] as string | undefined);
+    res.clearCookie(OAUTH_COOKIE, { ...OAUTH_COOKIE_OPTS, maxAge: undefined });
+
+    const fail = (reason: GoogleSignInError): void => {
+      logger.warn({ reason }, 'google sign-in did not complete');
+      res.redirect(302, `/login?error=${reason}`);
+    };
+
+    if (q.error) return fail(GoogleSignInError.Declined);
+    if (!state || !q.code || !q.state) return fail(GoogleSignInError.Expired);
+    if (!GoogleProvider.matches(q.state, state.s)) return fail(GoogleSignInError.State);
+
+    const profile = await this.google.exchange(q.code, state);
+    if (!profile) return fail(GoogleSignInError.Rejected);
+
+    const resolved = await this.google.resolveUser(profile, req);
+    if (!resolved) return fail(GoogleSignInError.EmailUnverified);
+    if (state.f === 'ADMIN') return fail(GoogleSignInError.MfaRequired);
+
+    await this.issueSession(resolved.user, state.f, 1, req, res);
+    const landing = resolved.created ? '/welcome' : await this.landingFor(resolved.user.id, state.f);
+    res.redirect(302, state.r !== '/' ? state.r : landing);
+  }
+
+  /** Mint a session for a verified user and set its cookies. */
+  private async issueSession(user: User, surface: Surface, mfaLevel: number, req: Request, res: Response): Promise<void> {
+    const issued = await this.sessions.mint({
+      userId: user.id, surface, mfaLevel, credentialEpoch: user.credentialEpoch,
+      ip: req.ip, userAgent: req.get('user-agent') ?? undefined,
+    });
+    this.setCookies(res, surface, issued);
+  }
 
   /**
    * Which surface is calling, from the validated Origin — never from the body.
    * An unknown origin is treated as APP with credentials refused upstream by
    * CORS; it never resolves to ADMIN.
    */
+  /**
+   * The public origin the browser is actually on.
+   *
+   * Requests reach this service through the web app's /api proxy, so the Host
+   * header names the API, not the site. The proxy forwards the real one; the
+   * Origin and Referer headers are the fallbacks, and neither is present on a
+   * top-level navigation — which is precisely when the OAuth handshake needs
+   * to know where to send someone back to.
+   */
+  publicOrigin(req: Request): string {
+    const forwarded = req.get('x-anystudio-origin');
+    if (forwarded && /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(forwarded)) return forwarded;
+    const origin = req.get('origin');
+    if (origin) return origin;
+    try {
+      return new URL(req.get('referer') ?? '').origin;
+    } catch {
+      return process.env.ORIGIN_APP ?? '';
+    }
+  }
+
+  /**
+   * Which surface this request belongs to.
+   *
+   * Derived from the origin and matched against a fixed map — never read from
+   * a request body, because a caller must not be able to ask for an admin
+   * session by typing "ADMIN" into JSON.
+   */
   surfaceFromOrigin(req: Request): Surface {
     const raw = process.env.APP_ENV;
     const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
-    const origin = req.get('origin') ?? req.get('referer') ?? '';
-    return surfaceForOrigin(origin, env) ?? 'APP';
+    return surfaceForOrigin(this.publicOrigin(req), env) ?? 'APP';
   }
 
   /**

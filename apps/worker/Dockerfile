@@ -24,7 +24,8 @@ FROM node:22-slim AS runtime
 ENV NODE_ENV=production
 # SIGTERM handling matters more here than anywhere: a generation that is killed
 # halfway has already spent the customer's credits with the provider.
-RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates \
+# openssl: the Prisma engines link against libssl, absent from the slim image.
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates openssl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./

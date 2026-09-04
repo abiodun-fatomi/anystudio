@@ -21,26 +21,30 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
+/**
+ * Every response is an envelope: `{ status, message, data }` on success,
+ * `{ status, message, error, data: null, fields?, requestId }` on failure.
+ * Callers get `data` back; the envelope is unwrapped here and nowhere else.
+ */
+interface Envelope<T> { status: number; message: string; data: T; error?: string;
+  fields?: Array<{ path: string; message: string }>; requestId?: string }
+
+const BASE = '/api/v1';
+
 /** One request. Throws ApiError on any non-2xx. */
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return undefined as T;
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const env = (await res.json().catch(() => ({}))) as Partial<Envelope<T>>;
   if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      String(data.code ?? 'http'),
-      String(data.message ?? 'Something went wrong.'),
-      typeof data.requestId === 'string' ? data.requestId : undefined,
-      Array.isArray(data.fields) ? (data.fields as ApiError['fields']) : undefined,
-    );
+    throw new ApiError(res.status, env.error ?? 'http', env.message ?? 'Something went wrong.', env.requestId, env.fields);
   }
-  return data as T;
+  return env.data as T;
 }
 
 // ---------------------------------------------------------------- shapes
@@ -60,10 +64,8 @@ export interface RegisterInput {
   sourceUrl?: string;
 }
 
-export type RegisterResult =
-  | { status: 'signed_in'; next: string }
-  | { status: 'conflict'; message: string }
-  | { status: 'not_available' };
+/** A duplicate email/phone arrives as ApiError(409, 'conflict'), not as a status. */
+export type RegisterResult = { status: 'signed_in'; next: string } | { status: 'not_available' };
 
 export type LoginResult =
   | { status: 'signed_in'; next: string }
@@ -103,6 +105,8 @@ export const api = {
     logout: () => request<void>('POST', '/auth/logout'),
     /** Always resolves 'sent', whether or not the address exists. */
     forgot: (email: string) => request<{ status: 'sent' }>('POST', '/auth/forgot', { email }),
+    verify: (token: string) => request<{ status: 'verified' | 'invalid_token' }>('POST', '/auth/verify', { token }),
+    resendVerification: () => request<{ status: 'sent' }>('POST', '/auth/verify/resend'),
     reset: (token: string, password: string) =>
       request<{ status: 'reset' | 'invalid_token' }>('POST', '/auth/reset', { token, password }),
   },

@@ -87,3 +87,12 @@
   .row{font-size:13.5px}
 }
 @media(prefers-reduced-motion:reduce){.frame,.live i,.prog i{animation:none}}
+
+/* Sign in with Google. Sized and spaced like .btn so the two read as equals —
+   neither is the "real" way in. */
+.google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+  padding:13px 18px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);
+  font-size:15px;font-weight:600;color:var(--ink);min-height:48px}
+.google:hover{text-decoration:none;border-color:var(--ink-soft);background:var(--sunk)}
+.or{display:flex;align-items:center;gap:14px;margin:20px 0;color:var(--muted);font-size:13px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line-soft)}
