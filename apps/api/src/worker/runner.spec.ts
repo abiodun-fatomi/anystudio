@@ -6,7 +6,7 @@
  * Skipped without DATABASE_URL, like the other integration suites; CI sets it.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
 import { GenerationService } from '../modules/generation/generation.service';
 import { GenerationEvents } from '../modules/generation/generation.events';
@@ -61,6 +61,11 @@ suite('GenerationRunner', () => {
   });
   afterAll(async () => { await events.onModuleDestroy(); await db.$disconnect(); });
 
+  /** Make the stub misbehave for one test, through the row — the only door the worker reads. */
+  const misbehave = (behaviour: string) =>
+    db.providerModel.update({ where: { key_capability: { key: 'stub:any', capability: 'TEXT_GENERATE' } }, data: { config: { behaviour } } });
+  afterEach(async () => { await misbehave('ok'); });
+
   beforeEach(async () => {
     const user = await db.user.create({ data: { email: `run-${crypto.randomUUID()}@test.local`, status: 'ACTIVE' } });
     const workspace = await db.workspace.create({ data: { type: 'BUSINESS', name: 'Runner test', profile: { sells: 'ankara bags' } } });
@@ -101,7 +106,8 @@ suite('GenerationRunner', () => {
   });
 
   it('refunds at once on CONTENT_REJECTED and tells the customer in plain words', async () => {
-    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey: 'rej-1', params: { productName: 'x', _stub: 'fail:CONTENT_REJECTED' } as Record<string, unknown> });
+    await misbehave('fail:CONTENT_REJECTED');
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey: 'rej-1', params: { productName: 'x' } });
     expect(await runner.run(generation.id)).toBe('failed');
 
     const view = await generations.get(workspaceId, generation.id);
@@ -112,7 +118,8 @@ suite('GenerationRunner', () => {
   });
 
   it('requeues a RETRYABLE failure while attempts remain, then fails and refunds', async () => {
-    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey: 'retry-1', params: { productName: 'x', _stub: 'fail:RETRYABLE' } as Record<string, unknown> });
+    await misbehave('fail:RETRYABLE');
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey: 'retry-1', params: { productName: 'x' } });
     expect(await runner.run(generation.id)).toBe('requeued');
     expect((await db.generation.findUniqueOrThrow({ where: { id: generation.id } })).status).toBe('QUEUED');
     expect(await runner.run(generation.id)).toBe('requeued');
