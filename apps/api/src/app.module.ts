@@ -30,12 +30,13 @@ import { MediaModule } from './modules/media/media.module';
 import { BrandModule } from './modules/brand/brand.module';
 import { AccountModule } from './modules/account/account.module';
 import { MemberModule } from './modules/member/member.module';
+import { BillingModule } from './modules/billing/billing.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule, MailModule, RateLimitModule, QueueModule, ProviderModule, MediaModule,
-    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule,
+    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -43,6 +43,9 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   'POST /api/v1/me/delete':           [{ limit: 5, windowSec: 3600, scope: 'account' }],
   'GET /api/v1/me/export':            [{ limit: 5, windowSec: 3600, scope: 'account' }],
   'POST /api/v1/workspaces/invites/accept': [{ limit: 10, windowSec: 3600, scope: 'ip' }],
+  // Webhooks arrive in bursts from a handful of gateway IPs; the default per-IP ceiling would drop real events.
+  'POST /api/v1/billing/webhooks/flutterwave': [{ limit: 3000, windowSec: 60, scope: 'ip' }],
+  'POST /api/v1/billing/webhooks/paddle':      [{ limit: 3000, windowSec: 60, scope: 'ip' }],
   // Organization API (issued keys), per key and per merchant behind the key.
   'POST /api/v1/generations':         [{ limit: 60, windowSec: 60, scope: 'apiKey' }, { limit: 10, windowSec: 60, scope: 'merchant' }],
 };

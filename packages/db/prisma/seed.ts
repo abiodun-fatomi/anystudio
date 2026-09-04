@@ -58,11 +58,27 @@ const CREDIT_COSTS = [
  * Prices are fixed per market, never converted at the day's rate. A seller
  * budgeting in naira must see the same number every month.
  */
+/**
+ * Plans: monthly credits and fixed local prices. Yearly is ten months for
+ * twelve. `providerRefs` (Paddle price ids, Flutterwave payment-plan ids)
+ * are NOT seeded — they are set in each environment once the products exist
+ * at the gateway, and a plan without a ref cannot be bought through that
+ * gateway. `starter` is the free tier: a row so invoices and the plans page
+ * can name it, never sold.
+ */
 const PLANS = [
-  { code: 'starter',  credits: 30,    usd: 0,   ngn: 0,      gbp: 0 },
-  { code: 'creator',  credits: 600,   usd: 9,   ngn: 12000,  gbp: 7 },
-  { code: 'business', credits: 2400,  usd: 29,  ngn: 39000,  gbp: 24 },
-  { code: 'org',      credits: 12000, usd: 199, ngn: 265000, gbp: 165 },
+  { code: 'starter',  credits: 30,    usd: 0,   ngn: 0,      gbp: 0,   sort: 0,  active: false },
+  { code: 'creator',  credits: 600,   usd: 9,   ngn: 12000,  gbp: 7,   sort: 10, active: true },
+  { code: 'business', credits: 2400,  usd: 29,  ngn: 39000,  gbp: 24,  sort: 20, active: true },
+  { code: 'org',      credits: 12000, usd: 199, ngn: 265000, gbp: 165, sort: 30, active: true },
+];
+
+/** One-time top-ups. Priced a little above the plan rate, so the plan is the better deal. */
+const PACKS = [
+  { code: 'pack.small',  credits: 200,  usd: 4,  ngn: 5000,   gbp: 3,  sort: 10 },
+  { code: 'pack.medium', credits: 600,  usd: 10, ngn: 13500,  gbp: 8,  sort: 20 },
+  { code: 'pack.large',  credits: 2000, usd: 29, ngn: 39000,  gbp: 24, sort: 30 },
+  { code: 'pack.video',  credits: 6000, usd: 79, ngn: 105000, gbp: 65, sort: 40 },
 ];
 
 /**
@@ -188,14 +204,21 @@ async function reference() {
   for (const p of PLANS) {
     await db.plan.upsert({
       where: { code: p.code },
-      create: { code: p.code, credits: p.credits, priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp } },
-      update: { credits: p.credits, priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp } },
+      create: { code: p.code, credits: p.credits, priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp }, yearlyPriceByMarket: p.usd ? { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 } : undefined, sort: p.sort, active: p.active },
+      update: { credits: p.credits, priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp }, yearlyPriceByMarket: p.usd ? { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 } : undefined, sort: p.sort, active: p.active },
+    });
+  }
+  for (const k of PACKS) {
+    await db.creditPack.upsert({
+      where: { code: k.code },
+      create: { code: k.code, credits: k.credits, priceByMarket: { USD: k.usd, NGN: k.ngn, GBP: k.gbp }, sort: k.sort },
+      update: { credits: k.credits, priceByMarket: { USD: k.usd, NGN: k.ngn, GBP: k.gbp }, sort: k.sort },
     });
   }
   for (const pr of PROVIDERS) {
     await db.providerModel.upsert({ where: { key_capability: { key: pr.key, capability: pr.capability } }, create: pr, update: pr });
   }
-  console.log(`reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PROVIDERS.length} models`);
+  console.log(`reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${PROVIDERS.length} models`);
 }
 
 async function fixtures() {

@@ -361,6 +361,8 @@ model Workspace {
   media       MediaAsset[]
   brandKit    BrandKit?
   fingerprints CopyFingerprint[]
+  payments      Payment[]
+  subscriptions Subscription[]
 
   @@index([type])
   @@map("workspaces")
@@ -540,11 +542,167 @@ model Plan {
   credits       Int
   /// { "USD": 29, "NGN": 39000, "GBP": 24 }
   priceByMarket Json
+  /// Yearly price per market, when the plan can be billed yearly. Null = monthly only.
+  yearlyPriceByMarket Json?
+  /// The gateway's own ids for this plan, set from the admin console once the
+  /// products exist there: { "paddle": { "month": "pri_…", "year": "pri_…" },
+  ///                         "flutterwave": { "month": 12345, "year": 12346 } }
+  /// A plan with no ref for a gateway cannot be bought through that gateway.
+  providerRefs  Json?
+  /// Shown on the plans page, in order. A plan that is not for sale is still a row (old invoices).
+  active        Boolean  @default(true)
+  sort          Int      @default(100)
   /// Effective-dated so historical invoices still reconcile after a price change.
   effectiveFrom DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  subscriptions Subscription[]
+
   @@map("plans")
+}
+
+/// A one-time top-up. Same shape as a plan without the recurrence.
+model CreditPack {
+  code          String   @id
+  credits       Int
+  priceByMarket Json
+  providerRefs  Json?
+  active        Boolean  @default(true)
+  sort          Int      @default(100)
+  updatedAt     DateTime @updatedAt
+
+  @@map("credit_packs")
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS — the gateways
+//
+// Money is taken by Flutterwave (African currencies) and Paddle (everything
+// else, as merchant of record). We hold no card data and trust no client
+// amount: a Payment row is written with the server's price BEFORE the person
+// is sent to the gateway, and credits are granted only after the gateway's
+// webhook is signature-checked AND the transaction is re-fetched from the
+// gateway and found to match that row. Grants go through the ledger with the
+// Payment id as the idempotency key, so a webhook delivered five times pays
+// once.
+// ---------------------------------------------------------------------------
+
+enum PaymentProvider {
+  FLUTTERWAVE
+  PADDLE
+  /// Local development only; the registry refuses to load it in production.
+  STUB
+}
+
+enum PaymentKind {
+  PACK          // one-time credits
+  SUBSCRIPTION  // the first charge of a plan
+  RENEWAL       // a later charge of a plan, raised by the gateway
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id           String          @id @default(uuid()) @db.Uuid
+  workspaceId  String          @db.Uuid
+  /// Who pressed the button. Null for gateway-raised renewals.
+  userId       String?         @db.Uuid
+  provider     PaymentProvider
+  kind         PaymentKind
+  status       PaymentStatus   @default(PENDING)
+  /// Our reference, sent to the gateway (tx_ref / custom_data) and matched on the way back.
+  reference    String          @unique
+  /// The gateway's id for the charge (Flutterwave transaction id, Paddle txn_…).
+  providerRef  String?
+  /// Plan or pack code, and for plans the billing interval.
+  itemCode     String
+  interval     String?
+  credits      Int
+  /// What the server priced it at, in minor units. The webhook must agree.
+  amountMinor  Int
+  currency     String
+  checkoutUrl  String?
+  /// What the gateway told us at verification time — never card data.
+  providerPayload Json?
+  /// The ledger row that granted the credits, once it exists.
+  ledgerEntryId String?        @db.Uuid
+  subscriptionId String?       @db.Uuid
+  failureReason String?
+  refundedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([provider, providerRef])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  PAUSED
+}
+
+/// A workspace's plan, as the gateway sees it. One live subscription per
+/// workspace; a cancelled one stays as history.
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  workspaceId        String             @db.Uuid
+  provider           PaymentProvider
+  /// Paddle sub_… or Flutterwave subscription id. Null until the gateway has told us.
+  providerRef        String?
+  planCode           String
+  interval           String             /// month | year
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?
+  /// The gateway's customer id, so renewals without our reference can still be matched.
+  customerRef        String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan      @relation(fields: [planCode], references: [code])
+  payments  Payment[]
+
+  @@index([workspaceId, status])
+  @@index([provider, providerRef])
+  @@map("subscriptions")
+}
+
+/// Every webhook we were sent, verified or not. The answer to "did Paddle
+/// tell us?" is a row here, and the answer to "did we act on it?" is
+/// `processedAt` and `outcome`.
+model WebhookReceipt {
+  id          String          @id @default(uuid()) @db.Uuid
+  provider    PaymentProvider
+  /// The gateway's event id, or a stable derivation when it has none. Unique
+  /// per provider: a redelivery finds this row and stops.
+  eventId     String
+  eventType   String
+  signatureOk Boolean
+  payload     Json
+  processedAt DateTime?
+  /// granted | already_granted | ignored | mismatch | no_payment | error
+  outcome     String?
+  error       String?
+  receivedAt  DateTime        @default(now())
+
+  @@unique([provider, eventId])
+  @@index([receivedAt])
+  @@map("webhook_receipts")
 }
 
 /// One value per thing the product can make. Mirrors CAPABILITIES in

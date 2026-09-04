@@ -70,7 +70,10 @@ export type AuthEventName =
   | 'member.remove'
   | 'member.transfer'
   | 'workspace.update'
-  | 'workspace.delete';
+  | 'workspace.delete'
+  | 'billing.checkout'
+  | 'billing.verify'
+  | 'billing.cancel';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 
