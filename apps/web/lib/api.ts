@@ -768,10 +768,10 @@ export const api = {
   },
   admin: {
     overview: () => request<AdminOverview>('GET', '/admin/overview'),
-    customers: (q: string, cursor?: string) =>
+    customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',
-        `/admin/customers?${new URLSearchParams({ ...(q ? { q } : {}), ...(cursor ? { cursor } : {}) })}`,
+        `/admin/customers?${new URLSearchParams({ ...(q ? { q } : {}), ...(cursor ? { cursor } : {}), ...(take ? { take: String(take) } : {}) })}`,
       ),
     customer: (id: string) => request<AdminCustomerDetail>('GET', `/admin/customers/${id}`),
     suspend: (id: string, reason: string, on: boolean) =>
@@ -818,10 +818,10 @@ export const api = {
     grantStaff: (body: { email: string; role: string; reason: string; expiresAt?: string }) => request<unknown>('POST', '/admin/staff', body),
     revokeStaff: (id: string) => request<{ revoked: boolean }>('DELETE', `/admin/staff/${id}`),
     messages: () => request<AdminMessage[]>('GET', '/admin/messages'),
-    support: (opts: { filter?: string; q?: string; cursor?: string } = {}) =>
+    support: (opts: { filter?: string; q?: string; cursor?: string; take?: number } = {}) =>
       request<{ counts: { open: number; needsHuman: number }; rows: AdminSupportRow[]; nextCursor: string | null }>(
         'GET',
-        `/admin/support?${new URLSearchParams({ ...(opts.filter ? { filter: opts.filter } : {}), ...(opts.q ? { q: opts.q } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`,
+        `/admin/support?${new URLSearchParams({ ...(opts.filter ? { filter: opts.filter } : {}), ...(opts.q ? { q: opts.q } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.take ? { take: String(opts.take) } : {}) })}`,
       ),
     supportOne: (id: string) => request<AdminSupportDetail>('GET', `/admin/support/${id}`),
     supportReply: (id: string, text: string) => request<SupportMessage>('POST', `/admin/support/${id}/reply`, { text }),

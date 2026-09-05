@@ -1,10 +1,10 @@
 'use client';
 /** Every generation, filterable; one opens with its inputs, outputs, provider job id and the operator-facing failure reason. */
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, type AdminGeneration } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Button, Dialog, Input, Pagination, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
+import { Button, Dialog, Input, Pager, useCursorPages, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
@@ -38,29 +38,26 @@ function Generations() {
   const [q, setQ] = useState(params.get('q') ?? '');
   const [status, setStatus] = useState('');
   const [capability, setCapability] = useState('');
-  const [rows, setRows] = useState<AdminGeneration[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
   const [open, setOpen] = useState<Awaited<ReturnType<typeof api.admin.generation>> | null>(null);
   const [action, setAction] = useState<'fail' | 'refund' | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const search = useCallback(
-    async (after?: string) => {
-      if (!after) setRows(null);
-      try {
-        const r = await api.admin.generations({ q: q.trim() || undefined, status: status || undefined, capability: capability || undefined, cursor: after });
-        setRows((cur) => (after && cur ? [...cur, ...r.generations] : r.generations));
-        setCursor(r.nextCursor);
-      } catch {
-        setRows([]);
-      }
+  const pages = useCursorPages<AdminGeneration>(
+    async (cursor, take) => {
+      const r = await api.admin.generations({
+        q: q.trim() || undefined,
+        status: status || undefined,
+        capability: capability || undefined,
+        cursor: cursor ?? undefined,
+        take: String(take),
+      });
+      return { rows: r.generations, nextCursor: r.nextCursor };
     },
-    [q, status, capability],
+    { deps: [status, capability] },
   );
-  useEffect(() => {
-    void search();
-  }, [status, capability]);
+  const { rows } = pages;
+  const search = () => pages.reset();
   const show = (id: string) =>
     api.admin
       .generation(id)
@@ -163,14 +160,18 @@ function Generations() {
               ))}
             </tbody>
           </Table>
-          <Pagination>
-            <span>{rows.length} shown</span>
-            {cursor && (
-              <Button variant="ghost" size="sm" onClick={() => void search(cursor)}>
-                More
-              </Button>
-            )}
-          </Pagination>
+          <Pager
+            page={pages.page}
+            count={rows.length}
+            noun="generations"
+            size={pages.size}
+            hasOlder={pages.hasOlder}
+            hasNewer={pages.hasNewer}
+            busy={pages.busy}
+            onOlder={() => void pages.older()}
+            onNewer={() => void pages.newer()}
+            onSize={(n) => void pages.changeSize(n)}
+          />
         </>
       )}
       <Dialog

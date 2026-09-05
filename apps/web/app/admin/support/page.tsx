@@ -4,10 +4,10 @@
  * beside the person's words, and the ones that need a person on top.
  */
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, type AdminSupportRow } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Input, SegmentedControl, Skeleton, Table, Button } from '@/components/ui';
+import { Input, SegmentedControl, Skeleton, Table, Pager, useCursorPages } from '@/components/ui';
 import styles from '../admin.module.css';
 
 type Filter = 'needs_human' | 'open' | 'closed' | 'all';
@@ -16,27 +16,27 @@ const ROLE: Record<string, string> = { USER: 'Person', ASSISTANT: 'Assistant', S
 export default function SupportListPage() {
   const [filter, setFilter] = useState<Filter>('open');
   const [q, setQ] = useState('');
-  const [data, setData] = useState<{ counts: { open: number; needsHuman: number }; rows: AdminSupportRow[]; nextCursor: string | null } | null>(null);
-  const [more, setMore] = useState(false);
-  const load = useCallback(
-    (cursor?: string) => {
-      if (cursor) setMore(true);
-      api.admin
-        .support({ filter, q: q.trim() || undefined, cursor })
-        .then((r) => setData((cur) => (cursor && cur ? { ...r, rows: [...cur.rows, ...r.rows] } : r)))
-        .catch(() => setData({ counts: { open: 0, needsHuman: 0 }, rows: [], nextCursor: null }))
-        .finally(() => setMore(false));
-    },
-    [filter, q],
-  );
+  const [counts, setCounts] = useState<{ open: number; needsHuman: number } | null>(null);
+  // Typing searches after a pause, not on every keystroke.
+  const [debounced, setDebounced] = useState('');
   useEffect(() => {
-    const t = setTimeout(() => load(), q ? 250 : 0);
+    const t = setTimeout(() => setDebounced(q.trim()), q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [load, q]);
+  }, [q]);
+  const pages = useCursorPages<AdminSupportRow>(
+    async (cursor, take) => {
+      const r = await api.admin.support({ filter, q: debounced || undefined, cursor: cursor ?? undefined, take });
+      setCounts(r.counts);
+      return { rows: r.rows, nextCursor: r.nextCursor };
+    },
+    { deps: [filter, debounced] },
+  );
+  const data = pages.rows === null ? null : { counts: counts ?? { open: 0, needsHuman: 0 }, rows: pages.rows };
+  // New chats arrive while this is open; refresh the page in view without losing the place.
   useEffect(() => {
-    const t = setInterval(() => load(), 30_000);
+    const t = setInterval(() => void pages.reload(), 30_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [pages.reload]);
 
   return (
     <div className="rise">
@@ -137,12 +137,19 @@ export default function SupportListPage() {
           </tbody>
         </Table>
       )}
-      {data?.nextCursor && (
-        <div style={{ marginTop: 'var(--s-4)' }}>
-          <Button variant="ghost" loading={more} onClick={() => load(data.nextCursor!)}>
-            Show older
-          </Button>
-        </div>
+      {data && data.rows.length > 0 && (
+        <Pager
+          page={pages.page}
+          count={data.rows.length}
+          noun="chats"
+          size={pages.size}
+          hasOlder={pages.hasOlder}
+          hasNewer={pages.hasNewer}
+          busy={pages.busy}
+          onOlder={() => void pages.older()}
+          onNewer={() => void pages.newer()}
+          onSize={(n) => void pages.changeSize(n)}
+        />
       )}
     </div>
   );

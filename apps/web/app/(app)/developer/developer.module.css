@@ -52,6 +52,11 @@
   border-radius: var(--r-lg);
   min-width: 0;
 }
+/* Grid items default to min-width:auto, which lets a wide <pre> stretch the
+   card past its column; every child shrinks so the code scrolls inside. */
+.group > * {
+  min-width: 0;
+}
 .groupHead {
   display: flex;
   justify-content: space-between;
@@ -199,6 +204,9 @@
   line-height: 1.6;
   overflow: auto;
   white-space: pre;
+  max-width: 100%;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
 }
 .codeHead {
   display: flex;
@@ -206,6 +214,13 @@
   align-items: center;
   gap: var(--s-3);
   margin-bottom: var(--s-2);
+  min-width: 0;
+}
+.codeHead > div:first-child {
+  min-width: 0;
+}
+.codeHead > :last-child {
+  flex: none;
 }
 .chips {
   display: flex;

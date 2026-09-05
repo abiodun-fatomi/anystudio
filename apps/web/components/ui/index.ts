@@ -14,3 +14,4 @@ export { Popover, MenuItem, MenuSeparator, MenuHeading, Tooltip } from './Popove
 export { ToastProvider, useToast } from './Toast';
 export { Badge, Avatar, Card, CardHeader, Skeleton, Progress, EmptyState, Table, tableCell, Pagination, Breadcrumbs, Stat, LoadError } from './Display';
 export { Combobox, type ComboOption } from './Combobox';
+export { Pager, useCursorPages, PAGE_SIZES, type CursorPage } from './Pager';

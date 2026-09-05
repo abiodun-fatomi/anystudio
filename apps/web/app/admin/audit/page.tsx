@@ -1,32 +1,20 @@
 'use client';
 /** The auth and admin event log: who did what, from where, with what reason. */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, type AdminEvent } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Button, Input, Pagination, Skeleton, Table, tableCell } from '@/components/ui';
+import { Button, Input, Pager, useCursorPages, Skeleton, Table, tableCell } from '@/components/ui';
 import styles from '../admin.module.css';
 
 export default function AuditPage() {
   const [userId, setUserId] = useState('');
   const [type, setType] = useState('');
-  const [rows, setRows] = useState<AdminEvent[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const search = useCallback(
-    async (after?: string) => {
-      if (!after) setRows(null);
-      try {
-        const r = await api.admin.audit({ userId: userId.trim() || undefined, type: type.trim() || undefined, cursor: after });
-        setRows((cur) => (after && cur ? [...cur, ...r.events] : r.events));
-        setCursor(r.nextCursor);
-      } catch {
-        setRows([]);
-      }
-    },
-    [userId, type],
-  );
-  useEffect(() => {
-    void search();
-  }, []);
+  const pages = useCursorPages<AdminEvent>(async (cursor, take) => {
+    const r = await api.admin.audit({ userId: userId.trim() || undefined, type: type.trim() || undefined, cursor: cursor ?? undefined, take: String(take) });
+    return { rows: r.events, nextCursor: r.nextCursor };
+  });
+  const { rows } = pages;
+  const search = () => pages.reset();
   return (
     <div className="rise">
       <PageHeader title="Audit log" lede="Sign-ins, factor changes, staff actions. The requestId matches the API logs line for line." />
@@ -71,14 +59,18 @@ export default function AuditPage() {
               ))}
             </tbody>
           </Table>
-          <Pagination>
-            <span>{rows.length} shown</span>
-            {cursor && (
-              <Button variant="ghost" size="sm" onClick={() => void search(cursor)}>
-                More
-              </Button>
-            )}
-          </Pagination>
+          <Pager
+            page={pages.page}
+            count={rows.length}
+            noun="events"
+            size={pages.size}
+            hasOlder={pages.hasOlder}
+            hasNewer={pages.hasNewer}
+            busy={pages.busy}
+            onOlder={() => void pages.older()}
+            onNewer={() => void pages.newer()}
+            onSize={(n) => void pages.changeSize(n)}
+          />
         </>
       )}
     </div>

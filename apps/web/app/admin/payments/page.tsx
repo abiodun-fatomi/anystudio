@@ -1,9 +1,9 @@
 'use client';
 /** Every payment; refund marks it after the money went back at the gateway and claws the credits back. */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, type AdminPayment } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Button, Dialog, Input, Pagination, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
+import { Button, Dialog, Input, Pager, useCursorPages, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
@@ -12,27 +12,18 @@ export default function PaymentsPage() {
   const { toast } = useToast();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
-  const [rows, setRows] = useState<AdminPayment[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
   const [refund, setRefund] = useState<AdminPayment | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const search = useCallback(
-    async (after?: string) => {
-      if (!after) setRows(null);
-      try {
-        const r = await api.admin.payments({ q: q.trim() || undefined, status: status || undefined, cursor: after });
-        setRows((cur) => (after && cur ? [...cur, ...r.payments] : r.payments));
-        setCursor(r.nextCursor);
-      } catch {
-        setRows([]);
-      }
+  const pages = useCursorPages<AdminPayment>(
+    async (cursor, take) => {
+      const r = await api.admin.payments({ q: q.trim() || undefined, status: status || undefined, cursor: cursor ?? undefined, take: String(take) });
+      return { rows: r.payments, nextCursor: r.nextCursor };
     },
-    [q, status],
+    { deps: [status] },
   );
-  useEffect(() => {
-    void search();
-  }, [status]);
+  const { rows } = pages;
+  const search = () => pages.reset();
   const doRefund = async () => {
     if (!refund) return;
     setBusy(true);
@@ -120,14 +111,18 @@ export default function PaymentsPage() {
               ))}
             </tbody>
           </Table>
-          <Pagination>
-            <span>{rows.length} shown</span>
-            {cursor && (
-              <Button variant="ghost" size="sm" onClick={() => void search(cursor)}>
-                More
-              </Button>
-            )}
-          </Pagination>
+          <Pager
+            page={pages.page}
+            count={rows.length}
+            noun="payments"
+            size={pages.size}
+            hasOlder={pages.hasOlder}
+            hasNewer={pages.hasNewer}
+            busy={pages.busy}
+            onOlder={() => void pages.older()}
+            onNewer={() => void pages.newer()}
+            onSize={(n) => void pages.changeSize(n)}
+          />
         </>
       )}
       <Dialog
