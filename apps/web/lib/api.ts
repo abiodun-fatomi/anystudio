@@ -96,7 +96,7 @@ export interface GenerationRow {
 }
 
 export interface GenerationOutputRow {
-  key: string; role: 'image' | 'variant' | 'video' | 'audio' | 'text' | 'thumb' | 'mask'; mime: string;
+  key: string; role: 'image' | 'variant' | 'video' | 'audio' | 'preview' | 'text' | 'thumb' | 'mask'; mime: string; locked?: boolean;
   bytes?: number; width?: number; height?: number; durationMs?: number; size?: string; text?: unknown;
 }
 
@@ -165,7 +165,7 @@ export interface CheckoutOut { paymentId: string; reference: string; provider: P
 // ---------------------------------------------------------------- library
 
 export type LibraryType = 'all' | 'image' | 'video' | 'copy' | 'audio';
-export interface LibraryOutput { key: string; role: string; mime: string; size?: string; width?: number; height?: number; durationMs?: number; bytes?: number; url: string | null }
+export interface LibraryOutput { key: string; role: string; mime: string; size?: string; width?: number; height?: number; durationMs?: number; bytes?: number; locked?: boolean; url: string | null }
 export interface LibraryItem {
   id: string; type: Exclude<LibraryType, 'all'>; capability: string; kind: string; title: string | null; productKey: string | null; favourite: boolean;
   credits: number; createdAt: string; finishedAt: string | null; thumbUrl: string | null; previewUrl: string | null; previewMime: string | null;
@@ -187,7 +187,17 @@ export interface Insights {
   engagement: null;
 }
 
+export interface Genre { key: string; name: string; region: string; family: string; description: string; languages: string[]; bpm: [number, number] | null }
+export interface Voice { key: string; name: string; language: string; accent: string | null; gender: string | null; tags: string[]; sampleUrl: string | null; provider: string }
+
 export const api = {
+  audio: {
+    genres: () => request<Genre[]>('GET', '/audio/genres'),
+    voices: () => request<Voice[]>('GET', '/audio/voices'),
+    unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
+    unlock: (workspaceId: string, generationId: string) =>
+      request<{ status: 'unlocked' | 'already_unlocked'; credits?: number; generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null } }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
   library: {
     list: (workspaceId: string, q: LibraryQuery = {}) => {
       const p = new URLSearchParams();

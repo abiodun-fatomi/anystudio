@@ -18,7 +18,7 @@ import styles from './studio.module.css';
 const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = { requesting: 'warn', QUEUED: 'warn', RUNNING: 'accent', SUCCEEDED: 'ok', FAILED: 'danger', CANCELLED: undefined };
 const STATUS_LABEL: Record<GenerationCard['status'], string> = { requesting: 'Sending', QUEUED: 'Queued', RUNNING: 'Working', SUCCEEDED: 'Done', FAILED: 'Failed', CANCELLED: 'Cancelled' };
 
-export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCancel, onDismiss, onRefreshUrls, onEditText, onRegenerateField }: {
+export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCancel, onDismiss, onRefreshUrls, onEditText, onRegenerateField, onUnlock, unlockPrice }: {
   card: GenerationCard;
   onUseAsSource: (key: string) => void;
   onSendToVideo: (key: string) => void;
@@ -28,12 +28,19 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
   onRefreshUrls: (clientKey: string, keys: string[]) => void;
   onEditText: (clientKey: string, field: string, value: string) => void;
   onRegenerateField: (clientKey: string, field: string, instruction: string) => Promise<{ ok: boolean; message?: string }>;
+  onUnlock?: (clientKey: string) => Promise<{ ok: boolean; status?: number; message?: string }>;
+  unlockPrice?: number | null;
 }) {
   const tool = toolById(card.toolId);
   const live = card.status === 'requesting' || card.status === 'QUEUED' || card.status === 'RUNNING';
-  const main = card.outputs.find((o) => o.role === 'image') ?? card.outputs.find((o) => o.role === 'video');
+  const isAudio = card.capability === 'MUSIC' || card.capability === 'VOICEOVER';
+  const fullTrack = card.outputs.find((o) => o.role === 'audio');
+  const locked = Boolean(fullTrack?.locked);
+  const main = card.outputs.find((o) => o.role === 'image') ?? card.outputs.find((o) => o.role === 'video')
+    ?? (locked ? card.outputs.find((o) => o.role === 'preview') : fullTrack) ?? card.outputs.find((o) => o.role === 'preview');
   const variants = card.outputs.filter((o) => o.role === 'variant');
-  const text = card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined;
+  const text = isAudio ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
+  const audioText = isAudio ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined) : undefined;
   const mainUrl = main ? card.urls[main.key] : undefined;
   const missingUrls = useMemo(() => card.outputs.filter((o) => o.key && !card.urls[o.key]).map((o) => o.key), [card.outputs, card.urls]);
   const narrative = card.detail ?? tool.narrative[card.stage] ?? 'Working';
@@ -64,7 +71,9 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
         </div>
       )}
 
-      {main && (
+      {main && (main.role === 'audio' || main.role === 'preview') ? (
+        <AudioBlock card={card} url={mainUrl} locked={locked} title={audioText?.title ?? null} genre={audioText?.genre} unlockPrice={unlockPrice ?? null} onUnlock={onUnlock ? () => onUnlock(card.clientKey) : undefined} />
+      ) : main && (
         <div className={styles.preview}>
           {mainUrl
             ? main.role === 'video'
@@ -73,6 +82,7 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
             : <Skeleton className={styles.previewSkel} />}
         </div>
       )}
+      {audioText && (audioText.lyrics || audioText.script) && <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />}
       {live && !main && card.status === 'RUNNING' && card.stage !== 'queued' && <Skeleton className={styles.previewSkel} />}
 
       {variants.length > 0 && (
@@ -93,7 +103,7 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
 
       <div className={styles.actions}>
         {live && card.status === 'QUEUED' && card.id && <Button variant="ghost" size="sm" onClick={() => onCancel(card.clientKey)}>Cancel</Button>}
-        {card.status === 'SUCCEEDED' && main && mainUrl && <Button variant="ghost" size="sm" href={mainUrl} leading={<Icon.publish width={16} height={16} />}>Download</Button>}
+        {card.status === 'SUCCEEDED' && main && mainUrl && !locked && <Button variant="ghost" size="sm" href={mainUrl} leading={<Icon.publish width={16} height={16} />}>Download</Button>}
         {card.status === 'SUCCEEDED' && main?.role === 'image' && <Button variant="ghost" size="sm" onClick={() => onUseAsSource(main.key)}>Use as source</Button>}
         {card.status === 'SUCCEEDED' && main?.role === 'image' && <Button variant="ghost" size="sm" onClick={() => onSendToVideo(main.key)}>Make a reel from this</Button>}
         {!live && <Button variant="ghost" size="sm" onClick={() => onAgain(card)}>Do it again</Button>}
@@ -198,4 +208,58 @@ function useElapsed(since: number, live: boolean): string {
   useEffect(() => { if (!live) return; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [live]);
   const s = Math.max(0, Math.round((Date.now() - since) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/**
+ * A song or a voiceover. A locked song plays its 30-second preview with the
+ * unlock button beside it; once unlocked, the full track plays and downloads.
+ */
+function AudioBlock({ card, url, locked, title, genre, unlockPrice, onUnlock }: { card: GenerationCard; url?: string; locked: boolean; title: string | null; genre?: string; unlockPrice: number | null; onUnlock?: () => Promise<{ ok: boolean; status?: number; message?: string }> }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const unlock = async () => {
+    if (!onUnlock) return;
+    setBusy(true);
+    const r = await onUnlock();
+    setBusy(false);
+    if (r.ok) toast({ title: 'The whole song is yours', body: 'Play it, download it, put it under a reel.', tone: 'ok' });
+    else if (r.status === 402) toast({ title: 'Not enough credits', body: `Unlocking costs ${unlockPrice ?? ''} credits.`, tone: 'warn' });
+    else toast({ title: 'Could not unlock', body: r.message, tone: 'danger' });
+  };
+  return (
+    <div className={styles.audio} data-locked={locked || undefined}>
+      <div className={styles.audioHead}>
+        <span className={styles.audioIcon} aria-hidden="true">{card.capability === 'MUSIC' ? <Icon.music /> : <Icon.mic />}</span>
+        <div className={styles.audioMeta}>
+          <strong>{title ?? (card.capability === 'MUSIC' ? 'Your song' : 'Your voiceover')}</strong>
+          <span>{card.capability === 'MUSIC' ? (locked ? `${genre ? `${genre} · ` : ''}30-second preview` : `${genre ? `${genre} · ` : ''}full song`) : 'ready to use'}</span>
+        </div>
+        {locked && <Badge tone="warn" dot>Preview</Badge>}
+      </div>
+      {url ? <audio src={url} controls preload="metadata" className={styles.player} /> : <Skeleton style={{ height: 44 }} />}
+      {locked && card.status === 'SUCCEEDED' && (
+        <div className={styles.unlockRow}>
+          <span>Love it? The full song is {unlockPrice ?? '—'} credits. It stays yours to download and use.</span>
+          <Button size="sm" loading={busy} onClick={() => void unlock()} leading={<Icon.lock width={14} height={14} />}>Unlock the full song{unlockPrice ? ` · ${unlockPrice} cr` : ''}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LyricsView({ label, text }: { label: string; text: string }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={styles.copyField}>
+      <div className={styles.copyFieldHead}>
+        <span>{label}</span>
+        <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
+          <Button variant="link" size="sm" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : 'Show'}</Button>
+          <Button variant="link" size="sm" onClick={() => { void navigator.clipboard?.writeText(text); toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 }); }}>Copy</Button>
+        </span>
+      </div>
+      {open && <p className={styles.copyText}>{text}</p>}
+    </div>
+  );
 }

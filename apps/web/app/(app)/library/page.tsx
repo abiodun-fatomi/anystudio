@@ -136,7 +136,7 @@ function Library() {
             {items.map((item) => (
               <div key={item.id} className={styles.card} data-type={item.type}>
                 <button type="button" className={styles.thumb} onClick={() => void openItem(item)} aria-label={`Open ${item.title ?? TYPE_WORD[item.type]}`}>
-                  {item.thumbUrl ? <img src={item.thumbUrl} alt="" loading="lazy" /> : item.type === 'copy' ? <span className={styles.copyThumb}>{excerpt(item.text)}</span> : <Icon.library />}
+                  {item.thumbUrl ? <img src={item.thumbUrl} alt="" loading="lazy" /> : item.type === 'copy' ? <span className={styles.copyThumb}>{excerpt(item.text)}</span> : item.type === 'audio' ? <span className={styles.audioThumb}><Icon.music width={28} height={28} /><span>{excerpt(item.text).slice(0, 80)}</span></span> : <Icon.library />}
                   {item.type === 'video' && <span className={styles.play} aria-hidden="true">▶</span>}
                 </button>
                 <div className={styles.cardBody}>
@@ -181,15 +181,23 @@ function TitleEditor({ item, onSave }: { item: LibraryItem; onSave: (title: stri
 }
 
 function ItemDetail({ item, workspaceId }: { item: LibraryItem; workspaceId: string }) {
-  const files = item.outputs.filter((o) => o.role !== 'text');
+  const files = item.outputs.filter((o) => o.role !== 'text' && !o.locked);
   const image = item.outputs.find((o) => o.role === 'image');
   const video = item.outputs.find((o) => o.role === 'video');
+  const track = item.outputs.find((o) => o.role === 'audio' && !o.locked) ?? item.outputs.find((o) => o.role === 'preview');
+  const lockedTrack = item.outputs.some((o) => o.role === 'audio' && o.locked);
   return (
     <div className={styles.detail}>
       <div className={styles.preview}>
         {video ? <video src={video.url ?? item.previewUrl ?? undefined} controls playsInline preload="metadata" />
           : image ? <img src={image.url ?? item.previewUrl ?? undefined} alt={item.title ?? ''} />
-            : item.text ? <CopyText text={item.text} /> : <span className={styles.cardMeta}>No preview</span>}
+            : track ? (
+              <div className={styles.audioBox}>
+                <Icon.library width={32} height={32} />
+                <audio src={track.url ?? item.previewUrl ?? undefined} controls preload="metadata" style={{ width: '100%' }} />
+                {lockedTrack && <span className={styles.cardMeta} style={{ whiteSpace: 'normal' }}>This is the 30-second preview. Unlock the full song from the studio result, or make it again.</span>}
+              </div>
+            ) : item.text ? <CopyText text={item.text} /> : <span className={styles.cardMeta}>No preview</span>}
       </div>
       <div className={styles.side}>
         <div className={styles.meta}>
