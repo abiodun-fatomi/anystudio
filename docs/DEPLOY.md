@@ -207,7 +207,8 @@ Only the account owner can do these; none can be automated from here.
 | **Google Cloud** | Sign in with Google | One OAuth client, all redirect URIs on it (section 9.1) |
 | **Resend** | transactional mail | Verify `anystudio.ai`, one API key (section 9.2) |
 | **Cloudflare R2** | media | One bucket per environment, with a `dev/` prefix on the staging one |
-| **Flutterwave / Paddle** | payments | Not needed until Phase 5 |
+| **Flutterwave / Paddle** | payments | Section 5 |
+| **Meta for Developers** | the WhatsApp bot | Business verification, a WhatsApp Business app, a System User token (section 10) |
 
 ---
 
@@ -231,7 +232,7 @@ copies a connection string by hand.
 | `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY` | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle |
 | `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments |
 | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV` | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
-| `WHATSAPP_*` | Phone number id, access token, webhook verify token |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set |
 
 GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,
 plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for the web; and the
@@ -351,3 +352,45 @@ which is the whole reason `schema.prisma` declares `directUrl`. Point both at
 a pooler and `db:deploy` will hang or half-apply.
 
 Locally, `docker-compose` has no pooler and the two are the same string.
+
+---
+
+## 10. The WhatsApp bot
+
+The bot is the API process: `POST /api/v1/whatsapp/webhook` receives, the
+worker's `GenerationHooks` sends results back. Nothing else to deploy.
+
+**At Meta (once, by the account owner):**
+
+1. Meta Business Suite → verify the business (days to weeks; start now).
+2. developers.facebook.com → create an app of type *Business* → add the
+   **WhatsApp** product. The test number it gives you works immediately for
+   up to five recipients; a real number needs the business verified and the
+   number registered under the WhatsApp Business Account.
+3. **App settings → Basic → App secret** → `WHATSAPP_APP_SECRET`. Every
+   webhook is signed with it; the API refuses everything when it is unset.
+4. **WhatsApp → API setup → Phone number ID** → `WHATSAPP_PHONE_NUMBER_ID`.
+5. **Business settings → System users** → add a system user (admin), assign
+   the app and the WhatsApp account, generate a token with
+   `whatsapp_business_messaging` and `whatsapp_business_management`, no
+   expiry → `WHATSAPP_ACCESS_TOKEN`. (The token on the API-setup page
+   expires in 24 hours; do not deploy that one.)
+6. **WhatsApp → Configuration → Webhook**: callback URL
+   `https://<api host>/api/v1/whatsapp/webhook`, verify token = whatever you
+   put in `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, then **Manage** → subscribe to
+   `messages`. Meta calls the GET once with the token; the API echoes the
+   challenge when it matches.
+7. Deploy with the four variables in the environment's Env Group. Send
+   "hi" to the number.
+
+**What the bot sends is media by link**: the signed R2 URLs the studio
+uses, fetched by Meta within the hour they last. R2 must be reachable from
+Meta's fetchers (it is, on the public bucket endpoint the API signs for).
+
+**Costs to know**: Meta charges per conversation window (24 hours) opened
+by the business; a customer who writes first opens a free service window.
+Everything the bot sends is a reply inside such a window, so the bot costs
+nothing on Meta's side unless it messages first — which it never does.
+
+**Opt-out** is a word, "stop", honoured immediately and recorded on the
+contact; the next message from them opens things up again.

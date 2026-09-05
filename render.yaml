@@ -208,3 +208,5 @@ envVarGroups:
         sync: false
       - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
         sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
