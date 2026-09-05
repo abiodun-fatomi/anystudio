@@ -78,11 +78,7 @@ export class RateLimitGuard implements CanActivate {
         // Warn, not error: being rate-limited is the system working. It is
         // logged because a burst of these on /auth/login is the first sign of
         // credential stuffing, and the shape of that burst is the story.
-        logger.warn(
-          { scope: rule.scope, route, limit: rule.limit,
-            windowSec: rule.windowSec, ip: req.ip, requestId: req.requestId },
-          'rate limit exceeded',
-        );
+        logger.warn({ scope: rule.scope, route, limit: rule.limit, windowSec: rule.windowSec, ip: req.ip, requestId: req.requestId }, 'rate limit exceeded');
         throw new RateLimitedError(verdict.resetSec);
       }
     }

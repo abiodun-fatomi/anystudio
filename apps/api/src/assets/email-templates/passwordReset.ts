@@ -9,14 +9,23 @@ export function passwordReset(to: string, name: string | null, link: string): Ma
   return {
     to,
     subject: 'Reset your AnyStudio password',
-    text: [greet(name), '',
+    text: [
+      greet(name),
+      '',
       'Someone asked to reset the password on your AnyStudio account. If that was you, open this link within 30 minutes:',
-      link, '',
+      link,
+      '',
       "If it wasn't you, ignore this — your password has not changed and nobody can use this link without your inbox.",
-      '', SIGNATURE].join('\n'),
-    html: html([greet(name),
-      'Someone asked to reset the password on your AnyStudio account. If that was you, the link below works for 30 minutes.',
-      "If it wasn't you, ignore this email — your password has not changed, and nobody can use the link without access to your inbox."],
-      { label: 'Choose a new password', url: link }),
+      '',
+      SIGNATURE,
+    ].join('\n'),
+    html: html(
+      [
+        greet(name),
+        'Someone asked to reset the password on your AnyStudio account. If that was you, the link below works for 30 minutes.',
+        "If it wasn't you, ignore this email — your password has not changed, and nobody can use the link without access to your inbox.",
+      ],
+      { label: 'Choose a new password', url: link },
+    ),
   };
 }

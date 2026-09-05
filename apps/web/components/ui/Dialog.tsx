@@ -46,14 +46,20 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const onCancel = (e: Event) => { e.preventDefault(); if (!locked) onClose(); };
+    const onCancel = (e: Event) => {
+      e.preventDefault();
+      if (!locked) onClose();
+    };
     const onClosed = () => {
       document.documentElement.style.overflow = '';
       (opener.current as HTMLElement | null)?.focus?.();
     };
     el.addEventListener('cancel', onCancel);
     el.addEventListener('close', onClosed);
-    return () => { el.removeEventListener('cancel', onCancel); el.removeEventListener('close', onClosed); };
+    return () => {
+      el.removeEventListener('cancel', onCancel);
+      el.removeEventListener('close', onClosed);
+    };
   }, [onClose, locked]);
 
   return (
@@ -62,15 +68,25 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
       className={cx(styles.dialog, wide && styles.wide, sheet && styles.sheet, sheet === 'bottom' && styles.bottom)}
       aria-labelledby={`${id}-t`}
       aria-describedby={description ? `${id}-d` : undefined}
-      onClick={(e) => { if (e.target === e.currentTarget && !locked) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !locked) onClose();
+      }}
     >
       <div className={styles.head}>
         <div>
-          <h2 id={`${id}-t`} className={styles.title}>{title}</h2>
-          {description && <p id={`${id}-d`} className={styles.desc}>{description}</p>}
+          <h2 id={`${id}-t`} className={styles.title}>
+            {title}
+          </h2>
+          {description && (
+            <p id={`${id}-d`} className={styles.desc}>
+              {description}
+            </p>
+          )}
         </div>
         <Button variant="ghost" size="sm" icon aria-label="Close" className={styles.close} onClick={onClose} disabled={locked}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
         </Button>
       </div>
       <div className={styles.body}>{children}</div>
@@ -80,9 +96,42 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
 }
 
 /** Confirm: the destructive action is never the default and never the first tab stop. */
-export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', danger, busy }: { open: boolean; onClose: () => void; onConfirm: () => void; title: ReactNode; description?: ReactNode; confirmLabel?: string; danger?: boolean; busy?: boolean }) {
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  danger,
+  busy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: ReactNode;
+  description?: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  busy?: boolean;
+}) {
   return (
-    <Dialog open={open} onClose={onClose} title={title} description={description} locked={busy}
-      footer={<><Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button><Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={busy}>{confirmLabel}</Button></>} />
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      locked={busy}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={busy}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    />
   );
 }

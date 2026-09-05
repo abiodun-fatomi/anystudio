@@ -22,7 +22,7 @@ export class WalletController {
 
   @Get('/history')
   @RequireWorkspaceRole('AUDITOR')
-  @ApiOperation({ summary: 'The ledger, newest first — the customer\'s statement' })
+  @ApiOperation({ summary: "The ledger, newest first — the customer's statement" })
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
   history(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() query: WalletHistoryQueryDto) {
     return this.walletService.history(workspaceId, query);

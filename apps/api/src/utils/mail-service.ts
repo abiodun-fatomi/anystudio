@@ -64,7 +64,12 @@ export class SmtpMailer extends Mailer {
  */
 @Injectable()
 export class ResendMailer extends Mailer {
-  constructor(private readonly apiKey: string, private readonly from: string) { super(); }
+  constructor(
+    private readonly apiKey: string,
+    private readonly from: string,
+  ) {
+    super();
+  }
 
   /** Send one message. Throws on refusal; callers decide whether that is fatal. */
   async send(mail: Mail): Promise<MailReceipt> {
@@ -115,23 +120,21 @@ export class LogMailer extends Mailer {
  * third party is a credential, and anyone with log access could use it.
  */
 export class LoggingMailer extends Mailer {
-  constructor(private readonly inner: Mailer) { super(); }
+  constructor(private readonly inner: Mailer) {
+    super();
+  }
 
   async send(mail: Mail): Promise<MailReceipt> {
     const started = Date.now();
     try {
       const receipt = await this.inner.send(mail);
       logger.info(
-        { event: 'mail.sent', transport: receipt.transport, providerId: receipt.id,
-          to: mail.to, subject: mail.subject, ms: Date.now() - started },
+        { event: 'mail.sent', transport: receipt.transport, providerId: receipt.id, to: mail.to, subject: mail.subject, ms: Date.now() - started },
         'mail sent',
       );
       return receipt;
     } catch (err) {
-      logger.error(
-        { event: 'mail.failed', to: mail.to, subject: mail.subject, ms: Date.now() - started, err },
-        'mail failed to send',
-      );
+      logger.error({ event: 'mail.failed', to: mail.to, subject: mail.subject, ms: Date.now() - started, err }, 'mail failed to send');
       throw err;
     }
   }
@@ -150,9 +153,6 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv): Mailer {
   const from = env.MAIL_FROM ?? 'AnyStudio <no-reply@anystudio.ai>';
   if (env.RESEND_API_KEY) return new LoggingMailer(new ResendMailer(env.RESEND_API_KEY, from));
   if (env.SMTP_URL) return new LoggingMailer(new SmtpMailer(env.SMTP_URL, from));
-  logger.warn(
-    { event: 'mail.unconfigured' },
-    'no mail transport: set RESEND_API_KEY or SMTP_URL, or nothing will be delivered',
-  );
+  logger.warn({ event: 'mail.unconfigured' }, 'no mail transport: set RESEND_API_KEY or SMTP_URL, or nothing will be delivered');
   return new LoggingMailer(new LogMailer());
 }

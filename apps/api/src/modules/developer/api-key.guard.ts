@@ -23,7 +23,9 @@ export const API_SCOPE_KEY = 'api:scope';
 export const RequireScope = (scope: ApiScope) => SetMetadata(API_SCOPE_KEY, scope);
 
 declare module 'express-serve-static-core' {
-  interface Request { apiKey?: ApiKey }
+  interface Request {
+    apiKey?: ApiKey;
+  }
 }
 
 /** How often lastUsedAt is written: once a minute per key is plenty for "is this key alive". */
@@ -33,7 +35,10 @@ const TOUCH_EVERY_MS = 60_000;
 export class ApiKeyGuard implements CanActivate {
   private readonly touched = new Map<string, number>();
 
-  constructor(private readonly reflector: Reflector, private readonly db: PrismaClient) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly db: PrismaClient,
+  ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();
@@ -49,7 +54,10 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedError('That is a test key. Production takes live keys only.');
     }
 
-    const key = await this.db.apiKey.findUnique({ where: { hash: hashApiKey(token) }, include: { project: { select: { archivedAt: true } }, workspace: { select: { deletedAt: true } } } });
+    const key = await this.db.apiKey.findUnique({
+      where: { hash: hashApiKey(token) },
+      include: { project: { select: { archivedAt: true } }, workspace: { select: { deletedAt: true } } },
+    });
     const refuse = (reason: string, message: string) => {
       authLog('api.auth', 'refused', { reason, prefix: token.slice(0, 16), apiKeyId: key?.id, workspaceId: key?.workspaceId }, req);
       throw new UnauthorizedError(message);
@@ -67,9 +75,14 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     const actor: Actor & { sessionId: string } = {
-      userId: key!.createdById, surface: 'ORG', staffRole: null,
+      userId: key!.createdById,
+      surface: 'ORG',
+      staffRole: null,
       workspaceRoles: new Map([[key!.workspaceId, 'MEMBER']]),
-      mfaLevel: 0, lastStepUpAt: null, impersonating: false, sessionId: `key:${key!.id}`,
+      mfaLevel: 0,
+      lastStepUpAt: null,
+      impersonating: false,
+      sessionId: `key:${key!.id}`,
     };
     req.actor = actor;
     req.apiKey = key!;

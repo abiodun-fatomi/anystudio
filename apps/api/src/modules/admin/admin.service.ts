@@ -23,7 +23,18 @@ import { LedgerService } from '../ledger/ledger.service';
 import { NotificationService } from '../notification/notification.service';
 import { ProviderRegistry } from '../provider/provider.registry';
 import { ProviderRouter } from '../provider/provider.router';
-import type { AuditQueryDto, CreditsDto, GenerationsQueryDto, PaymentsQueryDto, PlatformMessageDto, PlatformMessagePatchDto, PricePatchDto, ProviderPatchDto, SearchDto, StaffGrantDto } from './admin.dto';
+import type {
+  AuditQueryDto,
+  CreditsDto,
+  GenerationsQueryDto,
+  PaymentsQueryDto,
+  PlatformMessageDto,
+  PlatformMessagePatchDto,
+  PricePatchDto,
+  ProviderPatchDto,
+  SearchDto,
+  StaffGrantDto,
+} from './admin.dto';
 
 const DAY_MS = 86_400_000;
 /** Staff mutations accept a factor confirmed within the last half hour; the console re-prompts after that. */
@@ -44,21 +55,29 @@ export class AdminService {
 
   async overview() {
     const now = Date.now();
-    const day = new Date(now - DAY_MS); const week = new Date(now - 7 * DAY_MS); const month = new Date(now - 30 * DAY_MS);
-    const [users, usersWeek, workspaces, genToday, failedToday, runningNow, queuedStale, paymentsMonth, providers, recentFailures, whatsappToday, apiToday] = await Promise.all([
-      this.db.user.count({ where: { status: { not: 'DELETED' } } }),
-      this.db.user.count({ where: { createdAt: { gte: week } } }),
-      this.db.workspace.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true } }),
-      this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' } } }),
-      this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' }, status: 'FAILED' } }),
-      this.db.generation.count({ where: { status: 'RUNNING' } }),
-      this.db.generation.count({ where: { status: 'QUEUED', createdAt: { lt: new Date(now - 10 * 60_000) } } }),
-      this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: month } }, _sum: { credits: true }, _count: { _all: true } }),
-      this.db.providerModel.findMany({ where: { enabled: true } }),
-      this.db.generation.findMany({ where: { status: 'FAILED', createdAt: { gte: day }, kind: { not: 'CHILD' } }, orderBy: { createdAt: 'desc' }, take: 8, select: { id: true, capability: true, failureKind: true, failureReason: true, providerKey: true, workspaceId: true, createdAt: true } }),
-      this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'WHATSAPP' } }),
-      this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'API' } }),
-    ]);
+    const day = new Date(now - DAY_MS);
+    const week = new Date(now - 7 * DAY_MS);
+    const month = new Date(now - 30 * DAY_MS);
+    const [users, usersWeek, workspaces, genToday, failedToday, runningNow, queuedStale, paymentsMonth, providers, recentFailures, whatsappToday, apiToday] =
+      await Promise.all([
+        this.db.user.count({ where: { status: { not: 'DELETED' } } }),
+        this.db.user.count({ where: { createdAt: { gte: week } } }),
+        this.db.workspace.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true } }),
+        this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' } } }),
+        this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' }, status: 'FAILED' } }),
+        this.db.generation.count({ where: { status: 'RUNNING' } }),
+        this.db.generation.count({ where: { status: 'QUEUED', createdAt: { lt: new Date(now - 10 * 60_000) } } }),
+        this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: month } }, _sum: { credits: true }, _count: { _all: true } }),
+        this.db.providerModel.findMany({ where: { enabled: true } }),
+        this.db.generation.findMany({
+          where: { status: 'FAILED', createdAt: { gte: day }, kind: { not: 'CHILD' } },
+          orderBy: { createdAt: 'desc' },
+          take: 8,
+          select: { id: true, capability: true, failureKind: true, failureReason: true, providerKey: true, workspaceId: true, createdAt: true },
+        }),
+        this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'WHATSAPP' } }),
+        this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'API' } }),
+      ]);
     const breakers = providers.filter((p) => p.breakerOpenedAt && now - p.breakerOpenedAt.getTime() < 10 * 60_000);
     const missing = providers.filter((p) => !this.registry.get(p.key));
     return {
@@ -66,7 +85,11 @@ export class AdminService {
       workspaces: Object.fromEntries(workspaces.map((w) => [w.type, w._count._all])),
       generations: { today: genToday, failedToday, runningNow, queuedStale, whatsappToday, apiToday },
       credits: { soldLast30d: paymentsMonth._sum.credits ?? 0, paymentsLast30d: paymentsMonth._count._all },
-      providers: { enabled: providers.length, breakersOpen: breakers.map((b) => `${b.key} (${b.capability})`), noAdapter: missing.map((m) => `${m.key} (${m.capability})`) },
+      providers: {
+        enabled: providers.length,
+        breakersOpen: breakers.map((b) => `${b.key} (${b.capability})`),
+        noAdapter: missing.map((m) => `${m.key} (${m.capability})`),
+      },
       recentFailures,
     };
   }
@@ -76,21 +99,100 @@ export class AdminService {
   async customers(q: SearchDto) {
     const term = q.q?.trim();
     const where: Prisma.UserWhereInput = term
-      ? { OR: [{ email: { contains: term, mode: 'insensitive' } }, { phone: { contains: term.replace(/\s+/g, '') } }, { name: { contains: term, mode: 'insensitive' } }, ...(isUuid(term) ? [{ id: term }] : [])] }
+      ? {
+          OR: [
+            { email: { contains: term, mode: 'insensitive' } },
+            { phone: { contains: term.replace(/\s+/g, '') } },
+            { name: { contains: term, mode: 'insensitive' } },
+            ...(isUuid(term) ? [{ id: term }] : []),
+          ],
+        }
       : {};
-    const rows = await this.db.user.findMany({ where, orderBy: { createdAt: 'desc' }, take: q.take ?? 50, ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}), select: { id: true, name: true, email: true, phone: true, status: true, createdAt: true, lastLoginAt: true, workspaceMembers: { select: { role: true, workspace: { select: { id: true, name: true, type: true } } } } } });
-    return { customers: rows.map((u) => ({ ...u, workspaces: u.workspaceMembers.map((m) => ({ ...m.workspace, role: m.role })), workspaceMembers: undefined })), nextCursor: rows.length === (q.take ?? 50) ? rows[rows.length - 1]!.id : null };
+    const rows = await this.db.user.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: q.take ?? 50,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        lastLoginAt: true,
+        workspaceMembers: { select: { role: true, workspace: { select: { id: true, name: true, type: true } } } },
+      },
+    });
+    return {
+      customers: rows.map((u) => ({ ...u, workspaces: u.workspaceMembers.map((m) => ({ ...m.workspace, role: m.role })), workspaceMembers: undefined })),
+      nextCursor: rows.length === (q.take ?? 50) ? rows[rows.length - 1]!.id : null,
+    };
   }
 
   async customer(userId: string) {
-    const user = await this.db.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, phone: true, phoneIsWhatsApp: true, status: true, emailVerifiedAt: true, phoneVerifiedAt: true, createdAt: true, lastLoginAt: true, deleteRequestedAt: true, locale: true, timezone: true, identities: { select: { provider: true, createdAt: true } }, mfaFactors: { select: { type: true, confirmedAt: true } }, staffGrants: { where: { revokedAt: null }, select: { role: true, expiresAt: true } } } });
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        phoneIsWhatsApp: true,
+        status: true,
+        emailVerifiedAt: true,
+        phoneVerifiedAt: true,
+        createdAt: true,
+        lastLoginAt: true,
+        deleteRequestedAt: true,
+        locale: true,
+        timezone: true,
+        identities: { select: { provider: true, createdAt: true } },
+        mfaFactors: { select: { type: true, confirmedAt: true } },
+        staffGrants: { where: { revokedAt: null }, select: { role: true, expiresAt: true } },
+      },
+    });
     if (!user) throw new NotFoundError('customer');
-    const memberships = await this.db.workspaceMember.findMany({ where: { userId }, include: { workspace: { include: { wallet: { select: { id: true } } } } } });
-    const workspaces = await Promise.all(memberships.map(async (m) => ({ id: m.workspace.id, name: m.workspace.name, type: m.workspace.type, currency: m.workspace.currency, role: m.role, deletedAt: m.workspace.deletedAt, balance: m.workspace.wallet ? await this.ledger.balance(m.workspace.wallet.id) : 0 })));
+    const memberships = await this.db.workspaceMember.findMany({
+      where: { userId },
+      include: { workspace: { include: { wallet: { select: { id: true } } } } },
+    });
+    const workspaces = await Promise.all(
+      memberships.map(async (m) => ({
+        id: m.workspace.id,
+        name: m.workspace.name,
+        type: m.workspace.type,
+        currency: m.workspace.currency,
+        role: m.role,
+        deletedAt: m.workspace.deletedAt,
+        balance: m.workspace.wallet ? await this.ledger.balance(m.workspace.wallet.id) : 0,
+      })),
+    );
     const [generations, payments, events] = await Promise.all([
-      this.db.generation.findMany({ where: { requestedById: userId, kind: { not: 'CHILD' } }, orderBy: { createdAt: 'desc' }, take: 20, select: { id: true, capability: true, status: true, credits: true, channel: true, providerKey: true, failureKind: true, createdAt: true, workspaceId: true, title: true } }),
+      this.db.generation.findMany({
+        where: { requestedById: userId, kind: { not: 'CHILD' } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          capability: true,
+          status: true,
+          credits: true,
+          channel: true,
+          providerKey: true,
+          failureKind: true,
+          createdAt: true,
+          workspaceId: true,
+          title: true,
+        },
+      }),
       this.db.payment.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      this.db.authEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, type: true, surface: true, ip: true, createdAt: true, detail: true } }),
+      this.db.authEvent.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: { id: true, type: true, surface: true, ip: true, createdAt: true, detail: true },
+      }),
     ]);
     return { user, workspaces, generations, payments, events };
   }
@@ -102,7 +204,10 @@ export class AdminService {
     if (!user) throw new NotFoundError('customer');
     if (user.status === 'DELETED') throw new ConflictError('That account is deleted.');
     const updated = await this.db.user.update({ where: { id: userId }, data: { status } });
-    if (status === 'SUSPENDED') await this.db.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'suspended' } }).catch(() => undefined);
+    if (status === 'SUSPENDED')
+      await this.db.session
+        .updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'suspended' } })
+        .catch(() => undefined);
     authLog('admin.customer', 'succeeded', { userId: actor.userId, target: userId, action: status.toLowerCase(), reason }, req);
     return { id: updated.id, status: updated.status };
   }
@@ -110,14 +215,42 @@ export class AdminService {
   // ---------------------------------------------------------------- workspaces and credits
 
   async workspace(workspaceId: string) {
-    const ws = await this.db.workspace.findUnique({ where: { id: workspaceId }, include: { wallet: { select: { id: true } }, members: { include: { user: { select: { id: true, name: true, email: true } } } }, subscriptions: { orderBy: { createdAt: 'desc' }, take: 3 } } });
+    const ws = await this.db.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        wallet: { select: { id: true } },
+        members: { include: { user: { select: { id: true, name: true, email: true } } } },
+        subscriptions: { orderBy: { createdAt: 'desc' }, take: 3 },
+      },
+    });
     if (!ws) throw new NotFoundError('workspace');
     const [balance, ledger, generations] = await Promise.all([
       ws.wallet ? this.ledger.balance(ws.wallet.id) : 0,
       ws.wallet ? this.db.ledgerEntry.findMany({ where: { walletId: ws.wallet.id }, orderBy: { createdAt: 'desc' }, take: 50 }) : [],
-      this.db.generation.findMany({ where: { workspaceId, kind: { not: 'CHILD' } }, orderBy: { createdAt: 'desc' }, take: 20, select: { id: true, capability: true, status: true, credits: true, channel: true, providerKey: true, failureKind: true, createdAt: true, title: true } }),
+      this.db.generation.findMany({
+        where: { workspaceId, kind: { not: 'CHILD' } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, capability: true, status: true, credits: true, channel: true, providerKey: true, failureKind: true, createdAt: true, title: true },
+      }),
     ]);
-    return { workspace: { id: ws.id, name: ws.name, type: ws.type, currency: ws.currency, region: ws.region, profile: ws.profile, createdAt: ws.createdAt, deletedAt: ws.deletedAt }, balance, members: ws.members.map((m) => ({ role: m.role, ...m.user })), subscriptions: ws.subscriptions, ledger, generations };
+    return {
+      workspace: {
+        id: ws.id,
+        name: ws.name,
+        type: ws.type,
+        currency: ws.currency,
+        region: ws.region,
+        profile: ws.profile,
+        createdAt: ws.createdAt,
+        deletedAt: ws.deletedAt,
+      },
+      balance,
+      members: ws.members.map((m) => ({ role: m.role, ...m.user })),
+      subscriptions: ws.subscriptions,
+      ledger,
+      generations,
+    };
   }
 
   /** Credits in or out, with a reason, on the record. */
@@ -126,10 +259,25 @@ export class AdminService {
     if (dto.delta === 0) throw new ConflictError('Zero is not an adjustment.');
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId }, select: { id: true } });
     if (!wallet) throw new NotFoundError('wallet');
-    const entry = await this.ledger.adjust({ walletId: wallet.id, amount: Math.abs(dto.delta), delta: dto.delta, actorId: actor.userId, reason: dto.reason.trim(), idempotencyKey: `admin:${actor.userId}:${workspaceId}:${Date.now()}` });
+    const entry = await this.ledger.adjust({
+      walletId: wallet.id,
+      amount: Math.abs(dto.delta),
+      delta: dto.delta,
+      actorId: actor.userId,
+      reason: dto.reason.trim(),
+      idempotencyKey: `admin:${actor.userId}:${workspaceId}:${Date.now()}`,
+    });
     authLog('admin.credits', 'succeeded', { userId: actor.userId, workspaceId, delta: dto.delta, reason: dto.reason, ledgerEntryId: entry.id }, req);
     const owner = await this.db.workspaceMember.findFirst({ where: { workspaceId, role: 'OWNER' }, select: { userId: true } });
-    if (owner) void this.notifications.notify(owner.userId, { workspaceId, kind: 'CREDITS', title: dto.delta > 0 ? `${dto.delta.toLocaleString()} credits added by support` : `${Math.abs(dto.delta).toLocaleString()} credits removed by support`, body: dto.reason.trim(), href: '/billing', refId: entry.id });
+    if (owner)
+      void this.notifications.notify(owner.userId, {
+        workspaceId,
+        kind: 'CREDITS',
+        title: dto.delta > 0 ? `${dto.delta.toLocaleString()} credits added by support` : `${Math.abs(dto.delta).toLocaleString()} credits removed by support`,
+        body: dto.reason.trim(),
+        href: '/billing',
+        refId: entry.id,
+      });
     return { entry, balance: await this.ledger.balance(wallet.id) };
   }
 
@@ -139,16 +287,56 @@ export class AdminService {
     const term = q.q?.trim();
     const where: Prisma.GenerationWhereInput = {
       kind: { not: 'CHILD' },
-      ...(q.status ? { status: q.status as never } : {}), ...(q.capability ? { capability: q.capability as never } : {}), ...(q.workspaceId ? { workspaceId: q.workspaceId } : {}),
-      ...(term ? { OR: [...(isUuid(term) ? [{ id: term }, { workspaceId: term }] : []), { providerJobId: { contains: term } }, { title: { contains: term, mode: 'insensitive' as const } }] } : {}),
+      ...(q.status ? { status: q.status as never } : {}),
+      ...(q.capability ? { capability: q.capability as never } : {}),
+      ...(q.workspaceId ? { workspaceId: q.workspaceId } : {}),
+      ...(term
+        ? {
+            OR: [
+              ...(isUuid(term) ? [{ id: term }, { workspaceId: term }] : []),
+              { providerJobId: { contains: term } },
+              { title: { contains: term, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
     };
     const take = q.take ?? 50;
-    const rows = await this.db.generation.findMany({ where, orderBy: { createdAt: 'desc' }, take: take + 1, ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}), select: { id: true, workspaceId: true, capability: true, status: true, credits: true, channel: true, providerKey: true, providerJobId: true, failureKind: true, failureReason: true, stage: true, attempts: true, providerCostMinor: true, createdAt: true, finishedAt: true, title: true } });
+    const rows = await this.db.generation.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        workspaceId: true,
+        capability: true,
+        status: true,
+        credits: true,
+        channel: true,
+        providerKey: true,
+        providerJobId: true,
+        failureKind: true,
+        failureReason: true,
+        stage: true,
+        attempts: true,
+        providerCostMinor: true,
+        createdAt: true,
+        finishedAt: true,
+        title: true,
+      },
+    });
     return { generations: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
   }
 
   async generation(id: string) {
-    const row = await this.db.generation.findUnique({ where: { id }, include: { children: { orderBy: { createdAt: 'asc' } }, workspace: { select: { name: true, type: true } }, requestedBy: { select: { id: true, name: true, email: true, phone: true } } } });
+    const row = await this.db.generation.findUnique({
+      where: { id },
+      include: {
+        children: { orderBy: { createdAt: 'asc' } },
+        workspace: { select: { name: true, type: true } },
+        requestedBy: { select: { id: true, name: true, email: true, phone: true } },
+      },
+    });
     if (!row) throw new NotFoundError('generation');
     return row;
   }
@@ -158,7 +346,8 @@ export class AdminService {
     const row = await this.db.generation.findUnique({ where: { id }, select: { id: true, status: true, workspaceId: true } });
     if (!row) throw new NotFoundError('generation');
     assertStaffMutation(actor, { min: 'OPERATOR', workspaceId: row.workspaceId, stepUpMinutes: STEP_UP_MIN });
-    if (row.status !== 'RUNNING' && row.status !== 'QUEUED') throw new ConflictError(`That generation is ${row.status.toLowerCase()}; only a running or queued one can be ended.`);
+    if (row.status !== 'RUNNING' && row.status !== 'QUEUED')
+      throw new ConflictError(`That generation is ${row.status.toLowerCase()}; only a running or queued one can be ended.`);
     const done = await this.generationService.fail(id, { failureReason: `ended by staff: ${reason}`, failureKind: 'INTERNAL' });
     authLog('admin.generation', 'succeeded', { userId: actor.userId, generationId: id, workspaceId: row.workspaceId, action: 'fail', reason }, req);
     return done;
@@ -171,9 +360,27 @@ export class AdminService {
     assertStaffMutation(actor, { min: 'OPERATOR', workspaceId: row.workspaceId, stepUpMinutes: STEP_UP_MIN });
     if (row.status !== 'SUCCEEDED') throw new ConflictError('Only a finished generation can be refunded as goodwill; a failed one already was.');
     if (!row.credits || !row.workspace.wallet) throw new ConflictError('There is nothing to refund on that row.');
-    const entry = await this.ledger.refund({ walletId: row.workspace.wallet.id, amount: row.credits, idempotencyKey: `goodwill:${row.id}`, referenceId: row.id, reason: `goodwill refund: ${reason}` });
-    authLog('admin.generation', 'succeeded', { userId: actor.userId, generationId: id, workspaceId: row.workspaceId, action: 'refund', credits: row.credits, reason, ledgerEntryId: entry.id }, req);
-    void this.notifications.notify(row.requestedById, { workspaceId: row.workspaceId, kind: 'CREDITS', title: `${row.credits} credits refunded`, body: reason, href: '/billing', refId: `goodwill:${row.id}` });
+    const entry = await this.ledger.refund({
+      walletId: row.workspace.wallet.id,
+      amount: row.credits,
+      idempotencyKey: `goodwill:${row.id}`,
+      referenceId: row.id,
+      reason: `goodwill refund: ${reason}`,
+    });
+    authLog(
+      'admin.generation',
+      'succeeded',
+      { userId: actor.userId, generationId: id, workspaceId: row.workspaceId, action: 'refund', credits: row.credits, reason, ledgerEntryId: entry.id },
+      req,
+    );
+    void this.notifications.notify(row.requestedById, {
+      workspaceId: row.workspaceId,
+      kind: 'CREDITS',
+      title: `${row.credits} credits refunded`,
+      body: reason,
+      href: '/billing',
+      refId: `goodwill:${row.id}`,
+    });
     return { entry };
   }
 
@@ -182,11 +389,20 @@ export class AdminService {
   async providers() {
     const rows = await this.db.providerModel.findMany({ orderBy: [{ capability: 'asc' }, { priority: 'asc' }] });
     const now = Date.now();
-    const usage = await this.db.generation.groupBy({ by: ['providerKey'], where: { createdAt: { gte: new Date(now - DAY_MS) }, providerKey: { not: null } }, _count: { _all: true } });
+    const usage = await this.db.generation.groupBy({
+      by: ['providerKey'],
+      where: { createdAt: { gte: new Date(now - DAY_MS) }, providerKey: { not: null } },
+      _count: { _all: true },
+    });
     const used = new Map(usage.map((u) => [u.providerKey, u._count._all]));
     return {
       capabilities: CAPABILITIES,
-      providers: rows.map((r) => ({ ...r, registered: Boolean(this.registry.get(r.key)), breakerOpen: Boolean(r.breakerOpenedAt && now - r.breakerOpenedAt.getTime() < 10 * 60_000), callsLast24h: used.get(r.key) ?? 0 })),
+      providers: rows.map((r) => ({
+        ...r,
+        registered: Boolean(this.registry.get(r.key)),
+        breakerOpen: Boolean(r.breakerOpenedAt && now - r.breakerOpenedAt.getTime() < 10 * 60_000),
+        callsLast24h: used.get(r.key) ?? 0,
+      })),
     };
   }
 
@@ -194,9 +410,20 @@ export class AdminService {
     assertStaffMutation(actor, { min: 'OPERATOR', stepUpMinutes: STEP_UP_MIN });
     const row = await this.db.providerModel.findUnique({ where: { key_capability: { key, capability: capability as never } } });
     if (!row) throw new NotFoundError('provider row');
-    const updated = await this.db.providerModel.update({ where: { key_capability: { key, capability: capability as never } }, data: { ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}), ...(dto.priority !== undefined ? { priority: dto.priority } : {}) } });
-    authLog('admin.provider', 'succeeded', { userId: actor.userId, providerKey: key, capability, enabled: dto.enabled, priority: dto.priority, reason: dto.reason }, req);
-    logger.warn({ providerKey: key, capability, enabled: updated.enabled, priority: updated.priority, by: actor.userId }, 'provider row changed from the console');
+    const updated = await this.db.providerModel.update({
+      where: { key_capability: { key, capability: capability as never } },
+      data: { ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}), ...(dto.priority !== undefined ? { priority: dto.priority } : {}) },
+    });
+    authLog(
+      'admin.provider',
+      'succeeded',
+      { userId: actor.userId, providerKey: key, capability, enabled: dto.enabled, priority: dto.priority, reason: dto.reason },
+      req,
+    );
+    logger.warn(
+      { providerKey: key, capability, enabled: updated.enabled, priority: updated.priority, by: actor.userId },
+      'provider row changed from the console',
+    );
     return updated;
   }
 
@@ -227,8 +454,15 @@ export class AdminService {
     const term = q.q?.trim();
     const take = q.take ?? 50;
     const rows = await this.db.payment.findMany({
-      where: { ...(q.status ? { status: q.status as never } : {}), ...(term ? { OR: [{ reference: { contains: term } }, { providerRef: { contains: term } }, ...(isUuid(term) ? [{ id: term }, { workspaceId: term }] : [])] } : {}) },
-      orderBy: { createdAt: 'desc' }, take: take + 1, ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      where: {
+        ...(q.status ? { status: q.status as never } : {}),
+        ...(term
+          ? { OR: [{ reference: { contains: term } }, { providerRef: { contains: term } }, ...(isUuid(term) ? [{ id: term }, { workspaceId: term }] : [])] }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
     });
     return { payments: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
   }
@@ -240,9 +474,20 @@ export class AdminService {
     assertStaffMutation(actor, { min: 'OPERATOR', workspaceId: p.workspaceId, stepUpMinutes: STEP_UP_MIN });
     if (p.status !== 'SUCCEEDED') throw new ConflictError(`That payment is ${p.status.toLowerCase()}.`);
     if (!p.workspace.wallet) throw new NotFoundError('wallet');
-    const entry = await this.ledger.clawback({ walletId: p.workspace.wallet.id, amount: p.credits, idempotencyKey: `payment:${p.id}`, referenceId: p.id, reason: `refund: ${reason}` });
+    const entry = await this.ledger.clawback({
+      walletId: p.workspace.wallet.id,
+      amount: p.credits,
+      idempotencyKey: `payment:${p.id}`,
+      referenceId: p.id,
+      reason: `refund: ${reason}`,
+    });
     const updated = await this.db.payment.update({ where: { id }, data: { status: 'REFUNDED', failureReason: `refunded by staff: ${reason}` } });
-    authLog('admin.payment', 'succeeded', { userId: actor.userId, paymentId: id, workspaceId: p.workspaceId, credits: p.credits, reason, ledgerEntryId: entry.id }, req);
+    authLog(
+      'admin.payment',
+      'succeeded',
+      { userId: actor.userId, paymentId: id, workspaceId: p.workspaceId, credits: p.credits, reason, ledgerEntryId: entry.id },
+      req,
+    );
     return updated;
   }
 
@@ -250,13 +495,31 @@ export class AdminService {
 
   async audit(q: AuditQueryDto) {
     const take = q.take ?? 100;
-    const rows = await this.db.authEvent.findMany({ where: { ...(q.userId ? { userId: q.userId } : {}), ...(q.type ? { type: q.type as never } : {}) }, orderBy: { createdAt: 'desc' }, take: take + 1, ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}), include: { user: { select: { email: true, phone: true, name: true } } } });
+    const rows = await this.db.authEvent.findMany({
+      where: { ...(q.userId ? { userId: q.userId } : {}), ...(q.type ? { type: q.type as never } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      include: { user: { select: { email: true, phone: true, name: true } } },
+    });
     return { events: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
   }
 
   async staff() {
-    const grants = await this.db.staffGrant.findMany({ where: { revokedAt: null }, orderBy: { createdAt: 'desc' }, include: { user: { select: { id: true, name: true, email: true } }, grantedBy: { select: { name: true, email: true } } } });
-    return grants.map((g) => ({ id: g.id, role: g.role, reason: g.reason, expiresAt: g.expiresAt, createdAt: g.createdAt, user: g.user, grantedBy: g.grantedBy.name ?? g.grantedBy.email }));
+    const grants = await this.db.staffGrant.findMany({
+      where: { revokedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { id: true, name: true, email: true } }, grantedBy: { select: { name: true, email: true } } },
+    });
+    return grants.map((g) => ({
+      id: g.id,
+      role: g.role,
+      reason: g.reason,
+      expiresAt: g.expiresAt,
+      createdAt: g.createdAt,
+      user: g.user,
+      grantedBy: g.grantedBy.name ?? g.grantedBy.email,
+    }));
   }
 
   async grantStaff(actor: Actor, dto: StaffGrantDto, req: Request) {
@@ -268,7 +531,9 @@ export class AdminService {
     if (user.id === actor.userId) throw new ConflictError('Nobody grants themselves staff access.');
     const existing = await this.db.staffGrant.findFirst({ where: { userId: user.id, revokedAt: null } });
     if (existing) await this.db.staffGrant.update({ where: { id: existing.id }, data: { revokedAt: new Date(), revokedById: actor.userId } });
-    const grant = await this.db.staffGrant.create({ data: { userId: user.id, role, grantedById: actor.userId, reason: dto.reason.trim(), expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null } });
+    const grant = await this.db.staffGrant.create({
+      data: { userId: user.id, role, grantedById: actor.userId, reason: dto.reason.trim(), expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null },
+    });
     authLog('admin.staff', 'succeeded', { userId: actor.userId, target: user.id, role, reason: dto.reason, action: 'grant' }, req);
     return grant;
   }
@@ -279,14 +544,18 @@ export class AdminService {
     if (!g || g.revokedAt) throw new NotFoundError('grant');
     if (g.userId === actor.userId) throw new ConflictError('Ask another admin to revoke your own access.');
     await this.db.staffGrant.update({ where: { id: grantId }, data: { revokedAt: new Date(), revokedById: actor.userId } });
-    await this.db.session.updateMany({ where: { userId: g.userId, surface: 'ADMIN', revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'staff_revoked' } }).catch(() => undefined);
+    await this.db.session
+      .updateMany({ where: { userId: g.userId, surface: 'ADMIN', revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'staff_revoked' } })
+      .catch(() => undefined);
     authLog('admin.staff', 'succeeded', { userId: actor.userId, target: g.userId, action: 'revoke' }, req);
     return { revoked: true };
   }
 
   // ---------------------------------------------------------------- platform messages
 
-  messages() { return this.notifications.platformMessages(); }
+  messages() {
+    return this.notifications.platformMessages();
+  }
 
   async createMessage(actor: Actor, dto: PlatformMessageDto, req: Request) {
     assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });

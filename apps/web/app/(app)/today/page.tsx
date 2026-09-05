@@ -17,8 +17,12 @@ import styles from './today.module.css';
 const SHEET_COST = 150;
 
 const KIND_LABEL: Record<string, string> = {
-  PURCHASE: 'Top-up', DEBIT: 'Generation', REFUND: 'Refund', PROMO: 'Welcome credits',
-  EXPIRY: 'Expired', ADJUSTMENT: 'Adjustment',
+  PURCHASE: 'Top-up',
+  DEBIT: 'Generation',
+  REFUND: 'Refund',
+  PROMO: 'Welcome credits',
+  EXPIRY: 'Expired',
+  ADJUSTMENT: 'Adjustment',
 };
 
 /** Format a ledger delta with its sign, in tabular figures. */
@@ -35,9 +39,19 @@ export default function TodayPage() {
     if (!ws) return;
     let live = true;
     Promise.all([api.wallet.summary(ws.id), api.wallet.history(ws.id)])
-      .then(([w, h]) => { if (live) { setWallet(w); setBalance(w.balance); setRows(h.rows.slice(0, 8)); } })
-      .catch(() => { if (live) setError('Could not load your credits just now.'); });
-    return () => { live = false; };
+      .then(([w, h]) => {
+        if (live) {
+          setWallet(w);
+          setBalance(w.balance);
+          setRows(h.rows.slice(0, 8));
+        }
+      })
+      .catch(() => {
+        if (live) setError('Could not load your credits just now.');
+      });
+    return () => {
+      live = false;
+    };
   }, [ws, setBalance]);
 
   const first = me.user.name?.split(' ')[0];
@@ -50,7 +64,9 @@ export default function TodayPage() {
           <h1>{first ? `Good to see you, ${first}.` : 'Today'}</h1>
           <p>{ws?.name ?? 'Your studio'}</p>
         </div>
-        <Link href="/billing" className="mono">Credits &amp; billing →</Link>
+        <Link href="/billing" className="mono">
+          Credits &amp; billing →
+        </Link>
       </header>
 
       <div className={styles.grid}>
@@ -76,16 +92,27 @@ export default function TodayPage() {
           <h2>Make your first product sheet.</h2>
           <p>One photo, a name and a price. About a minute. It comes back here and on WhatsApp.</p>
         </div>
-        <Link href="/studio" className="btn" data-tour="create-cta">Open the studio</Link>
+        <Link href="/studio" className="btn" data-tour="create-cta">
+          Open the studio
+        </Link>
       </section>
 
       <section className={styles.section}>
-        <h2>Recent credit activity <Link href="/billing">Full statement</Link></h2>
+        <h2>
+          Recent credit activity <Link href="/billing">Full statement</Link>
+        </h2>
         {rows === null && !error && <div className={styles.empty}>Loading…</div>}
         {rows && rows.length === 0 && <div className={styles.empty}>Nothing yet. Your first sheet will show here.</div>}
         {rows && rows.length > 0 && (
           <table className={styles.table}>
-            <thead><tr><th>When</th><th>What</th><th style={{ textAlign: 'right' }}>Credits</th><th style={{ textAlign: 'right' }}>Balance</th></tr></thead>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>What</th>
+                <th style={{ textAlign: 'right' }}>Credits</th>
+                <th style={{ textAlign: 'right' }}>Balance</th>
+              </tr>
+            </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>

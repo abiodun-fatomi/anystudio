@@ -34,11 +34,17 @@ export default function SignupPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!phone.valid || !phone.e164) { setError('Check the phone number — pick the country and enter the local number.'); return; }
+    if (!phone.valid || !phone.e164) {
+      setError('Check the phone number — pick the country and enter the local number.');
+      return;
+    }
     setBusy(true);
     try {
       const r = await api.auth.register({
-        name: form.name, email: form.email, phone: phone.e164, password: form.password,
+        name: form.name,
+        email: form.email,
+        phone: phone.e164,
+        password: form.password,
         phoneIsWhatsApp: form.whatsapp,
         marketing: { granted: form.marketing, wording: MARKETING_WORDING },
         sourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
@@ -70,10 +76,18 @@ export default function SignupPage() {
         <input id="name" className="inp" autoComplete="name" value={form.name} onChange={set('name')} required />
       </div>
       <div>
-        <PhoneInput id="phone" value={phone} onChange={setPhone} required hint="Pick your country, then type the number the way you would give it to a customer." />
+        <PhoneInput
+          id="phone"
+          value={phone}
+          onChange={setPhone}
+          required
+          hint="Pick your country, then type the number the way you would give it to a customer."
+        />
         <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 10, fontSize: 14, fontWeight: 500 }}>
           <input type="checkbox" checked={form.whatsapp} onChange={set('whatsapp')} style={{ marginTop: 3 }} />
-          <span>This number is on WhatsApp <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— that's where your sheets come back</span></span>
+          <span>
+            This number is on WhatsApp <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— that's where your sheets come back</span>
+          </span>
         </label>
       </div>
       <div className="field">
@@ -82,19 +96,35 @@ export default function SignupPage() {
       </div>
       <div className="field">
         <label htmlFor="pw">Password</label>
-        <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8}
-          value={form.password} onChange={set('password')} required />
+        <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8} value={form.password} onChange={set('password')} required />
       </div>
 
       {/* Marketing consent: unticked, specific, with a way out. Stored verbatim. */}
-      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '13px 14px', border: '1px solid var(--line-soft)',
-        borderRadius: 'var(--r)', background: 'var(--surface-2)', fontSize: 14, marginBottom: 18 }}>
+      <label
+        style={{
+          display: 'flex',
+          gap: 10,
+          alignItems: 'flex-start',
+          padding: '13px 14px',
+          border: '1px solid var(--line-soft)',
+          borderRadius: 'var(--r)',
+          background: 'var(--surface-2)',
+          fontSize: 14,
+          marginBottom: 18,
+        }}
+      >
         <input type="checkbox" checked={form.marketing} onChange={set('marketing')} style={{ marginTop: 3 }} />
         <span>{MARKETING_WORDING}</span>
       </label>
 
-      {error && <p className="err" role="alert">{error}</p>}
-      <button className="btn" type="submit" style={{ marginTop: 8 }} disabled={busy}>{busy ? "Creating your studio…" : "Create account"}</button>
+      {error && (
+        <p className="err" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="btn" type="submit" style={{ marginTop: 8 }} disabled={busy}>
+        {busy ? 'Creating your studio…' : 'Create account'}
+      </button>
       <p style={{ textAlign: 'center', marginTop: 18, color: 'var(--muted)', fontSize: 14.5 }}>
         Already have one? <Link href="/login">Sign in</Link>
       </p>

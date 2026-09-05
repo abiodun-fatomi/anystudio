@@ -25,7 +25,11 @@ import { ResultCard } from './ResultCard';
 import styles from './studio.module.css';
 
 export default function StudioPage() {
-  return <Suspense fallback={null}><Studio /></Suspense>;
+  return (
+    <Suspense fallback={null}>
+      <Studio />
+    </Suspense>
+  );
 }
 
 function Studio() {
@@ -42,9 +46,16 @@ function Studio() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
   const [unlockPrice, setUnlockPrice] = useState<number | null>(null);
-  useEffect(() => { api.audio.unlockPrice().then((p) => setUnlockPrice(p.credits)).catch(() => undefined); }, []);
+  useEffect(() => {
+    api.audio
+      .unlockPrice()
+      .then((p) => setUnlockPrice(p.credits))
+      .catch(() => undefined);
+  }, []);
 
-  useEffect(() => { void hydrate(); }, [hydrate]);
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   // The library's "Make again" leaves the params here; pick them up once.
   useEffect(() => {
@@ -58,70 +69,109 @@ function Studio() {
         const { sourceKey: _s, ...rest } = pre.params;
         setValues((all) => ({ ...all, [t.id]: t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey') ? pre.params! : rest }));
       }
-    } catch { /* nothing to prefill */ }
+    } catch {
+      /* nothing to prefill */
+    }
   }, []);
 
-  const setUrl = useCallback((next: { source?: string | null; tool?: ToolId }) => {
-    const q = new URLSearchParams(params.toString());
-    if (next.source !== undefined) { if (next.source) q.set('source', next.source); else q.delete('source'); }
-    if (next.tool) q.set('tool', next.tool);
-    router.replace(`/studio?${q.toString()}`, { scroll: false });
-  }, [params, router]);
+  const setUrl = useCallback(
+    (next: { source?: string | null; tool?: ToolId }) => {
+      const q = new URLSearchParams(params.toString());
+      if (next.source !== undefined) {
+        if (next.source) q.set('source', next.source);
+        else q.delete('source');
+      }
+      if (next.tool) q.set('tool', next.tool);
+      router.replace(`/studio?${q.toString()}`, { scroll: false });
+    },
+    [params, router],
+  );
 
   // Resolve the source key to something the canvas can draw.
   useEffect(() => {
     let live = true;
     setSourceUrl(null);
     if (!sourceKey) return;
-    api.media.urls(workspace.id, [sourceKey]).then(({ urls }) => { if (live) setSourceUrl(urls[sourceKey] ?? null); }).catch(() => undefined);
-    return () => { live = false; };
+    api.media
+      .urls(workspace.id, [sourceKey])
+      .then(({ urls }) => {
+        if (live) setSourceUrl(urls[sourceKey] ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, [workspace.id, sourceKey]);
 
-  const selectSource = useCallback((asset: MediaAssetRow) => {
-    setSourceMeta({ width: asset.width, height: asset.height });
-    setUrl({ source: asset.key });
-  }, [setUrl]);
+  const selectSource = useCallback(
+    (asset: MediaAssetRow) => {
+      setSourceMeta({ width: asset.width, height: asset.height });
+      setUrl({ source: asset.key });
+    },
+    [setUrl],
+  );
 
   const toolValues = useMemo(() => ({ ...tool.defaults, ...(values[tool.id] ?? {}) }), [tool, values]);
   const setValue = (key: string, v: unknown) => setValues((all) => ({ ...all, [tool.id]: { ...(all[tool.id] ?? {}), [key]: v } }));
 
-  const generate = useCallback(async (t: Tool, v: Record<string, unknown>, credits: number, src: string | null) => {
-    setBusy(true);
-    const p = coerceParams(t, v);
-    // A tool that brings its own file (a video to translate) keeps it; the canvas photo is for the rest.
-    const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
-    if (!ownsSource && src) p.sourceKey = src;
-    if (t.needsSource && !src) { setBusy(false); return; }
-    const cardSource = ownsSource ? (typeof p.sourceKey === 'string' ? p.sourceKey : undefined) : src ?? undefined;
-    const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
-    setBusy(false);
-    if (!r.ok) {
-      if (r.status === 402) toast({ title: 'Not enough credits', body: 'Top up and this will be here waiting.', tone: 'warn', action: { label: 'Top up', onClick: () => router.push('/billing/plans') } });
-      else toast({ title: 'That did not go through', body: r.message, tone: 'danger' });
-    } else {
-      document.getElementById('outputs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [create, toast, router]);
+  const generate = useCallback(
+    async (t: Tool, v: Record<string, unknown>, credits: number, src: string | null) => {
+      setBusy(true);
+      const p = coerceParams(t, v);
+      // A tool that brings its own file (a video to translate) keeps it; the canvas photo is for the rest.
+      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      if (!ownsSource && src) p.sourceKey = src;
+      if (t.needsSource && !src) {
+        setBusy(false);
+        return;
+      }
+      const cardSource = ownsSource ? (typeof p.sourceKey === 'string' ? p.sourceKey : undefined) : (src ?? undefined);
+      const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
+      setBusy(false);
+      if (!r.ok) {
+        if (r.status === 402)
+          toast({
+            title: 'Not enough credits',
+            body: 'Top up and this will be here waiting.',
+            tone: 'warn',
+            action: { label: 'Top up', onClick: () => router.push('/billing/plans') },
+          });
+        else toast({ title: 'That did not go through', body: r.message, tone: 'danger' });
+      } else {
+        document.getElementById('outputs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+    [create, toast, router],
+  );
 
-  const again = useCallback((card: GenerationCard) => {
-    const t = toolById(card.toolId);
-    const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
-    setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
-    setUrl({ tool: t.id, source: ownsSource ? sourceKey : card.sourceKey ?? sourceKey });
-    void generate(t, card.params, card.credits, ownsSource ? sourceKey : card.sourceKey ?? sourceKey);
-  }, [generate, setUrl, sourceKey]);
+  const again = useCallback(
+    (card: GenerationCard) => {
+      const t = toolById(card.toolId);
+      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
+      setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
+      void generate(t, card.params, card.credits, ownsSource ? sourceKey : (card.sourceKey ?? sourceKey));
+    },
+    [generate, setUrl, sourceKey],
+  );
 
-  const useAsSource = useCallback((key: string) => {
-    setSourceMeta(null);
-    setUrl({ source: key });
-    setRefreshKey((k) => k + 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [setUrl]);
+  const useAsSource = useCallback(
+    (key: string) => {
+      setSourceMeta(null);
+      setUrl({ source: key });
+      setRefreshKey((k) => k + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setUrl],
+  );
 
-  const sendToVideo = useCallback((key: string) => {
-    setUrl({ source: key, tool: 'video' });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [setUrl]);
+  const sendToVideo = useCallback(
+    (key: string) => {
+      setUrl({ source: key, tool: 'video' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setUrl],
+  );
 
   const liveCount = cards.filter((c) => c.status === 'QUEUED' || c.status === 'RUNNING' || c.status === 'requesting').length;
 
@@ -133,27 +183,55 @@ function Studio() {
         <section className={`${styles.pane} ${styles.canvas}`} aria-label="Canvas">
           <div className={styles.stage}>
             {sourceKey ? (
-              sourceUrl ? <img src={sourceUrl} alt="Your product photo" /> : <div style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>Loading your photo…</div>
+              sourceUrl ? (
+                <img src={sourceUrl} alt="Your product photo" />
+              ) : (
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>Loading your photo…</div>
+              )
             ) : (
               <div className={styles.stageEmpty}>
                 <Icon.studio width={36} height={36} />
                 <strong>Start with a photo</strong>
                 <span>Add one on the left — or make a song, record a voiceover, or translate a video without one.</span>
-                <Button variant="ghost" size="sm" onClick={() => setUrl({ tool: 'copy' })}>Write a listing instead</Button>
+                <Button variant="ghost" size="sm" onClick={() => setUrl({ tool: 'copy' })}>
+                  Write a listing instead
+                </Button>
               </div>
             )}
-            {sourceKey && sourceMeta?.width && <div className={styles.stageMeta}><span className="mono" style={{ background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 4 }}>{sourceMeta.width}×{sourceMeta.height}</span></div>}
+            {sourceKey && sourceMeta?.width && (
+              <div className={styles.stageMeta}>
+                <span className="mono" style={{ background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 4 }}>
+                  {sourceMeta.width}×{sourceMeta.height}
+                </span>
+              </div>
+            )}
           </div>
           <div className={styles.strip} role="toolbar" aria-label="Tools">
             {TOOLS.map((t) => (
-              <button key={t.id} type="button" className={styles.toolBtn} aria-pressed={t.id === tool.id} onClick={() => setUrl({ tool: t.id })} disabled={t.needsSource && !sourceKey} title={t.needsSource && !sourceKey ? 'Add a photo first' : t.label}>
-                {Icon[t.icon]({})}<span>{t.short}</span>
+              <button
+                key={t.id}
+                type="button"
+                className={styles.toolBtn}
+                aria-pressed={t.id === tool.id}
+                onClick={() => setUrl({ tool: t.id })}
+                disabled={t.needsSource && !sourceKey}
+                title={t.needsSource && !sourceKey ? 'Add a photo first' : t.label}
+              >
+                {Icon[t.icon]({})}
+                <span>{t.short}</span>
               </button>
             ))}
           </div>
         </section>
 
-        <ToolPanel tool={tool} values={toolValues} onChange={setValue} hasSource={Boolean(sourceKey)} busy={busy} onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)} />
+        <ToolPanel
+          tool={tool}
+          values={toolValues}
+          onChange={setValue}
+          hasSource={Boolean(sourceKey)}
+          busy={busy}
+          onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
+        />
       </div>
       <div className={styles.mobileSpacer} />
 
@@ -163,11 +241,28 @@ function Studio() {
           <span className="mono">{liveCount > 0 ? `${liveCount} in progress` : balance !== null ? `${balance.toLocaleString()} credits` : ''}</span>
         </div>
         {cards.length === 0 ? (
-          <EmptyState icon={<Icon.library />} title="Nothing made yet" body="Pick a tool, press the button, and watch it happen here. A failed generation gives the credits straight back." />
+          <EmptyState
+            icon={<Icon.library />}
+            title="Nothing made yet"
+            body="Pick a tool, press the button, and watch it happen here. A failed generation gives the credits straight back."
+          />
         ) : (
           <div className={styles.grid}>
             {cards.map((c) => (
-              <ResultCard key={c.clientKey} card={c} onUseAsSource={useAsSource} onSendToVideo={sendToVideo} onAgain={again} onCancel={(k) => void cancel(k)} onDismiss={dismiss} onRefreshUrls={(k, keys) => void resolveUrls(k, keys)} onEditText={(k, f, v) => void editText(k, f, v)} onRegenerateField={regenerateField} onUnlock={unlock} unlockPrice={unlockPrice} />
+              <ResultCard
+                key={c.clientKey}
+                card={c}
+                onUseAsSource={useAsSource}
+                onSendToVideo={sendToVideo}
+                onAgain={again}
+                onCancel={(k) => void cancel(k)}
+                onDismiss={dismiss}
+                onRefreshUrls={(k, keys) => void resolveUrls(k, keys)}
+                onEditText={(k, f, v) => void editText(k, f, v)}
+                onRegenerateField={regenerateField}
+                onUnlock={unlock}
+                unlockPrice={unlockPrice}
+              />
             ))}
           </div>
         )}

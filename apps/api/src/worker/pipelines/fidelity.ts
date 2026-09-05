@@ -50,17 +50,24 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
 
   const n = FRAME * FRAME;
   let count = 0;
-  let sumA = 0; let sumB = 0;
-  const la = new Float32Array(n); const lb = new Float32Array(n);
+  let sumA = 0;
+  let sumB = 0;
+  const la = new Float32Array(n);
+  const lb = new Float32Array(n);
   let colourDiff = 0;
 
   for (let i = 0; i < n; i++) {
     if ((mask[i] ?? 0) < 128) continue;
-    const r1 = src[i * 3]!, g1 = src[i * 3 + 1]!, b1 = src[i * 3 + 2]!;
-    const r2 = out[i * 3]!, g2 = out[i * 3 + 1]!, b2 = out[i * 3 + 2]!;
+    const r1 = src[i * 3]!,
+      g1 = src[i * 3 + 1]!,
+      b1 = src[i * 3 + 2]!;
+    const r2 = out[i * 3]!,
+      g2 = out[i * 3 + 1]!,
+      b2 = out[i * 3 + 2]!;
     la[i] = 0.299 * r1 + 0.587 * g1 + 0.114 * b1;
     lb[i] = 0.299 * r2 + 0.587 * g2 + 0.114 * b2;
-    sumA += la[i]!; sumB += lb[i]!;
+    sumA += la[i]!;
+    sumB += lb[i]!;
     colourDiff += (Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2)) / 3;
     count++;
   }
@@ -68,12 +75,18 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
   if (count < 64) return { score: 0, structure: 0, colour: 0, coverage };
 
   // Normalised cross-correlation of luminance inside the mask: 1 = same structure, 0 = unrelated.
-  const meanA = sumA / count; const meanB = sumB / count;
-  let num = 0; let da = 0; let db = 0;
+  const meanA = sumA / count;
+  const meanB = sumB / count;
+  let num = 0;
+  let da = 0;
+  let db = 0;
   for (let i = 0; i < n; i++) {
     if ((mask[i] ?? 0) < 128) continue;
-    const a = la[i]! - meanA; const b = lb[i]! - meanB;
-    num += a * b; da += a * a; db += b * b;
+    const a = la[i]! - meanA;
+    const b = lb[i]! - meanB;
+    num += a * b;
+    da += a * a;
+    db += b * b;
   }
   const structure = da > 0 && db > 0 ? Math.max(0, num / Math.sqrt(da * db)) : 0;
   // Colour: 0 difference → 1; 60 levels of average difference → 0. Lighting changes cost a little, a recolour costs a lot.

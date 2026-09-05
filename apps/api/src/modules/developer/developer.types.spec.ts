@@ -41,7 +41,12 @@ describe('schema description', () => {
     const music = describeSchema(capabilityParams.MUSIC);
     const brief = music.find((f) => f.name === 'brief')!;
     expect(brief).toMatchObject({ type: 'string', required: true });
-    expect(music.find((f) => f.name === 'vocal')).toMatchObject({ type: 'enum', required: false, default: 'female', values: ['male', 'female', 'duet', 'choir', 'instrumental'] });
+    expect(music.find((f) => f.name === 'vocal')).toMatchObject({
+      type: 'enum',
+      required: false,
+      default: 'female',
+      values: ['male', 'female', 'duet', 'choir', 'instrumental'],
+    });
     expect(music.find((f) => f.name === 'durationSec')).toMatchObject({ type: 'number', default: 120 });
     // LIPSYNC is a refined object; the fields are still visible.
     const lip = describeSchema(capabilityParams.LIPSYNC);

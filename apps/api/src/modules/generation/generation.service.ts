@@ -32,7 +32,19 @@
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
-import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, DUB_LIPSYNC_COST_CODE, dubLanguage, generationDebitKey, parseCapabilityParams, redactLocked, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
+import {
+  COPY_FIELDS,
+  CUSTOMER_MESSAGE,
+  DEFAULT_COST_CODE,
+  DUB_LIPSYNC_COST_CODE,
+  dubLanguage,
+  generationDebitKey,
+  parseCapabilityParams,
+  redactLocked,
+  type Capability,
+  type GenerationOutput,
+  type ProviderErrorKind,
+} from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { GenerationHooks } from './generation.hooks';
 import { LedgerService } from '../ledger/ledger.service';
@@ -103,7 +115,9 @@ export class GenerationService {
     // provider-level kill switch is ProviderModel.enabled.
     if (VIDEO_CAPABILITIES.has(req.capability) && req.kind !== 'CHILD') {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const today = await this.db.generation.count({ where: { workspaceId: req.workspaceId, capability: { in: [...VIDEO_CAPABILITIES] }, kind: { not: 'CHILD' }, createdAt: { gte: since } } });
+      const today = await this.db.generation.count({
+        where: { workspaceId: req.workspaceId, capability: { in: [...VIDEO_CAPABILITIES] }, kind: { not: 'CHILD' }, createdAt: { gte: since } },
+      });
       if (today >= VIDEO_DAILY_LIMIT) {
         logger.warn({ workspaceId: req.workspaceId, today, limit: VIDEO_DAILY_LIMIT }, 'daily video limit reached');
         throw new ValidationError({ capability: `That is ${VIDEO_DAILY_LIMIT} videos in a day — the daily limit. It resets tomorrow.` });
@@ -113,7 +127,10 @@ export class GenerationService {
     if (req.clientKey) {
       const existing = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
       if (existing) {
-        logger.info({ generationId: existing.id, workspaceId: req.workspaceId, clientKey: req.clientKey }, 'generation request replayed; returning the existing row');
+        logger.info(
+          { generationId: existing.id, workspaceId: req.workspaceId, clientKey: req.clientKey },
+          'generation request replayed; returning the existing row',
+        );
         const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
         return { generation: existing, balance: wallet ? await this.ledger.balance(wallet.id) : 0 };
       }
@@ -122,8 +139,15 @@ export class GenerationService {
     // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
     const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
     const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
-    const costCode = req.costCode
-      ?? (shots === 4 ? 'video.ad_30s' : shots === 2 ? 'video.ad_15s' : req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]);
+    const costCode =
+      req.costCode ??
+      (shots === 4
+        ? 'video.ad_30s'
+        : shots === 2
+          ? 'video.ad_15s'
+          : req.capability === 'DUB' && params.lipsync === true
+            ? DUB_LIPSYNC_COST_CODE
+            : DEFAULT_COST_CODE[req.capability]);
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
@@ -180,7 +204,15 @@ export class GenerationService {
 
     const balance = await this.ledger.balance(wallet.id);
     logger.info(
-      { generationId: generation.id, workspaceId: req.workspaceId, capability: req.capability, costCode: cost.code, credits: cost.credits, balance, parentId: req.parentId },
+      {
+        generationId: generation.id,
+        workspaceId: req.workspaceId,
+        capability: req.capability,
+        costCode: cost.code,
+        credits: cost.credits,
+        balance,
+        parentId: req.parentId,
+      },
       'generation requested: row written, credits held',
     );
 
@@ -209,7 +241,10 @@ export class GenerationService {
         credits: 0,
         stage: 'queued',
         input: params as Prisma.InputJsonObject,
-        channel: parent.channel, apiKeyId: parent.apiKeyId, projectId: parent.projectId, merchantRef: parent.merchantRef,
+        channel: parent.channel,
+        apiKeyId: parent.apiKeyId,
+        projectId: parent.projectId,
+        merchantRef: parent.merchantRef,
       },
     });
     await this.queue.enqueue(child.id, capability);
@@ -249,14 +284,25 @@ export class GenerationService {
    * shows this next to the button; the balance after is what the customer
    * is really deciding about.
    */
-  async quote(workspaceId: string, capability: Capability, costCode?: string): Promise<{ costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }> {
+  async quote(
+    workspaceId: string,
+    capability: Capability,
+    costCode?: string,
+  ): Promise<{ costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }> {
     const code = costCode ?? DEFAULT_COST_CODE[capability];
     const cost = await this.db.creditCost.findUnique({ where: { code } });
     if (!cost) throw new NotFoundError(`credit cost "${code}"`);
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
     const balance = await this.ledger.balance(wallet.id);
-    return { costCode: cost.code, credits: cost.credits, label: cost.label, balance, balanceAfter: balance - cost.credits, expectedMs: EXPECTED_MS[capability] };
+    return {
+      costCode: cost.code,
+      credits: cost.credits,
+      label: cost.label,
+      balance,
+      balanceAfter: balance - cost.credits,
+      expectedMs: EXPECTED_MS[capability],
+    };
   }
 
   /**
@@ -348,7 +394,11 @@ export class GenerationService {
   async succeed(id: string, outcome: GenerationOutcome): Promise<Generation> {
     const row = await this.claimTerminal(id);
     // The copy that came back is the most searchable thing about a text generation.
-    const copyText = (outcome.outputs ?? []).filter((o) => o.role === 'text' && o.text !== undefined).map((o) => flattenText(o.text)).join(' ').trim();
+    const copyText = (outcome.outputs ?? [])
+      .filter((o) => o.role === 'text' && o.text !== undefined)
+      .map((o) => flattenText(o.text))
+      .join(' ')
+      .trim();
     const searchText = [row.searchText, copyText].filter(Boolean).join(' ').slice(0, 8000) || undefined;
     const done = await this.db.generation.update({
       where: { id: row.id },
@@ -430,7 +480,10 @@ export class GenerationService {
       if (result.queued) dispatched.push(row.id);
     }
     if (dispatched.length) {
-      logger.warn({ count: dispatched.length, oldest: rows[0]?.createdAt, dispatched: dispatched.slice(0, 20) }, 'dispatcher re-queued generations that had no job behind them');
+      logger.warn(
+        { count: dispatched.length, oldest: rows[0]?.createdAt, dispatched: dispatched.slice(0, 20) },
+        'dispatcher re-queued generations that had no job behind them',
+      );
     }
     return dispatched;
   }
@@ -552,25 +605,51 @@ export function libraryFields(params: Record<string, unknown>): { title: string 
   const target = str('targetLanguage');
   const targetName = target ? (dubLanguage(target)?.name ?? target) : '';
   const script = str('script');
-  const title = name
-    || (prompt ? prompt.split(/\s+/).slice(0, 8).join(' ') : '')
-    || (targetName ? `Dubbed into ${targetName}` : '')
-    || (script ? script.split(/\s+/).slice(0, 8).join(' ') : '')
-    || null;
+  const title =
+    name ||
+    (prompt ? prompt.split(/\s+/).slice(0, 8).join(' ') : '') ||
+    (targetName ? `Dubbed into ${targetName}` : '') ||
+    (script ? script.split(/\s+/).slice(0, 8).join(' ') : '') ||
+    null;
   const productKey = str('productKey') || (name ? slug(name) : '') || null;
-  const parts = [name, prompt, str('details'), str('price'), str('caption'), str('scene'), str('instruction'), str('field'), str('format'), str('language'), targetName, script, str('brief'), str('title'), str('genre')].filter(Boolean);
+  const parts = [
+    name,
+    prompt,
+    str('details'),
+    str('price'),
+    str('caption'),
+    str('scene'),
+    str('instruction'),
+    str('field'),
+    str('format'),
+    str('language'),
+    targetName,
+    script,
+    str('brief'),
+    str('title'),
+    str('genre'),
+  ].filter(Boolean);
   return { title, productKey, searchText: parts.length ? parts.join(' ').slice(0, 4000) : null };
 }
 
 function slug(v: string): string {
-  return v.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+  return v
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
 }
 
 /** Copy outputs are nested objects; the words are what matter. */
 function flattenText(v: unknown): string {
   if (typeof v === 'string') return v;
   if (Array.isArray(v)) return v.map(flattenText).join(' ');
-  if (v && typeof v === 'object') return Object.values(v as Record<string, unknown>).map(flattenText).join(' ');
+  if (v && typeof v === 'object')
+    return Object.values(v as Record<string, unknown>)
+      .map(flattenText)
+      .join(' ');
   return '';
 }
 

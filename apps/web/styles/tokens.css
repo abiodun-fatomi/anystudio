@@ -1,51 +1,103 @@
 /* AnyStudio design tokens — the same system as the prototypes in design/.
    Three theme states: bare :root is light; prefers-color-scheme redefines only
    the tokens when no explicit choice is stamped; [data-theme] wins either way. */
-:root{
-  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF; --sunk:#E9E5ED;
-  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
-  --line:#D9D3DE; --line-soft:#E7E2EB;
-  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
-  --cyan:#00808F; --cyan-wash:#DFF3F5;
-  --ok:#0F7B4F; --ok-wash:#DDF1E7; --warn:#8A5A00; --warn-wash:#FBEFD8;
-  --danger:#B3261E; --danger-wash:#FBE3E1;
+:root {
+  --paper: #efecf1;
+  --surface: #f9f7fb;
+  --surface-2: #ffffff;
+  --sunk: #e9e5ed;
+  --ink: #17131a;
+  --ink-soft: #3b3341;
+  --muted: #6e6575;
+  --line: #d9d3de;
+  --line-soft: #e7e2eb;
+  --accent: #d6006e;
+  --accent-ink: #ffffff;
+  --accent-wash: #fde7f1;
+  --cyan: #00808f;
+  --cyan-wash: #dff3f5;
+  --ok: #0f7b4f;
+  --ok-wash: #ddf1e7;
+  --warn: #8a5a00;
+  --warn-wash: #fbefd8;
+  --danger: #b3261e;
+  --danger-wash: #fbe3e1;
   /* Chart series, in fixed order (validated: CVD-safe, contrast ≥ 3:1 on surface-2). */
-  --chart-1:#D6006E; --chart-2:#0077B6; --chart-3:#9A6600; --chart-4:#5B4B8A;
-  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
-  --frame-shadow-lg:0 2px 4px rgba(23,19,26,.06),0 24px 60px rgba(23,19,26,.12);
-  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
-  --f-body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
-  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
-  --r:4px; color-scheme:light;
+  --chart-1: #d6006e;
+  --chart-2: #0077b6;
+  --chart-3: #9a6600;
+  --chart-4: #5b4b8a;
+  --frame-shadow: 0 1px 2px rgba(23, 19, 26, 0.06), 0 8px 24px rgba(23, 19, 26, 0.07);
+  --frame-shadow-lg: 0 2px 4px rgba(23, 19, 26, 0.06), 0 24px 60px rgba(23, 19, 26, 0.12);
+  --f-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --f-body: 'Hanken Grotesk', 'Helvetica Neue', Arial, sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --r: 4px;
+  color-scheme: light;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --paper:#0F0C13; --surface:#171320; --surface-2:#241E2B; --sunk:#1B1622;
-    --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
-    --line:#352C3E; --line-soft:#2A2332;
-    --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
-    --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
-    --ok:#4FCB8F; --ok-wash:#10301F; --warn:#E8B65C; --warn-wash:#2E2411;
-    --danger:#FF8A80; --danger-wash:#3A1512;
-  --chart-1:#F0327F; --chart-2:#2B8BD6; --chart-3:#B58226; --chart-4:#8F7CD0;
-    --chart-1:#F0327F; --chart-2:#2B8BD6; --chart-3:#B58226; --chart-4:#8F7CD0;
-    --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
-    --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
-    color-scheme:dark;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #0f0c13;
+    --surface: #171320;
+    --surface-2: #241e2b;
+    --sunk: #1b1622;
+    --ink: #f4f0f7;
+    --ink-soft: #d6cedd;
+    --muted: #a79fae;
+    --line: #352c3e;
+    --line-soft: #2a2332;
+    --accent: #ff3d93;
+    --accent-ink: #1a0210;
+    --accent-wash: #330a1e;
+    --cyan: #3fd0e0;
+    --cyan-wash: #0b2a2e;
+    --ok: #4fcb8f;
+    --ok-wash: #10301f;
+    --warn: #e8b65c;
+    --warn-wash: #2e2411;
+    --danger: #ff8a80;
+    --danger-wash: #3a1512;
+    --chart-1: #f0327f;
+    --chart-2: #2b8bd6;
+    --chart-3: #b58226;
+    --chart-4: #8f7cd0;
+    --chart-1: #f0327f;
+    --chart-2: #2b8bd6;
+    --chart-3: #b58226;
+    --chart-4: #8f7cd0;
+    --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+    --frame-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
   }
 }
-:root[data-theme="dark"]{
-  --paper:#0F0C13; --surface:#171320; --surface-2:#241E2B; --sunk:#1B1622;
-  --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
-  --line:#352C3E; --line-soft:#2A2332;
-  --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
-  --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
-  --ok:#4FCB8F; --ok-wash:#10301F; --warn:#E8B65C; --warn-wash:#2E2411;
-  --danger:#FF8A80; --danger-wash:#3A1512;
-  --chart-1:#F0327F; --chart-2:#2B8BD6; --chart-3:#B58226; --chart-4:#8F7CD0;
-  --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
-    --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
-  color-scheme:dark;
+:root[data-theme='dark'] {
+  --paper: #0f0c13;
+  --surface: #171320;
+  --surface-2: #241e2b;
+  --sunk: #1b1622;
+  --ink: #f4f0f7;
+  --ink-soft: #d6cedd;
+  --muted: #a79fae;
+  --line: #352c3e;
+  --line-soft: #2a2332;
+  --accent: #ff3d93;
+  --accent-ink: #1a0210;
+  --accent-wash: #330a1e;
+  --cyan: #3fd0e0;
+  --cyan-wash: #0b2a2e;
+  --ok: #4fcb8f;
+  --ok-wash: #10301f;
+  --warn: #e8b65c;
+  --warn-wash: #2e2411;
+  --danger: #ff8a80;
+  --danger-wash: #3a1512;
+  --chart-1: #f0327f;
+  --chart-2: #2b8bd6;
+  --chart-3: #b58226;
+  --chart-4: #8f7cd0;
+  --frame-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --frame-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 }
 
 /* ---------------------------------------------------------------------------
@@ -54,29 +106,71 @@
    this file. Spacing on a 4px grid; type in a ratio that survives 360px;
    motion short enough to feel like a response, never a performance.
    --------------------------------------------------------------------------- */
-:root{
+:root {
   /* spacing */
-  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px; --s-7:48px; --s-8:64px; --s-9:96px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
   /* type */
-  --t-1:12px; --t-2:13.5px; --t-3:15px; --t-4:16px; --t-5:18px; --t-6:22px; --t-7:28px; --t-8:36px; --t-9:48px;
-  --lh-tight:1.1; --lh-snug:1.3; --lh-body:1.6;
+  --t-1: 12px;
+  --t-2: 13.5px;
+  --t-3: 15px;
+  --t-4: 16px;
+  --t-5: 18px;
+  --t-6: 22px;
+  --t-7: 28px;
+  --t-8: 36px;
+  --t-9: 48px;
+  --lh-tight: 1.1;
+  --lh-snug: 1.3;
+  --lh-body: 1.6;
   /* radius */
-  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-pill:999px;
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
   /* motion — every transition uses these; reduced-motion zeroes them in globals */
-  --dur-fast:120ms; --dur:200ms; --dur-slow:400ms;
-  --ease:cubic-bezier(.2,.8,.2,1); --ease-in:cubic-bezier(.4,0,1,1); --ease-out:cubic-bezier(0,0,.2,1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 400ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
   /* elevation — three steps; the frame shadows above are steps 1 and 3 */
-  --elev-1:var(--frame-shadow);
-  --elev-2:0 2px 4px rgba(23,19,26,.06),0 12px 32px rgba(23,19,26,.10);
-  --elev-3:var(--frame-shadow-lg);
+  --elev-1: var(--frame-shadow);
+  --elev-2: 0 2px 4px rgba(23, 19, 26, 0.06), 0 12px 32px rgba(23, 19, 26, 0.1);
+  --elev-3: var(--frame-shadow-lg);
   /* layers */
-  --z-rail:20; --z-bar:30; --z-popover:100; --z-sheet:200; --z-dialog:300; --z-toast:400; --z-tour:1000;
+  --z-rail: 20;
+  --z-bar: 30;
+  --z-popover: 100;
+  --z-sheet: 200;
+  --z-dialog: 300;
+  --z-toast: 400;
+  --z-tour: 1000;
   /* controls */
-  --control-h:44px; --control-h-sm:36px; --control-h-lg:52px; --touch:48px;
+  --control-h: 44px;
+  --control-h-sm: 36px;
+  --control-h-lg: 52px;
+  --touch: 48px;
   /* layout */
-  --rail-w:232px; --rail-w-collapsed:64px; --bar-h:56px; --content-max:1480px;
+  --rail-w: 232px;
+  --rail-w-collapsed: 64px;
+  --bar-h: 56px;
+  --content-max: 1480px;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){ --elev-2:0 2px 4px rgba(0,0,0,.5),0 12px 32px rgba(0,0,0,.45); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --elev-2: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
 }
-:root[data-theme="dark"]{ --elev-2:0 2px 4px rgba(0,0,0,.5),0 12px 32px rgba(0,0,0,.45); }
+:root[data-theme='dark'] {
+  --elev-2: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.45);
+}

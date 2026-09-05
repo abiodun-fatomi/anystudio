@@ -18,15 +18,20 @@ export function welcomeAndVerify(to: string, name: string | null, link: string):
     to,
     subject: 'Welcome to AnyStudio — confirm your email',
     text: [
-      greet(name), '',
+      greet(name),
+      '',
       'Your AnyStudio account is ready, and you have three free generations waiting — no card.',
-      '', 'Confirm this address so we can reach you if you ever lose your password:',
-      link, '',
+      '',
+      'Confirm this address so we can reach you if you ever lose your password:',
+      link,
+      '',
       'The link works for 24 hours. If you did not sign up, ignore this email — the account cannot be used until someone confirms it.',
-      '', SIGNATURE,
+      '',
+      SIGNATURE,
     ].join('\n'),
-    html: html([...lines,
-      'The link works for 24 hours. If you did not sign up, ignore this email — nobody can use the account until it is confirmed.'],
-      { label: 'Confirm my email', url: link }),
+    html: html([...lines, 'The link works for 24 hours. If you did not sign up, ignore this email — nobody can use the account until it is confirmed.'], {
+      label: 'Confirm my email',
+      url: link,
+    }),
   };
 }

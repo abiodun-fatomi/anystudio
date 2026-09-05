@@ -28,7 +28,11 @@ export type AppEnv = 'production' | 'staging' | 'dev' | 'local';
 
 export function surfaceForOrigin(origin: string, env: AppEnv): Surface | null {
   const host = (() => {
-    try { return new URL(origin).host; } catch { return ''; }
+    try {
+      return new URL(origin).host;
+    } catch {
+      return '';
+    }
   })();
 
   const map: Record<typeof env, Record<string, Surface>> = {
@@ -65,7 +69,11 @@ export function marketingHost(env: AppEnv): string {
 /** True when a request comes from the marketing site (sign-in pages), which has no surface of its own. */
 export function isMarketingOrigin(origin: string, env: AppEnv): boolean {
   let host = '';
-  try { host = new URL(origin).host; } catch { return false; }
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return false;
+  }
   if (env === 'local') return false; // locally the app host is the landing; no handoff needed
   const base = marketingHost(env);
   return host === base || host === `www.${base}`;

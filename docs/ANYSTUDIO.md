@@ -12,11 +12,11 @@ AnyStudio turns a single image — or eventually a video — into everything a p
 
 It serves three audiences through one engine:
 
-| Audience | What they send | What they get back |
-|---|---|---|
-| **Individuals** | A personal photo, an event idea | Flyers, posters, styled social posts |
-| **Businesses** | A product photo, price, business name | Branded marketplace images, captions, product descriptions, short reel ads |
-| **Organizations** | Their merchants' product images, via API | Optimized storefront imagery and unique product descriptions at volume |
+| Audience          | What they send                           | What they get back                                                         |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| **Individuals**   | A personal photo, an event idea          | Flyers, posters, styled social posts                                       |
+| **Businesses**    | A product photo, price, business name    | Branded marketplace images, captions, product descriptions, short reel ads |
+| **Organizations** | Their merchants' product images, via API | Optimized storefront imagery and unique product descriptions at volume     |
 
 The distinguishing bet is **channel**: AnyStudio works inside WhatsApp, not only in a browser dashboard. A seller who lives in WhatsApp never has to leave it.
 
@@ -185,20 +185,20 @@ Turborepo with pnpm workspaces. A single Prisma schema means the credit ledger h
 
 ### 5.3 Stack
 
-| Layer | Choice | Rationale |
-|---|---|---|
-| Frontend | Next.js 15, React 19, TypeScript | Already in use; App Router, server components |
-| Styling | Tailwind v4 + shadcn/ui | Owned components rather than a dependency to fight |
-| Animation | Motion (formerly Framer Motion) | Hybrid engine runs transform/opacity on the compositor |
-| Backend | NestJS (TypeScript) | Chosen for shipping speed; DI, guards and interceptors suit API-key auth and metering |
-| ORM | Prisma | Type-safe, shared schema, good migration story |
-| Database | PostgreSQL on Render | Same region and private network as the API, so it needs no public endpoint |
-| Queue | Redis + BullMQ | Every generation is a job; nothing slow inside a request |
-| Storage | Cloudflare R2 + CDN | Zero egress fees — decisive when serving media into Nigeria |
-| AI providers | Own abstraction layer | Higgsfield, fal.ai, Replicate, HeyGen behind one interface |
-| Payments | Flutterwave (NGN) + Paddle (international) | Paddle is merchant-of-record and handles global VAT |
-| Analytics | PostHog now, ClickHouse later | Postgres aggregates suffice until real volume |
-| Hosting | Vercel (web) + Fly.io or Railway (api, worker) | Fly has regions close to target markets |
+| Layer        | Choice                                         | Rationale                                                                             |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Frontend     | Next.js 15, React 19, TypeScript               | Already in use; App Router, server components                                         |
+| Styling      | Tailwind v4 + shadcn/ui                        | Owned components rather than a dependency to fight                                    |
+| Animation    | Motion (formerly Framer Motion)                | Hybrid engine runs transform/opacity on the compositor                                |
+| Backend      | NestJS (TypeScript)                            | Chosen for shipping speed; DI, guards and interceptors suit API-key auth and metering |
+| ORM          | Prisma                                         | Type-safe, shared schema, good migration story                                        |
+| Database     | PostgreSQL on Render                           | Same region and private network as the API, so it needs no public endpoint            |
+| Queue        | Redis + BullMQ                                 | Every generation is a job; nothing slow inside a request                              |
+| Storage      | Cloudflare R2 + CDN                            | Zero egress fees — decisive when serving media into Nigeria                           |
+| AI providers | Own abstraction layer                          | Higgsfield, fal.ai, Replicate, HeyGen behind one interface                            |
+| Payments     | Flutterwave (NGN) + Paddle (international)     | Paddle is merchant-of-record and handles global VAT                                   |
+| Analytics    | PostHog now, ClickHouse later                  | Postgres aggregates suffice until real volume                                         |
+| Hosting      | Vercel (web) + Fly.io or Railway (api, worker) | Fly has regions close to target markets                                               |
 
 **Why NestJS over FastAPI.** This workload is I/O-bound: the API accepts an upload, writes a row, enqueues a job and returns; the worker waits 8–40 seconds on someone else's GPU. Language execution speed is not the constraint. Ecosystem and developer velocity are, and the deciding factor is fluency.
 
@@ -280,10 +280,10 @@ Never call a provider directly from business logic.
 
 ```ts
 interface GenerationProvider {
-  id: string
-  supports(capability: Capability): boolean
-  generate(input: GenerationInput, opts: ProviderOpts): Promise<ProviderResult>
-  estimateCost(input: GenerationInput): CostEstimate
+  id: string;
+  supports(capability: Capability): boolean;
+  generate(input: GenerationInput, opts: ProviderOpts): Promise<ProviderResult>;
+  estimateCost(input: GenerationInput): CostEstimate;
 }
 ```
 
@@ -355,12 +355,12 @@ Versioned from the first release. OpenAPI spec generated from the NestJS decorat
 `design/org.html`. The Organization tier serves two buyers who behave in opposite
 ways, and the flow is built around that split rather than around one funnel.
 
-| | Platform | Agency / multi-brand |
-|---|---|---|
-| Who evaluates | Engineer or PM | Ops or marketing lead |
-| Wants first | A key and a call that returns an image | A workspace and a project |
-| Reaction to "Book a demo" first | Leaves | Fine with it |
-| Decides on | Cost per listing, integration time | Seats, brand kits, one invoice |
+|                                 | Platform                               | Agency / multi-brand           |
+| ------------------------------- | -------------------------------------- | ------------------------------ |
+| Who evaluates                   | Engineer or PM                         | Ops or marketing lead          |
+| Wants first                     | A key and a call that returns an image | A workspace and a project      |
+| Reaction to "Book a demo" first | Leaves                                 | Fine with it                   |
+| Decides on                      | Cost per listing, integration time     | Seats, brand kits, one invoice |
 
 A single call-to-action loses one of them. The page now offers both doors on the
 same tier: **Create an organization** (self-serve) and **Talk to us about volume**.
@@ -380,7 +380,7 @@ The API section, which previously had no call to action at all, gets
 4. **Qualification hides in the form.** The contact door asks six fields —
    organization, work email, role, monthly volume, timeline, blockers — because
    those six decide what can be offered. Not fifteen.
-5. **Region is asked once and early.** It sets billing currency *and* image
+5. **Region is asked once and early.** It sets billing currency _and_ image
    storage region, and changing it later needs support, so the field says so.
 6. **Personal email domains are rejected** at the org step: the domain is what
    colleagues later join on.
@@ -388,7 +388,7 @@ The API section, which previously had no call to action at all, gets
 ### The steps
 
 `#start` fork → `#details` (5 fields) → `#verify` (test key + working curl, or
-first project) → `#prove` (run it on one of *their* listings, on test credits) →
+first project) → `#prove` (run it on one of _their_ listings, on test credits) →
 `#team` (invites, domain joining, roles) — plus `#contact` as the other door.
 
 Step 3 is the one most competitors skip. A demo on AnyStudio's own bottle proves
@@ -404,13 +404,13 @@ answers, so the value of an organization is visible before the flow ends.
 
 Five, which is the ceiling before people stop understanding them.
 
-| Role | Can | Cannot |
-|---|---|---|
-| **Owner** | Billing, contracts, delete the org | — (exactly one, transferable) |
-| **Admin** | Projects, API keys, members, brand kits | Billing, deletion |
-| **Member** | Generate in projects they belong to | See other projects |
-| **Billing** | Invoices, credit history, usage | Generate anything |
-| **Auditor** | Usage and the audit log | Change anything |
+| Role        | Can                                     | Cannot                        |
+| ----------- | --------------------------------------- | ----------------------------- |
+| **Owner**   | Billing, contracts, delete the org      | — (exactly one, transferable) |
+| **Admin**   | Projects, API keys, members, brand kits | Billing, deletion             |
+| **Member**  | Generate in projects they belong to     | See other projects            |
+| **Billing** | Invoices, credit history, usage         | Generate anything             |
+| **Auditor** | Usage and the audit log                 | Change anything               |
 
 ### Not yet built
 
@@ -424,12 +424,12 @@ Five, which is the ceiling before people stop understanding them.
 
 ## 11. Publishing Integrations
 
-| Channel | Mechanism | Approval needed |
-|---|---|---|
-| WhatsApp (bot + Status share) | WhatsApp Cloud API | Meta Business verification |
-| Instagram (auto-post) | Instagram Graph API | Facebook app review |
-| TikTok | TikTok Content Posting API | TikTok app review |
-| Download / direct share | Native | None |
+| Channel                       | Mechanism                  | Approval needed            |
+| ----------------------------- | -------------------------- | -------------------------- |
+| WhatsApp (bot + Status share) | WhatsApp Cloud API         | Meta Business verification |
+| Instagram (auto-post)         | Instagram Graph API        | Facebook app review        |
+| TikTok                        | TikTok Content Posting API | TikTok app review          |
+| Download / direct share       | Native                     | None                       |
 
 Publish attempts are jobs with their own retry and failure surface, separate from generation. Token refresh handled ahead of expiry; a disconnected account surfaces in the UI rather than failing silently.
 
@@ -442,7 +442,7 @@ Publish attempts are jobs with their own retry and failure surface, separate fro
 3. Payment webhooks and generation submissions are idempotent
 4. Debits and refunds occur only through database functions that lock the wallet row and append a ledger entry in one transaction
 5. No raw card data; hosted checkout only
-6. Media private by default; validate declared MIME *and* file signature; cap size, dimensions and duration; rename on upload; scan before processing
+6. Media private by default; validate declared MIME _and_ file signature; cap size, dimensions and duration; rename on upload; scan before processing
 7. Authorization enforced in Postgres row-level security and again at sensitive server entry points
 8. API secrets stored as Argon2 hashes; shown once; revocable
 9. MFA required for platform administrators; every privileged action logged
@@ -455,18 +455,18 @@ Publish attempts are jobs with their own retry and failure surface, separate fro
 
 Everything in this section lives in `design/seo/` and moves into the Next.js app
 at Phase 2. It is listed separately from the product security invariants in §12
-because it protects the *browser*, not the ledger.
+because it protects the _browser_, not the ledger.
 
 ### What ships in the document head
 
-| Concern | Landing | Auth screens |
-|---|---|---|
-| `robots` | `index, follow, max-image-preview:large, max-snippet:-1` | `noindex, nofollow, noarchive, nosnippet` |
-| Canonical | `https://anystudio.ai/` | `https://anystudio.ai/signin` |
-| Open Graph + Twitter | Full card, 1200×630 image | Card only, no indexing |
-| `referrer` | `strict-origin-when-cross-origin` | `no-referrer` — a reset token travels in the URL |
-| Theme colour | Light and dark, media-scoped | Same |
-| Structured data | Organization, WebSite, WebPage, SoftwareApplication, FAQPage, HowTo | None |
+| Concern              | Landing                                                             | Auth screens                                     |
+| -------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| `robots`             | `index, follow, max-image-preview:large, max-snippet:-1`            | `noindex, nofollow, noarchive, nosnippet`        |
+| Canonical            | `https://anystudio.ai/`                                             | `https://anystudio.ai/signin`                    |
+| Open Graph + Twitter | Full card, 1200×630 image                                           | Card only, no indexing                           |
+| `referrer`           | `strict-origin-when-cross-origin`                                   | `no-referrer` — a reset token travels in the URL |
+| Theme colour         | Light and dark, media-scoped                                        | Same                                             |
+| Structured data      | Organization, WebSite, WebPage, SoftwareApplication, FAQPage, HowTo | None                                             |
 
 An indexed sign-in page is a standing phishing target: a copy of it ranking
 beside the real one is how credentials get harvested. That is the reason for
@@ -556,39 +556,46 @@ Credit liability — unspent purchased credits — is a real balance-sheet item 
 The full scope is three products. This order ships something usable early and defers the piece most likely to be rebuilt.
 
 ### Phase 1 — Foundation
+
 Auth and phone verification · workspaces and membership · credit ledger and wallet functions · Flutterwave and Paddle integration · plans and local price tiers · free-tier gating · landing page, sign-up and sign-in
 
-*Exit criteria: a user can sign up, buy credits, and see an accurate balance and history.*
+_Exit criteria: a user can sign up, buy credits, and see an accurate balance and history._
 
 ### Phase 2 — Image pipeline
+
 Upload to R2 · provider abstraction · branded product images · captions and product descriptions · background removal and replacement · brand kits · multi-size export
 
-*Exit criteria: a seller uploads a product photo and receives post-ready branded images with copy.*
+_Exit criteria: a seller uploads a product photo and receives post-ready branded images with copy._
 
 ### Phase 3 — Video pipeline
+
 Image-to-video reels · duration and aspect controls · video-specific credit costing · longer job handling and progress reporting
 
-*Exit criteria: the same product photo yields a short reel ad.*
+_Exit criteria: the same product photo yields a short reel ad._
 
 ### Phase 4 — User portal
+
 Library with search and re-edit · downloads · credit history and transactions · usage analytics · account and billing management
 
-*Exit criteria: a paying user has everything they need without contacting support.*
+_Exit criteria: a paying user has everything they need without contacting support._
 
 ### Phase 5 — WhatsApp channel
+
 Cloud API webhook · conversational flows for personal and business modes · Status sharing with pre-filled caption · phone-first onboarding
 
-*Blocked on Meta Business verification.*
+_Blocked on Meta Business verification._
 
 ### Phase 6 — Social publishing
+
 Instagram auto-post · TikTok posting · scheduling and calendar · publish job retry and reconnection
 
-*Blocked on Facebook app review and TikTok review.*
+_Blocked on Facebook app review and TikTok review._
 
 ### Phase 7 — Organization portal
+
 Projects · API keys and secrets · public API v1 · usage metering and rollups · usage-based billing · org analytics · seats and roles · webhooks
 
-*Deliberately last. Build it with a design partner in the room, not from assumption.*
+_Deliberately last. Build it with a design partner in the room, not from assumption._
 
 ---
 
@@ -637,14 +644,14 @@ These gate launch and take weeks. Start them before writing application code.
 
 ## Appendix — Decisions Already Made
 
-| Decision | Choice | Reason |
-|---|---|---|
-| Product name | AnyStudio | Only shape covering individuals, businesses and organizations |
-| Domain | anystudio.ai | .com held since 2005 and renewed to 2028; not obtainable |
-| Backend language | TypeScript / NestJS | Shipping speed beats ecosystem; workload is I/O-bound |
-| Balance storage | Append-only ledger | Cannot be retrofitted |
-| Provider coupling | Abstraction from line one | Models change monthly |
-| Workspace modes | Type on workspace, not flag on user | Lets the org tier slot in without migration |
-| Local pricing | Fixed per-market tiers | Live FX causes ugly prices and margin swings |
-| Free tier key | Verified phone number | Email-keyed free tiers are farmed |
-| Build order | Org portal last | API primitives guessed without a customer get rebuilt |
+| Decision          | Choice                              | Reason                                                        |
+| ----------------- | ----------------------------------- | ------------------------------------------------------------- |
+| Product name      | AnyStudio                           | Only shape covering individuals, businesses and organizations |
+| Domain            | anystudio.ai                        | .com held since 2005 and renewed to 2028; not obtainable      |
+| Backend language  | TypeScript / NestJS                 | Shipping speed beats ecosystem; workload is I/O-bound         |
+| Balance storage   | Append-only ledger                  | Cannot be retrofitted                                         |
+| Provider coupling | Abstraction from line one           | Models change monthly                                         |
+| Workspace modes   | Type on workspace, not flag on user | Lets the org tier slot in without migration                   |
+| Local pricing     | Fixed per-market tiers              | Live FX causes ugly prices and margin swings                  |
+| Free tier key     | Verified phone number               | Email-keyed free tiers are farmed                             |
+| Build order       | Org portal last                     | API primitives guessed without a customer get rebuilt         |

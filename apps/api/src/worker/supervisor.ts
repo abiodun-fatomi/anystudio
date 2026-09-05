@@ -85,7 +85,9 @@ export class WorkerSupervisor {
     this.timers.push(setInterval(() => void this.dispatch(), DISPATCH_EVERY_MS));
     // Outbound webhooks: due deliveries, a bounded batch, never overlapping.
     this.timers.push(setInterval(() => void this.webhooks.deliverDue(), WEBHOOK_EVERY_MS));
-    this.timers.push(setInterval(() => void this.support.sweepIdle().catch((err: unknown) => logger.error({ err }, 'support sweep failed')), SUPPORT_SWEEP_EVERY_MS));
+    this.timers.push(
+      setInterval(() => void this.support.sweepIdle().catch((err: unknown) => logger.error({ err }, 'support sweep failed')), SUPPORT_SWEEP_EVERY_MS),
+    );
     await this.heartbeat();
     await this.dispatch();
   }
@@ -108,9 +110,13 @@ export class WorkerSupervisor {
       },
       { connection: this.redis!, concurrency, lockDuration: 120_000, stalledInterval: 60_000, maxStalledCount: 2 },
     );
-    w.on('failed', (job, err) => logger.error({ queue: name, jobId: job?.id, err: err.message }, 'job threw outside the runner — this is a bug, the runner handles its own failures'));
+    w.on('failed', (job, err) =>
+      logger.error({ queue: name, jobId: job?.id, err: err.message }, 'job threw outside the runner — this is a bug, the runner handles its own failures'),
+    );
     w.on('error', (err) => logger.warn({ queue: name, err: err.message }, 'consumer connection error; bullmq will reconnect'));
-    w.on('stalled', (jobId) => logger.warn({ queue: name, jobId }, 'job stalled; bullmq will retry it, the runner will find the row already RUNNING or terminal'));
+    w.on('stalled', (jobId) =>
+      logger.warn({ queue: name, jobId }, 'job stalled; bullmq will retry it, the runner will find the row already RUNNING or terminal'),
+    );
     return w;
   }
 
@@ -175,7 +181,9 @@ export class WorkerSupervisor {
       void this.runner
         .run(id)
         .catch((err) => logger.error({ generationId: id, err }, 'direct run threw'))
-        .finally(() => { this.directBusy--; });
+        .finally(() => {
+          this.directBusy--;
+        });
     }
   }
 }

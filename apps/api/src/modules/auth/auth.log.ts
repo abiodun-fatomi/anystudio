@@ -112,12 +112,7 @@ export interface AuthLogFields {
  * `req` is optional so the sweeper and other non-HTTP callers can use the same
  * vocabulary rather than inventing a second one.
  */
-export function authLog(
-  event: AuthEventName,
-  outcome: AuthOutcome,
-  fields: AuthLogFields = {},
-  req?: Request,
-): void {
+export function authLog(event: AuthEventName, outcome: AuthOutcome, fields: AuthLogFields = {}, req?: Request): void {
   const line = {
     event,
     outcome,

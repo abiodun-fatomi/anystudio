@@ -26,8 +26,18 @@ import { RegistrationService } from './registration.service';
 import { PasswordResetService } from './password-reset.service';
 import { VerificationService } from './verification.service';
 import { GoogleProvider, OAUTH_COOKIE, OAUTH_COOKIE_OPTS } from './providers/google.provider';
-import type { LoginDto, MfaDto, RegisterDto, HandoffDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, StepUpDto,
-  GoogleStartQueryDto, GoogleCallbackQueryDto } from './auth.dto';
+import type {
+  LoginDto,
+  MfaDto,
+  RegisterDto,
+  HandoffDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  VerifyEmailDto,
+  StepUpDto,
+  GoogleStartQueryDto,
+  GoogleCallbackQueryDto,
+} from './auth.dto';
 import type { LoginResult, MfaResult, RegisterResult, RefreshResult, Verified, SignedIn } from './auth.types';
 import { Helpers } from '../../utils/helpers';
 import { MESSAGES } from '../../utils/constant';
@@ -75,10 +85,13 @@ export class AuthService {
 
     const outcome = await this.registration.register(
       {
-        name: dto.name, email: dto.email.toLowerCase(), password: dto.password,
+        name: dto.name,
+        email: dto.email.toLowerCase(),
+        password: dto.password,
         phone: RegistrationService.normalisePhone(dto.phone, dto.country),
         phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
-        marketing: dto.marketing, sourceUrl: dto.sourceUrl,
+        marketing: dto.marketing,
+        sourceUrl: dto.sourceUrl,
       },
       req,
     );
@@ -112,8 +125,11 @@ export class AuthService {
     }
     if (outcome.kind === 'mfa_required') {
       authLog('auth.login', 'succeeded', { reason: 'mfa_required', surface, factors: outcome.factors }, req);
-      return Helpers.successResponse<LoginResult>(200, MESSAGES.MFA_REQUIRED,
-        { status: 'mfa_required', challengeId: outcome.challengeId, factors: outcome.factors });
+      return Helpers.successResponse<LoginResult>(200, MESSAGES.MFA_REQUIRED, {
+        status: 'mfa_required',
+        challengeId: outcome.challengeId,
+        factors: outcome.factors,
+      });
     }
     const result = await this.finishSignIn(outcome.user, surface, outcome.mfaLevel, await this.landingFor(outcome.user.id, surface), req, res);
     authLog('auth.login', 'succeeded', { userId: outcome.user.id, surface, mfa: outcome.mfaLevel, handoff: result.status === 'handoff' }, req);
@@ -179,8 +195,7 @@ export class AuthService {
   /** Confirm a fresh second factor for the current session. */
   async stepUp(actor: Actor & { sessionId: string }, dto: StepUpDto, req: Request) {
     const ok = await this.verifyStepUp(actor, dto.code, req);
-    authLog('auth.step_up', ok ? 'succeeded' : 'refused',
-      { userId: actor.userId, surface: actor.surface, ...(ok ? {} : { reason: 'invalid_code' }) }, req);
+    authLog('auth.step_up', ok ? 'succeeded' : 'refused', { userId: actor.userId, surface: actor.surface, ...(ok ? {} : { reason: 'invalid_code' }) }, req);
     return Helpers.successResponse(200, ok ? MESSAGES.OK : MESSAGES.INVALID_CODE, { status: ok ? 'ok' : 'invalid_code' });
   }
 
@@ -198,16 +213,14 @@ export class AuthService {
   async resetPassword(dto: ResetPasswordDto, req: Request) {
     const ok = await this.resets.complete(dto.token, dto.password, req);
     authLog('auth.reset', ok ? 'succeeded' : 'refused', ok ? {} : { reason: 'invalid_token' }, req);
-    return Helpers.successResponse(200, ok ? MESSAGES.RESET_DONE : MESSAGES.INVALID_TOKEN,
-      { status: ok ? 'reset' : 'invalid_token' });
+    return Helpers.successResponse(200, ok ? MESSAGES.RESET_DONE : MESSAGES.INVALID_TOKEN, { status: ok ? 'reset' : 'invalid_token' });
   }
 
   /** Consume a confirmation link. */
   async verifyEmail(dto: VerifyEmailDto) {
     const ok = await this.verification.complete(dto.token);
     authLog('auth.verify', ok ? 'succeeded' : 'refused', ok ? {} : { reason: 'invalid_token' });
-    return Helpers.successResponse(200, ok ? MESSAGES.VERIFIED : MESSAGES.INVALID_TOKEN,
-      { status: ok ? 'verified' : 'invalid_token' });
+    return Helpers.successResponse(200, ok ? MESSAGES.VERIFIED : MESSAGES.INVALID_TOKEN, { status: ok ? 'verified' : 'invalid_token' });
   }
 
   /** Send the confirmation link again, to the signed-in owner only. */
@@ -313,8 +326,7 @@ export class AuthService {
     if (!resolved) return fail(GoogleSignInError.EmailUnverified);
 
     await this.issueSession(resolved.user, state.f, 1, req, res);
-    authLog('auth.google', 'succeeded',
-      { userId: resolved.user.id, surface: state.f, mfa: 1, created: resolved.created }, req);
+    authLog('auth.google', 'succeeded', { userId: resolved.user.id, surface: state.f, mfa: 1, created: resolved.created }, req);
     const landing = resolved.created ? '/welcome' : await this.landingFor(resolved.user.id, state.f);
     res.redirect(302, state.r !== '/' ? state.r : landing);
   }
@@ -333,8 +345,12 @@ export class AuthService {
       const token = randomBytes(32).toString('base64url');
       await this.db.authToken.create({
         data: {
-          purpose: 'SESSION_HANDOFF', userId: user.id, tokenHash: sha256(token),
-          payload: { mfaLevel, next }, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS), createdIp: req.ip,
+          purpose: 'SESSION_HANDOFF',
+          userId: user.id,
+          tokenHash: sha256(token),
+          payload: { mfaLevel, next },
+          expiresAt: new Date(Date.now() + HANDOFF_TTL_MS),
+          createdIp: req.ip,
         },
       });
       return { status: 'handoff', url: `${appOriginFor(env)}/auth/handoff?token=${token}` };
@@ -346,8 +362,12 @@ export class AuthService {
   /** Mint a session for a verified user and set its cookies. */
   private async issueSession(user: User, surface: Surface, mfaLevel: number, req: Request, res: Response): Promise<void> {
     const issued = await this.sessions.mint({
-      userId: user.id, surface, mfaLevel, credentialEpoch: user.credentialEpoch,
-      ip: req.ip, userAgent: req.get('user-agent') ?? undefined,
+      userId: user.id,
+      surface,
+      mfaLevel,
+      credentialEpoch: user.credentialEpoch,
+      ip: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
     });
     this.setCookies(res, surface, issued);
   }
@@ -445,8 +465,7 @@ export class AuthService {
    * Only TOTP is implemented here; WebAuthn assertion verification is a
    * separate module because it carries its own protocol surface.
    */
-  async verifySecondFactor(challengeId: string, code: string, req: Request):
-    Promise<{ kind: 'rejected' } | { kind: 'signed_in'; user: User }> {
+  async verifySecondFactor(challengeId: string, code: string, req: Request): Promise<{ kind: 'rejected' } | { kind: 'signed_in'; user: User }> {
     const token = await this.db.authToken.findFirst({
       where: { id: challengeId, purpose: 'MFA_CHALLENGE', consumedAt: null, expiresAt: { gt: new Date() } },
     });
@@ -479,7 +498,10 @@ export class AuthService {
       where: { userId: actor.userId, type: 'TOTP', confirmedAt: { not: null } },
     });
     const good = factor?.secretEnc ? verifyCode(decrypt(factor.secretEnc), code) : false;
-    if (!good) { await this.event(actor.userId, 'MFA_FAILED', actor.surface, req); return false; }
+    if (!good) {
+      await this.event(actor.userId, 'MFA_FAILED', actor.surface, req);
+      return false;
+    }
     await this.sessions.recordStepUp(actor.sessionId);
     await this.event(actor.userId, 'STEP_UP_COMPLETED', actor.surface, req);
     return true;
@@ -489,7 +511,11 @@ export class AuthService {
    * Builds the Actor for a resolved session. This is the ONLY place authority
    * is assembled, and it reads nothing from the request body.
    */
-  async actorFor(userId: string, surface: Surface, session: { id: string; mfaLevel: number; lastStepUpAt: Date | null }): Promise<Actor & { sessionId: string }> {
+  async actorFor(
+    userId: string,
+    surface: Surface,
+    session: { id: string; mfaLevel: number; lastStepUpAt: Date | null },
+  ): Promise<Actor & { sessionId: string }> {
     const [members, staffRole] = await Promise.all([
       this.db.workspaceMember.findMany({ where: { userId, workspace: { deletedAt: null } }, select: { workspaceId: true, role: true } }),
       this.activeStaffRole(userId),
@@ -518,7 +544,18 @@ export class AuthService {
   async describeActor(actor: Actor): Promise<Record<string, unknown>> {
     const user = await this.db.user.findUniqueOrThrow({
       where: { id: actor.userId },
-      select: { id: true, name: true, email: true, phone: true, phoneIsWhatsApp: true, avatarKey: true, locale: true, timezone: true, deleteRequestedAt: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        phoneIsWhatsApp: true,
+        avatarKey: true,
+        locale: true,
+        timezone: true,
+        deleteRequestedAt: true,
+        createdAt: true,
+      },
     });
     const workspaces = await this.db.workspace.findMany({
       where: { id: { in: [...actor.workspaceRoles.keys()] } },
@@ -591,7 +628,11 @@ export class AuthService {
     if (id.includes('@')) return this.db.user.findUnique({ where: { email: id } });
     // A phone typed any way it is usually typed — with spaces, brackets, or as a local number.
     let phone = id.replace(/[\s().-]/g, '');
-    try { phone = RegistrationService.normalisePhone(id); } catch { /* look it up as typed; it will simply not match */ }
+    try {
+      phone = RegistrationService.normalisePhone(id);
+    } catch {
+      /* look it up as typed; it will simply not match */
+    }
     return this.db.user.findUnique({ where: { phone } });
   }
 
@@ -608,10 +649,14 @@ export class AuthService {
     const id = randomUUID();
     await this.db.authToken.create({
       data: {
-        id, purpose: 'MFA_CHALLENGE', userId,
+        id,
+        purpose: 'MFA_CHALLENGE',
+        userId,
         tokenHash: createHash('sha256').update(id).digest('hex'),
-        payload: { surface }, maxAttempts: 5,
-        expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS), createdIp: req.ip,
+        payload: { surface },
+        maxAttempts: 5,
+        expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
+        createdIp: req.ip,
       },
     });
     return id;
@@ -622,10 +667,25 @@ export class AuthService {
     await this.event(userId, 'LOGIN_SUCCEEDED', surface, req);
   }
 
-  private async event(userId: string | null, type: Parameters<PrismaClient['authEvent']['create']>[0]['data']['type'],
-    surface: Surface | null, req: Request, detail?: Record<string, unknown>): Promise<void> {
-    await this.db.authEvent.create({
-      data: { userId, type, surface, requestId: req.requestId, ip: req.ip, userAgent: req.get('user-agent')?.slice(0, 400), detail: detail ? (detail as Prisma.InputJsonObject) : undefined },
-    }).catch((e) => logger.warn({ err: e }, 'auth event write failed'));
+  private async event(
+    userId: string | null,
+    type: Parameters<PrismaClient['authEvent']['create']>[0]['data']['type'],
+    surface: Surface | null,
+    req: Request,
+    detail?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.db.authEvent
+      .create({
+        data: {
+          userId,
+          type,
+          surface,
+          requestId: req.requestId,
+          ip: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 400),
+          detail: detail ? (detail as Prisma.InputJsonObject) : undefined,
+        },
+      })
+      .catch((e) => logger.warn({ err: e }, 'auth event write failed'));
   }
 }

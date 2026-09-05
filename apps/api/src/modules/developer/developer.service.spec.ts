@@ -28,20 +28,35 @@ suite('DeveloperService + PublicApiService', () => {
   const dev = new DeveloperService(db, ledger, dispatcher);
   const api = new PublicApiService(db, generations, ledger, media, dispatcher);
   const req = { ip: '127.0.0.1', requestId: 'r', get: () => 'test' } as never;
-  let workspaceId: string; let userId: string; let actor: Actor;
+  let workspaceId: string;
+  let userId: string;
+  let actor: Actor;
 
   beforeAll(async () => {
     await db.$connect();
     await db.creditCost.upsert({ where: { code: 'text.description' }, create: { code: 'text.description', credits: 2, label: 'Copy' }, update: {} });
   });
-  afterAll(async () => { await db.$disconnect(); });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
   beforeEach(async () => {
     const user = await db.user.create({ data: { email: `dev-${crypto.randomUUID()}@test.local` } });
     userId = user.id;
-    const ws = await db.workspace.create({ data: { type: 'ORGANIZATION', name: 'Acme', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } }, include: { wallet: true } });
+    const ws = await db.workspace.create({
+      data: { type: 'ORGANIZATION', name: 'Acme', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } },
+      include: { wallet: true },
+    });
     workspaceId = ws.id;
     await ledger.grant({ walletId: ws.wallet!.id, amount: 100, idempotencyKey: `grant-${workspaceId}` });
-    actor = { userId, surface: 'APP', staffRole: null, workspaceRoles: new Map([[workspaceId, 'OWNER']]), mfaLevel: 0, lastStepUpAt: null, impersonating: false };
+    actor = {
+      userId,
+      surface: 'APP',
+      staffRole: null,
+      workspaceRoles: new Map([[workspaceId, 'OWNER']]),
+      mfaLevel: 0,
+      lastStepUpAt: null,
+      impersonating: false,
+    };
   });
 
   it('projects get unique slugs; keys are shown once, listed by prefix, and revoked by timestamp', async () => {
@@ -67,21 +82,32 @@ suite('DeveloperService + PublicApiService', () => {
     const other = await dev.createProject(actor, workspaceId, { name: 'Other' }, req);
     const made = await dev.createKey(actor, workspaceId, { projectId: p.id, name: 'k' }, req);
     const key = await db.apiKey.findUniqueOrThrow({ where: { id: made.id } });
-    const otherKey = await db.apiKey.findUniqueOrThrow({ where: { id: (await dev.createKey(actor, workspaceId, { projectId: other.id, name: 'k2' }, req)).id } });
+    const otherKey = await db.apiKey.findUniqueOrThrow({
+      where: { id: (await dev.createKey(actor, workspaceId, { projectId: other.id, name: 'k2' }, req)).id },
+    });
 
-    const { generation, balance } = await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Tote', platforms: ['instagram'] }, merchantRef: 'store-1', clientKey: 'c-1' });
+    const { generation, balance } = await api.create(key, {
+      capability: 'TEXT_GENERATE',
+      params: { productName: 'Tote', platforms: ['instagram'] },
+      merchantRef: 'store-1',
+      clientKey: 'c-1',
+    });
     expect(balance).toBe(98);
     expect(generation).toMatchObject({ status: 'QUEUED', merchantRef: 'store-1', projectId: p.id, clientKey: 'c-1' });
     const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
     expect(row).toMatchObject({ channel: 'API', apiKeyId: key.id, projectId: p.id });
     // Same clientKey → the same row, not a second charge.
-    expect((await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Tote', platforms: ['instagram'] }, clientKey: 'c-1' })).balance).toBe(98);
+    expect((await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Tote', platforms: ['instagram'] }, clientKey: 'c-1' })).balance).toBe(
+      98,
+    );
     // The other project's key cannot see it.
     await expect(api.get(otherKey, generation.id)).rejects.toMatchObject({ status: 404 });
     expect((await api.list(key, {})).generations.map((g) => g.id)).toEqual([generation.id]);
     expect((await api.list(otherKey, {})).generations).toEqual([]);
 
-    await generations.succeed(generation.id, { outputs: [{ key: `${workspaceId}/out.json`, role: 'text', mime: 'application/json', text: { description: { short: 'x' } } }] });
+    await generations.succeed(generation.id, {
+      outputs: [{ key: `${workspaceId}/out.json`, role: 'text', mime: 'application/json', text: { description: { short: 'x' } } }],
+    });
     const usage = await dev.usage(workspaceId, 30);
     expect(usage.totals).toMatchObject({ requests: 1, succeeded: 1, credits: 2, merchants: 1 });
     expect(usage.byProject.find((x) => x.projectId === p.id)).toMatchObject({ requests: 1, credits: 2 });

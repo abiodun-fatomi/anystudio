@@ -27,38 +27,38 @@ from a browser or an app.
 
 ## Routes
 
-| Method | Path | Scope | What |
-|---|---|---|---|
-| GET | `/capabilities` | catalogue:read | Every capability with its price and the params it takes (name, type, required, default, enum values) — derived from the validators, never stale |
-| GET | `/balance` | balance:read | `{ credits, currency }` |
-| POST | `/uploads/from-url` | media:write | `{ url }` → we fetch it (HTTPS, public, image/video/audio, size limits as the studio) |
-| POST | `/uploads` | media:write | `{ filename, mime, bytes }` → `{ url, method, headers }` for a presigned PUT |
-| POST | `/uploads/{id}/complete` | media:write | Verify the object; it becomes usable |
-| POST | `/generations` | generations:write | `{ capability, params, clientKey?, merchantRef?, costCode? }` → `{ generation, balance }` (201) |
-| GET | `/generations` | generations:read | This key's project, newest first; `?limit=&cursor=&merchantRef=` |
-| GET | `/generations/{id}` | generations:read | The generation with signed `url` on every output |
-| POST | `/generations/{id}/cancel` | generations:write | Only while `QUEUED`; credits back |
-| POST | `/generations/{id}/unlock` | generations:write | Pay for the rest of a song |
-| GET | `/audio/genres`, `/audio/voices`, `/audio/dub-languages` | catalogue:read | The catalogues the studio's pickers use |
+| Method | Path                                                     | Scope             | What                                                                                                                                            |
+| ------ | -------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/capabilities`                                          | catalogue:read    | Every capability with its price and the params it takes (name, type, required, default, enum values) — derived from the validators, never stale |
+| GET    | `/balance`                                               | balance:read      | `{ credits, currency }`                                                                                                                         |
+| POST   | `/uploads/from-url`                                      | media:write       | `{ url }` → we fetch it (HTTPS, public, image/video/audio, size limits as the studio)                                                           |
+| POST   | `/uploads`                                               | media:write       | `{ filename, mime, bytes }` → `{ url, method, headers }` for a presigned PUT                                                                    |
+| POST   | `/uploads/{id}/complete`                                 | media:write       | Verify the object; it becomes usable                                                                                                            |
+| POST   | `/generations`                                           | generations:write | `{ capability, params, clientKey?, merchantRef?, costCode? }` → `{ generation, balance }` (201)                                                 |
+| GET    | `/generations`                                           | generations:read  | This key's project, newest first; `?limit=&cursor=&merchantRef=`                                                                                |
+| GET    | `/generations/{id}`                                      | generations:read  | The generation with signed `url` on every output                                                                                                |
+| POST   | `/generations/{id}/cancel`                               | generations:write | Only while `QUEUED`; credits back                                                                                                               |
+| POST   | `/generations/{id}/unlock`                               | generations:write | Pay for the rest of a song                                                                                                                      |
+| GET    | `/audio/genres`, `/audio/voices`, `/audio/dub-languages` | catalogue:read    | The catalogues the studio's pickers use                                                                                                         |
 
 A key sees its own project's generations and nothing from a sibling
 project. Revoked keys get `401`; a missing scope gets `403`.
 
 ## Capabilities
 
-| Capability | Default price | Notes |
-|---|---|---|
-| `IMAGE_EDIT` | 10 | `sourceKey`, `prompt` (where the product should be), `aspect`, `sizes[]`, `price`, `businessName`. The product is kept pixel-identical; the brand kit is applied |
-| `BACKGROUND_REMOVE` | 2 | `sourceKey`, `background: "transparent" \| "#RRGGBB"` |
-| `BACKGROUND_REPLACE` | 10 | `sourceKey`, `prompt`, `shadow`, `relight` |
-| `UPSCALE` | 3 | `sourceKey`, `factor: 2 \| 4` |
-| `IMAGE_GENERATE` | 10 | `prompt`, `aspect`, `style`, `count` |
-| `TEXT_GENERATE` | 2 | `productName`, `details`, `price`, `language`, `platforms[]`; returns description, captions per platform, hashtags, alt text, SEO |
-| `IMAGE_TO_VIDEO` | 120 (reel) · 260 / 480 (15 s / 30 s ad via `costCode`) | `sourceKey`, `prompt`, `shots: 1 \| 2 \| 4`, `format`, `durationSec`, `aspect` |
-| `VOICEOVER` | 8 | `script`, `voiceId` (from `/audio/voices`), `style`, `speed` |
-| `MUSIC` | 10 preview + 30 unlock | `brief`, `genre` (from `/audio/genres`), `vocal`, `language`, `durationSec`, optional `lyrics`. Returns a 30-second `preview` and a locked `audio`; `/unlock` opens it |
-| `DUB` | 90 · 240 with lips | `sourceKey` (video), `targetLanguage` (from `/audio/dub-languages`), `lipsync`, `speakers`, `keepBackground`, `quality`, **`consent: true`** |
-| `LIPSYNC` | 150 | `sourceKey` (video), `audioKey` **or** `script` + `voiceId`, `quality`, **`consent: true`** |
+| Capability           | Default price                                          | Notes                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IMAGE_EDIT`         | 10                                                     | `sourceKey`, `prompt` (where the product should be), `aspect`, `sizes[]`, `price`, `businessName`. The product is kept pixel-identical; the brand kit is applied       |
+| `BACKGROUND_REMOVE`  | 2                                                      | `sourceKey`, `background: "transparent" \| "#RRGGBB"`                                                                                                                  |
+| `BACKGROUND_REPLACE` | 10                                                     | `sourceKey`, `prompt`, `shadow`, `relight`                                                                                                                             |
+| `UPSCALE`            | 3                                                      | `sourceKey`, `factor: 2 \| 4`                                                                                                                                          |
+| `IMAGE_GENERATE`     | 10                                                     | `prompt`, `aspect`, `style`, `count`                                                                                                                                   |
+| `TEXT_GENERATE`      | 2                                                      | `productName`, `details`, `price`, `language`, `platforms[]`; returns description, captions per platform, hashtags, alt text, SEO                                      |
+| `IMAGE_TO_VIDEO`     | 120 (reel) · 260 / 480 (15 s / 30 s ad via `costCode`) | `sourceKey`, `prompt`, `shots: 1 \| 2 \| 4`, `format`, `durationSec`, `aspect`                                                                                         |
+| `VOICEOVER`          | 8                                                      | `script`, `voiceId` (from `/audio/voices`), `style`, `speed`                                                                                                           |
+| `MUSIC`              | 10 preview + 30 unlock                                 | `brief`, `genre` (from `/audio/genres`), `vocal`, `language`, `durationSec`, optional `lyrics`. Returns a 30-second `preview` and a locked `audio`; `/unlock` opens it |
+| `DUB`                | 90 · 240 with lips                                     | `sourceKey` (video), `targetLanguage` (from `/audio/dub-languages`), `lipsync`, `speakers`, `keepBackground`, `quality`, **`consent: true`**                           |
+| `LIPSYNC`            | 150                                                    | `sourceKey` (video), `audioKey` **or** `script` + `voiceId`, `quality`, **`consent: true`**                                                                            |
 
 `GET /capabilities` is the source of truth for the exact fields.
 
@@ -66,14 +66,39 @@ project. Revoked keys get `401`; a missing scope gets `403`.
 
 ```json
 {
-  "id": "0d0e…", "status": "SUCCEEDED", "capability": "IMAGE_EDIT",
-  "clientKey": "order-8812-hero", "merchantRef": "store-441", "projectId": "…",
-  "credits": 10, "costCode": "image.storefront",
-  "createdAt": "…", "finishedAt": "…",
+  "id": "0d0e…",
+  "status": "SUCCEEDED",
+  "capability": "IMAGE_EDIT",
+  "clientKey": "order-8812-hero",
+  "merchantRef": "store-441",
+  "projectId": "…",
+  "credits": 10,
+  "costCode": "image.storefront",
+  "createdAt": "…",
+  "finishedAt": "…",
   "outputs": [
-    { "role": "image",   "mime": "image/jpeg", "width": 1080, "height": 1080, "key": "…", "url": "https://…" },
-    { "role": "variant", "size": "story", "mime": "image/jpeg", "width": 1080, "height": 1920, "key": "…", "url": "https://…" },
-    { "role": "text",    "mime": "application/json", "text": { "captions": { "instagram": "…" } } }
+    {
+      "role": "image",
+      "mime": "image/jpeg",
+      "width": 1080,
+      "height": 1080,
+      "key": "…",
+      "url": "https://…"
+    },
+    {
+      "role": "variant",
+      "size": "story",
+      "mime": "image/jpeg",
+      "width": 1080,
+      "height": 1920,
+      "key": "…",
+      "url": "https://…"
+    },
+    {
+      "role": "text",
+      "mime": "application/json",
+      "text": { "captions": { "instagram": "…" } }
+    }
   ],
   "urlsExpireInSec": 3600
 }

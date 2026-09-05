@@ -7,11 +7,7 @@ import { BrandLink } from './BrandLink';
 import { SheetShowcase } from '@/components/SheetShowcase';
 import styles from './auth.module.css';
 
-const TRUST = [
-  'Three generations free — no card',
-  'Works on WhatsApp and on the web',
-  'Your images stay private by default',
-];
+const TRUST = ['Three generations free — no card', 'Works on WhatsApp and on the web', 'Your images stay private by default'];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -32,7 +28,10 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className={styles.foot}>
           {TRUST.map((t) => (
             <span key={t} className={styles.row}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l6 6L20 6" /></svg>{t}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 12l6 6L20 6" />
+              </svg>
+              {t}
             </span>
           ))}
         </div>

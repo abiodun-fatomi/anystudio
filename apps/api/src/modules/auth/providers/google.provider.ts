@@ -260,8 +260,7 @@ export class GoogleProvider {
           data: { emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
         }),
         this.db.authEvent.create({
-          data: { userId: existing.id, type: 'LOGIN_SUCCEEDED', requestId: req.requestId, ip: req.ip,
-            detail: { via: 'google', linked: true } },
+          data: { userId: existing.id, type: 'LOGIN_SUCCEEDED', requestId: req.requestId, ip: req.ip, detail: { via: 'google', linked: true } },
         }),
       ]);
       return { user: existing, created: false };

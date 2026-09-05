@@ -19,7 +19,9 @@ import { PaddleGateway } from './paddle.gateway';
 import { StubGateway } from './stub.gateway';
 
 export class PaymentsUnavailableError extends AppError {
-  constructor(currency: string) { super('payments_unavailable', 503, `Payments in ${currency} are not available yet. Contact support and we will sort it out by hand.`); }
+  constructor(currency: string) {
+    super('payments_unavailable', 503, `Payments in ${currency} are not available yet. Contact support and we will sort it out by hand.`);
+  }
 }
 
 @Injectable()
@@ -49,9 +51,12 @@ export class GatewayRegistry {
     const want = providerForCurrency(currency);
     const g = this.gateways.get(want);
     if (g) return g;
-    if (!this.isProd && (process.env.BILLING_STUB !== 'false')) {
+    if (!this.isProd && process.env.BILLING_STUB !== 'false') {
       const stub = this.gateways.get('STUB');
-      if (stub) { logger.warn({ currency, want }, 'no keys for gateway; using the stub'); return stub; }
+      if (stub) {
+        logger.warn({ currency, want }, 'no keys for gateway; using the stub');
+        return stub;
+      }
     }
     throw new PaymentsUnavailableError(currency);
   }
@@ -60,5 +65,7 @@ export class GatewayRegistry {
     return this.gateways.get(provider) ?? null;
   }
 
-  has(provider: PaymentProvider): boolean { return this.gateways.has(provider); }
+  has(provider: PaymentProvider): boolean {
+    return this.gateways.has(provider);
+  }
 }

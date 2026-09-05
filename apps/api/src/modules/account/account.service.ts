@@ -35,8 +35,15 @@ import { SessionService } from '../auth/session.service';
 import type { Actor, SessionActor } from '../auth/policy';
 import { MediaService } from '../media/media.service';
 import {
-  NOTIFICATION_DEFAULTS, type ChangeEmailDto, type ChangePasswordDto, type DeleteAccountDto, type DisableMfaDto,
-  type NotificationSwitches, type NotificationsDto, type ProfileDto, type ReauthDto,
+  NOTIFICATION_DEFAULTS,
+  type ChangeEmailDto,
+  type ChangePasswordDto,
+  type DeleteAccountDto,
+  type DisableMfaDto,
+  type NotificationSwitches,
+  type NotificationsDto,
+  type ProfileDto,
+  type ReauthDto,
 } from './account.dto';
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60_000;
@@ -67,13 +74,21 @@ export class AccountService {
   async profile(actor: Actor) {
     const user = await this.user(actor.userId);
     const [factors, identities, recovery] = await Promise.all([
-      this.db.mfaFactor.findMany({ where: { userId: user.id, confirmedAt: { not: null } }, select: { id: true, type: true, label: true, confirmedAt: true, lastUsedAt: true } }),
-      this.db.identity.findMany({ where: { userId: user.id }, select: { id: true, provider: true, label: true, lastUsedAt: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
+      this.db.mfaFactor.findMany({
+        where: { userId: user.id, confirmedAt: { not: null } },
+        select: { id: true, type: true, label: true, confirmedAt: true, lastUsedAt: true },
+      }),
+      this.db.identity.findMany({
+        where: { userId: user.id },
+        select: { id: true, provider: true, label: true, lastUsedAt: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
       this.db.recoveryCode.count({ where: { userId: user.id, usedAt: null } }),
     ]);
     const pendingChange = await this.db.authToken.findFirst({
       where: { userId: user.id, purpose: 'EMAIL_CHANGE', consumedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' }, select: { payload: true, expiresAt: true },
+      orderBy: { createdAt: 'desc' },
+      select: { payload: true, expiresAt: true },
     });
     const avatarUrl = user.avatarKey ? await this.media.signRead(user.avatarKey, 60 * 60).catch(() => null) : null;
     return {
@@ -93,7 +108,9 @@ export class AccountService {
       hasPassword: Boolean(user.passwordHash),
       mfa: { enabled: factors.length > 0, factors, recoveryCodesLeft: recovery },
       identities: identities.map((i) => ({ ...i, providerUid: undefined })),
-      pendingEmail: pendingChange ? { email: (pendingChange.payload as { newEmail?: string } | null)?.newEmail ?? null, expiresAt: pendingChange.expiresAt } : null,
+      pendingEmail: pendingChange
+        ? { email: (pendingChange.payload as { newEmail?: string } | null)?.newEmail ?? null, expiresAt: pendingChange.expiresAt }
+        : null,
       deletion: user.deleteRequestedAt ? { requestedAt: user.deleteRequestedAt, deleteOn: this.deleteOn(user.deleteRequestedAt) } : null,
     };
   }
@@ -114,7 +131,11 @@ export class AccountService {
         data.avatarKey = dto.avatarKey;
       }
     }
-    const user = await this.db.user.update({ where: { id: actor.userId }, data, select: { id: true, name: true, avatarKey: true, locale: true, timezone: true } });
+    const user = await this.db.user.update({
+      where: { id: actor.userId },
+      data,
+      select: { id: true, name: true, avatarKey: true, locale: true, timezone: true },
+    });
     authLog('account.profile', 'succeeded', { userId: actor.userId, fields: Object.keys(data) }, req);
     return user;
   }
@@ -145,7 +166,15 @@ export class AccountService {
     await this.db.authToken.updateMany({ where: { userId: user.id, purpose: 'EMAIL_CHANGE', consumedAt: null }, data: { consumedAt: new Date() } });
     const token = randomBytes(32).toString('base64url');
     await this.db.authToken.create({
-      data: { purpose: 'EMAIL_CHANGE', userId: user.id, email: newEmail, tokenHash: sha256(token), payload: { newEmail }, expiresAt: new Date(Date.now() + EMAIL_CHANGE_TTL_MS), createdIp: req.ip },
+      data: {
+        purpose: 'EMAIL_CHANGE',
+        userId: user.id,
+        email: newEmail,
+        tokenHash: sha256(token),
+        payload: { newEmail },
+        expiresAt: new Date(Date.now() + EMAIL_CHANGE_TTL_MS),
+        createdIp: req.ip,
+      },
     });
 
     const origin = this.auth.publicOrigin(req);
@@ -178,7 +207,11 @@ export class AccountService {
       this.db.identity.updateMany({ where: { userId: user.id, provider: 'PASSWORD' }, data: { providerUid: newEmail } }),
     ]);
     await this.event(user.id, 'EMAIL_CHANGED', null, req, { from: user.email ? maskEmail(user.email) : null, to: maskEmail(newEmail) });
-    if (user.email) await this.send(securityNotice(user.email, user.name, 'email_changed', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`), 'SECURITY_NOTICE');
+    if (user.email)
+      await this.send(
+        securityNotice(user.email, user.name, 'email_changed', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`),
+        'SECURITY_NOTICE',
+      );
     authLog('account.email_change', 'succeeded', { userId: user.id, stage: 'confirmed' }, req);
     return { status: 'changed' };
   }
@@ -199,7 +232,11 @@ export class AccountService {
 
     const passwordHash = await hashPassword(dto.newPassword);
     const ended = await this.db.$transaction(async (tx) => {
-      const u = await tx.user.update({ where: { id: user.id }, data: { passwordHash, credentialEpoch: { increment: 1 } }, select: { credentialEpoch: true, email: true } });
+      const u = await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash, credentialEpoch: { increment: 1 } },
+        select: { credentialEpoch: true, email: true },
+      });
       if (!user.passwordHash && u.email) {
         await tx.identity.upsert({
           where: { provider_providerUid: { provider: 'PASSWORD', providerUid: u.email } },
@@ -208,11 +245,18 @@ export class AccountService {
         });
       }
       await tx.session.update({ where: { id: actor.sessionId }, data: { credentialEpoch: u.credentialEpoch } });
-      const { count } = await tx.session.updateMany({ where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'password_changed' } });
+      const { count } = await tx.session.updateMany({
+        where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'password_changed' },
+      });
       return count;
     });
     await this.event(user.id, 'PASSWORD_CHANGED', actor.surface, req, { otherSessionsEnded: ended, set: !user.passwordHash });
-    if (user.email) await this.send(securityNotice(user.email, user.name, 'password_changed', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`), 'SECURITY_NOTICE');
+    if (user.email)
+      await this.send(
+        securityNotice(user.email, user.name, 'password_changed', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`),
+        'SECURITY_NOTICE',
+      );
     authLog('account.password', 'succeeded', { userId: user.id, otherSessionsEnded: ended }, req);
     return { status: 'changed', otherSessionsEnded: ended };
   }
@@ -247,7 +291,11 @@ export class AccountService {
     });
     await this.sessions.recordStepUp(actor.sessionId);
     await this.event(user.id, 'MFA_ENROLLED', actor.surface, req, { type: 'TOTP' });
-    if (user.email) await this.send(securityNotice(user.email, user.name, 'mfa_enabled', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`), 'SECURITY_NOTICE');
+    if (user.email)
+      await this.send(
+        securityNotice(user.email, user.name, 'mfa_enabled', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`),
+        'SECURITY_NOTICE',
+      );
     authLog('account.mfa', 'succeeded', { userId: user.id, stage: 'enabled' }, req);
     return { status: 'enabled', recoveryCodes: codes };
   }
@@ -270,10 +318,17 @@ export class AccountService {
       await tx.recoveryCode.deleteMany({ where: { userId: user.id } });
       const u = await tx.user.update({ where: { id: user.id }, data: { credentialEpoch: { increment: 1 } }, select: { credentialEpoch: true } });
       await tx.session.update({ where: { id: actor.sessionId }, data: { credentialEpoch: u.credentialEpoch, mfaLevel: 0, lastStepUpAt: null } });
-      await tx.session.updateMany({ where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'mfa_removed' } });
+      await tx.session.updateMany({
+        where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'mfa_removed' },
+      });
     });
     await this.event(user.id, 'MFA_REMOVED', actor.surface, req);
-    if (user.email) await this.send(securityNotice(user.email, user.name, 'mfa_disabled', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`), 'SECURITY_NOTICE');
+    if (user.email)
+      await this.send(
+        securityNotice(user.email, user.name, 'mfa_disabled', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`),
+        'SECURITY_NOTICE',
+      );
     authLog('account.mfa', 'succeeded', { userId: user.id, stage: 'disabled' }, req);
     return { status: 'disabled' };
   }
@@ -287,7 +342,11 @@ export class AccountService {
     }
     const codes = await this.db.$transaction((tx) => this.issueRecoveryCodes(tx, user.id));
     await this.event(user.id, 'RECOVERY_CODES_REGENERATED', actor.surface, req);
-    if (user.email) await this.send(securityNotice(user.email, user.name, 'recovery_codes', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`), 'SECURITY_NOTICE');
+    if (user.email)
+      await this.send(
+        securityNotice(user.email, user.name, 'recovery_codes', new Date(), this.where(req), `${this.auth.publicOrigin(req)}/settings/security`),
+        'SECURITY_NOTICE',
+      );
     authLog('account.recovery_codes', 'succeeded', { userId: user.id }, req);
     return { recoveryCodes: codes };
   }
@@ -311,7 +370,10 @@ export class AccountService {
 
   /** Every session but this one. The epoch is not bumped: this session must survive. */
   async revokeOtherSessions(actor: SessionActor, req: Request): Promise<{ status: 'revoked'; count: number }> {
-    const { count } = await this.db.session.updateMany({ where: { userId: actor.userId, id: { not: actor.sessionId }, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'user_revoked_others' } });
+    const { count } = await this.db.session.updateMany({
+      where: { userId: actor.userId, id: { not: actor.sessionId }, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: 'user_revoked_others' },
+    });
     await this.event(actor.userId, 'SESSION_REVOKED', actor.surface, req, { others: count });
     authLog('account.sessions', 'succeeded', { userId: actor.userId, revoked: count }, req);
     return { status: 'revoked', count };
@@ -341,7 +403,9 @@ export class AccountService {
   /** The person's own security log: the last fifty things that touched their account. */
   async activity(actor: Actor) {
     const rows = await this.db.authEvent.findMany({
-      where: { userId: actor.userId }, orderBy: { createdAt: 'desc' }, take: 50,
+      where: { userId: actor.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
       select: { id: true, type: true, surface: true, ip: true, userAgent: true, detail: true, createdAt: true },
     });
     return rows.map((r) => ({ ...r, device: describeUserAgent(r.userAgent) }));
@@ -365,14 +429,20 @@ export class AccountService {
     const consents: Prisma.ConsentCreateManyInput[] = [];
     const stamp = { userId: user.id, sourceUrl: dto.sourceUrl, ip: req.ip, userAgent: req.get('user-agent')?.slice(0, 400) };
     if (dto.emailMarketing) consents.push({ ...stamp, channel: 'EMAIL_MARKETING', granted: dto.emailMarketing.granted, wording: dto.emailMarketing.wording });
-    if (dto.whatsappMarketing) consents.push({ ...stamp, channel: 'WHATSAPP_MARKETING', granted: dto.whatsappMarketing.granted, wording: dto.whatsappMarketing.wording });
+    if (dto.whatsappMarketing)
+      consents.push({ ...stamp, channel: 'WHATSAPP_MARKETING', granted: dto.whatsappMarketing.granted, wording: dto.whatsappMarketing.wording });
     const prefs = { ...((user.prefs as Record<string, unknown> | null) ?? {}) };
     if (dto.switches) prefs.notifications = { ...this.switches(user), ...dto.switches };
     await this.db.$transaction(async (tx) => {
       if (dto.switches) await tx.user.update({ where: { id: user.id }, data: { prefs: prefs as Prisma.InputJsonObject } });
       if (consents.length) await tx.consent.createMany({ data: consents });
     });
-    authLog('account.notifications', 'succeeded', { userId: user.id, switches: Object.keys(dto.switches ?? {}), consents: consents.map((c) => `${c.channel}=${c.granted}`) }, req);
+    authLog(
+      'account.notifications',
+      'succeeded',
+      { userId: user.id, switches: Object.keys(dto.switches ?? {}), consents: consents.map((c) => `${c.channel}=${c.granted}`) },
+      req,
+    );
     return this.notifications(actor);
   }
 
@@ -387,14 +457,51 @@ export class AccountService {
     const userId = actor.userId;
     const workspaceIds = [...actor.workspaceRoles.keys()];
     const [user, identities, consents, events, workspaces, generations, media, ledger] = await Promise.all([
-      this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true, phone: true, phoneIsWhatsApp: true, locale: true, timezone: true, prefs: true, createdAt: true, lastLoginAt: true } }),
+      this.db.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          phoneIsWhatsApp: true,
+          locale: true,
+          timezone: true,
+          prefs: true,
+          createdAt: true,
+          lastLoginAt: true,
+        },
+      }),
       this.db.identity.findMany({ where: { userId }, select: { provider: true, label: true, createdAt: true, lastUsedAt: true } }),
-      this.db.consent.findMany({ where: { userId }, select: { channel: true, granted: true, wording: true, sourceUrl: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
-      this.db.authEvent.findMany({ where: { userId }, select: { type: true, surface: true, ip: true, userAgent: true, detail: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
-      this.db.workspace.findMany({ where: { id: { in: workspaceIds } }, select: { id: true, type: true, name: true, currency: true, region: true, profile: true, createdAt: true, brandKit: true } }),
-      this.db.generation.findMany({ where: { workspaceId: { in: workspaceIds }, requestedById: userId }, select: { id: true, workspaceId: true, capability: true, status: true, input: true, outputs: true, credits: true, createdAt: true, finishedAt: true }, orderBy: { createdAt: 'asc' } }),
-      this.db.mediaAsset.findMany({ where: { workspaceId: { in: workspaceIds }, deletedAt: null }, select: { workspaceId: true, kind: true, key: true, mime: true, bytes: true, filename: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
-      this.db.ledgerEntry.findMany({ where: { wallet: { workspaceId: { in: workspaceIds } } }, select: { walletId: true, kind: true, delta: true, balanceAfter: true, reason: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
+      this.db.consent.findMany({
+        where: { userId },
+        select: { channel: true, granted: true, wording: true, sourceUrl: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.db.authEvent.findMany({
+        where: { userId },
+        select: { type: true, surface: true, ip: true, userAgent: true, detail: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.db.workspace.findMany({
+        where: { id: { in: workspaceIds } },
+        select: { id: true, type: true, name: true, currency: true, region: true, profile: true, createdAt: true, brandKit: true },
+      }),
+      this.db.generation.findMany({
+        where: { workspaceId: { in: workspaceIds }, requestedById: userId },
+        select: { id: true, workspaceId: true, capability: true, status: true, input: true, outputs: true, credits: true, createdAt: true, finishedAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.db.mediaAsset.findMany({
+        where: { workspaceId: { in: workspaceIds }, deletedAt: null },
+        select: { workspaceId: true, kind: true, key: true, mime: true, bytes: true, filename: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.db.ledgerEntry.findMany({
+        where: { wallet: { workspaceId: { in: workspaceIds } } },
+        select: { walletId: true, kind: true, delta: true, balanceAfter: true, reason: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
     authLog('account.export', 'succeeded', { userId, generations: generations.length, media: media.length }, req);
     return { exportedAt: new Date().toISOString(), user, identities, consents, securityEvents: events, workspaces, generations, media, ledger };
@@ -411,7 +518,10 @@ export class AccountService {
   async requestDeletion(actor: SessionActor, dto: DeleteAccountDto, req: Request) {
     const user = await this.user(actor.userId);
     await this.reauth(actor, user, dto, req);
-    const owned = await this.db.workspaceMember.findMany({ where: { userId: user.id, role: 'OWNER' }, select: { workspaceId: true, workspace: { select: { name: true, deletedAt: true } } } });
+    const owned = await this.db.workspaceMember.findMany({
+      where: { userId: user.id, role: 'OWNER' },
+      select: { workspaceId: true, workspace: { select: { name: true, deletedAt: true } } },
+    });
     for (const o of owned) {
       if (o.workspace.deletedAt) continue;
       const others = await this.db.workspaceMember.count({ where: { workspaceId: o.workspaceId, userId: { not: user.id } } });
@@ -420,10 +530,14 @@ export class AccountService {
     const now = new Date();
     await this.db.$transaction([
       this.db.user.update({ where: { id: user.id }, data: { deleteRequestedAt: now } }),
-      this.db.session.updateMany({ where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null }, data: { revokedAt: now, revokedReason: 'deletion_requested' } }),
+      this.db.session.updateMany({
+        where: { userId: user.id, id: { not: actor.sessionId }, revokedAt: null },
+        data: { revokedAt: now, revokedReason: 'deletion_requested' },
+      }),
     ]);
     await this.event(user.id, 'ACCOUNT_DELETION_REQUESTED', actor.surface, req, { deleteOn: this.deleteOn(now).toISOString() });
-    if (user.email) await this.send(deletionScheduled(user.email, user.name, this.deleteOn(now), `${this.auth.publicOrigin(req)}/settings/data`), 'DELETION_SCHEDULED');
+    if (user.email)
+      await this.send(deletionScheduled(user.email, user.name, this.deleteOn(now), `${this.auth.publicOrigin(req)}/settings/data`), 'DELETION_SCHEDULED');
     authLog('account.delete', 'succeeded', { userId: user.id, stage: 'requested' }, req);
     return { status: 'scheduled' as const, deleteOn: this.deleteOn(now) };
   }
@@ -491,8 +605,7 @@ export class AccountService {
   /** Ten codes of eight characters from an unambiguous alphabet, shown once, stored hashed. */
   private async issueRecoveryCodes(tx: Prisma.TransactionClient, userId: string): Promise<string[]> {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () =>
-      Array.from(randomBytes(8), (b) => alphabet[b % alphabet.length]).join(''));
+    const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () => Array.from(randomBytes(8), (b) => alphabet[b % alphabet.length]).join(''));
     await tx.recoveryCode.deleteMany({ where: { userId } });
     await tx.recoveryCode.createMany({ data: codes.map((c) => ({ userId, codeHash: sha256(c) })) });
     return codes.map((c) => `${c.slice(0, 4)}-${c.slice(4)}`);
@@ -505,12 +618,16 @@ export class AccountService {
   }
 
   private switches(user: User): NotificationSwitches {
-    const stored = ((user.prefs as { notifications?: Partial<NotificationSwitches> } | null)?.notifications) ?? {};
+    const stored = (user.prefs as { notifications?: Partial<NotificationSwitches> } | null)?.notifications ?? {};
     return { ...NOTIFICATION_DEFAULTS, ...stored };
   }
 
   private async latestConsent(userId: string, channel: ConsentChannel) {
-    const row = await this.db.consent.findFirst({ where: { userId, channel }, orderBy: { createdAt: 'desc' }, select: { granted: true, wording: true, createdAt: true } });
+    const row = await this.db.consent.findFirst({
+      where: { userId, channel },
+      orderBy: { createdAt: 'desc' },
+      select: { granted: true, wording: true, createdAt: true },
+    });
     return row ? { granted: row.granted, wording: row.wording, at: row.createdAt } : { granted: false, wording: null, at: null };
   }
 
@@ -528,16 +645,46 @@ export class AccountService {
   }
 
   private async event(userId: string, type: AuthEventType, surface: Surface | null, req: Request, detail?: Record<string, unknown>): Promise<void> {
-    await this.db.authEvent.create({
-      data: { userId, type, surface, requestId: req.requestId, ip: req.ip, userAgent: req.get('user-agent')?.slice(0, 400), detail: detail ? (detail as Prisma.InputJsonObject) : undefined },
-    }).catch((e) => logger.warn({ err: e, type }, 'auth event write failed'));
+    await this.db.authEvent
+      .create({
+        data: {
+          userId,
+          type,
+          surface,
+          requestId: req.requestId,
+          ip: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 400),
+          detail: detail ? (detail as Prisma.InputJsonObject) : undefined,
+        },
+      })
+      .catch((e) => logger.warn({ err: e, type }, 'auth event write failed'));
   }
 }
 
 /** "Chrome on Android", from a user-agent string. Good enough for a person to recognise their own phone. */
 export function describeUserAgent(ua: string | null | undefined): string | null {
   if (!ua) return null;
-  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) && /Version\//.test(ua) ? 'Safari' : /Firefox\//.test(ua) ? 'Firefox' : 'a browser';
-  const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : null;
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Safari\//.test(ua) && /Version\//.test(ua)
+          ? 'Safari'
+          : /Firefox\//.test(ua)
+            ? 'Firefox'
+            : 'a browser';
+  const os = /iPhone|iPad/.test(ua)
+    ? 'iPhone'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /Mac OS X/.test(ua)
+        ? 'Mac'
+        : /Windows/.test(ua)
+          ? 'Windows'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : null;
   return os ? `${browser} on ${os}` : browser;
 }

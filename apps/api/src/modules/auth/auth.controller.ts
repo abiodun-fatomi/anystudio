@@ -15,8 +15,16 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
-  ForgotPasswordDto, GoogleCallbackQueryDto, GoogleStartQueryDto, HandoffDto, LoginDto, MfaDto, RegisterDto,
-  ResetPasswordDto, StepUpDto, VerifyEmailDto,
+  ForgotPasswordDto,
+  GoogleCallbackQueryDto,
+  GoogleStartQueryDto,
+  HandoffDto,
+  LoginDto,
+  MfaDto,
+  RegisterDto,
+  ResetPasswordDto,
+  StepUpDto,
+  VerifyEmailDto,
 } from './auth.dto';
 import { CurrentActor, Public, RequireStepUp, RequireSurface } from './decorators';
 import type { Actor, SessionActor } from './policy';

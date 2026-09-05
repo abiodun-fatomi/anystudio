@@ -20,7 +20,11 @@ import type { Outbound } from './whatsapp.types';
 
 const GRAPH = 'https://graph.facebook.com';
 
-export interface SendResult { messageId: string | null; ok: boolean; error?: string }
+export interface SendResult {
+  messageId: string | null;
+  ok: boolean;
+  error?: string;
+}
 
 @Injectable()
 export class WhatsappClient {
@@ -33,7 +37,8 @@ export class WhatsappClient {
 
   constructor() {
     this.configured = Boolean(this.phoneNumberId && this.token);
-    if (!this.configured) logger.warn('WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN not set: the WhatsApp bot will log outbound messages instead of sending them');
+    if (!this.configured)
+      logger.warn('WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN not set: the WhatsApp bot will log outbound messages instead of sending them');
   }
 
   async send(to: string, message: Outbound): Promise<SendResult> {
@@ -58,7 +63,10 @@ export class WhatsappClient {
 
   async markRead(messageId: string): Promise<void> {
     if (!this.configured) return;
-    await this.graph(`${this.phoneNumberId}/messages`, { method: 'POST', body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: messageId }) }).catch(() => undefined);
+    await this.graph(`${this.phoneNumberId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: messageId }),
+    }).catch(() => undefined);
   }
 
   /** The bytes of a media id, with the mime Meta reports. */
@@ -70,42 +78,64 @@ export class WhatsappClient {
     if (!url) throw new Error('media lookup returned no url');
     const res = await fetch(url, { headers: { authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`media download failed: HTTP ${res.status}`);
-    return { bytes: new Uint8Array(await res.arrayBuffer()), mime: (mime ?? res.headers.get('content-type') ?? 'application/octet-stream').split(';')[0]!.trim() };
+    return {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      mime: (mime ?? res.headers.get('content-type') ?? 'application/octet-stream').split(';')[0]!.trim(),
+    };
   }
 
   private graph(path: string, init: RequestInit): Promise<Response> {
-    return fetch(`${GRAPH}/${this.version}/${path}`, { ...init, headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json', ...(init.headers ?? {}) }, signal: AbortSignal.timeout(30_000) });
+    return fetch(`${GRAPH}/${this.version}/${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
+      signal: AbortSignal.timeout(30_000),
+    });
   }
 }
 
 /** Our message → Meta's body. Buttons are capped at three and lists at ten rows by the platform. */
 export function toMeta(m: Outbound): Record<string, unknown> {
   switch (m.kind) {
-    case 'text': return { type: 'text', text: { body: m.text.slice(0, 4096), preview_url: Boolean(m.preview) } };
-    case 'buttons': return {
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        ...(m.header ? { header: { type: 'text', text: m.header.slice(0, 60) } } : {}),
-        body: { text: m.text.slice(0, 1024) },
-        ...(m.footer ? { footer: { text: m.footer.slice(0, 60) } } : {}),
-        action: { buttons: m.buttons.slice(0, 3).map((b) => ({ type: 'reply', reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) } })) },
-      },
-    };
-    case 'list': return {
-      type: 'interactive',
-      interactive: {
-        type: 'list',
-        ...(m.header ? { header: { type: 'text', text: m.header.slice(0, 60) } } : {}),
-        body: { text: m.text.slice(0, 1024) },
-        ...(m.footer ? { footer: { text: m.footer.slice(0, 60) } } : {}),
-        action: { button: m.button.slice(0, 20), sections: m.sections.map((s) => ({ ...(s.title ? { title: s.title.slice(0, 24) } : {}), rows: s.rows.slice(0, 10).map((r) => ({ id: r.id.slice(0, 200), title: r.title.slice(0, 24), ...(r.description ? { description: r.description.slice(0, 72) } : {}) })) })) },
-      },
-    };
-    case 'image': return { type: 'image', image: { link: m.url, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
-    case 'video': return { type: 'video', video: { link: m.url, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
-    case 'audio': return { type: 'audio', audio: { link: m.url } };
-    case 'document': return { type: 'document', document: { link: m.url, filename: m.filename, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
+    case 'text':
+      return { type: 'text', text: { body: m.text.slice(0, 4096), preview_url: Boolean(m.preview) } };
+    case 'buttons':
+      return {
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          ...(m.header ? { header: { type: 'text', text: m.header.slice(0, 60) } } : {}),
+          body: { text: m.text.slice(0, 1024) },
+          ...(m.footer ? { footer: { text: m.footer.slice(0, 60) } } : {}),
+          action: { buttons: m.buttons.slice(0, 3).map((b) => ({ type: 'reply', reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) } })) },
+        },
+      };
+    case 'list':
+      return {
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          ...(m.header ? { header: { type: 'text', text: m.header.slice(0, 60) } } : {}),
+          body: { text: m.text.slice(0, 1024) },
+          ...(m.footer ? { footer: { text: m.footer.slice(0, 60) } } : {}),
+          action: {
+            button: m.button.slice(0, 20),
+            sections: m.sections.map((s) => ({
+              ...(s.title ? { title: s.title.slice(0, 24) } : {}),
+              rows: s.rows
+                .slice(0, 10)
+                .map((r) => ({ id: r.id.slice(0, 200), title: r.title.slice(0, 24), ...(r.description ? { description: r.description.slice(0, 72) } : {}) })),
+            })),
+          },
+        },
+      };
+    case 'image':
+      return { type: 'image', image: { link: m.url, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
+    case 'video':
+      return { type: 'video', video: { link: m.url, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
+    case 'audio':
+      return { type: 'audio', audio: { link: m.url } };
+    case 'document':
+      return { type: 'document', document: { link: m.url, filename: m.filename, ...(m.caption ? { caption: m.caption.slice(0, 1024) } : {}) } };
   }
 }
 

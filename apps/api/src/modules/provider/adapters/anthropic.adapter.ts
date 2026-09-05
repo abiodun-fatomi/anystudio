@@ -19,7 +19,12 @@ export class AnthropicProvider extends BaseProvider {
     return Object.entries(KNOWN).map(([key, k]) => new AnthropicProvider(apiKey, key, k.capability, k.model));
   }
 
-  constructor(private readonly apiKey: string, key: string, capability: Capability, private readonly defaultModel: string) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capability: Capability,
+    private readonly defaultModel: string,
+  ) {
     super(key, [capability]);
   }
 
@@ -61,10 +66,23 @@ export class AnthropicProvider extends BaseProvider {
     if (req.jsonSchema) {
       const tool = blocks.find((b) => b.type === 'tool_use');
       if (!tool) throw new ProviderError('RETRYABLE', `${this.key}: no tool_use block (stop=${stop})`, this.key, { raw: res.json });
-      return { providerKey: this.key, providerJobId: pick<string>(res.json, 'id'), artifacts: [{ mime: 'application/json', role: 'text', text: tool.input }], meta: { model, usage: pick(res.json, 'usage') } };
+      return {
+        providerKey: this.key,
+        providerJobId: pick<string>(res.json, 'id'),
+        artifacts: [{ mime: 'application/json', role: 'text', text: tool.input }],
+        meta: { model, usage: pick(res.json, 'usage') },
+      };
     }
-    const text = blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+    const text = blocks
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('');
     if (!text) throw new ProviderError('RETRYABLE', `${this.key}: empty completion (stop=${stop})`, this.key);
-    return { providerKey: this.key, providerJobId: pick<string>(res.json, 'id'), artifacts: [{ mime: 'text/plain', role: 'text', text }], meta: { model, usage: pick(res.json, 'usage') } };
+    return {
+      providerKey: this.key,
+      providerJobId: pick<string>(res.json, 'id'),
+      artifacts: [{ mime: 'text/plain', role: 'text', text }],
+      meta: { model, usage: pick(res.json, 'usage') },
+    };
   }
 }

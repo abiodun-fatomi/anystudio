@@ -18,7 +18,11 @@ export const NEAR_DUPLICATE = 0.55;
 const SEEDS = Array.from({ length: HASHES }, (_, i) => 0x9e3779b9 * (i + 1));
 
 export function shingles(text: string, n = 3): Set<string> {
-  const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
   const out = new Set<string>();
   for (let i = 0; i + n <= words.length; i++) out.add(words.slice(i, i + n).join(' '));
   return out;
@@ -58,7 +62,12 @@ export function similarity(a: number[], b: number[]): number {
 export function sharedPhrases(a: string, b: string, limit = 6): string[] {
   const sb = shingles(b, 4);
   const out: string[] = [];
-  for (const s of shingles(a, 4)) { if (sb.has(s)) { out.push(s); if (out.length >= limit) break; } }
+  for (const s of shingles(a, 4)) {
+    if (sb.has(s)) {
+      out.push(s);
+      if (out.length >= limit) break;
+    }
+  }
   return out;
 }
 

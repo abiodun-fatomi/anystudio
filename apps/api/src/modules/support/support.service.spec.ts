@@ -9,7 +9,15 @@ import { SupportService } from './support.service';
 import { SupportAssistant } from './support.assistant';
 
 type Msg = { id: string; conversationId: string; role: string; text: string; meta: unknown; createdAt: Date };
-type Convo = Record<string, unknown> & { id: string; userId: string; status: string; needsHuman: boolean; topic: string | null; messageCount: number; messages?: Msg[] };
+type Convo = Record<string, unknown> & {
+  id: string;
+  userId: string;
+  status: string;
+  needsHuman: boolean;
+  topic: string | null;
+  messageCount: number;
+  messages?: Msg[];
+};
 
 function harness(opts: { assistant?: Partial<SupportAssistant> } = {}) {
   const convos: Convo[] = [];
@@ -25,34 +33,72 @@ function harness(opts: { assistant?: Partial<SupportAssistant> } = {}) {
   const db = {
     supportConversation: {
       findFirst: vi.fn(async ({ where, include }: { where: { userId?: string; status?: string }; include?: { messages?: unknown } }) =>
-        withMessages(convos.find((c) => (!where.userId || c.userId === where.userId) && (!where.status || c.status === where.status)), include)),
-      findUnique: vi.fn(async ({ where, include }: { where: { id: string }; include?: { messages?: unknown; user?: unknown } }) => withMessages(convos.find((c) => c.id === where.id), include)),
-      findUniqueOrThrow: vi.fn(async ({ where, include }: { where: { id: string }; include?: { messages?: unknown } }) => withMessages(convos.find((c) => c.id === where.id), include)),
+        withMessages(
+          convos.find((c) => (!where.userId || c.userId === where.userId) && (!where.status || c.status === where.status)),
+          include,
+        ),
+      ),
+      findUnique: vi.fn(async ({ where, include }: { where: { id: string }; include?: { messages?: unknown; user?: unknown } }) =>
+        withMessages(
+          convos.find((c) => c.id === where.id),
+          include,
+        ),
+      ),
+      findUniqueOrThrow: vi.fn(async ({ where, include }: { where: { id: string }; include?: { messages?: unknown } }) =>
+        withMessages(
+          convos.find((c) => c.id === where.id),
+          include,
+        ),
+      ),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> & { messages?: { create: Omit<Msg, 'id' | 'conversationId' | 'createdAt'> } } }) => {
-        const c: Convo = { id: `c${++n}`, status: 'OPEN', needsHuman: false, topic: null, messageCount: 1, createdAt: new Date(), closedAt: null, transcriptSentAt: null, staffJoinedAt: null, workspaceId: null, page: null, ...data, userId: data.userId as string };
+        const c: Convo = {
+          id: `c${++n}`,
+          status: 'OPEN',
+          needsHuman: false,
+          topic: null,
+          messageCount: 1,
+          createdAt: new Date(),
+          closedAt: null,
+          transcriptSentAt: null,
+          staffJoinedAt: null,
+          workspaceId: null,
+          page: null,
+          ...data,
+          userId: data.userId as string,
+        };
         delete (c as Record<string, unknown>).messages;
         convos.push(c);
         if (data.messages?.create) msgs.push({ id: `m${++n}`, conversationId: c.id, createdAt: new Date(), meta: null, ...data.messages.create });
         return withMessages(c, { messages: true });
       }),
-      update: vi.fn(async ({ where, data, include }: { where: { id: string }; data: Record<string, unknown>; include?: { messages?: unknown; user?: unknown } }) => {
-        const c = convos.find((x) => x.id === where.id)!;
-        for (const [k, v] of Object.entries(data)) {
-          if (v && typeof v === 'object' && 'increment' in (v as object)) (c as Record<string, number>)[k] += (v as { increment: number }).increment;
-          else (c as Record<string, unknown>)[k] = v;
-        }
-        return withMessages(c, include);
-      }),
+      update: vi.fn(
+        async ({ where, data, include }: { where: { id: string }; data: Record<string, unknown>; include?: { messages?: unknown; user?: unknown } }) => {
+          const c = convos.find((x) => x.id === where.id)!;
+          for (const [k, v] of Object.entries(data)) {
+            if (v && typeof v === 'object' && 'increment' in (v as object)) (c as Record<string, number>)[k] += (v as { increment: number }).increment;
+            else (c as Record<string, unknown>)[k] = v;
+          }
+          return withMessages(c, include);
+        },
+      ),
       findMany: vi.fn(async () => []),
       count: vi.fn(async () => 0),
     },
     supportMessage: {
-      create: vi.fn(async ({ data }: { data: Omit<Msg, 'id' | 'createdAt'> }) => { const m = { id: `m${++n}`, createdAt: new Date(), meta: null, ...data }; msgs.push(m); return m; }),
+      create: vi.fn(async ({ data }: { data: Omit<Msg, 'id' | 'createdAt'> }) => {
+        const m = { id: `m${++n}`, createdAt: new Date(), meta: null, ...data };
+        msgs.push(m);
+        return m;
+      }),
     },
     user: { findUniqueOrThrow: vi.fn(async () => ({ name: 'Pat Person' })) },
     workspace: { findUnique: vi.fn(async () => null) },
   };
-  const assistant = { configured: true, answer: vi.fn(async () => ({ reply: 'Credits → Add credits.', needsHuman: false, topic: 'buying credits', meta: { model: 't' } })), ...opts.assistant };
+  const assistant = {
+    configured: true,
+    answer: vi.fn(async () => ({ reply: 'Credits → Add credits.', needsHuman: false, topic: 'buying credits', meta: { model: 't' } })),
+    ...opts.assistant,
+  };
   const mailer = { send: vi.fn(async () => ({ transport: 'log' as const })) };
   const notifications = { notify: vi.fn(async () => undefined) };
   const ledger = { balance: vi.fn(async () => 150) };
@@ -84,9 +130,14 @@ describe('help chat', () => {
   });
 
   it('flags the conversation for a person when the assistant says so, and keeps the flag', async () => {
-    const h = harness({ assistant: { answer: vi.fn()
-      .mockResolvedValueOnce({ reply: 'The team will look at this.', needsHuman: true, topic: 'payment not credited', meta: { model: 't' } })
-      .mockResolvedValueOnce({ reply: 'Sure.', needsHuman: false, topic: 'x', meta: { model: 't' } }) } });
+    const h = harness({
+      assistant: {
+        answer: vi
+          .fn()
+          .mockResolvedValueOnce({ reply: 'The team will look at this.', needsHuman: true, topic: 'payment not credited', meta: { model: 't' } })
+          .mockResolvedValueOnce({ reply: 'Sure.', needsHuman: false, topic: 'x', meta: { model: 't' } }),
+      },
+    });
     const c = await h.svc.open(h.actor, {}, h.req);
     const r1 = await h.svc.send(h.actor, c.data.id, { text: 'I paid and got nothing' }, h.req);
     expect(r1.data.needsHuman).toBe(true);
@@ -141,7 +192,7 @@ describe('help chat', () => {
     expect(turns[0]).toEqual({ role: 'assistant', text: '[A member of the AnyStudio team wrote:] Hi Pat, I have added the credits.' });
   });
 
-  it('a person cannot read another person\'s chat', async () => {
+  it("a person cannot read another person's chat", async () => {
     const h = harness();
     const c = await h.svc.open(h.actor, {}, h.req);
     const other = { ...(h.actor as object), userId: 'u2' } as never;

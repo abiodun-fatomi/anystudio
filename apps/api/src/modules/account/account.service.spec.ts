@@ -23,8 +23,14 @@ import { AppError } from '../../../config/globals/errors';
 
 describe('describeUserAgent', () => {
   it('names the browser and platform a person would recognise', () => {
-    expect(describeUserAgent('Mozilla/5.0 (Linux; Android 13; SM-A5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36')).toBe('Chrome on Android');
-    expect(describeUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')).toBe('Safari on iPhone');
+    expect(describeUserAgent('Mozilla/5.0 (Linux; Android 13; SM-A5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36')).toBe(
+      'Chrome on Android',
+    );
+    expect(
+      describeUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      ),
+    ).toBe('Safari on iPhone');
     expect(describeUserAgent(null)).toBeNull();
   });
 });
@@ -41,7 +47,10 @@ const suite = url && process.env.APP_KEY ? describe : describe.skip;
 /** A mailer that keeps what it sent, so a test can assert on the old inbox. */
 class CapturingMailer extends LogMailer {
   sent: Mail[] = [];
-  override async send(mail: Mail) { this.sent.push(mail); return super.send(mail); }
+  override async send(mail: Mail) {
+    this.sent.push(mail);
+    return super.send(mail);
+  }
 }
 
 suite('AccountService', () => {
@@ -50,7 +59,11 @@ suite('AccountService', () => {
   const mailer = new CapturingMailer();
   const auth = {
     publicOrigin: () => 'https://app.test',
-    listSessions: (userId: string) => db.session.findMany({ where: { userId, revokedAt: null }, select: { id: true, surface: true, userAgent: true, geoLabel: true, createdAt: true, lastSeenAt: true } }),
+    listSessions: (userId: string) =>
+      db.session.findMany({
+        where: { userId, revokedAt: null },
+        select: { id: true, surface: true, userAgent: true, geoLabel: true, createdAt: true, lastSeenAt: true },
+      }),
   } as unknown as AuthService;
   const service = new AccountService(db, sessions, auth, mailer, new MediaService(db));
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'Mozilla/5.0 (Macintosh; Mac OS X) Chrome/120 Safari/537.36' } as unknown as Request;
@@ -61,17 +74,37 @@ suite('AccountService', () => {
   let current: SessionActor;
   let other: SessionActor;
 
-  beforeAll(async () => { await db.$connect(); });
-  afterAll(async () => { await db.$disconnect(); });
+  beforeAll(async () => {
+    await db.$connect();
+  });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
 
   async function actorFor(sessionId: string): Promise<SessionActor> {
-    return { userId, sessionId, surface: 'APP', staffRole: null, workspaceRoles: new Map([[workspaceId, 'OWNER']]), mfaLevel: 0, lastStepUpAt: null, impersonating: false };
+    return {
+      userId,
+      sessionId,
+      surface: 'APP',
+      staffRole: null,
+      workspaceRoles: new Map([[workspaceId, 'OWNER']]),
+      mfaLevel: 0,
+      lastStepUpAt: null,
+      impersonating: false,
+    };
   }
 
   beforeEach(async () => {
     mailer.sent = [];
     email = `acct-${crypto.randomUUID()}@test.local`;
-    const user = await db.user.create({ data: { email, name: 'Ada Test', passwordHash: await hashPassword('correct horse'), identities: { create: { provider: 'PASSWORD', providerUid: email } } } });
+    const user = await db.user.create({
+      data: {
+        email,
+        name: 'Ada Test',
+        passwordHash: await hashPassword('correct horse'),
+        identities: { create: { provider: 'PASSWORD', providerUid: email } },
+      },
+    });
     userId = user.id;
     const ws = await db.workspace.create({ data: { type: 'PERSONAL', name: 'Ada', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } } });
     workspaceId = ws.id;
@@ -98,8 +131,10 @@ suite('AccountService', () => {
   });
 
   it('refuses a password change without the current password, as a field error', async () => {
-    await expect(service.changePassword(current, { currentPassword: 'wrong', newPassword: 'battery staple 9' }, req))
-      .rejects.toMatchObject({ status: 400, details: { currentPassword: expect.any(String) } });
+    await expect(service.changePassword(current, { currentPassword: 'wrong', newPassword: 'battery staple 9' }, req)).rejects.toMatchObject({
+      status: 400,
+      details: { currentPassword: expect.any(String) },
+    });
     const failed = await db.authEvent.count({ where: { userId, type: 'LOGIN_FAILED' } });
     expect(failed).toBe(1);
   });
@@ -175,7 +210,11 @@ suite('AccountService', () => {
   });
 
   it('notifications: switches merge, marketing choices append consent rows with the wording', async () => {
-    await service.updateNotifications(current, { switches: { weeklyDigest: true }, emailMarketing: { granted: true, wording: 'Email me tips and offers.' } }, req);
+    await service.updateNotifications(
+      current,
+      { switches: { weeklyDigest: true }, emailMarketing: { granted: true, wording: 'Email me tips and offers.' } },
+      req,
+    );
     await service.updateNotifications(current, { emailMarketing: { granted: false, wording: 'Email me tips and offers.' } }, req);
     const n = await service.notifications(current);
     expect(n.switches).toMatchObject({ weeklyDigest: true, generationDoneEmail: true });
@@ -213,12 +252,25 @@ suite('MemberService', () => {
   const service = new MemberService(db, mailer, auth, new NotificationService(db, new GenerationHooks()));
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'test' } as unknown as Request;
 
-  let ownerId: string; let workspaceId: string;
-  const actor = (userId: string, role: 'OWNER' | 'ADMIN' | 'MEMBER'): SessionActor =>
-    ({ userId, sessionId: 's', surface: 'APP', staffRole: null, workspaceRoles: new Map([[workspaceId, role]]), mfaLevel: 0, lastStepUpAt: null, impersonating: false });
+  let ownerId: string;
+  let workspaceId: string;
+  const actor = (userId: string, role: 'OWNER' | 'ADMIN' | 'MEMBER'): SessionActor => ({
+    userId,
+    sessionId: 's',
+    surface: 'APP',
+    staffRole: null,
+    workspaceRoles: new Map([[workspaceId, role]]),
+    mfaLevel: 0,
+    lastStepUpAt: null,
+    impersonating: false,
+  });
 
-  beforeAll(async () => { await db.$connect(); });
-  afterAll(async () => { await db.$disconnect(); });
+  beforeAll(async () => {
+    await db.$connect();
+  });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
   beforeEach(async () => {
     mailer.sent = [];
     const owner = await db.user.create({ data: { email: `own-${crypto.randomUUID()}@test.local`, name: 'Owner' } });

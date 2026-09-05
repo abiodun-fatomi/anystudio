@@ -10,6 +10,13 @@ import { isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 export function BrandLink({ className, children }: { className?: string; children: ReactNode }) {
   const [href, setHref] = useState('/');
-  useEffect(() => { const host = window.location.host; if (!isLocalHost(host)) setHref(`${siblingOrigin(host, '')}/`); }, []);
-  return <a href={href} className={className} aria-label="AnyStudio home">{children}</a>;
+  useEffect(() => {
+    const host = window.location.host;
+    if (!isLocalHost(host)) setHref(`${siblingOrigin(host, '')}/`);
+  }, []);
+  return (
+    <a href={href} className={className} aria-label="AnyStudio home">
+      {children}
+    </a>
+  );
 }

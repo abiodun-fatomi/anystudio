@@ -15,7 +15,10 @@
 import { Injectable } from '@nestjs/common';
 import { logger } from '../../../config/logger';
 
-export interface AssistantTurn { role: 'user' | 'assistant'; text: string }
+export interface AssistantTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
 
 export interface AssistantAnswer {
   reply: string;
@@ -77,14 +80,17 @@ const TOOL = {
   },
 } as const;
 
-const HOLDING = "Thanks for writing. I can't reach the assistant right now, so I've flagged this for the team — someone will pick it up here and by email. Feel free to add anything that helps in the meantime.";
+const HOLDING =
+  "Thanks for writing. I can't reach the assistant right now, so I've flagged this for the team — someone will pick it up here and by email. Feel free to add anything that helps in the meantime.";
 
 @Injectable()
 export class SupportAssistant {
   private readonly apiKey = process.env.ANTHROPIC_API_KEY ?? '';
   private readonly model = process.env.SUPPORT_MODEL ?? MODEL_DEFAULT;
 
-  get configured(): boolean { return this.apiKey.length > 0; }
+  get configured(): boolean {
+    return this.apiKey.length > 0;
+  }
 
   async answer(history: AssistantTurn[], ctx: AssistantContext, conversationId: string): Promise<AssistantAnswer> {
     if (!this.configured) {
@@ -99,7 +105,10 @@ export class SupportAssistant {
         temperature: 0.3,
         system: `${SYSTEM}\n\nAbout this person: ${describe(ctx)}`,
         // The vendor wants the person to speak first; when staff wrote before they did, say so.
-        messages: (history[0]?.role === 'assistant' ? [{ role: 'user', text: '(The person opened the chat.)' }, ...history] : history).map((h) => ({ role: h.role, content: h.text })),
+        messages: (history[0]?.role === 'assistant' ? [{ role: 'user', text: '(The person opened the chat.)' }, ...history] : history).map((h) => ({
+          role: h.role,
+          content: h.text,
+        })),
         tools: [TOOL],
         tool_choice: { type: 'tool', name: TOOL.name },
       };
@@ -111,9 +120,16 @@ export class SupportAssistant {
         body: JSON.stringify(body),
         signal: ctl.signal,
       }).finally(() => clearTimeout(timer));
-      const json = (await res.json().catch(() => null)) as { content?: Array<{ type: string; input?: unknown }>; usage?: unknown; error?: { message?: string } } | null;
+      const json = (await res.json().catch(() => null)) as {
+        content?: Array<{ type: string; input?: unknown }>;
+        usage?: unknown;
+        error?: { message?: string };
+      } | null;
       if (!res.ok || !json) {
-        logger.error({ conversationId, status: res.status, err: json?.error?.message, ms: Date.now() - started }, 'support assistant: vendor refused the request; holding reply sent');
+        logger.error(
+          { conversationId, status: res.status, err: json?.error?.message, ms: Date.now() - started },
+          'support assistant: vendor refused the request; holding reply sent',
+        );
         return { reply: HOLDING, needsHuman: true, topic: 'needs a person', meta: { model: this.model, fallback: `http_${res.status}` } };
       }
       const tool = json.content?.find((b) => b.type === 'tool_use');
@@ -131,7 +147,10 @@ export class SupportAssistant {
       };
     } catch (err) {
       const timedOut = err instanceof Error && err.name === 'AbortError';
-      logger.error({ conversationId, err, ms: Date.now() - started }, timedOut ? 'support assistant: timed out; holding reply sent' : 'support assistant: request failed; holding reply sent');
+      logger.error(
+        { conversationId, err, ms: Date.now() - started },
+        timedOut ? 'support assistant: timed out; holding reply sent' : 'support assistant: request failed; holding reply sent',
+      );
       return { reply: HOLDING, needsHuman: true, topic: 'needs a person', meta: { model: this.model, fallback: timedOut ? 'timeout' : 'error' } };
     }
   }

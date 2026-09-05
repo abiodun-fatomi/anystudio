@@ -7,20 +7,20 @@
 
 ## 1. Where things run
 
-| What | Where | Why |
-|---|---|---|
+| What                                      | Where                                            | Why                                                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Web surfaces (app, org, admin, marketing) | **Cloudflare Workers**, via the OpenNext adapter | Domain, DNS, R2 and the API proxy are already on Cloudflare; the free tier allows commercial use; a custom domain on a Worker creates its own DNS record and certificate |
-| API + queue worker | **Render** (Frankfurt) | NestJS is a long-running Node process with a Prisma connection pool — not a fit for Workers |
-| Postgres | **Render** (same region as the API) | Private network, so the database has no public endpoint |
-| Media | **Cloudflare R2** | One bucket per environment |
+| API + queue worker                        | **Render** (Frankfurt)                           | NestJS is a long-running Node process with a Prisma connection pool — not a fit for Workers                                                                              |
+| Postgres                                  | **Render** (same region as the API)              | Private network, so the database has no public endpoint                                                                                                                  |
+| Media                                     | **Cloudflare R2**                                | One bucket per environment                                                                                                                                               |
 
 Three environments, three branches, three of every Worker:
 
-| Branch | Environment | Hosts | Deploys |
-|---|---|---|---|
-| `development` | development | `*.dev.anystudio.ai` | on every push |
-| `staging` | staging | `*.staging.anystudio.ai` | on every push |
-| `production` | production | `anystudio.ai`, `app.`, `org.`, `admin.`, `api.` | on push, after a human merges |
+| Branch        | Environment | Hosts                                            | Deploys                       |
+| ------------- | ----------- | ------------------------------------------------ | ----------------------------- |
+| `development` | development | `*.dev.anystudio.ai`                             | on every push                 |
+| `staging`     | staging     | `*.staging.anystudio.ai`                         | on every push                 |
+| `production`  | production  | `anystudio.ai`, `app.`, `org.`, `admin.`, `api.` | on push, after a human merges |
 
 ### Why staging and development nest under their own subdomain
 
@@ -63,7 +63,7 @@ Worker's runtime values live in `wrangler.jsonc` under each environment.
 
 ### 2.2 What a deploy does
 
-`Web` workflow → *Build* (typecheck, `opennextjs-cloudflare build`) → *Deploy*
+`Web` workflow → _Build_ (typecheck, `opennextjs-cloudflare build`) → _Deploy_
 (`wrangler deploy --env <branch>`). The run shows on the commit, the PR and
 the **Deployments** tab. A two-level hostname such as `app.dev.anystudio.ai`
 gets its own certificate on first creation; the browser shows an SSL error
@@ -94,13 +94,13 @@ even the owner. A GitHub ruleset (Settings → Rules → Rulesets) requires a
 pull request for all three, blocks force-pushes and deletions, and has an
 empty bypass list. Every deploy is therefore the result of a merge.
 
-| Change | Branch to open the PR from | Into | Merge method |
-|---|---|---|---|
-| A feature or fix | `feat/…` or `fix/…` | `development` | Squash |
-| Promote to staging | `development` | `staging` | **Merge commit** |
-| Promote to production | `staging` | `production` | **Merge commit** |
+| Change                | Branch to open the PR from | Into          | Merge method     |
+| --------------------- | -------------------------- | ------------- | ---------------- |
+| A feature or fix      | `feat/…` or `fix/…`        | `development` | Squash           |
+| Promote to staging    | `development`              | `staging`     | **Merge commit** |
+| Promote to production | `staging`                  | `production`  | **Merge commit** |
 
-Promotion PRs must be *merge commits*, never squashes: squashing rewrites the
+Promotion PRs must be _merge commits_, never squashes: squashing rewrites the
 commits, the environment branches diverge, and the next promotion PR shows
 every old change again and conflicts on all of them.
 
@@ -111,8 +111,8 @@ every old change again and conflicts on all of them.
 The API is deployed the same way the web portal is: **from GitHub Actions**
 (`.github/workflows/api.yml`), never by Render watching the branch. A push to
 `development`, `staging` or `production` that touches the backend runs
-*Check* (Prisma drift, migrations apply, typecheck, tests, build, and the
-Docker image builds) and then *Deploy*, which asks Render to deploy **that
+_Check_ (Prisma drift, migrations apply, typecheck, tests, build, and the
+Docker image builds) and then _Deploy_, which asks Render to deploy **that
 exact commit**, waits until Render reports it live, and finally reads
 `release` from `/health` through Cloudflare to prove the process serving
 traffic is the commit that was just tested. Production waits for the
@@ -143,11 +143,11 @@ push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-dep
    In GitHub → Settings → **Environments** → `development` → **Environment
    variables** (not secrets — they are not sensitive):
 
-   | Variable | Value |
-   |---|---|
-   | `RENDER_API_SERVICE_ID` | `srv-…` of `anystudio-api-dev` |
+   | Variable                   | Value                                                                                                                   |
+   | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+   | `RENDER_API_SERVICE_ID`    | `srv-…` of `anystudio-api-dev`                                                                                          |
    | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — the blueprint creates it; set this so the workflow deploys the worker after the API |
-   | `API_URL` | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.2); then delete it |
+   | `API_URL`                  | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.2); then delete it           |
 
    The worker is the API image started with `node dist/src/worker/main.js`
    (one Dockerfile, two commands — see `apps/api/Dockerfile`). `render.yaml`
@@ -156,6 +156,7 @@ push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-dep
    generations and the worker runs QUEUED rows straight from Postgres.
 
    Same for `staging` and `production` with their services.
+
 5. Merge something into `development` that touches `apps/api/**`, or run the
    **API** workflow by hand (Actions → API → Run workflow). The first deploy
    builds the image cold (~8 minutes); later ones reuse the layer cache.
@@ -174,7 +175,7 @@ origin that holds credentials.
 4. Wait until Render shows the certificate as **Issued**.
 5. Edit the record → **orange cloud** → Save.
 6. Cloudflare → **SSL/TLS** → Overview → **Full (strict)**. Edge Certificates →
-   *Always Use HTTPS* on, *Minimum TLS* 1.2. Leave Cloudflare's HSTS off —
+   _Always Use HTTPS_ on, _Minimum TLS_ 1.2. Leave Cloudflare's HSTS off —
    the API sends its own.
 7. Cloudflare → **Security** → **WAF** → **Rate limiting rules** → one rule:
    `(ends_with(http.host, "anystudio.ai") and starts_with(http.request.uri.path, "/api/v1/auth/"))`,
@@ -187,19 +188,19 @@ Same again for `api.staging` and `api` when those environments exist.
 
 ### 3.3 What is where, on a running API
 
-| Path | What |
-|---|---|
-| `/health`, `/ready` | probes — outside `/api`, unversioned, never move |
-| `/api/v1/…` | every endpoint; every response is `{ status, message, data }` |
-| `/api/v1/docs` | Swagger UI — dev and staging only, off in production |
+| Path                | What                                                          |
+| ------------------- | ------------------------------------------------------------- |
+| `/health`, `/ready` | probes — outside `/api`, unversioned, never move              |
+| `/api/v1/…`         | every endpoint; every response is `{ status, message, data }` |
+| `/api/v1/docs`      | Swagger UI — dev and staging only, off in production          |
 
 ### Email, once there is any
 
-| Type | Name | Value |
-|---|---|---|
-| TXT | `@` | `v=spf1 include:<provider> -all` |
-| TXT | `_dmarc` | `v=DMARC1; p=quarantine; rua=mailto:dmarc@anystudio.ai` |
-| CNAME | *(provider DKIM records)* | |
+| Type  | Name                      | Value                                                   |
+| ----- | ------------------------- | ------------------------------------------------------- |
+| TXT   | `@`                       | `v=spf1 include:<provider> -all`                        |
+| TXT   | `_dmarc`                  | `v=DMARC1; p=quarantine; rua=mailto:dmarc@anystudio.ai` |
+| CNAME | _(provider DKIM records)_ |                                                         |
 
 `-all` not `~all`. A soft fail invites spoofing of a domain that sends password
 resets.
@@ -210,15 +211,15 @@ resets.
 
 Only the account owner can do these; none can be automated from here.
 
-| Service | For | Notes |
-|---|---|---|
-| **Cloudflare** | DNS, Workers (web), R2 (media), WAF | One account; the zone is already here |
-| **Render** | API, Postgres, later the worker and Redis | Import `render.yaml` as a Blueprint; today it creates the dev API and its database |
-| **Google Cloud** | Sign in with Google | One OAuth client, all redirect URIs on it (section 9.1) |
-| **Resend** | transactional mail | Verify `anystudio.ai`, one API key (section 9.2) |
-| **Cloudflare R2** | media | One bucket per environment, with a `dev/` prefix on the staging one |
-| **Flutterwave / Paddle** | payments | Section 5 |
-| **Meta for Developers** | the WhatsApp bot | Business verification, a WhatsApp Business app, a System User token (section 10) |
+| Service                  | For                                       | Notes                                                                              |
+| ------------------------ | ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Cloudflare**           | DNS, Workers (web), R2 (media), WAF       | One account; the zone is already here                                              |
+| **Render**               | API, Postgres, later the worker and Redis | Import `render.yaml` as a Blueprint; today it creates the dev API and its database |
+| **Google Cloud**         | Sign in with Google                       | One OAuth client, all redirect URIs on it (section 9.1)                            |
+| **Resend**               | transactional mail                        | Verify `anystudio.ai`, one API key (section 9.2)                                   |
+| **Cloudflare R2**        | media                                     | One bucket per environment, with a `dev/` prefix on the staging one                |
+| **Flutterwave / Paddle** | payments                                  | Section 5                                                                          |
+| **Meta for Developers**  | the WhatsApp bot                          | Business verification, a WhatsApp Business app, a System User token (section 10)   |
 
 ---
 
@@ -232,17 +233,17 @@ GitHub secret, never in a chat.
 from the database itself (`fromDatabase` in `render.yaml`), so nobody ever
 copies a connection string by hand.
 
-| Secret | Notes |
-|---|---|
-| `APP_KEY` | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment |
-| `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN` | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Section 9.1. With either missing the button degrades to a message, never to a half-working flow |
-| `RESEND_API_KEY` / `MAIL_FROM` | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain |
-| `R2_*` | Separate keys per environment |
-| `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY` | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle |
-| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments |
-| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV` | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
-| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set |
+| Secret                                                                                                      | Notes                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_KEY`                                                                                                   | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment                                                                        |
+| `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN`                                                                | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set                                                                                                                                                                                |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                                                                 | Section 9.1. With either missing the button degrades to a message, never to a half-working flow                                                                                                                                                                           |
+| `RESEND_API_KEY` / `MAIL_FROM`                                                                              | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain                                                                                                                                                                                    |
+| `R2_*`                                                                                                      | Separate keys per environment                                                                                                                                                                                                                                             |
+| `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY`                                                                      | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle                                                                                                                                                      |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                                                      | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments                                                |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV`                              | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set                                                                                                                                          |
 
 GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,
 plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for the web; and the
@@ -252,11 +253,11 @@ three non-secret environment variables from section 3.1 on each environment.
 
 ## 6. Branches, CI and the approval gate
 
-| Branch | Environment | Deploys |
-|---|---|---|
-| `development` | `*.dev.anystudio.ai` | automatically, after CI passes |
-| `staging` | `*.staging.anystudio.ai` | automatically, after CI passes |
-| `production` | `anystudio.ai` | after CI passes **and** a human approves |
+| Branch        | Environment              | Deploys                                  |
+| ------------- | ------------------------ | ---------------------------------------- |
+| `development` | `*.dev.anystudio.ai`     | automatically, after CI passes           |
+| `staging`     | `*.staging.anystudio.ai` | automatically, after CI passes           |
+| `production`  | `anystudio.ai`           | after CI passes **and** a human approves |
 
 The approval gate is a **required reviewer on the `production` GitHub
 environment**. Set it in Settings → Environments, or production deploys are
@@ -270,9 +271,9 @@ automatic and the branch protection is decorative.
 2. Section 3: import the blueprint — it creates the dev API and its Postgres
    together — then set the env group, the GitHub variables, deploy, and add
    `api.dev.anystudio.ai`
-4. Sign up on `dev.anystudio.ai/signup` — landing on `app.dev.anystudio.ai/welcome` proves the whole chain, hand-off included
-5. Repeat for staging
-6. Only then production
+3. Sign up on `dev.anystudio.ai/signup` — landing on `app.dev.anystudio.ai/welcome` proves the whole chain, hand-off included
+4. Repeat for staging
+5. Only then production
 
 **Do not skip step 3.** A failing health check behind a proxy and a fresh
 certificate is three problems at once; behind a plain hostname it is one.
@@ -301,9 +302,9 @@ certificate is three problems at once; behind a plain hostname it is one.
 ### 9.1 Google OAuth client
 
 Google Cloud Console → APIs & Services → Credentials → **Create OAuth client
-ID** → *Web application*.
+ID** → _Web application_.
 
-**Authorised redirect URIs** — the callback is on the *app's* hostname, not the
+**Authorised redirect URIs** — the callback is on the _app's_ hostname, not the
 API's, so the handshake cookie stays first-party. Add one per surface you have:
 
 ```
@@ -373,7 +374,7 @@ worker's `GenerationHooks` sends results back. Nothing else to deploy.
 **At Meta (once, by the account owner):**
 
 1. Meta Business Suite → verify the business (days to weeks; start now).
-2. developers.facebook.com → create an app of type *Business* → add the
+2. developers.facebook.com → create an app of type _Business_ → add the
    **WhatsApp** product. The test number it gives you works immediately for
    up to five recipients; a real number needs the business verified and the
    number registered under the WhatsApp Business Account.

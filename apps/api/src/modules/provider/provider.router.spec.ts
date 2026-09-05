@@ -15,12 +15,28 @@ import { ProviderRouter } from './provider.router';
 import { BaseProvider } from './adapters/base';
 
 class Fake extends BaseProvider {
-  constructor(key: string, caps: Capability[]) { super(key, caps); }
-  async generate(input: ProviderInput): Promise<ProviderResult> { return { providerKey: this.key, artifacts: [{ mime: 'text/plain', role: 'text', text: input.capability }] }; }
+  constructor(key: string, caps: Capability[]) {
+    super(key, caps);
+  }
+  async generate(input: ProviderInput): Promise<ProviderResult> {
+    return { providerKey: this.key, artifacts: [{ mime: 'text/plain', role: 'text', text: input.capability }] };
+  }
 }
 
 function row(key: string, capability: Capability, extra: Partial<ProviderModel> = {}): ProviderModel {
-  return { key, capability, priority: 10, costPerCall: 1, enabled: true, breakerOpenedAt: null, workspaceType: null, config: null, licenceNote: null, updatedAt: new Date(), ...extra };
+  return {
+    key,
+    capability,
+    priority: 10,
+    costPerCall: 1,
+    enabled: true,
+    breakerOpenedAt: null,
+    workspaceType: null,
+    config: null,
+    licenceNote: null,
+    updatedAt: new Date(),
+    ...extra,
+  };
 }
 
 function fakeDb(rows: ProviderModel[]) {
@@ -28,8 +44,13 @@ function fakeDb(rows: ProviderModel[]) {
   const db = {
     providerModel: {
       findMany: async ({ where }: { where: { capability: Capability; OR: Array<{ workspaceType: string | null }>; key?: string | { notIn: string[] } } }) =>
-        rows.filter((r) => r.capability === where.capability && r.enabled && where.OR.some((o) => o.workspaceType === r.workspaceType)
-          && (where.key === undefined || (typeof where.key === 'string' ? r.key === where.key : !where.key.notIn.includes(r.key)))),
+        rows.filter(
+          (r) =>
+            r.capability === where.capability &&
+            r.enabled &&
+            where.OR.some((o) => o.workspaceType === r.workspaceType) &&
+            (where.key === undefined || (typeof where.key === 'string' ? r.key === where.key : !where.key.notIn.includes(r.key))),
+        ),
       updateMany: async ({ where, data }: { where: { key: string }; data: { breakerOpenedAt: Date | null } }) => {
         writes.push({ key: where.key, openedAt: data.breakerOpenedAt });
         for (const r of rows) if (r.key === where.key) r.breakerOpenedAt = data.breakerOpenedAt;
@@ -61,7 +82,11 @@ describe('ProviderRouter', () => {
   });
 
   it('orders candidates by priority and excludes rows with no adapter, with a reason', async () => {
-    const { db } = fakeDb([row('b:good', 'IMAGE_EDIT', { priority: 20 }), row('a:cheap', 'IMAGE_EDIT', { priority: 10 }), row('z:nokey', 'IMAGE_EDIT', { priority: 1 })]);
+    const { db } = fakeDb([
+      row('b:good', 'IMAGE_EDIT', { priority: 20 }),
+      row('a:cheap', 'IMAGE_EDIT', { priority: 10 }),
+      row('z:nokey', 'IMAGE_EDIT', { priority: 1 }),
+    ]);
     const router = new ProviderRouter(db, registry);
     const d = await router.route('IMAGE_EDIT', 'PERSONAL');
 
@@ -70,7 +95,10 @@ describe('ProviderRouter', () => {
   });
 
   it('routes an ORGANIZATION workspace to its tier row and everyone else to the general one', async () => {
-    const { db } = fakeDb([row('d:birefnet', 'BACKGROUND_REMOVE', { priority: 10 }), row('c:bria', 'BACKGROUND_REMOVE', { priority: 5, workspaceType: 'ORGANIZATION' })]);
+    const { db } = fakeDb([
+      row('d:birefnet', 'BACKGROUND_REMOVE', { priority: 10 }),
+      row('c:bria', 'BACKGROUND_REMOVE', { priority: 5, workspaceType: 'ORGANIZATION' }),
+    ]);
     const router = new ProviderRouter(db, registry);
 
     expect((await router.route('BACKGROUND_REMOVE', 'ORGANIZATION')).candidates.map((c) => c.row.key)).toEqual(['c:bria', 'd:birefnet']);

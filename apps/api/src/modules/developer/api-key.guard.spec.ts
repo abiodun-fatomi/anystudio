@@ -9,10 +9,36 @@ import { mintApiKey } from './developer.types';
 const live = mintApiKey('test');
 const revoked = mintApiKey('test');
 const rows = [
-  { id: 'k1', workspaceId: 'w1', projectId: 'p1', createdById: 'u1', hash: live.hash, prefix: live.prefix, scopes: ['generations:write', 'catalogue:read'], revokedAt: null, expiresAt: null, project: { archivedAt: null }, workspace: { deletedAt: null } },
-  { id: 'k2', workspaceId: 'w1', projectId: 'p1', createdById: 'u1', hash: revoked.hash, prefix: revoked.prefix, scopes: ['generations:write'], revokedAt: new Date(), expiresAt: null, project: { archivedAt: null }, workspace: { deletedAt: null } },
+  {
+    id: 'k1',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    createdById: 'u1',
+    hash: live.hash,
+    prefix: live.prefix,
+    scopes: ['generations:write', 'catalogue:read'],
+    revokedAt: null,
+    expiresAt: null,
+    project: { archivedAt: null },
+    workspace: { deletedAt: null },
+  },
+  {
+    id: 'k2',
+    workspaceId: 'w1',
+    projectId: 'p1',
+    createdById: 'u1',
+    hash: revoked.hash,
+    prefix: revoked.prefix,
+    scopes: ['generations:write'],
+    revokedAt: new Date(),
+    expiresAt: null,
+    project: { archivedAt: null },
+    workspace: { deletedAt: null },
+  },
 ];
-const db = { apiKey: { findUnique: async ({ where }: { where: { hash: string } }) => rows.find((r) => r.hash === where.hash) ?? null, update: async () => ({}) } } as unknown as PrismaClient;
+const db = {
+  apiKey: { findUnique: async ({ where }: { where: { hash: string } }) => rows.find((r) => r.hash === where.hash) ?? null, update: async () => ({}) },
+} as unknown as PrismaClient;
 
 function ctx(authorization: string | undefined, scope?: string): { ctx: ExecutionContext; req: Record<string, unknown> } {
   const req: Record<string, unknown> = { get: (h: string) => (h.toLowerCase() === 'authorization' ? authorization : undefined), ip: '1.1.1.1', requestId: 'r' };
@@ -40,7 +66,10 @@ describe('ApiKeyGuard', () => {
   it('refuses a missing, malformed, unknown or revoked key with 401, and a missing scope with 403', async () => {
     await expect(guardWith().canActivate(ctx(undefined).ctx)).rejects.toMatchObject({ status: 401 });
     await expect(guardWith().canActivate(ctx('Bearer nope').ctx)).rejects.toMatchObject({ status: 401 });
-    await expect(guardWith().canActivate(ctx(`Bearer ${mintApiKey('test').key}`).ctx)).rejects.toMatchObject({ status: 401, message: expect.stringContaining('not recognised') });
+    await expect(guardWith().canActivate(ctx(`Bearer ${mintApiKey('test').key}`).ctx)).rejects.toMatchObject({
+      status: 401,
+      message: expect.stringContaining('not recognised'),
+    });
     await expect(guardWith().canActivate(ctx(`Bearer ${revoked.key}`).ctx)).rejects.toMatchObject({ status: 401, message: expect.stringContaining('revoked') });
     await expect(guardWith('media:write').canActivate(ctx(`Bearer ${live.key}`).ctx)).rejects.toMatchObject({ status: 403 });
   });

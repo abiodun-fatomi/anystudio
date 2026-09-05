@@ -79,11 +79,19 @@ export class ProviderRouter {
     // `exclude`: vendors known not to serve this request (a dub into a language they lack).
     // `prefer`: vendors to try first regardless of priority (the one that can also move the lips).
     const rows = await this.db.providerModel.findMany({
-      where: { capability, enabled: true, OR: [{ workspaceType: null }, { workspaceType }], ...(ctx.only ? { key: ctx.only } : ctx.exclude?.length ? { key: { notIn: ctx.exclude } } : {}) },
+      where: {
+        capability,
+        enabled: true,
+        OR: [{ workspaceType: null }, { workspaceType }],
+        ...(ctx.only ? { key: ctx.only } : ctx.exclude?.length ? { key: { notIn: ctx.exclude } } : {}),
+      },
       orderBy: [{ priority: 'asc' }, { key: 'asc' }],
     });
     if (ctx.prefer?.length) {
-      const rank = (k: string) => { const i = ctx.prefer!.indexOf(k); return i === -1 ? ctx.prefer!.length : i; };
+      const rank = (k: string) => {
+        const i = ctx.prefer!.indexOf(k);
+        return i === -1 ? ctx.prefer!.length : i;
+      };
       rows.sort((a, b) => rank(a.key) - rank(b.key) || a.priority - b.priority);
     }
 
@@ -96,14 +104,26 @@ export class ProviderRouter {
 
     for (const row of rows) {
       const provider = this.registry.get(row.key);
-      if (!provider) { excluded.push({ key: row.key, reason: 'no adapter or credential in this process' }); continue; }
-      if (!provider.supports(capability)) { excluded.push({ key: row.key, reason: 'adapter does not implement this capability' }); continue; }
+      if (!provider) {
+        excluded.push({ key: row.key, reason: 'no adapter or credential in this process' });
+        continue;
+      }
+      if (!provider.supports(capability)) {
+        excluded.push({ key: row.key, reason: 'adapter does not implement this capability' });
+        continue;
+      }
 
       const h = this.healthFor(row.key, capability);
       const openedAt = h.openedAt ?? row.breakerOpenedAt?.getTime() ?? null;
       if (openedAt !== null) {
-        if (now - openedAt < COOLDOWN_MS) { excluded.push({ key: row.key, reason: `breaker open for ${Math.round((now - openedAt) / 1000)}s` }); continue; }
-        if (h.probing) { excluded.push({ key: row.key, reason: 'breaker half-open; a probe is already in flight' }); continue; }
+        if (now - openedAt < COOLDOWN_MS) {
+          excluded.push({ key: row.key, reason: `breaker open for ${Math.round((now - openedAt) / 1000)}s` });
+          continue;
+        }
+        if (h.probing) {
+          excluded.push({ key: row.key, reason: 'breaker half-open; a probe is already in flight' });
+          continue;
+        }
         h.probing = true; // this request is the probe
         logger.warn({ providerKey: row.key, capability, ...ctx }, 'breaker half-open: sending one probe request');
       }
@@ -122,7 +142,12 @@ export class ProviderRouter {
   }
 
   /** Record how a call went. Trips or resets the breaker; always cheap. */
-  async report(key: string, capability: Capability, outcome: { ok: true; latencyMs: number } | { ok: false; kind: ProviderErrorKind; latencyMs: number }, ctx: { generationId?: string } = {}): Promise<void> {
+  async report(
+    key: string,
+    capability: Capability,
+    outcome: { ok: true; latencyMs: number } | { ok: false; kind: ProviderErrorKind; latencyMs: number },
+    ctx: { generationId?: string } = {},
+  ): Promise<void> {
     const h = this.healthFor(key, capability);
     const now = Date.now();
     h.window = h.window.filter((s) => now - s.at < WINDOW_MS);
@@ -130,7 +155,9 @@ export class ProviderRouter {
     if (outcome.ok) {
       h.window.push({ at: now, ok: true });
       if (h.openedAt !== null || h.probing) {
-        h.openedAt = null; h.probing = false; h.window = [];
+        h.openedAt = null;
+        h.probing = false;
+        h.window = [];
         await this.persist(key, capability, null);
         logger.info({ providerKey: key, capability, ...ctx }, 'breaker closed: provider is healthy again');
       }
@@ -143,7 +170,8 @@ export class ProviderRouter {
 
     if (h.probing) {
       // The probe failed: stay open for another cooldown.
-      h.openedAt = now; h.probing = false;
+      h.openedAt = now;
+      h.probing = false;
       await this.persist(key, capability, new Date(now));
       logger.warn({ providerKey: key, capability, kind: outcome.kind, ...ctx }, 'breaker probe failed: staying open');
       return;
@@ -179,7 +207,10 @@ export class ProviderRouter {
   private healthFor(key: string, capability: Capability): Health {
     const k = `${key}|${capability}`;
     let h = this.health.get(k);
-    if (!h) { h = { window: [], openedAt: null, probing: false }; this.health.set(k, h); }
+    if (!h) {
+      h = { window: [], openedAt: null, probing: false };
+      this.health.set(k, h);
+    }
     return h;
   }
 

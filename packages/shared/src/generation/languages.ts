@@ -128,6 +128,14 @@ export function dubLanguagesAvailable(has: (providerKey: string) => boolean): Du
 /** Source languages a seller can name instead of letting the vendor listen. Codes are ISO 639-1. */
 export const DUB_SOURCE_LANGUAGES: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'auto', name: 'Detect it' },
-  { code: 'en', name: 'English' }, { code: 'fr', name: 'French' }, { code: 'pt', name: 'Portuguese' }, { code: 'es', name: 'Spanish' }, { code: 'ar', name: 'Arabic' },
-  { code: 'sw', name: 'Swahili' }, { code: 'de', name: 'German' }, { code: 'hi', name: 'Hindi' }, { code: 'zh', name: 'Chinese' }, { code: 'it', name: 'Italian' },
+  { code: 'en', name: 'English' },
+  { code: 'fr', name: 'French' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'sw', name: 'Swahili' },
+  { code: 'de', name: 'German' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'it', name: 'Italian' },
 ];

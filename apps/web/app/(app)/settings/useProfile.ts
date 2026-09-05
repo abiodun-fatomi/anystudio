@@ -7,10 +7,16 @@ export function useProfile() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
-    try { setProfile(await api.account.profile()); setError(null); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not load your profile.'); }
+    try {
+      setProfile(await api.account.profile());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load your profile.');
+    }
   }, []);
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
   return { profile, error, reload };
 }
 

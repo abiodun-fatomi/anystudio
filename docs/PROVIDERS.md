@@ -16,55 +16,55 @@ route to the stub adapter without any key at all.
 
 ## Keys to obtain
 
-| Env var | Vendor | Where to get it | Used for | Unit cost |
-|---|---|---|---|---|
-| `FAL_KEY` | fal.ai | fal.ai → Dashboard → Keys | Seedream 4.5 edit, Flux 2 Pro, Bria RMBG 2.0, Clarity upscaler, Wan 2.5 image-to-video | $0.04 edit · $0.018 rmbg · $0.03/MP upscale · $0.05–0.15/s video |
-| `GOOGLE_AI_API_KEY` | Google AI Studio | aistudio.google.com → Get API key (enable billing for paid tier) | Gemini 3 Pro Image (edit/generate/replace/relight), Gemini 2.5 Flash-Lite (copy), Veo 3.1 Fast (video) | ~$0.13/image · $0.10/$0.40 per 1M tokens · $0.25–0.40/s video |
-| `GOOGLE_VERTEX_SA_JSON` + `GOOGLE_VERTEX_PROJECT` + `GOOGLE_VERTEX_LOCATION` | Google Cloud Vertex AI | GCP console → IAM → Service account with `Vertex AI User`; download JSON; paste as one line | Same models through the door with **generative-AI indemnification** on GA versions. Switch to this before selling to an ORGANIZATION customer. | same |
-| `REPLICATE_API_TOKEN` | Replicate | replicate.com → Account → API tokens | BiRefNet background removal | ~$0.0005/image |
-| `PHOTOROOM_API_KEY` | Photoroom | photoroom.com/api → sign up; ask about the startup programme (up to 90% off) | Background replacement with generated scenes, AI shadows, relighting | $0.10/image (Plus tier), $0.02 remove-only |
-| `OPENAI_API_KEY` | OpenAI | platform.openai.com → API keys (org must have Sora access) | Sora 2 image-to-video | $0.10/s at 720p |
-| `ANTHROPIC_API_KEY` | Anthropic | console.anthropic.com → API keys | Claude Haiku 4.5 for brand-voice copy | $1/$5 per 1M tokens |
-| `BFL_API_KEY` | Black Forest Labs | api.bfl.ai → sign up | Flux Kontext Pro — budget edit tier | $0.04/image |
-| `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET` | Higgsfield | platform.higgsfield.ai → API keys | Their own DoP image-to-video models (`higgsfield:dop-turbo`, row disabled until resale terms are on file). The Kling row through them stays disabled: Kling's ToS §4.6 forbids commercial use without written permission and §4.5 requires attribution. | ~$0.60/clip (verify) |
-| `HEYGEN_API_KEY` | HeyGen | already held (app.heygen.com → Settings → API) | Video Translate v3 (`heygen:translate`) and Lipsync v3 (`heygen:lipsync`) — 175+ languages including English (Nigeria/Kenya/SA), Swahili, Zulu, Amharic | credits per minute on the API plan; confirm the rate for your tier |
-| `ELEVENLABS_API_KEY` | ElevenLabs | elevenlabs.io → Profile → API keys (paid plan for commercial music) | Eleven Music v2 for songs (`elevenlabs:music`, primary), multilingual TTS for voiceovers (`elevenlabs:tts`, primary), Dubbing for video translation (`elevenlabs:dubbing-v1`, primary for ~30 languages) | ~$0.11–1.09 per song by length; TTS by character; dubbing ~$0.50–1.00/min |
-| `SYNC_API_KEY` | sync.so | sync.so → Dashboard → API keys (optional: the same model is reachable through fal) | `sync:lipsync-2` direct; the row is seeded disabled — enable it when on contract | per second of output |
+| Env var                                                                      | Vendor                 | Where to get it                                                                             | Used for                                                                                                                                                                                                                                                | Unit cost                                                                 |
+| ---------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `FAL_KEY`                                                                    | fal.ai                 | fal.ai → Dashboard → Keys                                                                   | Seedream 4.5 edit, Flux 2 Pro, Bria RMBG 2.0, Clarity upscaler, Wan 2.5 image-to-video                                                                                                                                                                  | $0.04 edit · $0.018 rmbg · $0.03/MP upscale · $0.05–0.15/s video          |
+| `GOOGLE_AI_API_KEY`                                                          | Google AI Studio       | aistudio.google.com → Get API key (enable billing for paid tier)                            | Gemini 3 Pro Image (edit/generate/replace/relight), Gemini 2.5 Flash-Lite (copy), Veo 3.1 Fast (video)                                                                                                                                                  | ~$0.13/image · $0.10/$0.40 per 1M tokens · $0.25–0.40/s video             |
+| `GOOGLE_VERTEX_SA_JSON` + `GOOGLE_VERTEX_PROJECT` + `GOOGLE_VERTEX_LOCATION` | Google Cloud Vertex AI | GCP console → IAM → Service account with `Vertex AI User`; download JSON; paste as one line | Same models through the door with **generative-AI indemnification** on GA versions. Switch to this before selling to an ORGANIZATION customer.                                                                                                          | same                                                                      |
+| `REPLICATE_API_TOKEN`                                                        | Replicate              | replicate.com → Account → API tokens                                                        | BiRefNet background removal                                                                                                                                                                                                                             | ~$0.0005/image                                                            |
+| `PHOTOROOM_API_KEY`                                                          | Photoroom              | photoroom.com/api → sign up; ask about the startup programme (up to 90% off)                | Background replacement with generated scenes, AI shadows, relighting                                                                                                                                                                                    | $0.10/image (Plus tier), $0.02 remove-only                                |
+| `OPENAI_API_KEY`                                                             | OpenAI                 | platform.openai.com → API keys (org must have Sora access)                                  | Sora 2 image-to-video                                                                                                                                                                                                                                   | $0.10/s at 720p                                                           |
+| `ANTHROPIC_API_KEY`                                                          | Anthropic              | console.anthropic.com → API keys                                                            | Claude Haiku 4.5 for brand-voice copy                                                                                                                                                                                                                   | $1/$5 per 1M tokens                                                       |
+| `BFL_API_KEY`                                                                | Black Forest Labs      | api.bfl.ai → sign up                                                                        | Flux Kontext Pro — budget edit tier                                                                                                                                                                                                                     | $0.04/image                                                               |
+| `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET`                               | Higgsfield             | platform.higgsfield.ai → API keys                                                           | Their own DoP image-to-video models (`higgsfield:dop-turbo`, row disabled until resale terms are on file). The Kling row through them stays disabled: Kling's ToS §4.6 forbids commercial use without written permission and §4.5 requires attribution. | ~$0.60/clip (verify)                                                      |
+| `HEYGEN_API_KEY`                                                             | HeyGen                 | already held (app.heygen.com → Settings → API)                                              | Video Translate v3 (`heygen:translate`) and Lipsync v3 (`heygen:lipsync`) — 175+ languages including English (Nigeria/Kenya/SA), Swahili, Zulu, Amharic                                                                                                 | credits per minute on the API plan; confirm the rate for your tier        |
+| `ELEVENLABS_API_KEY`                                                         | ElevenLabs             | elevenlabs.io → Profile → API keys (paid plan for commercial music)                         | Eleven Music v2 for songs (`elevenlabs:music`, primary), multilingual TTS for voiceovers (`elevenlabs:tts`, primary), Dubbing for video translation (`elevenlabs:dubbing-v1`, primary for ~30 languages)                                                | ~$0.11–1.09 per song by length; TTS by character; dubbing ~$0.50–1.00/min |
+| `SYNC_API_KEY`                                                               | sync.so                | sync.so → Dashboard → API keys (optional: the same model is reachable through fal)          | `sync:lipsync-2` direct; the row is seeded disabled — enable it when on contract                                                                                                                                                                        | per second of output                                                      |
 
 Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract).
 
 ## Infrastructure keys (already in the env group; listed for completeness)
 
-| Env var | What |
-|---|---|
-| `DATABASE_URL`, `DIRECT_URL` | Postgres (Supabase / Render). Direct string for migrations. |
-| `REDIS_URL` | Render Key Value / Upstash. **Optional** — the API and worker run without it, slower. |
-| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Cloudflare R2: dashboard → R2 → Manage API tokens → Object Read & Write, scoped to the bucket. Endpoint is `https://<account-id>.r2.cloudflarestorage.com`. Set a CORS rule on the bucket allowing `PUT` from the app origins, or browser uploads fail silently. |
-| `APP_KEY` | `openssl rand -base64 32` |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google |
-| `RESEND_API_KEY`, `MAIL_FROM` | Mail |
-| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET` | NGN payments (Phase 8) |
-| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET` | International payments, merchant of record (Phase 8) |
-| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | WhatsApp Cloud API (Phase 5; gated on Meta Business verification) |
-| `WORKER_FAST_CONCURRENCY`, `WORKER_HEAVY_CONCURRENCY`, `WORKER_DIRECT_CONCURRENCY` | Worker sizing |
+| Env var                                                                              | What                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`, `DIRECT_URL`                                                         | Postgres (Supabase / Render). Direct string for migrations.                                                                                                                                                                                                      |
+| `REDIS_URL`                                                                          | Render Key Value / Upstash. **Optional** — the API and worker run without it, slower.                                                                                                                                                                            |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`               | Cloudflare R2: dashboard → R2 → Manage API tokens → Object Read & Write, scoped to the bucket. Endpoint is `https://<account-id>.r2.cloudflarestorage.com`. Set a CORS rule on the bucket allowing `PUT` from the app origins, or browser uploads fail silently. |
+| `APP_KEY`                                                                            | `openssl rand -base64 32`                                                                                                                                                                                                                                        |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                           | Sign in with Google                                                                                                                                                                                                                                              |
+| `RESEND_API_KEY`, `MAIL_FROM`                                                        | Mail                                                                                                                                                                                                                                                             |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                               | NGN payments (Phase 8)                                                                                                                                                                                                                                           |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`                                            | International payments, merchant of record (Phase 8)                                                                                                                                                                                                             |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | WhatsApp Cloud API (Phase 5; gated on Meta Business verification)                                                                                                                                                                                                |
+| `WORKER_FAST_CONCURRENCY`, `WORKER_HEAVY_CONCURRENCY`, `WORKER_DIRECT_CONCURRENCY`   | Worker sizing                                                                                                                                                                                                                                                    |
 
 ## Routing, as seeded
 
-| Capability | Order | Note |
-|---|---|---|
-| IMAGE_EDIT | vertex:gemini-3-pro-image → fal:seedream-4.5-edit → bfl:flux-kontext-pro | fidelity first, then cost |
-| IMAGE_GENERATE | vertex:gemini-3-pro-image → fal:flux-2-pro | |
-| BACKGROUND_REMOVE | fal:bria-rmbg-2 (ORGANIZATION only) → replicate:birefnet | Bria trains on licensed data; enterprise procurement asks |
-| BACKGROUND_REPLACE | photoroom:edit → vertex:gemini-3-pro-image | |
-| RELIGHT | photoroom:edit | |
-| UPSCALE | fal:clarity-upscaler | |
-| IMAGE_TO_VIDEO | fal:wan-2.5-i2v → openai:sora-2 → vertex:veo-3.1-fast | budget first: at 120 credits a reel sells for ~$1.80 and Veo costs more than that |
-| TEXT_GENERATE | google:gemini-2.5-flash-lite → anthropic:claude-haiku-4.5 | |
-| VIDEO_STITCH | local:ffmpeg | ours |
-| VOICEOVER | the voice's own vendor only | see Audio |
-| MUSIC | elevenlabs:music → fal:minimax-music-v2 | see Audio |
-| DUB | elevenlabs:dubbing-v1 → heygen:translate, narrowed to who speaks the language; HeyGen first when lips must move | see Dubbing |
-| LIPSYNC | fal:sync-lipsync → heygen:lipsync (→ sync:lipsync-2, disabled) | see Dubbing |
+| Capability         | Order                                                                                                           | Note                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| IMAGE_EDIT         | vertex:gemini-3-pro-image → fal:seedream-4.5-edit → bfl:flux-kontext-pro                                        | fidelity first, then cost                                                         |
+| IMAGE_GENERATE     | vertex:gemini-3-pro-image → fal:flux-2-pro                                                                      |                                                                                   |
+| BACKGROUND_REMOVE  | fal:bria-rmbg-2 (ORGANIZATION only) → replicate:birefnet                                                        | Bria trains on licensed data; enterprise procurement asks                         |
+| BACKGROUND_REPLACE | photoroom:edit → vertex:gemini-3-pro-image                                                                      |                                                                                   |
+| RELIGHT            | photoroom:edit                                                                                                  |                                                                                   |
+| UPSCALE            | fal:clarity-upscaler                                                                                            |                                                                                   |
+| IMAGE_TO_VIDEO     | fal:wan-2.5-i2v → openai:sora-2 → vertex:veo-3.1-fast                                                           | budget first: at 120 credits a reel sells for ~$1.80 and Veo costs more than that |
+| TEXT_GENERATE      | google:gemini-2.5-flash-lite → anthropic:claude-haiku-4.5                                                       |                                                                                   |
+| VIDEO_STITCH       | local:ffmpeg                                                                                                    | ours                                                                              |
+| VOICEOVER          | the voice's own vendor only                                                                                     | see Audio                                                                         |
+| MUSIC              | elevenlabs:music → fal:minimax-music-v2                                                                         | see Audio                                                                         |
+| DUB                | elevenlabs:dubbing-v1 → heygen:translate, narrowed to who speaks the language; HeyGen first when lips must move | see Dubbing                                                                       |
+| LIPSYNC            | fal:sync-lipsync → heygen:lipsync (→ sync:lipsync-2, disabled)                                                  | see Dubbing                                                                       |
 
 ## Licensing landmines
 
@@ -78,11 +78,11 @@ Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mube
 
 A credit is ~$0.015 at launch (business: 2,400 for $29).
 
-| Product | Credits | Sells for | Provider cost (budget route) | Margin |
-|---|---|---|---|---|
-| `video.reel` (one shot, 5–8 s) | 120 | ~$1.80 | Wan 2.5 720p ~$0.50–0.80 · Sora 2 ~$0.40–0.80 | ~55–75% |
-| `video.ad_15s` (two 8 s shots + stitch) | 260 | ~$3.90 | ~$1.60 + a planner call | ~58% |
-| `video.ad_30s` (four shots + stitch) | 480 | ~$7.20 | ~$2.90 + a planner call | ~60% |
+| Product                                 | Credits | Sells for | Provider cost (budget route)                  | Margin  |
+| --------------------------------------- | ------- | --------- | --------------------------------------------- | ------- |
+| `video.reel` (one shot, 5–8 s)          | 120     | ~$1.80    | Wan 2.5 720p ~$0.50–0.80 · Sora 2 ~$0.40–0.80 | ~55–75% |
+| `video.ad_15s` (two 8 s shots + stitch) | 260     | ~$3.90    | ~$1.60 + a planner call                       | ~58%    |
+| `video.ad_30s` (four shots + stitch)    | 480     | ~$7.20    | ~$2.90 + a planner call                       | ~60%    |
 
 Veo 3.1 Fast (~$2–3.20 per 8 s) does not clear the reel price and stays at priority 30 — a fallback, not the default — until the reel is repriced or a premium tier exists. Promoting it is a row edit. Stitching is ours (ffmpeg) and costs nothing at the vendor.
 
@@ -92,14 +92,14 @@ Veo 3.1 Fast (~$2–3.20 per 8 s) does not clear the reel price and stays at pri
 
 Two gateways behind one contract (`apps/api/src/modules/billing/billing.types.ts`). **Currency picks the gateway**: NGN, GHS, KES, ZAR, UGX, TZS, RWF, XOF, XAF, EGP, ETB, ZMW, MWK go to Flutterwave; everything else goes to Paddle, which is merchant of record and handles VAT and receipts.
 
-| Env var | Vendor | Where to get it | Used for |
-|---|---|---|---|
-| `FLUTTERWAVE_SECRET_KEY` | Flutterwave | Dashboard → Settings → API keys (v3; `FLWSECK_TEST-…` in sandbox) | Hosted Standard checkout (`POST /v3/payments`), verification (`/v3/transactions/:id/verify`), subscriptions via payment plans |
-| `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave | Dashboard → Settings → Webhooks → "secret hash" (you choose it) | Sent back as the `verif-hash` header on every webhook. v4's `flutterwave-signature` HMAC is also accepted |
-| `PADDLE_API_KEY` | Paddle Billing | Paddle → Developer tools → Authentication → API keys | Creating transactions server-side, verifying them, cancelling subscriptions |
-| `PADDLE_CLIENT_TOKEN` | Paddle Billing | Same page → Client-side tokens | Opening the checkout overlay on `/billing/pay`. Public by design; the API serves it from `GET /billing/config` |
-| `PADDLE_WEBHOOK_SECRET` | Paddle Billing | Paddle → Developer tools → Notifications → your endpoint → secret key (`pdl_ntfset_…`) | `Paddle-Signature` HMAC check |
-| `PADDLE_ENV` | — | `sandbox` or `live` | Which Paddle API host. Production logs an error unless `live` |
+| Env var                      | Vendor         | Where to get it                                                                        | Used for                                                                                                                      |
+| ---------------------------- | -------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `FLUTTERWAVE_SECRET_KEY`     | Flutterwave    | Dashboard → Settings → API keys (v3; `FLWSECK_TEST-…` in sandbox)                      | Hosted Standard checkout (`POST /v3/payments`), verification (`/v3/transactions/:id/verify`), subscriptions via payment plans |
+| `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave    | Dashboard → Settings → Webhooks → "secret hash" (you choose it)                        | Sent back as the `verif-hash` header on every webhook. v4's `flutterwave-signature` HMAC is also accepted                     |
+| `PADDLE_API_KEY`             | Paddle Billing | Paddle → Developer tools → Authentication → API keys                                   | Creating transactions server-side, verifying them, cancelling subscriptions                                                   |
+| `PADDLE_CLIENT_TOKEN`        | Paddle Billing | Same page → Client-side tokens                                                         | Opening the checkout overlay on `/billing/pay`. Public by design; the API serves it from `GET /billing/config`                |
+| `PADDLE_WEBHOOK_SECRET`      | Paddle Billing | Paddle → Developer tools → Notifications → your endpoint → secret key (`pdl_ntfset_…`) | `Paddle-Signature` HMAC check                                                                                                 |
+| `PADDLE_ENV`                 | —              | `sandbox` or `live`                                                                    | Which Paddle API host. Production logs an error unless `live`                                                                 |
 
 **Webhook URLs to register**
 
@@ -136,27 +136,26 @@ Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per m
 - Paddle **refunds** arrive as `adjustment.*` events; credits are clawed back through the ledger. If they were already spent the row says `refunded_clawback_failed` and a person decides.
 - Plan credits do not yet expire at period end (open decision in the spec): today they accumulate like pack credits. `LedgerKind.EXPIRY` and `ledger.expire()` exist for when that is decided.
 
-
 ## Audio (Phase 10)
 
-**Songs — the preview-then-unlock loop.** A request costs `audio.music.preview` (10 credits) and makes the *whole* song once: the copy model writes sectioned lyrics in the chosen language (unless the seller pasted their own), the genre row's `promptHints` and the lyrics go to the music provider, the full track is stored under the workspace's **vault** prefix — which no customer-facing path will sign — and ffmpeg cuts a 30-second faded preview. `POST /workspaces/:id/generations/:gid/unlock` debits `audio.music.unlock` (30 credits, once per song however often it is pressed), copies the track out of the vault and opens it for download. The WhatsApp bot (Phase 12) reuses the same two calls.
+**Songs — the preview-then-unlock loop.** A request costs `audio.music.preview` (10 credits) and makes the _whole_ song once: the copy model writes sectioned lyrics in the chosen language (unless the seller pasted their own), the genre row's `promptHints` and the lyrics go to the music provider, the full track is stored under the workspace's **vault** prefix — which no customer-facing path will sign — and ffmpeg cuts a 30-second faded preview. `POST /workspaces/:id/generations/:gid/unlock` debits `audio.music.unlock` (30 credits, once per song however often it is pressed), copies the track out of the vault and opens it for download. The WhatsApp bot (Phase 12) reuses the same two calls.
 
-| Row | Vendor | Notes |
-|---|---|---|
-| `elevenlabs:music` (p10) | Eleven Music v2 | Prompt mode for instrumentals; a composition plan of chunks (lyrics per section, styles, durations) when there are words. Refuses artist names — the genre hints never use them. |
-| `fal:minimax-music-v2` (p20) | MiniMax via fal | `prompt` + `lyrics_prompt` with `[Verse]`/`[Chorus]` tags. fal lists commercial use. |
-| `mubert:track` | Mubert | Disabled; not on contract. |
+| Row                          | Vendor          | Notes                                                                                                                                                                            |
+| ---------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elevenlabs:music` (p10)     | Eleven Music v2 | Prompt mode for instrumentals; a composition plan of chunks (lyrics per section, styles, durations) when there are words. Refuses artist names — the genre hints never use them. |
+| `fal:minimax-music-v2` (p20) | MiniMax via fal | `prompt` + `lyrics_prompt` with `[Verse]`/`[Chorus]` tags. fal lists commercial use.                                                                                             |
+| `mubert:track`               | Mubert          | Disabled; not on contract.                                                                                                                                                       |
 
 **Genres** live in `music_genres` (68 seeded: Afrobeats, Amapiano, Highlife, Fuji, Jùjú, Bongo Flava, Gqom, Soukous, Mbalax, Raï, dancehall, reggaetón, K-pop, Bollywood, cumbia, samba, gospel, jazz, drill, lo-fi, cinematic, birthday…). Adding one is an INSERT; fixing how one sounds is an edit to its `promptHints`.
 
 **Voiceovers** cost `audio.voiceover` (8). The voice row (`voice_profiles`) names the vendor and its voice id, and the router is constrained to that vendor — a fallback in someone else's voice is worse than a failure.
 
-| Row | Vendor | Voices seeded |
-|---|---|---|
-| `elevenlabs:tts` (p10) | `eleven_multilingual_v2` | Rachel, Adam, Bella, Antoni, Domi, Josh (premade ids). Add African-English voices from the library as rows once the plan allows. |
-| `google:tts` (p20) | Cloud Text-to-Speech, service account | en-NG (4), en-KE (2), en-ZA, fr-FR, pt-BR |
-| `openai:tts` (p30) | `gpt-4o-mini-tts` | nova, onyx, coral |
-| `spitch:tts` | Spitch | Disabled: Yoruba, Igbo, Hausa by quote. |
+| Row                    | Vendor                                | Voices seeded                                                                                                                    |
+| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `elevenlabs:tts` (p10) | `eleven_multilingual_v2`              | Rachel, Adam, Bella, Antoni, Domi, Josh (premade ids). Add African-English voices from the library as rows once the plan allows. |
+| `google:tts` (p20)     | Cloud Text-to-Speech, service account | en-NG (4), en-KE (2), en-ZA, fr-FR, pt-BR                                                                                        |
+| `openai:tts` (p30)     | `gpt-4o-mini-tts`                     | nova, onyx, coral                                                                                                                |
+| `spitch:tts`           | Spitch                                | Disabled: Yoruba, Igbo, Hausa by quote.                                                                                          |
 
 **Verify in the sandbox before launch:** Eleven Music's composition-plan field names against the live docs (the `chunks` shape used here is the documented v2 one); that the stub's 30-second preview cut matches the real track's loudness; MiniMax's `audio_setting` acceptance.
 
@@ -166,13 +165,13 @@ Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per m
 
 **Lip-sync new words** (`LIPSYNC`, `video.lipsync`, 150) takes an uploaded audio file, or a script that is recorded first in a catalogue voice (routed to that voice's vendor exactly as the voice tool is) and stored beside the row.
 
-| Row | Vendor | Notes |
-|---|---|---|
-| `elevenlabs:dubbing-v1` (p10) | ElevenLabs Dubbing | `POST /v1/dubbing` multipart by `source_url` (the signed R2 URL; the file never passes through the worker twice), poll `GET /v1/dubbing/{id}` for `dubbed`/`failed`, download `GET /v1/dubbing/{id}/audio/{lang}` (an MP4 for a video source). ~30 languages, no accent choice, no African languages beyond Arabic, French and Portuguese. |
-| `heygen:translate` (p20) | HeyGen Video Translate v3 | `POST /v3/video-translations` with a language *name*, `translate_audio_only` unless lips are wanted, `mode` speed/precision from the request's `quality`; poll `GET /v3/video-translations/{id}`. |
-| `fal:sync-lipsync` (p10) | sync.so lipsync-2 through fal | `video_url` + `audio_url`, `sync_mode: cut_off` so the clip ends with the words; `lipsync-2-pro` for `quality: precision`. |
-| `heygen:lipsync` (p20) | HeyGen Lipsync v3 | `POST /v3/lipsyncs`, same polling. |
-| `sync:lipsync-2` (p30, disabled) | sync.so direct | `POST /v2/generate`; `REJECTED` is their moderation and is treated as the content's fault, not a reason to fall back. Enable when `SYNC_API_KEY` is set. |
+| Row                              | Vendor                        | Notes                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `elevenlabs:dubbing-v1` (p10)    | ElevenLabs Dubbing            | `POST /v1/dubbing` multipart by `source_url` (the signed R2 URL; the file never passes through the worker twice), poll `GET /v1/dubbing/{id}` for `dubbed`/`failed`, download `GET /v1/dubbing/{id}/audio/{lang}` (an MP4 for a video source). ~30 languages, no accent choice, no African languages beyond Arabic, French and Portuguese. |
+| `heygen:translate` (p20)         | HeyGen Video Translate v3     | `POST /v3/video-translations` with a language _name_, `translate_audio_only` unless lips are wanted, `mode` speed/precision from the request's `quality`; poll `GET /v3/video-translations/{id}`.                                                                                                                                          |
+| `fal:sync-lipsync` (p10)         | sync.so lipsync-2 through fal | `video_url` + `audio_url`, `sync_mode: cut_off` so the clip ends with the words; `lipsync-2-pro` for `quality: precision`.                                                                                                                                                                                                                 |
+| `heygen:lipsync` (p20)           | HeyGen Lipsync v3             | `POST /v3/lipsyncs`, same polling.                                                                                                                                                                                                                                                                                                         |
+| `sync:lipsync-2` (p30, disabled) | sync.so direct                | `POST /v2/generate`; `REJECTED` is their moderation and is treated as the content's fault, not a reason to fall back. Enable when `SYNC_API_KEY` is set.                                                                                                                                                                                   |
 
 **Languages.** `GET /audio/dub-languages` returns only what this environment's vendors can serve (all of them in a stub-only environment), grouped by region, each marked with whether lips can be matched. Yoruba, Igbo, Hausa and Pidgin are not offered by any dubbing vendor as of September 2026; the studio says so rather than failing after the upload.
 

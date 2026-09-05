@@ -30,7 +30,11 @@ function Return() {
     if (!ref) return;
     let live = true;
     let paymentId: string | null = null;
-    try { paymentId = sessionStorage.getItem(`anystudio:pay:${ref}`); } catch { /* fine */ }
+    try {
+      paymentId = sessionStorage.getItem(`anystudio:pay:${ref}`);
+    } catch {
+      /* fine */
+    }
     const tick = async () => {
       if (!live) return;
       try {
@@ -43,34 +47,103 @@ function Return() {
         const p = await api.billing.verify(workspace.id, paymentId, providerRef);
         if (!live) return;
         setPayment(p);
-        if (p.status !== 'PENDING') { void refreshBalance(); return; }
-      } catch { /* try again below */ }
+        if (p.status !== 'PENDING') {
+          void refreshBalance();
+          return;
+        }
+      } catch {
+        /* try again below */
+      }
       const delay = POLL_MS[attempt.current++];
-      if (delay === undefined) { setGaveUp(true); return; }
+      if (delay === undefined) {
+        setGaveUp(true);
+        return;
+      }
       setTimeout(() => void tick(), delay);
     };
     void tick();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [ref, providerRef, workspace.id, refreshBalance]);
 
-  if (!ref) return <EmptyState title="Nothing to confirm" body="This page is where the payment provider sends you back. Start from Add credits." actions={<Button href="/billing/plans">Add credits</Button>} />;
+  if (!ref)
+    return (
+      <EmptyState
+        title="Nothing to confirm"
+        body="This page is where the payment provider sends you back. Start from Add credits."
+        actions={<Button href="/billing/plans">Add credits</Button>}
+      />
+    );
 
   if (payment?.status === 'SUCCEEDED') {
-    return <EmptyState icon={<Icon.check />} title={`${payment.credits.toLocaleString()} credits added`} body={`${moneyMinor(payment.amountMinor, payment.currency)} · reference ${payment.reference}. The receipt is on your Credits page.`} actions={<><Button href="/studio">Back to the studio</Button><Button variant="ghost" href="/billing">See statement</Button></>} />;
+    return (
+      <EmptyState
+        icon={<Icon.check />}
+        title={`${payment.credits.toLocaleString()} credits added`}
+        body={`${moneyMinor(payment.amountMinor, payment.currency)} · reference ${payment.reference}. The receipt is on your Credits page.`}
+        actions={
+          <>
+            <Button href="/studio">Back to the studio</Button>
+            <Button variant="ghost" href="/billing">
+              See statement
+            </Button>
+          </>
+        }
+      />
+    );
   }
   if (payment?.status === 'FAILED' || (gaveUp && gatewayStatus && gatewayStatus !== 'successful' && gatewayStatus !== 'completed')) {
-    return <EmptyState icon={<Icon.credits />} title="That payment did not go through" body={`Nothing was charged${payment?.failureReason ? ` (${payment.failureReason})` : ''}. Reference ${ref}. You can try again, or a different way to pay.`} actions={<><Button href="/billing/plans">Try again</Button><Button variant="ghost" href="/billing">Credits</Button></>} />;
+    return (
+      <EmptyState
+        icon={<Icon.credits />}
+        title="That payment did not go through"
+        body={`Nothing was charged${payment?.failureReason ? ` (${payment.failureReason})` : ''}. Reference ${ref}. You can try again, or a different way to pay.`}
+        actions={
+          <>
+            <Button href="/billing/plans">Try again</Button>
+            <Button variant="ghost" href="/billing">
+              Credits
+            </Button>
+          </>
+        }
+      />
+    );
   }
   if (gaveUp) {
-    return <EmptyState icon={<Icon.credits />} title="Still confirming" body={`The payment provider has not confirmed it yet. Credits arrive automatically once it does — usually within minutes. If they have not by tomorrow, quote reference ${ref} to support.`} actions={<><Button href="/billing">See statement</Button><Button variant="ghost" onClick={() => window.location.reload()}>Check again</Button></>} />;
+    return (
+      <EmptyState
+        icon={<Icon.credits />}
+        title="Still confirming"
+        body={`The payment provider has not confirmed it yet. Credits arrive automatically once it does — usually within minutes. If they have not by tomorrow, quote reference ${ref} to support.`}
+        actions={
+          <>
+            <Button href="/billing">See statement</Button>
+            <Button variant="ghost" onClick={() => window.location.reload()}>
+              Check again
+            </Button>
+          </>
+        }
+      />
+    );
   }
   return (
     <div style={{ display: 'grid', gap: 'var(--s-3)', maxWidth: 420, margin: '10vh auto', textAlign: 'center' }}>
       <strong style={{ fontSize: 'var(--t-5)', fontFamily: 'var(--f-display)' }}>Confirming your payment…</strong>
       <Progress value={null} label="Confirming" />
-      <span style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>We check with the payment provider directly, so this can take a few seconds. Reference {ref}.</span>
+      <span style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>
+        We check with the payment provider directly, so this can take a few seconds. Reference {ref}.
+      </span>
     </div>
   );
 }
 
-export default function Page() { return <div className="rise"><Suspense fallback={null}><Return /></Suspense></div>; }
+export default function Page() {
+  return (
+    <div className="rise">
+      <Suspense fallback={null}>
+        <Return />
+      </Suspense>
+    </div>
+  );
+}

@@ -15,10 +15,36 @@ import { Badge, Button, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
-const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = { requesting: 'warn', QUEUED: 'warn', RUNNING: 'accent', SUCCEEDED: 'ok', FAILED: 'danger', CANCELLED: undefined };
-const STATUS_LABEL: Record<GenerationCard['status'], string> = { requesting: 'Sending', QUEUED: 'Queued', RUNNING: 'Working', SUCCEEDED: 'Done', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = {
+  requesting: 'warn',
+  QUEUED: 'warn',
+  RUNNING: 'accent',
+  SUCCEEDED: 'ok',
+  FAILED: 'danger',
+  CANCELLED: undefined,
+};
+const STATUS_LABEL: Record<GenerationCard['status'], string> = {
+  requesting: 'Sending',
+  QUEUED: 'Queued',
+  RUNNING: 'Working',
+  SUCCEEDED: 'Done',
+  FAILED: 'Failed',
+  CANCELLED: 'Cancelled',
+};
 
-export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCancel, onDismiss, onRefreshUrls, onEditText, onRegenerateField, onUnlock, unlockPrice }: {
+export function ResultCard({
+  card,
+  onUseAsSource,
+  onSendToVideo,
+  onAgain,
+  onCancel,
+  onDismiss,
+  onRefreshUrls,
+  onEditText,
+  onRegenerateField,
+  onUnlock,
+  unlockPrice,
+}: {
   card: GenerationCard;
   onUseAsSource: (key: string) => void;
   onSendToVideo: (key: string) => void;
@@ -35,14 +61,21 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
   const live = card.status === 'requesting' || card.status === 'QUEUED' || card.status === 'RUNNING';
   const isAudio = card.capability === 'MUSIC' || card.capability === 'VOICEOVER';
   const isSpokenVideo = card.capability === 'DUB' || card.capability === 'LIPSYNC';
-  const spoken = isSpokenVideo ? (card.outputs.find((o) => o.role === 'text')?.text as { language?: string; lipsync?: boolean; script?: string | null; voice?: string | null } | undefined) : undefined;
+  const spoken = isSpokenVideo
+    ? (card.outputs.find((o) => o.role === 'text')?.text as { language?: string; lipsync?: boolean; script?: string | null; voice?: string | null } | undefined)
+    : undefined;
   const fullTrack = card.outputs.find((o) => o.role === 'audio');
   const locked = Boolean(fullTrack?.locked);
-  const main = card.outputs.find((o) => o.role === 'image') ?? card.outputs.find((o) => o.role === 'video')
-    ?? (locked ? card.outputs.find((o) => o.role === 'preview') : fullTrack) ?? card.outputs.find((o) => o.role === 'preview');
+  const main =
+    card.outputs.find((o) => o.role === 'image') ??
+    card.outputs.find((o) => o.role === 'video') ??
+    (locked ? card.outputs.find((o) => o.role === 'preview') : fullTrack) ??
+    card.outputs.find((o) => o.role === 'preview');
   const variants = card.outputs.filter((o) => o.role === 'variant');
   const text = isAudio || isSpokenVideo ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
-  const audioText = isAudio ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined) : undefined;
+  const audioText = isAudio
+    ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined)
+    : undefined;
   const mainUrl = main ? card.urls[main.key] : undefined;
   const missingUrls = useMemo(() => card.outputs.filter((o) => o.key && !card.urls[o.key]).map((o) => o.key), [card.outputs, card.urls]);
   const narrative = card.detail ?? tool.narrative[card.stage] ?? 'Working';
@@ -51,16 +84,24 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
   return (
     <article className={styles.card} data-status={card.status} aria-live={live ? 'polite' : undefined}>
       <div className={styles.cardHead}>
-        <div className={styles.cardTitle}>{Icon[tool.icon]({ width: 18, height: 18 })}{tool.label}</div>
+        <div className={styles.cardTitle}>
+          {Icon[tool.icon]({ width: 18, height: 18 })}
+          {tool.label}
+        </div>
         <div style={{ display: 'flex', gap: 'var(--s-2)', alignItems: 'center' }}>
-          <Badge tone={STATUS_TONE[card.status]} dot={live}>{STATUS_LABEL[card.status]}</Badge>
+          <Badge tone={STATUS_TONE[card.status]} dot={live}>
+            {STATUS_LABEL[card.status]}
+          </Badge>
           <span className={styles.cardMeta}>{card.credits} cr</span>
         </div>
       </div>
 
       {live && (
         <div className={styles.narrate}>
-          <div className={styles.narrateText}><span>{narrative}</span><span>{elapsed}</span></div>
+          <div className={styles.narrateText}>
+            <span>{narrative}</span>
+            <span>{elapsed}</span>
+          </div>
           <Progress value={card.status === 'requesting' ? null : card.progress} />
         </div>
       )}
@@ -69,26 +110,52 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
         <div className={styles.fail}>
           <strong>{card.status === 'CANCELLED' ? 'Cancelled' : 'That did not work'}</strong>
           <span>{card.message ?? 'Something went wrong. Your credits are back.'}</span>
-          {card.id && <span className={styles.refunded}><Icon.check width={14} height={14} /> {card.credits} credits returned</span>}
+          {card.id && (
+            <span className={styles.refunded}>
+              <Icon.check width={14} height={14} /> {card.credits} credits returned
+            </span>
+          )}
         </div>
       )}
 
       {main && (main.role === 'audio' || main.role === 'preview') ? (
-        <AudioBlock card={card} url={mainUrl} locked={locked} title={audioText?.title ?? null} genre={audioText?.genre} unlockPrice={unlockPrice ?? null} onUnlock={onUnlock ? () => onUnlock(card.clientKey) : undefined} />
-      ) : main && (
-        <div className={styles.preview}>
-          {mainUrl
-            ? main.role === 'video'
-              ? <video src={mainUrl} controls playsInline preload="metadata" />
-              : <img src={mainUrl} alt={`Result from ${tool.label}`} />
-            : <Skeleton className={styles.previewSkel} />}
-        </div>
+        <AudioBlock
+          card={card}
+          url={mainUrl}
+          locked={locked}
+          title={audioText?.title ?? null}
+          genre={audioText?.genre}
+          unlockPrice={unlockPrice ?? null}
+          onUnlock={onUnlock ? () => onUnlock(card.clientKey) : undefined}
+        />
+      ) : (
+        main && (
+          <div className={styles.preview}>
+            {mainUrl ? (
+              main.role === 'video' ? (
+                <video src={mainUrl} controls playsInline preload="metadata" />
+              ) : (
+                <img src={mainUrl} alt={`Result from ${tool.label}`} />
+              )
+            ) : (
+              <Skeleton className={styles.previewSkel} />
+            )}
+          </div>
+        )
       )}
-      {audioText && (audioText.lyrics || audioText.script) && <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />}
+      {audioText && (audioText.lyrics || audioText.script) && (
+        <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />
+      )}
       {spoken && card.status === 'SUCCEEDED' && (
         <div className={styles.videoNote}>
-          {card.capability === 'DUB' && spoken.language && <span>Now in <strong>{spoken.language}</strong></span>}
-          <span>{spoken.lipsync ? 'Lips matched to the new voice' : card.capability === 'DUB' ? 'Voice only — the picture is untouched' : 'Mouth re-animated'}</span>
+          {card.capability === 'DUB' && spoken.language && (
+            <span>
+              Now in <strong>{spoken.language}</strong>
+            </span>
+          )}
+          <span>
+            {spoken.lipsync ? 'Lips matched to the new voice' : card.capability === 'DUB' ? 'Voice only — the picture is untouched' : 'Mouth re-animated'}
+          </span>
         </div>
       )}
       {spoken?.script && <LyricsView label="Script" text={spoken.script} />}
@@ -97,26 +164,70 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
       {variants.length > 0 && (
         <div className={styles.variants} aria-label="Sizes">
           {variants.map((v) => (
-            <a key={v.key} className={styles.variant} href={card.urls[v.key] ?? '#'} download target="_blank" rel="noreferrer" aria-disabled={!card.urls[v.key]}>
-              {sizeLabel(v)} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{v.width}×{v.height}</span>
+            <a
+              key={v.key}
+              className={styles.variant}
+              href={card.urls[v.key] ?? '#'}
+              download
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!card.urls[v.key]}
+            >
+              {sizeLabel(v)}{' '}
+              <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                {v.width}×{v.height}
+              </span>
             </a>
           ))}
         </div>
       )}
 
-      {text && <CopyView text={text} editable={card.status === 'SUCCEEDED' && Boolean(card.id)} onEdit={(f, v) => onEditText(card.clientKey, f, v)} onRegenerate={(f, i) => onRegenerateField(card.clientKey, f, i)} />}
+      {text && (
+        <CopyView
+          text={text}
+          editable={card.status === 'SUCCEEDED' && Boolean(card.id)}
+          onEdit={(f, v) => onEditText(card.clientKey, f, v)}
+          onRegenerate={(f, i) => onRegenerateField(card.clientKey, f, i)}
+        />
+      )}
 
       {!live && missingUrls.length > 0 && (
-        <Button variant="ghost" size="sm" onClick={() => onRefreshUrls(card.clientKey, missingUrls)}>Refresh previews</Button>
+        <Button variant="ghost" size="sm" onClick={() => onRefreshUrls(card.clientKey, missingUrls)}>
+          Refresh previews
+        </Button>
       )}
 
       <div className={styles.actions}>
-        {live && card.status === 'QUEUED' && card.id && <Button variant="ghost" size="sm" onClick={() => onCancel(card.clientKey)}>Cancel</Button>}
-        {card.status === 'SUCCEEDED' && main && mainUrl && !locked && <Button variant="ghost" size="sm" href={mainUrl} leading={<Icon.publish width={16} height={16} />}>Download</Button>}
-        {card.status === 'SUCCEEDED' && main?.role === 'image' && <Button variant="ghost" size="sm" onClick={() => onUseAsSource(main.key)}>Use as source</Button>}
-        {card.status === 'SUCCEEDED' && main?.role === 'image' && <Button variant="ghost" size="sm" onClick={() => onSendToVideo(main.key)}>Make a reel from this</Button>}
-        {!live && <Button variant="ghost" size="sm" onClick={() => onAgain(card)}>Do it again</Button>}
-        {!live && <Button variant="link" size="sm" onClick={() => onDismiss(card.clientKey)} style={{ marginLeft: 'auto' }}>Hide</Button>}
+        {live && card.status === 'QUEUED' && card.id && (
+          <Button variant="ghost" size="sm" onClick={() => onCancel(card.clientKey)}>
+            Cancel
+          </Button>
+        )}
+        {card.status === 'SUCCEEDED' && main && mainUrl && !locked && (
+          <Button variant="ghost" size="sm" href={mainUrl} leading={<Icon.publish width={16} height={16} />}>
+            Download
+          </Button>
+        )}
+        {card.status === 'SUCCEEDED' && main?.role === 'image' && (
+          <Button variant="ghost" size="sm" onClick={() => onUseAsSource(main.key)}>
+            Use as source
+          </Button>
+        )}
+        {card.status === 'SUCCEEDED' && main?.role === 'image' && (
+          <Button variant="ghost" size="sm" onClick={() => onSendToVideo(main.key)}>
+            Make a reel from this
+          </Button>
+        )}
+        {!live && (
+          <Button variant="ghost" size="sm" onClick={() => onAgain(card)}>
+            Do it again
+          </Button>
+        )}
+        {!live && (
+          <Button variant="link" size="sm" onClick={() => onDismiss(card.clientKey)} style={{ marginLeft: 'auto' }}>
+            Hide
+          </Button>
+        )}
       </div>
     </article>
   );
@@ -130,30 +241,79 @@ interface CopyText {
   seo?: { title?: string; metaDescription?: string };
 }
 
-function CopyView({ text, editable, onEdit, onRegenerate }: { text: CopyText; editable: boolean; onEdit: (field: string, value: string) => void; onRegenerate: (field: string, instruction: string) => Promise<{ ok: boolean; message?: string }> }) {
+function CopyView({
+  text,
+  editable,
+  onEdit,
+  onRegenerate,
+}: {
+  text: CopyText;
+  editable: boolean;
+  onEdit: (field: string, value: string) => void;
+  onRegenerate: (field: string, instruction: string) => Promise<{ ok: boolean; message?: string }>;
+}) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const copy = async (label: string, value: string) => {
-    try { await navigator.clipboard.writeText(value); toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 }); }
-    catch { toast({ title: 'Could not copy', body: 'Select the text and copy it yourself.', tone: 'warn' }); }
+    try {
+      await navigator.clipboard.writeText(value);
+      toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 });
+    } catch {
+      toast({ title: 'Could not copy', body: 'Select the text and copy it yourself.', tone: 'warn' });
+    }
   };
   const fields: Array<{ path: string; value: string }> = [];
-  const get = (path: string): string | undefined => path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), text) as string | undefined;
-  for (const path of ['description.long', 'captions.instagram', 'captions.tiktok', 'captions.whatsapp_status', 'captions.facebook', 'captions.x']) { const v = get(path); if (v) fields.push({ path, value: v }); }
-  if (text.hashtags) { const all = [...(text.hashtags.broad ?? []), ...(text.hashtags.niche ?? []), ...(text.hashtags.local ?? [])]; if (all.length) fields.push({ path: 'hashtags', value: all.join(' ') }); }
-  if (expanded) for (const path of ['description.short', 'altText', 'seo.title', 'seo.metaDescription']) { const v = get(path); if (v) fields.push({ path, value: v }); }
+  const get = (path: string): string | undefined =>
+    path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), text) as string | undefined;
+  for (const path of ['description.long', 'captions.instagram', 'captions.tiktok', 'captions.whatsapp_status', 'captions.facebook', 'captions.x']) {
+    const v = get(path);
+    if (v) fields.push({ path, value: v });
+  }
+  if (text.hashtags) {
+    const all = [...(text.hashtags.broad ?? []), ...(text.hashtags.niche ?? []), ...(text.hashtags.local ?? [])];
+    if (all.length) fields.push({ path: 'hashtags', value: all.join(' ') });
+  }
+  if (expanded)
+    for (const path of ['description.short', 'altText', 'seo.title', 'seo.metaDescription']) {
+      const v = get(path);
+      if (v) fields.push({ path, value: v });
+    }
   return (
     <div className={styles.copyBlock}>
       {fields.map((f) => (
-        <CopyField key={f.path} path={f.path} value={f.value} editable={editable && Boolean(COPY_FIELDS[f.path])} onCopy={() => void copy(COPY_FIELDS[f.path]?.label ?? 'Hashtags', f.value)} onEdit={(v) => onEdit(f.path, v)} onRegenerate={(i) => onRegenerate(f.path, i)} />
+        <CopyField
+          key={f.path}
+          path={f.path}
+          value={f.value}
+          editable={editable && Boolean(COPY_FIELDS[f.path])}
+          onCopy={() => void copy(COPY_FIELDS[f.path]?.label ?? 'Hashtags', f.value)}
+          onEdit={(v) => onEdit(f.path, v)}
+          onRegenerate={(i) => onRegenerate(f.path, i)}
+        />
       ))}
-      <Button variant="link" size="sm" onClick={() => setExpanded((e) => !e)} style={{ justifySelf: 'start' }}>{expanded ? 'Less' : 'More: short description, alt text, SEO'}</Button>
+      <Button variant="link" size="sm" onClick={() => setExpanded((e) => !e)} style={{ justifySelf: 'start' }}>
+        {expanded ? 'Less' : 'More: short description, alt text, SEO'}
+      </Button>
     </div>
   );
 }
 
 /** One field: read, or edit in place with the original shown for comparison, or ask for a rewrite with a note. */
-function CopyField({ path, value, editable, onCopy, onEdit, onRegenerate }: { path: string; value: string; editable: boolean; onCopy: () => void; onEdit: (v: string) => void; onRegenerate: (instruction: string) => Promise<{ ok: boolean; message?: string }> }) {
+function CopyField({
+  path,
+  value,
+  editable,
+  onCopy,
+  onEdit,
+  onRegenerate,
+}: {
+  path: string;
+  value: string;
+  editable: boolean;
+  onCopy: () => void;
+  onEdit: (v: string) => void;
+  onRegenerate: (instruction: string) => Promise<{ ok: boolean; message?: string }>;
+}) {
   const { toast } = useToast();
   const spec = COPY_FIELDS[path];
   const label = spec?.label ?? 'Hashtags';
@@ -169,39 +329,105 @@ function CopyField({ path, value, editable, onCopy, onEdit, onRegenerate }: { pa
     setBusy(true);
     const r = await onRegenerate(note.trim());
     setBusy(false);
-    if (r.ok) { setMode('read'); setNote(''); toast({ title: `${label} rewritten`, body: '1 credit.', tone: 'ok', durationMs: 2500 }); }
-    else toast({ title: 'Could not rewrite', body: r.message, tone: 'danger' });
+    if (r.ok) {
+      setMode('read');
+      setNote('');
+      toast({ title: `${label} rewritten`, body: '1 credit.', tone: 'ok', durationMs: 2500 });
+    } else toast({ title: 'Could not rewrite', body: r.message, tone: 'danger' });
   };
 
   return (
     <div className={styles.copyField}>
       <div className={styles.copyFieldHead}>
-        <span>{label}{changed && <em style={{ marginLeft: 8, fontStyle: 'normal', color: 'var(--accent)' }}>· edited</em>}</span>
+        <span>
+          {label}
+          {changed && <em style={{ marginLeft: 8, fontStyle: 'normal', color: 'var(--accent)' }}>· edited</em>}
+        </span>
         <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
-          {editable && mode === 'read' && <Button variant="link" size="sm" onClick={() => { setDraft(value); setMode('edit'); }}>Edit</Button>}
-          {editable && mode === 'read' && <Button variant="link" size="sm" onClick={() => setMode('ask')}>Rewrite · 1 cr</Button>}
-          <Button variant="link" size="sm" onClick={onCopy}>Copy</Button>
+          {editable && mode === 'read' && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => {
+                setDraft(value);
+                setMode('edit');
+              }}
+            >
+              Edit
+            </Button>
+          )}
+          {editable && mode === 'read' && (
+            <Button variant="link" size="sm" onClick={() => setMode('ask')}>
+              Rewrite · 1 cr
+            </Button>
+          )}
+          <Button variant="link" size="sm" onClick={onCopy}>
+            Copy
+          </Button>
         </span>
       </div>
       {mode === 'read' && <div className={styles.copyText}>{value}</div>}
       {mode === 'edit' && (
         <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
-          <textarea className={styles.copyText} style={{ font: 'inherit', fontSize: 'var(--t-2)', resize: 'vertical', minHeight: 96, maxHeight: 'none', color: 'var(--ink)' }} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={`Edit ${label}`} />
-          {changed && <details><summary style={{ fontSize: 'var(--t-1)', color: 'var(--muted)', cursor: 'pointer' }}>What it said before</summary><div className={styles.copyText} style={{ marginTop: 6, color: 'var(--muted)' }}>{original}</div></details>}
+          <textarea
+            className={styles.copyText}
+            style={{ font: 'inherit', fontSize: 'var(--t-2)', resize: 'vertical', minHeight: 96, maxHeight: 'none', color: 'var(--ink)' }}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label={`Edit ${label}`}
+          />
+          {changed && (
+            <details>
+              <summary style={{ fontSize: 'var(--t-1)', color: 'var(--muted)', cursor: 'pointer' }}>What it said before</summary>
+              <div className={styles.copyText} style={{ marginTop: 6, color: 'var(--muted)' }}>
+                {original}
+              </div>
+            </details>
+          )}
           <div style={{ display: 'flex', gap: 'var(--s-2)', alignItems: 'center' }}>
-            <Button size="sm" onClick={() => { onEdit(draft); setMode('read'); }} disabled={over || !draft.trim()}>Save</Button>
-            <Button size="sm" variant="ghost" onClick={() => setMode('read')}>Cancel</Button>
-            {spec && <span className="mono" style={{ marginLeft: 'auto', color: over ? 'var(--danger)' : undefined }}>{draft.length} / {spec.max}</span>}
+            <Button
+              size="sm"
+              onClick={() => {
+                onEdit(draft);
+                setMode('read');
+              }}
+              disabled={over || !draft.trim()}
+            >
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setMode('read')}>
+              Cancel
+            </Button>
+            {spec && (
+              <span className="mono" style={{ marginLeft: 'auto', color: over ? 'var(--danger)' : undefined }}>
+                {draft.length} / {spec.max}
+              </span>
+            )}
           </div>
         </div>
       )}
       {mode === 'ask' && (
         <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
           <div className={styles.copyText}>{value}</div>
-          <input className={styles.copyText} style={{ font: 'inherit', fontSize: 'var(--t-2)', color: 'var(--ink)' }} placeholder="What should change? e.g. shorter, mention the free delivery, less formal" value={note} onChange={(e) => setNote(e.target.value)} maxLength={400} aria-label={`How to rewrite ${label}`} onKeyDown={(e) => { if (e.key === 'Enter') void rewrite(); }} />
+          <input
+            className={styles.copyText}
+            style={{ font: 'inherit', fontSize: 'var(--t-2)', color: 'var(--ink)' }}
+            placeholder="What should change? e.g. shorter, mention the free delivery, less formal"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={400}
+            aria-label={`How to rewrite ${label}`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void rewrite();
+            }}
+          />
           <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
-            <Button size="sm" loading={busy} onClick={() => void rewrite()}>Rewrite for 1 credit</Button>
-            <Button size="sm" variant="ghost" onClick={() => setMode('read')} disabled={busy}>Cancel</Button>
+            <Button size="sm" loading={busy} onClick={() => void rewrite()}>
+              Rewrite for 1 credit
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setMode('read')} disabled={busy}>
+              Cancel
+            </Button>
           </div>
         </div>
       )}
@@ -209,12 +435,21 @@ function CopyField({ path, value, editable, onCopy, onEdit, onRegenerate }: { pa
   );
 }
 
-const sizeLabel = (v: GenerationOutputRow) => ({ feed_square: 'Feed 1:1', feed_portrait: 'Feed 4:5', story: 'Story', landscape: 'Landscape', marketplace: 'Marketplace' } as Record<string, string>)[v.size ?? ''] ?? v.size ?? 'Size';
+const sizeLabel = (v: GenerationOutputRow) =>
+  (({ feed_square: 'Feed 1:1', feed_portrait: 'Feed 4:5', story: 'Story', landscape: 'Landscape', marketplace: 'Marketplace' }) as Record<string, string>)[
+    v.size ?? ''
+  ] ??
+  v.size ??
+  'Size';
 
 /** "12s" ticking while live, frozen after. Uses a re-render tick only while needed. */
 function useElapsed(since: number, live: boolean): string {
   const [, tick] = useState(0);
-  useEffect(() => { if (!live) return; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [live]);
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [live]);
   const s = Math.max(0, Math.round((Date.now() - since) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -223,7 +458,23 @@ function useElapsed(since: number, live: boolean): string {
  * A song or a voiceover. A locked song plays its 30-second preview with the
  * unlock button beside it; once unlocked, the full track plays and downloads.
  */
-function AudioBlock({ card, url, locked, title, genre, unlockPrice, onUnlock }: { card: GenerationCard; url?: string; locked: boolean; title: string | null; genre?: string; unlockPrice: number | null; onUnlock?: () => Promise<{ ok: boolean; status?: number; message?: string }> }) {
+function AudioBlock({
+  card,
+  url,
+  locked,
+  title,
+  genre,
+  unlockPrice,
+  onUnlock,
+}: {
+  card: GenerationCard;
+  url?: string;
+  locked: boolean;
+  title: string | null;
+  genre?: string;
+  unlockPrice: number | null;
+  onUnlock?: () => Promise<{ ok: boolean; status?: number; message?: string }>;
+}) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const unlock = async () => {
@@ -238,18 +489,32 @@ function AudioBlock({ card, url, locked, title, genre, unlockPrice, onUnlock }: 
   return (
     <div className={styles.audio} data-locked={locked || undefined}>
       <div className={styles.audioHead}>
-        <span className={styles.audioIcon} aria-hidden="true">{card.capability === 'MUSIC' ? <Icon.music /> : <Icon.mic />}</span>
+        <span className={styles.audioIcon} aria-hidden="true">
+          {card.capability === 'MUSIC' ? <Icon.music /> : <Icon.mic />}
+        </span>
         <div className={styles.audioMeta}>
           <strong>{title ?? (card.capability === 'MUSIC' ? 'Your song' : 'Your voiceover')}</strong>
-          <span>{card.capability === 'MUSIC' ? (locked ? `${genre ? `${genre} · ` : ''}30-second preview` : `${genre ? `${genre} · ` : ''}full song`) : 'ready to use'}</span>
+          <span>
+            {card.capability === 'MUSIC'
+              ? locked
+                ? `${genre ? `${genre} · ` : ''}30-second preview`
+                : `${genre ? `${genre} · ` : ''}full song`
+              : 'ready to use'}
+          </span>
         </div>
-        {locked && <Badge tone="warn" dot>Preview</Badge>}
+        {locked && (
+          <Badge tone="warn" dot>
+            Preview
+          </Badge>
+        )}
       </div>
       {url ? <audio src={url} controls preload="metadata" className={styles.player} /> : <Skeleton style={{ height: 44 }} />}
       {locked && card.status === 'SUCCEEDED' && (
         <div className={styles.unlockRow}>
           <span>Love it? The full song is {unlockPrice ?? '—'} credits. It stays yours to download and use.</span>
-          <Button size="sm" loading={busy} onClick={() => void unlock()} leading={<Icon.lock width={14} height={14} />}>Unlock the full song{unlockPrice ? ` · ${unlockPrice} cr` : ''}</Button>
+          <Button size="sm" loading={busy} onClick={() => void unlock()} leading={<Icon.lock width={14} height={14} />}>
+            Unlock the full song{unlockPrice ? ` · ${unlockPrice} cr` : ''}
+          </Button>
         </div>
       )}
     </div>
@@ -264,8 +529,19 @@ function LyricsView({ label, text }: { label: string; text: string }) {
       <div className={styles.copyFieldHead}>
         <span>{label}</span>
         <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
-          <Button variant="link" size="sm" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : 'Show'}</Button>
-          <Button variant="link" size="sm" onClick={() => { void navigator.clipboard?.writeText(text); toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 }); }}>Copy</Button>
+          <Button variant="link" size="sm" onClick={() => setOpen((o) => !o)}>
+            {open ? 'Hide' : 'Show'}
+          </Button>
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard?.writeText(text);
+              toast({ title: `${label} copied`, tone: 'ok', durationMs: 2000 });
+            }}
+          >
+            Copy
+          </Button>
         </span>
       </div>
       {open && <p className={styles.copyText}>{text}</p>}

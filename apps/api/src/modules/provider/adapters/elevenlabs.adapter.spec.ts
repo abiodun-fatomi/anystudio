@@ -8,7 +8,10 @@ const exec = promisify(execFile);
 
 describe('lyrics sections', () => {
   it('splits tagged lyrics and treats untagged text as one verse', () => {
-    expect(splitSections('[Verse]\nline one\nline two\n\n[Chorus]\nhook\nhook')).toEqual([{ name: 'Verse', lines: ['line one', 'line two'] }, { name: 'Chorus', lines: ['hook', 'hook'] }]);
+    expect(splitSections('[Verse]\nline one\nline two\n\n[Chorus]\nhook\nhook')).toEqual([
+      { name: 'Verse', lines: ['line one', 'line two'] },
+      { name: 'Chorus', lines: ['hook', 'hook'] },
+    ]);
     expect(splitSections('just words\nmore words')).toEqual([{ name: 'Verse', lines: ['just words', 'more words'] }]);
     expect(splitSections('[Intro]\n\n[Verse]\nx')).toEqual([{ name: 'Verse', lines: ['x'] }]);
   });
@@ -28,7 +31,11 @@ describe('style words', () => {
 describe('preview cut', () => {
   it('cuts the first seconds of a track to MP3 and reports the full length', async () => {
     // Six seconds of tone, so the preview is shorter than the whole.
-    const { stdout } = await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:a', 'libmp3lame', '-f', 'mp3', 'pipe:1'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await exec(
+      'ffmpeg',
+      ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:a', 'libmp3lame', '-f', 'mp3', 'pipe:1'],
+      { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 },
+    );
     const { preview, fullMs } = await cutPreview(new Uint8Array(stdout), 'mp3', 3);
     expect(fullMs).toBeGreaterThan(5500);
     expect(preview.byteLength).toBeGreaterThan(1000);

@@ -1,14 +1,71 @@
-.list{display:grid;border:1px solid var(--line-soft);border-radius:var(--r-lg);overflow:hidden;background:var(--surface-2)}
-.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s-3);align-items:center;padding:var(--s-3) var(--s-4);text-decoration:none;color:var(--ink);border-bottom:1px solid var(--line-soft)}
-.item:last-child{border-bottom:0}
-.item:hover{background:var(--sunk);text-decoration:none}
-.item[data-unread]{background:var(--accent-wash)}
-.icon{width:36px;height:36px;border-radius:var(--r-md);background:var(--sunk);display:grid;place-items:center;color:var(--ink-soft)}
-.icon[data-kind="GENERATION_DONE"]{color:var(--ok)}
-.icon[data-kind="GENERATION_FAILED"]{color:var(--danger)}
-.icon[data-kind="CREDITS"]{color:var(--accent)}
-.text{display:grid;gap:2px;min-width:0}
-.title{font-weight:600;font-size:var(--t-2)}
-.body{font-size:var(--t-1);color:var(--ink-soft)}
-.when{font-size:var(--t-1);color:var(--muted);white-space:nowrap}
-@media(max-width:560px){.item{grid-template-columns:auto minmax(0,1fr)}.when{grid-column:2}}
+.list {
+  display: grid;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  text-decoration: none;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
+}
+.item:last-child {
+  border-bottom: 0;
+}
+.item:hover {
+  background: var(--sunk);
+  text-decoration: none;
+}
+.item[data-unread] {
+  background: var(--accent-wash);
+}
+.icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+}
+.icon[data-kind='GENERATION_DONE'] {
+  color: var(--ok);
+}
+.icon[data-kind='GENERATION_FAILED'] {
+  color: var(--danger);
+}
+.icon[data-kind='CREDITS'] {
+  color: var(--accent);
+}
+.text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.title {
+  font-weight: 600;
+  font-size: var(--t-2);
+}
+.body {
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+}
+.when {
+  font-size: var(--t-1);
+  color: var(--muted);
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .when {
+    grid-column: 2;
+  }
+}

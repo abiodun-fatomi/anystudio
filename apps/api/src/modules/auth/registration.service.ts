@@ -153,7 +153,11 @@ export class RegistrationService {
     try {
       const parsed = text.startsWith('+') ? parsePhoneNumber(text) : parsePhoneNumber(text, (country?.toUpperCase() as CountryCode | undefined) ?? 'NG');
       if (parsed && isValidPhoneNumber(parsed.number)) return parsed.number;
-    } catch { /* fall through to the message */ }
-    throw new ValidationError({ fields: [{ path: 'phone', message: 'Enter a real number with its country code, like +234 801 234 5678 or +254 712 345678.' }] });
+    } catch {
+      /* fall through to the message */
+    }
+    throw new ValidationError({
+      fields: [{ path: 'phone', message: 'Enter a real number with its country code, like +234 801 234 5678 or +254 712 345678.' }],
+    });
   }
 }

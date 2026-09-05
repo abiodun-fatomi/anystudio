@@ -40,14 +40,23 @@ export class ProviderRegistry {
       { present: Boolean(env.FAL_KEY), make: () => FalProvider.all(env.FAL_KEY!) },
       {
         present: Boolean(env.GOOGLE_AI_API_KEY || env.GOOGLE_VERTEX_SA_JSON),
-        make: () => GoogleProvider.all({ apiKey: env.GOOGLE_AI_API_KEY, saJson: env.GOOGLE_VERTEX_SA_JSON, project: env.GOOGLE_VERTEX_PROJECT, location: env.GOOGLE_VERTEX_LOCATION }),
+        make: () =>
+          GoogleProvider.all({
+            apiKey: env.GOOGLE_AI_API_KEY,
+            saJson: env.GOOGLE_VERTEX_SA_JSON,
+            project: env.GOOGLE_VERTEX_PROJECT,
+            location: env.GOOGLE_VERTEX_LOCATION,
+          }),
       },
       { present: Boolean(env.REPLICATE_API_TOKEN), make: () => ReplicateProvider.all(env.REPLICATE_API_TOKEN!) },
       { present: Boolean(env.PHOTOROOM_API_KEY), make: () => PhotoroomProvider.all(env.PHOTOROOM_API_KEY!) },
       { present: Boolean(env.OPENAI_API_KEY), make: () => OpenAiProvider.all(env.OPENAI_API_KEY!) },
       { present: Boolean(env.ANTHROPIC_API_KEY), make: () => AnthropicProvider.all(env.ANTHROPIC_API_KEY!) },
       { present: Boolean(env.BFL_API_KEY), make: () => BflProvider.all(env.BFL_API_KEY!) },
-      { present: Boolean(env.HIGGSFIELD_API_KEY && env.HIGGSFIELD_API_SECRET), make: () => HiggsfieldProvider.all(env.HIGGSFIELD_API_KEY!, env.HIGGSFIELD_API_SECRET!) },
+      {
+        present: Boolean(env.HIGGSFIELD_API_KEY && env.HIGGSFIELD_API_SECRET),
+        make: () => HiggsfieldProvider.all(env.HIGGSFIELD_API_KEY!, env.HIGGSFIELD_API_SECRET!),
+      },
       { present: Boolean(env.HEYGEN_API_KEY), make: () => HeyGenProvider.all(env.HEYGEN_API_KEY!) },
       { present: Boolean(env.ELEVENLABS_API_KEY), make: () => ElevenLabsProvider.all(env.ELEVENLABS_API_KEY!) },
       { present: Boolean(env.SYNC_API_KEY), make: () => SyncProvider.all(env.SYNC_API_KEY!) },

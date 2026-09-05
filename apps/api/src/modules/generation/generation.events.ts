@@ -104,14 +104,20 @@ export class GenerationEvents implements OnModuleDestroy {
       if (first) {
         yield first;
         if (first.type === 'done') return;
-        if (first.type === 'stage') { lastStage = first.stage; lastProgress = first.progress; }
+        if (first.type === 'stage') {
+          lastStage = first.stage;
+          lastProgress = first.progress;
+        }
       }
 
       while (!signal.aborted && Date.now() - startedAt < MAX_STREAM_MS) {
         // Drain whatever Redis delivered.
         while (inbox.length) {
           const e = inbox.shift()!;
-          if (e.type === 'stage') { lastStage = e.stage; lastProgress = e.progress; }
+          if (e.type === 'stage') {
+            lastStage = e.stage;
+            lastProgress = e.progress;
+          }
           yield e;
           if (e.type === 'done') return;
         }
@@ -119,16 +125,27 @@ export class GenerationEvents implements OnModuleDestroy {
         await new Promise<void>((resolve) => {
           wake = resolve;
           const t = setTimeout(resolve, subscribed ? POLL_MS * 2 : POLL_MS);
-          signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(t);
+              resolve();
+            },
+            { once: true },
+          );
         });
         wake = null;
         if (inbox.length) continue;
         // Nothing arrived: read the row. This is the fallback AND the safety net.
         const snap = await this.snapshot(generationId);
         if (!snap) return;
-        if (snap.type === 'done') { yield snap; return; }
+        if (snap.type === 'done') {
+          yield snap;
+          return;
+        }
         if (snap.type === 'stage' && (snap.stage !== lastStage || snap.progress !== lastProgress)) {
-          lastStage = snap.stage; lastProgress = snap.progress;
+          lastStage = snap.stage;
+          lastProgress = snap.progress;
           yield snap;
         }
       }

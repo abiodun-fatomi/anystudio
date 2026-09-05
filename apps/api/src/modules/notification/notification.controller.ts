@@ -24,13 +24,20 @@ export class NotificationController {
 
   @Get()
   @ApiOperation({ summary: 'The bell: personal notifications and platform messages, newest first, with the unread count' })
-  list(@CurrentActor() actor: Actor, @Query() q: ListQueryDto) { return this.notifications.list(actor.userId, { take: q.take, cursor: q.cursor, unreadOnly: q.unread }); }
+  list(@CurrentActor() actor: Actor, @Query() q: ListQueryDto) {
+    return this.notifications.list(actor.userId, { take: q.take, cursor: q.cursor, unreadOnly: q.unread });
+  }
 
   @Get('/unread')
   @ApiOperation({ summary: 'Just the count, for polling' })
-  async unread(@CurrentActor() actor: Actor) { return { unread: await this.notifications.unreadCount(actor.userId) }; }
+  async unread(@CurrentActor() actor: Actor) {
+    return { unread: await this.notifications.unreadCount(actor.userId) };
+  }
 
-  @Post('/read') @HttpCode(HttpStatus.OK)
+  @Post('/read')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark some (ids) or all read' })
-  read(@CurrentActor() actor: Actor, @Body() body: ReadDto) { return this.notifications.markRead(actor.userId, body.all ? 'all' : body.ids ?? []); }
+  read(@CurrentActor() actor: Actor, @Body() body: ReadDto) {
+    return this.notifications.markRead(actor.userId, body.all ? 'all' : (body.ids ?? []));
+  }
 }

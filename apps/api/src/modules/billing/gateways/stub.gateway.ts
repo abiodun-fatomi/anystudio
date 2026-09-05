@@ -45,18 +45,33 @@ export class StubGateway implements Gateway {
   parseWebhook(rawBody: Buffer, headers: Record<string, string | string[] | undefined>): ParsedWebhook {
     const sig = headers['x-stub-signature'];
     let body: unknown = null;
-    try { body = JSON.parse(rawBody.toString('utf8')); } catch { body = null; }
+    try {
+      body = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      body = null;
+    }
     const b = (body ?? {}) as { id?: string; type?: string };
     return { signatureOk: (Array.isArray(sig) ? sig[0] : sig) === this.secret, eventId: b.id ?? `${b.type}:none`, type: b.type ?? 'unknown', body };
   }
 
   interpret(parsed: ParsedWebhook): WebhookIntent {
-    const b = (parsed.body ?? {}) as { type?: string; reference?: string; providerRef?: string; status?: 'succeeded' | 'failed' | 'pending'; subscriptionRef?: string; subStatus?: 'active' | 'past_due' | 'cancelled' | 'paused' };
-    if (parsed.type === 'charge') return { kind: 'charge', reference: b.reference, providerRef: b.providerRef, status: b.status ?? 'succeeded', subscriptionRef: b.subscriptionRef };
-    if (parsed.type === 'subscription' && b.subscriptionRef) return { kind: 'subscription', subscriptionRef: b.subscriptionRef, status: b.subStatus ?? 'active', reference: b.reference };
+    const b = (parsed.body ?? {}) as {
+      type?: string;
+      reference?: string;
+      providerRef?: string;
+      status?: 'succeeded' | 'failed' | 'pending';
+      subscriptionRef?: string;
+      subStatus?: 'active' | 'past_due' | 'cancelled' | 'paused';
+    };
+    if (parsed.type === 'charge')
+      return { kind: 'charge', reference: b.reference, providerRef: b.providerRef, status: b.status ?? 'succeeded', subscriptionRef: b.subscriptionRef };
+    if (parsed.type === 'subscription' && b.subscriptionRef)
+      return { kind: 'subscription', subscriptionRef: b.subscriptionRef, status: b.subStatus ?? 'active', reference: b.reference };
     if (parsed.type === 'refund' && b.providerRef) return { kind: 'refund', providerRef: b.providerRef };
     return { kind: 'ignore', why: 'stub' };
   }
 
-  async cancelSubscription(): Promise<void> { /* nothing to cancel */ }
+  async cancelSubscription(): Promise<void> {
+    /* nothing to cancel */
+  }
 }

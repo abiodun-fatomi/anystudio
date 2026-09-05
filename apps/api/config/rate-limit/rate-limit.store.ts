@@ -69,9 +69,7 @@ export class MemoryRateLimitStore implements RateLimitStore {
   async hit(key: string, limit: number, windowSec: number): Promise<RateVerdict> {
     const now = Date.now();
     const existing = this.windows.get(key);
-    const window = existing && existing.expiresAt > now
-      ? existing
-      : { count: 0, expiresAt: now + windowSec * 1000 };
+    const window = existing && existing.expiresAt > now ? existing : { count: 0, expiresAt: now + windowSec * 1000 };
 
     window.count += 1;
     this.windows.set(key, window);
@@ -112,10 +110,7 @@ export class ResilientRateLimitStore implements RateLimitStore {
   constructor(private readonly redis?: RedisRateLimitStore) {
     if (!redis) {
       this.degraded = true;
-      logger.warn(
-        { store: 'memory' },
-        'rate limiting is per-instance: REDIS_URL is not set, so limits are not shared between instances',
-      );
+      logger.warn({ store: 'memory' }, 'rate limiting is per-instance: REDIS_URL is not set, so limits are not shared between instances');
     }
   }
 
@@ -159,7 +154,7 @@ export function createRedis(url: string | undefined): Redis | undefined {
     maxRetriesPerRequest: 1,
     connectTimeout: 2_000,
     commandTimeout: 500, // a limiter that waits is worse than one that guesses
-retryStrategy: (times) => Math.min(times * 200, 5_000),
+    retryStrategy: (times) => Math.min(times * 200, 5_000),
   });
   // Errors are expected while Redis is down; the store logs the state change,
   // so this listener exists only to stop ioredis throwing on an unhandled event.

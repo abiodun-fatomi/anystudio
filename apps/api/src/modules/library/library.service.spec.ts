@@ -38,21 +38,62 @@ suite('LibraryService + InsightsService', () => {
   const media = new MediaService(db);
   const library = new LibraryService(db, media);
   const insights = new InsightsService(db, ledger);
-  let workspaceId: string; let userId: string; let walletId: string;
+  let workspaceId: string;
+  let userId: string;
+  let walletId: string;
 
-  beforeAll(async () => { await db.$connect(); });
-  afterAll(async () => { await db.$disconnect(); });
+  beforeAll(async () => {
+    await db.$connect();
+  });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
   beforeEach(async () => {
     const user = await db.user.create({ data: { email: `lib-${crypto.randomUUID()}@test.local` } });
     userId = user.id;
-    const ws = await db.workspace.create({ data: { type: 'BUSINESS', name: 'Shop', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } }, include: { wallet: true } });
-    workspaceId = ws.id; walletId = ws.wallet!.id;
+    const ws = await db.workspace.create({
+      data: { type: 'BUSINESS', name: 'Shop', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } },
+      include: { wallet: true },
+    });
+    workspaceId = ws.id;
+    walletId = ws.wallet!.id;
     await ledger.grant({ walletId, amount: 500, idempotencyKey: `grant-${workspaceId}` });
-    const mk = (over: Record<string, unknown>) => db.generation.create({ data: { workspaceId, requestedById: userId, capability: 'IMAGE_EDIT', costCode: 'image.storefront', credits: 10, status: 'SUCCEEDED', finishedAt: new Date(), input: {}, outputs: [{ key: `k-${crypto.randomUUID()}.webp`, role: 'image', mime: 'image/webp' }], ...over } as never });
+    const mk = (over: Record<string, unknown>) =>
+      db.generation.create({
+        data: {
+          workspaceId,
+          requestedById: userId,
+          capability: 'IMAGE_EDIT',
+          costCode: 'image.storefront',
+          credits: 10,
+          status: 'SUCCEEDED',
+          finishedAt: new Date(),
+          input: {},
+          outputs: [{ key: `k-${crypto.randomUUID()}.webp`, role: 'image', mime: 'image/webp' }],
+          ...over,
+        } as never,
+      });
     await mk({ ...libraryFields({ productName: 'Ankara Wrap Dress', prompt: 'studio white' }), createdAt: new Date(Date.now() - 3 * 86400_000) });
-    await mk({ ...libraryFields({ productName: 'Ankara Wrap Dress', prompt: 'on a beach' }), favourite: true, createdAt: new Date(Date.now() - 2 * 86400_000) });
-    await mk({ ...libraryFields({ productName: 'Palm oil 5L' }), capability: 'TEXT_GENERATE', costCode: 'text.description', credits: 2, outputs: [{ key: '', role: 'text', mime: 'application/json', text: { description: { long: 'Pure red palm oil from Ondo' } } }], searchText: 'Palm oil 5L Pure red palm oil from Ondo' });
-    await mk({ ...libraryFields({ productName: 'Palm oil 5L' }), capability: 'IMAGE_TO_VIDEO', costCode: 'video.reel', credits: 120, outputs: [{ key: 'v.mp4', role: 'video', mime: 'video/mp4' }] });
+    await mk({
+      ...libraryFields({ productName: 'Ankara Wrap Dress', prompt: 'on a beach' }),
+      favourite: true,
+      createdAt: new Date(Date.now() - 2 * 86400_000),
+    });
+    await mk({
+      ...libraryFields({ productName: 'Palm oil 5L' }),
+      capability: 'TEXT_GENERATE',
+      costCode: 'text.description',
+      credits: 2,
+      outputs: [{ key: '', role: 'text', mime: 'application/json', text: { description: { long: 'Pure red palm oil from Ondo' } } }],
+      searchText: 'Palm oil 5L Pure red palm oil from Ondo',
+    });
+    await mk({
+      ...libraryFields({ productName: 'Palm oil 5L' }),
+      capability: 'IMAGE_TO_VIDEO',
+      costCode: 'video.reel',
+      credits: 120,
+      outputs: [{ key: 'v.mp4', role: 'video', mime: 'video/mp4' }],
+    });
     await mk({ capability: 'TEXT_GENERATE', input: { task: 'shot_plan' }, costCode: 'video.shot', credits: 0 });
     await mk({ status: 'FAILED', failureKind: 'PROVIDER_DOWN', finishedAt: null });
     await mk({ kind: 'CHILD', costCode: 'video.shot', credits: 0 });
@@ -94,7 +135,12 @@ suite('LibraryService + InsightsService', () => {
 
   it('groups a catalogue by product', async () => {
     const p = await library.products(workspaceId);
-    expect(p.map((x) => [x.productKey, x.count])).toEqual(expect.arrayContaining([['ankara-wrap-dress', 2], ['palm-oil-5l', 2]]));
+    expect(p.map((x) => [x.productKey, x.count])).toEqual(
+      expect.arrayContaining([
+        ['ankara-wrap-dress', 2],
+        ['palm-oil-5l', 2],
+      ]),
+    );
   });
 
   it('rename, star, delete — and a deleted item leaves every list', async () => {

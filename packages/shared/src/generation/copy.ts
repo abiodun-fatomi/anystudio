@@ -27,13 +27,15 @@ export const copyOutputSchema = z.object({
     bullets: z.array(z.string().max(120)).min(2).max(6),
     specs: z.array(z.object({ label: z.string().max(40), value: z.string().max(80) })).max(8),
   }),
-  captions: z.object({
-    instagram: z.string().max(PLATFORM_LIMITS.instagram.caption),
-    tiktok: z.string().max(PLATFORM_LIMITS.tiktok.caption),
-    whatsapp_status: z.string().max(PLATFORM_LIMITS.whatsapp_status.caption),
-    facebook: z.string().max(PLATFORM_LIMITS.facebook.caption),
-    x: z.string().max(PLATFORM_LIMITS.x.caption),
-  }).partial(),
+  captions: z
+    .object({
+      instagram: z.string().max(PLATFORM_LIMITS.instagram.caption),
+      tiktok: z.string().max(PLATFORM_LIMITS.tiktok.caption),
+      whatsapp_status: z.string().max(PLATFORM_LIMITS.whatsapp_status.caption),
+      facebook: z.string().max(PLATFORM_LIMITS.facebook.caption),
+      x: z.string().max(PLATFORM_LIMITS.x.caption),
+    })
+    .partial(),
   hashtags: z.object({
     broad: z.array(z.string().regex(/^#\S{2,40}$/)).max(10),
     niche: z.array(z.string().regex(/^#\S{2,40}$/)).max(10),
@@ -94,12 +96,17 @@ export const COPY_JSON_SCHEMA: Record<string, unknown> = {
 /** A shot plan for a multi-shot ad: what the TEXT step writes and the video step executes. */
 export const shotPlanSchema = z.object({
   hook: z.string().max(120),
-  shots: z.array(z.object({
-    prompt: z.string().min(10).max(600),
-    motion: z.string().max(200),
-    durationSec: z.union([z.literal(5), z.literal(8)]),
-    caption: z.string().max(120),
-  })).min(1).max(4),
+  shots: z
+    .array(
+      z.object({
+        prompt: z.string().min(10).max(600),
+        motion: z.string().max(200),
+        durationSec: z.union([z.literal(5), z.literal(8)]),
+        caption: z.string().max(120),
+      }),
+    )
+    .min(1)
+    .max(4),
   endCard: z.object({ text: z.string().max(80), price: z.string().max(40).optional() }),
   music: z.object({ mood: z.string().max(40), tempo: z.enum(['slow', 'mid', 'fast']) }).optional(),
 });
@@ -160,10 +167,15 @@ export const COPY_FIELDS: Record<string, { label: string; max: number }> = {
 export const LYRICS_SECTION_TAGS = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'outro'] as const;
 export const lyricsSchema = z.object({
   title: z.string().min(1).max(120),
-  sections: z.array(z.object({
-    tag: z.enum(LYRICS_SECTION_TAGS),
-    lines: z.array(z.string().max(200)).min(1).max(12),
-  })).min(1).max(12),
+  sections: z
+    .array(
+      z.object({
+        tag: z.enum(LYRICS_SECTION_TAGS),
+        lines: z.array(z.string().max(200)).min(1).max(12),
+      }),
+    )
+    .min(1)
+    .max(12),
 });
 export type Lyrics = z.infer<typeof lyricsSchema>;
 
@@ -190,6 +202,13 @@ export const LYRICS_JSON_SCHEMA: Record<string, unknown> = {
 
 /** "[Verse]\nline\nline\n\n[Chorus]\n…" — the form both music models read. */
 export function lyricsToText(l: Lyrics): string {
-  const label: Record<(typeof LYRICS_SECTION_TAGS)[number], string> = { intro: 'Intro', verse: 'Verse', 'pre-chorus': 'Pre-Chorus', chorus: 'Chorus', bridge: 'Bridge', outro: 'Outro' };
+  const label: Record<(typeof LYRICS_SECTION_TAGS)[number], string> = {
+    intro: 'Intro',
+    verse: 'Verse',
+    'pre-chorus': 'Pre-Chorus',
+    chorus: 'Chorus',
+    bridge: 'Bridge',
+    outro: 'Outro',
+  };
   return l.sections.map((s) => `[${label[s.tag]}]\n${s.lines.join('\n')}`).join('\n\n');
 }

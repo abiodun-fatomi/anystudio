@@ -67,7 +67,13 @@ export type Pipeline = (ctx: PipelineContext) => Promise<PipelineResult>;
 /** One provider call, its artifacts returned as they are. */
 export const passthrough: Pipeline = async (ctx) => {
   const result = await ctx.callProvider(
-    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: ctx.row.capability, params: ctx.row.input as Record<string, unknown>, files: ctx.files },
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      capability: ctx.row.capability,
+      params: ctx.row.input as Record<string, unknown>,
+      files: ctx.files,
+    },
     { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
   );
   return { artifacts: result.artifacts, providerKey: result.providerKey, providerJobId: result.providerJobId, costMinor: result.costMinor };

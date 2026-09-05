@@ -48,18 +48,23 @@ describe('LoggingMailer', () => {
 
 describe('ResendMailer', () => {
   it('returns the provider id, which is what support needs later', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 're_123' }), { status: 200 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ id: 're_123' }), { status: 200 })),
+    );
 
     const receipt = await new ResendMailer('key', 'AnyStudio <a@b.test>').send(message);
 
     expect(receipt).toEqual({ transport: 'resend', id: 're_123' });
   });
 
-  it('throws with the provider\'s own words when it refuses', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('domain is not verified', { status: 403 })));
+  it("throws with the provider's own words when it refuses", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('domain is not verified', { status: 403 })),
+    );
 
-    await expect(new ResendMailer('key', 'from').send(message))
-      .rejects.toThrow(/403.*domain is not verified/);
+    await expect(new ResendMailer('key', 'from').send(message)).rejects.toThrow(/403.*domain is not verified/);
   });
 
   it('sends text as well as html, because plain text is what every client renders', async () => {

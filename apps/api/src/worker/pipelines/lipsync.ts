@@ -33,14 +33,22 @@ export const lipsyncPipeline: Pipeline = async (ctx) => {
   await ctx.stage('generating', 30, 'matching the lips');
   const result = await ctx.callProvider(
     { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'LIPSYNC', files, params: { ...p, audioKey } },
-    { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', Math.max(30, Math.min(85, progress ?? 50)), detail) },
+    {
+      timeoutMs: ctx.budgetMs,
+      signal: ctx.signal,
+      onProgress: (detail, progress) => void ctx.stage('generating', Math.max(30, Math.min(85, progress ?? 50)), detail),
+    },
   );
   const video = result.artifacts.find((a) => a.role === 'video');
   if (!video) throw new ProviderError('RETRYABLE', `${result.providerKey} returned no video`, result.providerKey);
 
   const artifacts: ProviderArtifact[] = [
     video,
-    { text: { script: recorded?.script ?? null, voice: p.voiceId ?? null, language: p.language, audioKey: p.audioKey ?? null, syncedBy: result.providerKey }, mime: 'application/json', role: 'text' },
+    {
+      text: { script: recorded?.script ?? null, voice: p.voiceId ?? null, language: p.language, audioKey: p.audioKey ?? null, syncedBy: result.providerKey },
+      mime: 'application/json',
+      role: 'text',
+    },
   ];
   return {
     artifacts,
@@ -52,7 +60,11 @@ export const lipsyncPipeline: Pipeline = async (ctx) => {
 
 /** Read the script in the chosen voice and store the take beside the row. */
 async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
-  const script = p.script!.replace(/[*_#`>]/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  const script = p
+    .script!.replace(/[*_#`>]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   let providerVoiceId: string | undefined;
   let only: string | undefined;
   let language = p.language;
@@ -64,7 +76,11 @@ async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
     if (!p.language || p.language === 'en') language = voice.language.split('-')[0] ?? 'en';
   }
   const params: CapabilityParams<'VOICEOVER'> = { script, language, voiceId: p.voiceId, style: 'natural', speed: 1, providerVoiceId };
-  const r = await ctx.callCapability('VOICEOVER', { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params, files: {} }, { timeoutMs: 120_000, signal: ctx.signal, route: only ? { only } : undefined });
+  const r = await ctx.callCapability(
+    'VOICEOVER',
+    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params, files: {} },
+    { timeoutMs: 120_000, signal: ctx.signal, route: only ? { only } : undefined },
+  );
   const take = r.artifacts.find((a) => a.role === 'audio');
   const bytes = take?.bytes ?? (take?.url ? (await fetchBytes(r.providerKey, take.url, 60_000)).bytes : undefined);
   if (!take || !bytes) throw new ProviderError('RETRYABLE', `${r.providerKey} returned no audio for the script`, r.providerKey);
@@ -73,5 +89,12 @@ async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
   await ctx.media.put(audioKey, bytes, take.mime);
   const durationMs = take.durationMs ?? (await durationOf(bytes, ext));
   ctx.log.info({ audioKey, durationMs, words: script.split(/\s+/).length, providerKey: r.providerKey }, 'script recorded');
-  return { audioKey, file: { url: await ctx.media.signRead(audioKey, 60 * 60), mime: take.mime, bytes: bytes.byteLength } satisfies ProviderFile, providerKey: r.providerKey, providerJobId: r.providerJobId, costMinor: r.costMinor, script };
+  return {
+    audioKey,
+    file: { url: await ctx.media.signRead(audioKey, 60 * 60), mime: take.mime, bytes: bytes.byteLength } satisfies ProviderFile,
+    providerKey: r.providerKey,
+    providerJobId: r.providerJobId,
+    costMinor: r.costMinor,
+    script,
+  };
 }

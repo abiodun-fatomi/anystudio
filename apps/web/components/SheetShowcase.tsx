@@ -41,8 +41,12 @@ export function SheetShowcase() {
           <div key={f.n} className={styles.frame}>
             <div className={styles.art} style={{ background: f.art }} />
             <img className={styles.ph} alt="" src={f.src} loading="eager" />
-            <span className={styles.scrim} /><span className={styles.fnum}>{f.n}</span>
-            <div className={styles.tag}><span className={styles.nm}>{f.nm}</span><span className={styles.pr}>{f.pr}</span></div>
+            <span className={styles.scrim} />
+            <span className={styles.fnum}>{f.n}</span>
+            <div className={styles.tag}>
+              <span className={styles.nm}>{f.nm}</span>
+              <span className={styles.pr}>{f.pr}</span>
+            </div>
           </div>
         ))}
 
@@ -53,16 +57,30 @@ export function SheetShowcase() {
             <video
               ref={video}
               className={styles.vd}
-              autoPlay muted loop playsInline preload="auto" disablePictureInPicture
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              disablePictureInPicture
               onPlaying={() => setPlaying(true)}
-              onError={() => { setVideoFailed(true); setPlaying(false); }}
+              onError={() => {
+                setVideoFailed(true);
+                setPlaying(false);
+              }}
             >
               <source src="/shots/reel.mp4" type="video/mp4" />
             </video>
           )}
-          <span className={styles.scrim} /><span className={styles.fnum}>06</span>
-          <span className={styles.live}><i />Reel</span>
-          <span className={styles.prog}><i /></span>
+          <span className={styles.scrim} />
+          <span className={styles.fnum}>06</span>
+          <span className={styles.live}>
+            <i />
+            Reel
+          </span>
+          <span className={styles.prog}>
+            <i />
+          </span>
         </div>
       </div>
     </div>

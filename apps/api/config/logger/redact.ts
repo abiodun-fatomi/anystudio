@@ -31,8 +31,7 @@ export const REDACT_PATHS = [
 ];
 
 /** Layer 2 — any key matching this is replaced wherever it appears, at any depth. */
-const SENSITIVE_KEY =
-  /secret|token|password|passwd|api[-_]?key|authorization|credential|otp|cvv|pan|signed_?url/i;
+const SENSITIVE_KEY = /secret|token|password|passwd|api[-_]?key|authorization|credential|otp|cvv|pan|signed_?url/i;
 
 const PHONE = /(\+\d{1,3})(\d+)(\d{4})/g;
 const EMAIL = /\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g;

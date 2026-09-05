@@ -34,8 +34,26 @@ const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
 const AUTH_PATHS = ['/login', '/signup', '/forgot', '/reset'];
 
 /** Paths that belong to the portal. Anything else on the marketing host is content. */
-const APP_PREFIXES = ['/auth', '/verify', '/email-change', '/invite', '/welcome', '/today', '/studio', '/create', '/library',
-  '/products', '/brand', '/publishing', '/insights', '/developer', '/notifications', '/billing', '/settings', '/api'];
+const APP_PREFIXES = [
+  '/auth',
+  '/verify',
+  '/email-change',
+  '/invite',
+  '/welcome',
+  '/today',
+  '/studio',
+  '/create',
+  '/library',
+  '/products',
+  '/brand',
+  '/publishing',
+  '/insights',
+  '/developer',
+  '/notifications',
+  '/billing',
+  '/settings',
+  '/api',
+];
 
 export function middleware(req: NextRequest) {
   const host = req.headers.get('host') ?? '';
@@ -74,7 +92,8 @@ export function middleware(req: NextRequest) {
   if (onAdmin) {
     if (pathname === '/') return NextResponse.redirect(new URL('/admin', req.url), 307);
     if (pathname === '/login' && !req.nextUrl.searchParams.get('next')) return NextResponse.redirect(new URL('/login?next=/admin', req.url), 307);
-    if (pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/login' || pathname === '/forgot' || pathname === '/reset') return NextResponse.next();
+    if (pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/login' || pathname === '/forgot' || pathname === '/reset')
+      return NextResponse.next();
     return NextResponse.redirect(new URL('/admin', req.url), 307);
   }
   // The console reached on any other host belongs on its own.

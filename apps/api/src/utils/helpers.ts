@@ -20,10 +20,13 @@ export class Helpers {
 
   /** True when a value already looks like an envelope, so it is not wrapped twice. */
   static isEnvelope(value: unknown): value is ApiEnvelope<unknown> {
-    return typeof value === 'object' && value !== null
-      && typeof (value as ApiEnvelope<unknown>).status === 'number'
-      && typeof (value as ApiEnvelope<unknown>).message === 'string'
-      && 'data' in (value as object);
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as ApiEnvelope<unknown>).status === 'number' &&
+      typeof (value as ApiEnvelope<unknown>).message === 'string' &&
+      'data' in (value as object)
+    );
   }
 
   /** First name for a greeting, or null. "Adaeze Okonkwo" → "Adaeze". */

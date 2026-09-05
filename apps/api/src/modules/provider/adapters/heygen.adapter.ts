@@ -22,22 +22,34 @@ import { http, pick, poll } from './http';
 
 const KNOWN: Record<string, Capability> = { 'heygen:translate': 'DUB', 'heygen:lipsync': 'LIPSYNC' };
 
-interface HeyGenJob { status?: string; video_url?: string; failure_message?: string; output_language?: string }
+interface HeyGenJob {
+  status?: string;
+  video_url?: string;
+  failure_message?: string;
+  output_language?: string;
+}
 
 export class HeyGenProvider extends BaseProvider {
   static all(apiKey: string): HeyGenProvider[] {
     return Object.entries(KNOWN).map(([k, c]) => new HeyGenProvider(apiKey, k, c));
   }
 
-  constructor(private readonly apiKey: string, key: string, capability: Capability) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capability: Capability,
+  ) {
     super(key, [capability]);
   }
 
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     switch (input.capability) {
-      case 'DUB': return this.translate(input, opts);
-      case 'LIPSYNC': return this.lipsync(input, opts);
-      default: return this.unsupported(input.capability);
+      case 'DUB':
+        return this.translate(input, opts);
+      case 'LIPSYNC':
+        return this.lipsync(input, opts);
+      default:
+        return this.unsupported(input.capability);
     }
   }
 
@@ -61,12 +73,16 @@ export class HeyGenProvider extends BaseProvider {
 
     const submitted = await http<unknown>(this.key, `${base}/video-translations`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
     const providerJobId = pick<string[]>(submitted.json, 'data.video_translation_ids')?.[0] ?? pick<string[]>(submitted.json, 'video_translation_ids')?.[0];
-    if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, { raw: submitted.json });
+    if (!providerJobId)
+      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
+        raw: submitted.json,
+      });
     opts.onProgress?.('HeyGen is translating', 15);
 
     const job = await this.wait(`${base}/video-translations/${providerJobId}`, providerJobId, opts, 'translating');
     return {
-      providerKey: this.key, providerJobId,
+      providerKey: this.key,
+      providerJobId,
       artifacts: [{ url: job.video_url!, mime: 'video/mp4', role: 'video' }],
       meta: { language: p.targetLanguage, heygenLanguage: name, lipsync: p.lipsync, mode },
     };
@@ -85,31 +101,46 @@ export class HeyGenProvider extends BaseProvider {
     };
     const submitted = await http<unknown>(this.key, `${base}/lipsyncs`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
     const providerJobId = pick<string>(submitted.json, 'data.lipsync_id') ?? pick<string>(submitted.json, 'lipsync_id');
-    if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, { raw: submitted.json });
+    if (!providerJobId)
+      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
+        raw: submitted.json,
+      });
     opts.onProgress?.('HeyGen is syncing the lips', 15);
 
     const job = await this.wait(`${base}/lipsyncs/${providerJobId}`, providerJobId, opts, 'syncing');
     return { providerKey: this.key, providerJobId, artifacts: [{ url: job.video_url!, mime: 'video/mp4', role: 'video' }], meta: { mode } };
   }
 
-  private headers(): Record<string, string> { return { 'x-api-key': this.apiKey }; }
+  private headers(): Record<string, string> {
+    return { 'x-api-key': this.apiKey };
+  }
 
   /** Poll until the job settles; a failure message decides whether it was our input or their day. */
   private async wait(url: string, providerJobId: string, opts: ProviderOpts, verb: string): Promise<HeyGenJob> {
     return poll<HeyGenJob>(
       async () => {
         const s = await http<unknown>(this.key, url, { headers: this.headers(), timeoutMs: 20_000, signal: opts.signal });
-        const job = (pick<HeyGenJob>(s.json, 'data') ?? (s.json as HeyGenJob)) ?? {};
+        const job = pick<HeyGenJob>(s.json, 'data') ?? (s.json as HeyGenJob) ?? {};
         const st = (job.status ?? '').toLowerCase();
         if (st === 'completed' || st === 'success') {
           if (!job.video_url) throw new ProviderError('RETRYABLE', `${this.key}: completed without a video_url`, this.key, { providerJobId });
           return job;
         }
-        if (st === 'failed' || st === 'error') throw new ProviderError(classifyFailure(job.failure_message), `${this.key}: ${job.failure_message ?? 'job failed'}`, this.key, { providerJobId });
+        if (st === 'failed' || st === 'error')
+          throw new ProviderError(classifyFailure(job.failure_message), `${this.key}: ${job.failure_message ?? 'job failed'}`, this.key, { providerJobId });
         return null;
       },
-      { intervalMs: 10_000, timeoutMs: opts.timeoutMs, signal: opts.signal, onTick: (ms) => opts.onProgress?.(`HeyGen is ${verb} (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 6000)) },
-    ).catch((err) => { throw err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId }); });
+      {
+        intervalMs: 10_000,
+        timeoutMs: opts.timeoutMs,
+        signal: opts.signal,
+        onTick: (ms) => opts.onProgress?.(`HeyGen is ${verb} (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 6000)),
+      },
+    ).catch((err) => {
+      throw err instanceof ProviderError
+        ? err
+        : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
+    });
   }
 }
 

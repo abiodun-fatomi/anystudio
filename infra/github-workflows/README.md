@@ -12,11 +12,11 @@ worth keeping, so a human moves them:
 
 Read a file before moving it. What is installed today:
 
-| Workflow | File | Does |
-|---|---|---|
-| **CI** | `ci.yml` | Full suite on every PR and push: Prisma drift, lint, typecheck, migrate, seed, tests, build; pushes images to GHCR |
-| **Web** | `web-deploy.yml` | Builds the portal with OpenNext and deploys it to Cloudflare Workers |
-| **API** | `api.yml` *(here, to be moved)* | Checks the backend, then deploys the API and worker to Render at the tested commit, waits for live, smoke-tests through Cloudflare |
+| Workflow | File                            | Does                                                                                                                               |
+| -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **CI**   | `ci.yml`                        | Full suite on every PR and push: Prisma drift, lint, typecheck, migrate, seed, tests, build; pushes images to GHCR                 |
+| **Web**  | `web-deploy.yml`                | Builds the portal with OpenNext and deploys it to Cloudflare Workers                                                               |
+| **API**  | `api.yml` _(here, to be moved)_ | Checks the backend, then deploys the API and worker to Render at the tested commit, waits for live, smoke-tests through Cloudflare |
 
 `deploy.yml` (Render deploy hooks fired after CI) is superseded by `api.yml`
 and must go: with both present every backend merge deploys twice.
@@ -25,31 +25,31 @@ and must go: with both present every backend merge deploys twice.
 
 One repository secret (Settings → Secrets and variables → Actions):
 
-| Secret | Value |
-|---|---|
+| Secret           | Value                                         |
+| ---------------- | --------------------------------------------- |
 | `RENDER_API_KEY` | Render → Account Settings → API Keys → Create |
 
 Three variables on **each** GitHub environment (Settings → Environments →
 `development` / `staging` / `production` → Environment variables). None is
 sensitive — they are identifiers, not credentials:
 
-| Variable | Value |
-|---|---|
-| `RENDER_API_SERVICE_ID` | the `srv-…` id of that environment's API service, from its dashboard URL |
-| `RENDER_WORKER_SERVICE_ID` | the `srv-…` id of that environment's worker service |
-| `API_URL` | optional — `https://anystudio-api-dev.onrender.com` until `api.dev.anystudio.ai` exists, then delete it |
+| Variable                   | Value                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `RENDER_API_SERVICE_ID`    | the `srv-…` id of that environment's API service, from its dashboard URL                                |
+| `RENDER_WORKER_SERVICE_ID` | the `srv-…` id of that environment's worker service                                                     |
+| `API_URL`                  | optional — `https://anystudio-api-dev.onrender.com` until `api.dev.anystudio.ai` exists, then delete it |
 
 The deploy job refuses to run, with a message naming what is missing, until
-those are set. Every secret the *API itself* needs (database, Google, Resend,
+those are set. Every secret the _API itself_ needs (database, Google, Resend,
 `APP_KEY`, …) lives in Render's env groups, not in GitHub — see
 `docs/DEPLOY.md` §5.
 
 ## What `web-deploy.yml` needs
 
-| Secret | Value |
-|---|---|
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → Overview, right-hand column |
-| `CLOUDFLARE_API_TOKEN` | My Profile → API Tokens → Create → template **Edit Cloudflare Workers**, then add **Zone → DNS → Edit** and **Zone → SSL and Certificates → Edit** for `anystudio.ai` |
+| Secret                  | Value                                                                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → Overview, right-hand column                                                                                                  |
+| `CLOUDFLARE_API_TOKEN`  | My Profile → API Tokens → Create → template **Edit Cloudflare Workers**, then add **Zone → DNS → Edit** and **Zone → SSL and Certificates → Edit** for `anystudio.ai` |
 
 No per-environment variables: the app derives its API and admin hostnames
 from the request host, and the Worker's own runtime values live in

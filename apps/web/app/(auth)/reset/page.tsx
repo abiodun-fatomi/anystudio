@@ -25,7 +25,10 @@ function ResetForm() {
   /** Capture the token, then scrub it from the address bar. */
   useEffect(() => {
     const t = params.get('token');
-    if (!t) { setState('invalid'); return; }
+    if (!t) {
+      setState('invalid');
+      return;
+    }
     setToken(t);
     window.history.replaceState(null, '', '/reset');
   }, [params]);
@@ -34,13 +37,20 @@ function ResetForm() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
-    if (password !== confirm) { setError('Those two passwords do not match.'); return; }
-    setError(null); setBusy(true);
+    if (password !== confirm) {
+      setError('Those two passwords do not match.');
+      return;
+    }
+    setError(null);
+    setBusy(true);
     try {
       const r = await api.auth.reset(token, password);
       setState(r.status === 'reset' ? 'done' : 'invalid');
-    } catch { setError('Something went wrong. Try the link again.'); }
-    finally { setBusy(false); }
+    } catch {
+      setError('Something went wrong. Try the link again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (state === 'invalid') {
@@ -50,7 +60,9 @@ function ResetForm() {
         <p style={{ color: 'var(--muted)', marginTop: 10, lineHeight: 1.55 }}>
           Reset links work once and for 30 minutes. Ask for a new one and use it straight away.
         </p>
-        <Link href="/forgot" className="btn" style={{ marginTop: 22 }}>Send a new link</Link>
+        <Link href="/forgot" className="btn" style={{ marginTop: 22 }}>
+          Send a new link
+        </Link>
       </div>
     );
   }
@@ -62,7 +74,9 @@ function ResetForm() {
         <p style={{ color: 'var(--muted)', marginTop: 10, lineHeight: 1.55 }}>
           You&apos;ve been signed out everywhere, including WhatsApp web sessions, so anyone who had your old password is out too.
         </p>
-        <button className="btn" style={{ marginTop: 22 }} onClick={() => router.replace('/login')}>Sign in</button>
+        <button className="btn" style={{ marginTop: 22 }} onClick={() => router.replace('/login')}>
+          Sign in
+        </button>
       </div>
     );
   }
@@ -73,21 +87,46 @@ function ResetForm() {
       <p style={{ color: 'var(--muted)', marginTop: 10 }}>At least 8 characters. A short sentence you&apos;ll remember beats a word with numbers.</p>
       <div className="field" style={{ marginTop: 26 }}>
         <label htmlFor="pw">New password</label>
-        <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8} autoFocus
-          value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <PasswordControl
+          id="pw"
+          className="inp"
+          autoComplete="new-password"
+          minLength={8}
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
       </div>
       <div className="field">
         <label htmlFor="pw2">Type it again</label>
-        <PasswordControl id="pw2" className="inp" autoComplete="new-password" minLength={8}
-          value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        <PasswordControl
+          id="pw2"
+          className="inp"
+          autoComplete="new-password"
+          minLength={8}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          required
+        />
       </div>
-      {error && <p className="err" role="alert">{error}</p>}
-      <button className="btn" type="submit" disabled={busy || password.length < 8}>{busy ? 'Saving…' : 'Save new password'}</button>
+      {error && (
+        <p className="err" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="btn" type="submit" disabled={busy || password.length < 8}>
+        {busy ? 'Saving…' : 'Save new password'}
+      </button>
     </form>
   );
 }
 
 export default function ResetPage() {
   // useSearchParams needs a Suspense boundary under the App Router.
-  return <Suspense fallback={null}><ResetForm /></Suspense>;
+  return (
+    <Suspense fallback={null}>
+      <ResetForm />
+    </Suspense>
+  );
 }

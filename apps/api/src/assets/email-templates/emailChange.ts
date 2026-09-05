@@ -9,15 +9,24 @@ export function emailChangeConfirm(to: string, name: string | null, link: string
   return {
     to,
     subject: 'Confirm your new AnyStudio email',
-    text: [greet(name), '',
+    text: [
+      greet(name),
+      '',
       `You asked to move your AnyStudio account to ${to}. Open this link within 24 hours to make it so:`,
-      link, '',
+      link,
+      '',
       "If you didn't ask for this, ignore it — nothing changes unless the link is opened.",
-      '', SIGNATURE].join('\n'),
-    html: html([greet(name),
-      `You asked to move your AnyStudio account to <strong>${to}</strong>. The link below works for 24 hours.`,
-      "If you didn't ask for this, ignore this email — nothing changes unless the link is opened."],
-      { label: 'Use this email', url: link }),
+      '',
+      SIGNATURE,
+    ].join('\n'),
+    html: html(
+      [
+        greet(name),
+        `You asked to move your AnyStudio account to <strong>${to}</strong>. The link below works for 24 hours.`,
+        "If you didn't ask for this, ignore this email — nothing changes unless the link is opened.",
+      ],
+      { label: 'Use this email', url: link },
+    ),
   };
 }
 
@@ -31,16 +40,25 @@ export function emailChangeNotice(to: string, name: string | null, newEmail: str
   return {
     to,
     subject: 'Someone asked to change the email on your AnyStudio account',
-    text: [greet(name), '',
+    text: [
+      greet(name),
+      '',
       `A request was made to change the email on your AnyStudio account from ${to} to ${newEmail}. It only takes effect once the new address confirms it.`,
       '',
       "If that was you, there's nothing to do here.",
       "If it wasn't, open Security, change your password and sign out everywhere:",
-      securityUrl, '', SIGNATURE].join('\n'),
-    html: html([greet(name),
-      `A request was made to change the email on your AnyStudio account from <strong>${to}</strong> to <strong>${newEmail}</strong>. It only takes effect once the new address confirms it.`,
-      "If that was you, there's nothing to do.",
-      "If it wasn't, change your password and sign out everywhere from the Security screen."],
-      { label: 'Open Security', url: securityUrl }),
+      securityUrl,
+      '',
+      SIGNATURE,
+    ].join('\n'),
+    html: html(
+      [
+        greet(name),
+        `A request was made to change the email on your AnyStudio account from <strong>${to}</strong> to <strong>${newEmail}</strong>. It only takes effect once the new address confirms it.`,
+        "If that was you, there's nothing to do.",
+        "If it wasn't, change your password and sign out everywhere from the Security screen.",
+      ],
+      { label: 'Open Security', url: securityUrl },
+    ),
   };
 }

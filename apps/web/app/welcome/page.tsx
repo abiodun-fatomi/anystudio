@@ -18,8 +18,13 @@ type Channel = NonNullable<WorkspaceProfile['channels']>[number];
 type Tone = NonNullable<WorkspaceProfile['tone']>;
 
 const CHANNELS: Array<[Channel, string]> = [
-  ['whatsapp', 'WhatsApp'], ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['facebook', 'Facebook'],
-  ['jiji', 'Jiji'], ['shop', 'My own shop / site'], ['market', 'A physical shop or market'],
+  ['whatsapp', 'WhatsApp'],
+  ['instagram', 'Instagram'],
+  ['tiktok', 'TikTok'],
+  ['facebook', 'Facebook'],
+  ['jiji', 'Jiji'],
+  ['shop', 'My own shop / site'],
+  ['market', 'A physical shop or market'],
 ];
 
 const TONES: Array<[Tone, string, string]> = [
@@ -49,14 +54,19 @@ export default function WelcomePage() {
     if (channels.length) patch.channels = channels;
     if (tone) patch.tone = tone;
     if (Object.keys(patch).length === 0) return router.replace('/today');
-    setBusy(true); setError(null);
-    try { await api.workspace.patchProfile(ws.id, patch); router.replace('/today'); }
-    catch { setError('Could not save that — you can set it later in Brand kit.'); setBusy(false); }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.workspace.patchProfile(ws.id, patch);
+      router.replace('/today');
+    } catch {
+      setError('Could not save that — you can set it later in Brand kit.');
+      setBusy(false);
+    }
   }
 
   /** Toggle a channel chip. */
-  const toggleChannel = (c: Channel) =>
-    setChannels((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
+  const toggleChannel = (c: Channel) => setChannels((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
 
   const next = () => (step < 2 ? setStep(step + 1) : void finish());
 
@@ -68,30 +78,50 @@ export default function WelcomePage() {
       <div className={styles.card} role="dialog" aria-labelledby="wh">
         <div className={styles.top}>
           <div className={styles.steps} aria-label={`Step ${step + 1} of 3`}>
-            {[0, 1, 2].map((i) => <i key={i} data-on={i <= step} />)}
+            {[0, 1, 2].map((i) => (
+              <i key={i} data-on={i <= step} />
+            ))}
           </div>
-          <button type="button" className={styles.skip} onClick={finish} disabled={busy}>Skip for now</button>
+          <button type="button" className={styles.skip} onClick={finish} disabled={busy}>
+            Skip for now
+          </button>
         </div>
 
         {step === 0 && (
           <>
-            <h1 id="wh" className={styles.h}>{first ? `Welcome, ${first}.` : 'Welcome.'} What do you sell?</h1>
-            <p className={styles.p}>A few words is enough — “Ankara fabrics”, “skincare”, “phone accessories”. It goes straight into how we write about your products.</p>
+            <h1 id="wh" className={styles.h}>
+              {first ? `Welcome, ${first}.` : 'Welcome.'} What do you sell?
+            </h1>
+            <p className={styles.p}>
+              A few words is enough — “Ankara fabrics”, “skincare”, “phone accessories”. It goes straight into how we write about your products.
+            </p>
             <div className="field" style={{ marginTop: 20 }}>
               <label htmlFor="sells">What you sell</label>
-              <input id="sells" className="inp" autoFocus placeholder="e.g. Handmade leather bags" maxLength={120}
-                value={sells} onChange={(e) => setSells(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && next()} />
+              <input
+                id="sells"
+                className="inp"
+                autoFocus
+                placeholder="e.g. Handmade leather bags"
+                maxLength={120}
+                value={sells}
+                onChange={(e) => setSells(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && next()}
+              />
             </div>
           </>
         )}
 
         {step === 1 && (
           <>
-            <h1 id="wh" className={styles.h}>Where do you sell today?</h1>
+            <h1 id="wh" className={styles.h}>
+              Where do you sell today?
+            </h1>
             <p className={styles.p}>Pick everything that applies. We&apos;ll suggest the right connections first and size images for those places.</p>
             <div className={styles.chips}>
               {CHANNELS.map(([c, label]) => (
-                <button key={c} type="button" className={styles.chip} aria-pressed={channels.includes(c)} onClick={() => toggleChannel(c)}>{label}</button>
+                <button key={c} type="button" className={styles.chip} aria-pressed={channels.includes(c)} onClick={() => toggleChannel(c)}>
+                  {label}
+                </button>
               ))}
             </div>
           </>
@@ -99,22 +129,33 @@ export default function WelcomePage() {
 
         {step === 2 && (
           <>
-            <h1 id="wh" className={styles.h}>How should your captions sound?</h1>
+            <h1 id="wh" className={styles.h}>
+              How should your captions sound?
+            </h1>
             <p className={styles.p}>You can change this any time, and edit every caption before it goes out.</p>
             <div className={styles.tones}>
               {TONES.map(([t, name, desc]) => (
                 <button key={t} type="button" className={styles.tone} aria-pressed={tone === t} onClick={() => setTone(t)}>
-                  <strong>{name}</strong><span>{desc}</span>
+                  <strong>{name}</strong>
+                  <span>{desc}</span>
                 </button>
               ))}
             </div>
           </>
         )}
 
-        {error && <p className={`err ${styles.err}`} role="alert">{error}</p>}
+        {error && (
+          <p className={`err ${styles.err}`} role="alert">
+            {error}
+          </p>
+        )}
 
         <div className={styles.actions}>
-          {step > 0 && <button type="button" className="btn ghost" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}
+          {step > 0 && (
+            <button type="button" className="btn ghost" onClick={() => setStep(step - 1)} disabled={busy}>
+              Back
+            </button>
+          )}
           <button type="button" className="btn" onClick={next} disabled={busy}>
             {busy ? 'Saving…' : step < 2 ? 'Continue' : 'Open my studio'}
           </button>

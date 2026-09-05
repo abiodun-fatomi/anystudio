@@ -18,9 +18,24 @@ import { StaffReplyDto, SupportListQueryDto } from './support.dto';
 export class SupportAdminController {
   constructor(private readonly support: SupportService) {}
 
-  @Get() list(@Query() q: SupportListQueryDto) { return this.support.list(q); }
-  @Get('/:id') one(@Param('id', ParseUUIDPipe) id: string) { return this.support.staffOne(id); }
-  @Post('/:id/reply') @HttpCode(HttpStatus.OK) reply(@CurrentActor() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() b: StaffReplyDto, @Req() req: Request) { return this.support.staffReply(a, id, b, req); }
-  @Post('/:id/resolve') @HttpCode(HttpStatus.OK) resolve(@CurrentActor() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) { return this.support.staffResolve(a, id, req); }
-  @Post('/:id/close') @HttpCode(HttpStatus.OK) close(@CurrentActor() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) { return this.support.staffClose(a, id, req); }
+  @Get() list(@Query() q: SupportListQueryDto) {
+    return this.support.list(q);
+  }
+  @Get('/:id') one(@Param('id', ParseUUIDPipe) id: string) {
+    return this.support.staffOne(id);
+  }
+  @Post('/:id/reply') @HttpCode(HttpStatus.OK) reply(
+    @CurrentActor() a: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() b: StaffReplyDto,
+    @Req() req: Request,
+  ) {
+    return this.support.staffReply(a, id, b, req);
+  }
+  @Post('/:id/resolve') @HttpCode(HttpStatus.OK) resolve(@CurrentActor() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.support.staffResolve(a, id, req);
+  }
+  @Post('/:id/close') @HttpCode(HttpStatus.OK) close(@CurrentActor() a: Actor, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.support.staffClose(a, id, req);
+  }
 }

@@ -24,9 +24,20 @@ export class WorkspaceService {
   async create(actorId: string, dto: WorkspaceCreateDto, req: Request) {
     const owned = await this.db.workspaceMember.count({ where: { userId: actorId, role: 'OWNER', workspace: { deletedAt: null } } });
     if (owned >= 5) throw new ConflictError('Five workspaces is the limit for one account. Delete one you no longer use first.');
-    const seed = await this.db.workspaceMember.findFirst({ where: { userId: actorId }, include: { workspace: { select: { currency: true, region: true } } }, orderBy: { createdAt: 'asc' } });
+    const seed = await this.db.workspaceMember.findFirst({
+      where: { userId: actorId },
+      include: { workspace: { select: { currency: true, region: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
     const ws = await this.db.workspace.create({
-      data: { type: dto.type, name: dto.name.trim(), currency: seed?.workspace.currency ?? 'NGN', region: seed?.workspace.region ?? 'ng', members: { create: { userId: actorId, role: 'OWNER' } }, wallet: { create: {} } },
+      data: {
+        type: dto.type,
+        name: dto.name.trim(),
+        currency: seed?.workspace.currency ?? 'NGN',
+        region: seed?.workspace.region ?? 'ng',
+        members: { create: { userId: actorId, role: 'OWNER' } },
+        wallet: { create: {} },
+      },
       select: { id: true, type: true, name: true, currency: true, region: true },
     });
     authLog('workspace.create', 'succeeded', { userId: actorId, workspaceId: ws.id, type: ws.type }, req);

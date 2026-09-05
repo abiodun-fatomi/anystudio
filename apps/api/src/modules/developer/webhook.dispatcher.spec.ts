@@ -11,15 +11,22 @@ import type { MediaService } from '../media/media.service';
 import { WebhookDispatcher } from './webhook.dispatcher';
 import { WEBHOOK_PAUSE_AFTER, verifyWebhook } from './developer.types';
 
-let server: Server; let port = 0;
+let server: Server;
+let port = 0;
 let mode: 'ok' | 'fail' = 'ok';
 const received: Array<{ headers: Record<string, string | string[] | undefined>; body: string }> = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => {
     let body = '';
-    req.on('data', (c) => { body += c; });
-    req.on('end', () => { received.push({ headers: req.headers, body }); res.statusCode = mode === 'ok' ? 200 : 503; res.end(); });
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      received.push({ headers: req.headers, body });
+      res.statusCode = mode === 'ok' ? 200 : 503;
+      res.end();
+    });
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   port = (server.address() as { port: number }).port;
@@ -27,15 +34,43 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((r) => server.close(() => r())));
 
 function fakeStore() {
-  const endpoint: WebhookEndpoint = { id: 'e1', workspaceId: 'w1', projectId: null, url: `http://127.0.0.1:${port}/hook`, secret: 'whsec_test', events: [], active: true, failures: 0, lastDeliveryAt: null, createdAt: new Date() };
+  const endpoint: WebhookEndpoint = {
+    id: 'e1',
+    workspaceId: 'w1',
+    projectId: null,
+    url: `http://127.0.0.1:${port}/hook`,
+    secret: 'whsec_test',
+    events: [],
+    active: true,
+    failures: 0,
+    lastDeliveryAt: null,
+    createdAt: new Date(),
+  };
   const deliveries = new Map<string, WebhookDelivery>();
   const db = {
     webhookDelivery: {
       create: async ({ data }: { data: { endpointId: string; event: string; payload: unknown } }) => {
-        const d: WebhookDelivery = { id: `d${deliveries.size + 1}`, endpointId: data.endpointId, event: data.event, payload: data.payload as never, status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), responseStatus: null, lastError: null, createdAt: new Date(), deliveredAt: null };
-        deliveries.set(d.id, d); return d;
+        const d: WebhookDelivery = {
+          id: `d${deliveries.size + 1}`,
+          endpointId: data.endpointId,
+          event: data.event,
+          payload: data.payload as never,
+          status: 'PENDING',
+          attempts: 0,
+          nextAttemptAt: new Date(),
+          responseStatus: null,
+          lastError: null,
+          createdAt: new Date(),
+          deliveredAt: null,
+        };
+        deliveries.set(d.id, d);
+        return d;
       },
-      update: async ({ where, data }: { where: { id: string }; data: Partial<WebhookDelivery> }) => { const d = { ...deliveries.get(where.id)!, ...data }; deliveries.set(d.id, d); return d; },
+      update: async ({ where, data }: { where: { id: string }; data: Partial<WebhookDelivery> }) => {
+        const d = { ...deliveries.get(where.id)!, ...data };
+        deliveries.set(d.id, d);
+        return d;
+      },
       findUniqueOrThrow: async ({ where }: { where: { id: string } }) => ({ ...deliveries.get(where.id)!, endpoint }),
       findMany: async () => [...deliveries.values()].filter((d) => d.status === 'PENDING' && d.nextAttemptAt <= new Date()).map((d) => ({ ...d, endpoint })),
     },
@@ -83,11 +118,30 @@ describe('WebhookDispatcher', () => {
   it('turns a finished API generation into one delivery per interested endpoint, with signed output URLs', async () => {
     mode = 'ok';
     const { dispatcher, deliveries } = fakeStore();
-    const row = { id: 'g9', workspaceId: 'w1', projectId: 'p1', channel: 'API', kind: 'STANDALONE', status: 'SUCCEEDED', capability: 'IMAGE_EDIT', clientKey: 'c1', merchantRef: 'store-9', credits: 10, costCode: 'image.storefront', createdAt: new Date(), finishedAt: new Date(), outputs: [{ key: 'w1/x.png', role: 'image', mime: 'image/png' }, { key: 'w1/vault/song.mp3', role: 'audio', mime: 'audio/mpeg', locked: true }], failureKind: null } as never;
+    const row = {
+      id: 'g9',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      channel: 'API',
+      kind: 'STANDALONE',
+      status: 'SUCCEEDED',
+      capability: 'IMAGE_EDIT',
+      clientKey: 'c1',
+      merchantRef: 'store-9',
+      credits: 10,
+      costCode: 'image.storefront',
+      createdAt: new Date(),
+      finishedAt: new Date(),
+      outputs: [
+        { key: 'w1/x.png', role: 'image', mime: 'image/png' },
+        { key: 'w1/vault/song.mp3', role: 'audio', mime: 'audio/mpeg', locked: true },
+      ],
+      failureKind: null,
+    } as never;
     await dispatcher.onGenerationFinished(row);
     const d = [...deliveries.values()][0]!;
     expect(d.event).toBe('generation.succeeded');
-    const data = (d.payload as { data: { outputs: Array<{ key: string; url: string | null }> ; merchantRef: string } }).data;
+    const data = (d.payload as { data: { outputs: Array<{ key: string; url: string | null }>; merchantRef: string } }).data;
     expect(data.merchantRef).toBe('store-9');
     expect(data.outputs[0]).toMatchObject({ key: 'w1/x.png', url: 'https://signed/w1/x.png' });
     expect(data.outputs[1]).toMatchObject({ key: '', url: null });

@@ -31,14 +31,29 @@ describe('Paddle signature', () => {
     expect(PaddleGateway.verifySignature(`ts=${ts};h1=${h1}`, body, secret)).toBe(true);
     expect(PaddleGateway.verifySignature(`ts=${ts};h1=${h1}`, Buffer.from(body.toString() + ' '), secret)).toBe(false);
     expect(PaddleGateway.verifySignature(`ts=${ts};h1=${h1}`, body, 'other')).toBe(false);
-    expect(PaddleGateway.verifySignature(`ts=${ts - 3600};h1=${createHmac('sha256', secret).update(`${ts - 3600}:`).update(body).digest('hex')}`, body, secret)).toBe(false);
+    expect(
+      PaddleGateway.verifySignature(
+        `ts=${ts - 3600};h1=${createHmac('sha256', secret)
+          .update(`${ts - 3600}:`)
+          .update(body)
+          .digest('hex')}`,
+        body,
+        secret,
+      ),
+    ).toBe(false);
     // Key rotation: two h1 values, either may match.
     expect(PaddleGateway.verifySignature(`ts=${ts};h1=deadbeef;h1=${h1}`, body, secret)).toBe(true);
   });
   it('parses a webhook into a receipt id and an intent', () => {
     const g = new PaddleGateway('key', secret, 'sandbox');
     const ts = Math.floor(Date.now() / 1000);
-    const raw = Buffer.from(JSON.stringify({ event_id: 'evt_9', event_type: 'transaction.completed', data: { id: 'txn_9', customer_id: 'ctm_1', subscription_id: null, custom_data: { reference: 'as_pack_abc' } } }));
+    const raw = Buffer.from(
+      JSON.stringify({
+        event_id: 'evt_9',
+        event_type: 'transaction.completed',
+        data: { id: 'txn_9', customer_id: 'ctm_1', subscription_id: null, custom_data: { reference: 'as_pack_abc' } },
+      }),
+    );
     const parsed = g.parseWebhook(raw, { 'paddle-signature': `ts=${ts};h1=${createHmac('sha256', secret).update(`${ts}:`).update(raw).digest('hex')}` });
     expect(parsed.signatureOk).toBe(true);
     expect(parsed.eventId).toBe('evt_9');
@@ -48,7 +63,12 @@ describe('Paddle signature', () => {
 
 describe('Flutterwave signature', () => {
   const g = new FlutterwaveGateway('FLWSECK-x', 'my-dashboard-hash');
-  const raw = Buffer.from(JSON.stringify({ event: 'charge.completed', data: { id: 123, tx_ref: 'as_pack_x', amount: 5000, currency: 'NGN', status: 'successful', customer: { email: 'A@b.ng' } } }));
+  const raw = Buffer.from(
+    JSON.stringify({
+      event: 'charge.completed',
+      data: { id: 123, tx_ref: 'as_pack_x', amount: 5000, currency: 'NGN', status: 'successful', customer: { email: 'A@b.ng' } },
+    }),
+  );
   it('accepts the dashboard hash in verif-hash and the v4 HMAC, rejects anything else', () => {
     expect(g.parseWebhook(raw, { 'verif-hash': 'my-dashboard-hash' }).signatureOk).toBe(true);
     expect(g.parseWebhook(raw, { 'verif-hash': 'wrong' }).signatureOk).toBe(false);
@@ -88,21 +108,45 @@ suite('BillingService (stub gateway, real ledger)', () => {
   const service = new BillingService(db, ledger, registry, auth, new NotificationService(db, new GenerationHooks()));
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'test' } as unknown as Request;
 
-  let workspaceId: string; let walletId: string; let userId: string;
-  const actor = (role = 'OWNER'): Actor => ({ userId, surface: 'APP', staffRole: null, workspaceRoles: new Map([[workspaceId, role as 'OWNER']]), mfaLevel: 0, lastStepUpAt: null, impersonating: false });
+  let workspaceId: string;
+  let walletId: string;
+  let userId: string;
+  const actor = (role = 'OWNER'): Actor => ({
+    userId,
+    surface: 'APP',
+    staffRole: null,
+    workspaceRoles: new Map([[workspaceId, role as 'OWNER']]),
+    mfaLevel: 0,
+    lastStepUpAt: null,
+    impersonating: false,
+  });
 
   beforeAll(async () => {
     await db.$connect();
-    await db.creditPack.upsert({ where: { code: 'test.pack' }, create: { code: 'test.pack', credits: 200, priceByMarket: { NGN: 5000, USD: 4 } }, update: { credits: 200, priceByMarket: { NGN: 5000, USD: 4 }, active: true } });
-    await db.plan.upsert({ where: { code: 'test.plan' }, create: { code: 'test.plan', credits: 600, priceByMarket: { NGN: 12000, USD: 9 }, yearlyPriceByMarket: { NGN: 120000, USD: 90 } }, update: { credits: 600, priceByMarket: { NGN: 12000, USD: 9 }, yearlyPriceByMarket: { NGN: 120000, USD: 90 }, active: true } });
+    await db.creditPack.upsert({
+      where: { code: 'test.pack' },
+      create: { code: 'test.pack', credits: 200, priceByMarket: { NGN: 5000, USD: 4 } },
+      update: { credits: 200, priceByMarket: { NGN: 5000, USD: 4 }, active: true },
+    });
+    await db.plan.upsert({
+      where: { code: 'test.plan' },
+      create: { code: 'test.plan', credits: 600, priceByMarket: { NGN: 12000, USD: 9 }, yearlyPriceByMarket: { NGN: 120000, USD: 90 } },
+      update: { credits: 600, priceByMarket: { NGN: 12000, USD: 9 }, yearlyPriceByMarket: { NGN: 120000, USD: 90 }, active: true },
+    });
   });
-  afterAll(async () => { await db.$disconnect(); });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
 
   beforeEach(async () => {
     const user = await db.user.create({ data: { email: `bill-${crypto.randomUUID()}@test.local`, name: 'Buyer' } });
     userId = user.id;
-    const ws = await db.workspace.create({ data: { type: 'BUSINESS', name: 'Shop', currency: 'NGN', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } }, include: { wallet: true } });
-    workspaceId = ws.id; walletId = ws.wallet!.id;
+    const ws = await db.workspace.create({
+      data: { type: 'BUSINESS', name: 'Shop', currency: 'NGN', members: { create: { userId, role: 'OWNER' } }, wallet: { create: {} } },
+      include: { wallet: true },
+    });
+    workspaceId = ws.id;
+    walletId = ws.wallet!.id;
   });
 
   it('prices on the server, and the catalogue speaks the workspace currency', async () => {
@@ -173,7 +217,13 @@ suite('BillingService (stub gateway, real ledger)', () => {
     await expect(service.checkout(actor(), workspaceId, { kind: 'plan', code: 'test.plan' }, req)).rejects.toMatchObject({ status: 409 });
 
     // The gateway renews: a charge we have no row for, on a subscription we know.
-    const renew = JSON.stringify({ id: 'evt_renew_' + workspaceId, type: 'charge', providerRef: 'stub_renew', status: 'succeeded', subscriptionRef: `stubsub_${workspaceId.slice(0, 8)}` });
+    const renew = JSON.stringify({
+      id: 'evt_renew_' + workspaceId,
+      type: 'charge',
+      providerRef: 'stub_renew',
+      status: 'succeeded',
+      subscriptionRef: `stubsub_${workspaceId.slice(0, 8)}`,
+    });
     const r = await service.handleWebhook('STUB', Buffer.from(renew), { 'x-stub-signature': 'stub' });
     expect(r.outcome).toBe('granted');
     expect(await ledger.balance(walletId)).toBe(1200);
@@ -181,7 +231,12 @@ suite('BillingService (stub gateway, real ledger)', () => {
 
     const cancelled = await service.cancelSubscription(actor(), workspaceId, req);
     expect(cancelled.cancelAtPeriodEnd).toBe(true);
-    const gone = JSON.stringify({ id: 'evt_cancel_' + workspaceId, type: 'subscription', subscriptionRef: `stubsub_${workspaceId.slice(0, 8)}`, subStatus: 'cancelled' });
+    const gone = JSON.stringify({
+      id: 'evt_cancel_' + workspaceId,
+      type: 'subscription',
+      subscriptionRef: `stubsub_${workspaceId.slice(0, 8)}`,
+      subStatus: 'cancelled',
+    });
     await service.handleWebhook('STUB', Buffer.from(gone), { 'x-stub-signature': 'stub' });
     expect(await service.subscription(workspaceId)).toBeNull();
   });
@@ -198,7 +253,11 @@ suite('BillingService (stub gateway, real ledger)', () => {
     const again = await service.checkout(actor(), workspaceId, { kind: 'pack', code: 'test.pack' }, req);
     await service.verifyPayment(workspaceId, again.paymentId, { providerRef: 'stub_r2' }, req);
     await ledger.debit({ walletId, amount: 150, idempotencyKey: `spend-${again.paymentId}` });
-    const r = await service.handleWebhook('STUB', Buffer.from(JSON.stringify({ id: 'evt_refund_' + again.reference, type: 'refund', providerRef: 'stub_r2' })), { 'x-stub-signature': 'stub' });
+    const r = await service.handleWebhook(
+      'STUB',
+      Buffer.from(JSON.stringify({ id: 'evt_refund_' + again.reference, type: 'refund', providerRef: 'stub_r2' })),
+      { 'x-stub-signature': 'stub' },
+    );
     expect(r.outcome).toBe('refunded_clawback_failed');
     expect(await ledger.balance(walletId)).toBe(50);
   });

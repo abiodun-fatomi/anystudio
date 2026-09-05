@@ -15,7 +15,9 @@ function harness(origin: string) {
   const user = { id: 'u1', status: 'ACTIVE', credentialEpoch: 1 };
   const db = {
     authToken: {
-      create: vi.fn(async ({ data }: { data: Omit<Row, 'id' | 'consumedAt'> }) => { rows.push({ id: `t${rows.length}`, consumedAt: null, ...data }); }),
+      create: vi.fn(async ({ data }: { data: Omit<Row, 'id' | 'consumedAt'> }) => {
+        rows.push({ id: `t${rows.length}`, consumedAt: null, ...data });
+      }),
       findUnique: vi.fn(async ({ where }: { where: { tokenHash: string } }) => rows.find((r) => r.tokenHash === where.tokenHash) ?? null),
       updateMany: vi.fn(async ({ where, data }: { where: { id: string; consumedAt: null }; data: { consumedAt: Date } }) => {
         const r = rows.find((x) => x.id === where.id && x.consumedAt === null);
@@ -36,8 +38,12 @@ function harness(origin: string) {
 }
 
 describe('sign-in hand-off between hosts', () => {
-  beforeEach(() => { process.env.APP_ENV = 'dev'; });
-  afterEach(() => { delete process.env.APP_ENV; });
+  beforeEach(() => {
+    process.env.APP_ENV = 'dev';
+  });
+  afterEach(() => {
+    delete process.env.APP_ENV;
+  });
 
   it('mints a one-time app-host URL instead of a session when the form was on the marketing host', async () => {
     const h = harness('https://dev.anystudio.ai');
@@ -86,7 +92,15 @@ describe('sign-in hand-off between hosts', () => {
 
   it('refuses an expired token', async () => {
     const app = harness('https://app.dev.anystudio.ai');
-    app.rows.push({ id: 't', purpose: 'SESSION_HANDOFF', tokenHash: createHash('sha256').update('anything').digest('hex'), userId: 'u1', payload: {}, expiresAt: new Date(Date.now() - 1), consumedAt: null });
+    app.rows.push({
+      id: 't',
+      purpose: 'SESSION_HANDOFF',
+      tokenHash: createHash('sha256').update('anything').digest('hex'),
+      userId: 'u1',
+      payload: {},
+      expiresAt: new Date(Date.now() - 1),
+      consumedAt: null,
+    });
     const r = await app.svc.completeHandoff({ token: 'anything' }, app.req, app.res);
     expect(r.data).toEqual({ status: 'invalid_token' });
   });

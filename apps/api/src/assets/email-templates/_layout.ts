@@ -26,7 +26,9 @@ export function html(bodyLines: string[], action?: { label: string; url: string 
       `<p style="margin:0 0 16px;color:#6E6575;font-size:13px">If the button does not work, paste this into your browser:<br>` +
       `<span style="word-break:break-all">${action.url}</span></p>`
     : '';
-  return `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;` +
+  return (
+    `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;` +
     `color:#17131A;max-width:520px">${p}${button}` +
-    `<p style="margin:28px 0 0;color:#6E6575;font-size:13px">AnyStudio · <a href="https://anystudio.ai" style="color:#6E6575">anystudio.ai</a></p></div>`;
+    `<p style="margin:28px 0 0;color:#6E6575;font-size:13px">AnyStudio · <a href="https://anystudio.ai" style="color:#6E6575">anystudio.ai</a></p></div>`
+  );
 }

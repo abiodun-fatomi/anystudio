@@ -28,7 +28,8 @@ import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity } from './fidelity';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 
-const STRICTER = '\n\nIMPORTANT: the product must be reproduced EXACTLY as in the reference photo — identical shape, size, colours, label, text and position in frame. Do not restyle, recolour, rotate or reinterpret it. Only the background and surroundings may change.';
+const STRICTER =
+  '\n\nIMPORTANT: the product must be reproduced EXACTLY as in the reference photo — identical shape, size, colours, label, text and position in frame. Do not restyle, recolour, rotate or reinterpret it. Only the background and surroundings may change.';
 
 export const brandedImagePipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'IMAGE_EDIT'>;
@@ -42,7 +43,11 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
     await ctx.stage('preparing', 8, 'cutting out your product');
     try {
       source = (await fetchBytes('image-pipeline', sourceUrl, 60_000)).bytes;
-      const cut = await ctx.callCapability('BACKGROUND_REMOVE', { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { sourceKey: p.sourceKey, background: 'transparent' }, files: ctx.files }, { timeoutMs: 60_000, signal: ctx.signal });
+      const cut = await ctx.callCapability(
+        'BACKGROUND_REMOVE',
+        { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { sourceKey: p.sourceKey, background: 'transparent' }, files: ctx.files },
+        { timeoutMs: 60_000, signal: ctx.signal },
+      );
       cutout = await artifactBytes(cut);
     } catch (err) {
       ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout unavailable; skipping the fidelity check for this image');
@@ -60,7 +65,10 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
     );
     const bytes = await artifactBytes(result);
 
-    if (!source || !cutout) { picked = { bytes, result, composited: false }; break; }
+    if (!source || !cutout) {
+      picked = { bytes, result, composited: false };
+      break;
+    }
 
     await ctx.stage('composing', 62, 'checking the product stayed the same');
     const report = await fidelity(source, cutout, bytes);
@@ -81,7 +89,10 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       ctx.log.warn({ attempt, score: report.score }, 'product not kept; asking once more with a stricter prompt');
       await ctx.stage('generating', 30, 'the first try changed your product — trying again');
     } else {
-      throw new ProviderError('LOW_QUALITY', `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts`, result.providerKey, { providerJobId: result.providerJobId, raw: report });
+      throw new ProviderError('LOW_QUALITY', `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts`, result.providerKey, {
+        providerJobId: result.providerJobId,
+        raw: report,
+      });
     }
   }
   if (!picked) throw new ProviderError('RETRYABLE', 'no image produced', 'image-pipeline');
@@ -124,13 +135,22 @@ async function sameFrame(a: Uint8Array, b: Uint8Array): Promise<boolean> {
 /** The original product pixels over the generated scene, with a soft contact shadow under them. */
 export async function pasteProduct(scene: Uint8Array, cutout: Uint8Array): Promise<Uint8Array> {
   const meta = await sharp(scene).metadata();
-  const W = meta.width ?? 1024; const H = meta.height ?? 1024;
+  const W = meta.width ?? 1024;
+  const H = meta.height ?? 1024;
   const product = await sharp(cutout).resize(W, H, { fit: 'fill' }).ensureAlpha().png().toBuffer();
   // Shadow: the mask, blurred and darkened, offset a little down.
-  const alpha = await sharp(product).extractChannel(3).blur(Math.max(4, W / 90)).raw().toBuffer();
+  const alpha = await sharp(product)
+    .extractChannel(3)
+    .blur(Math.max(4, W / 90))
+    .raw()
+    .toBuffer();
   const shadow = Buffer.alloc(W * H * 4);
-  for (let i = 0; i < W * H; i++) { shadow[i * 4 + 3] = Math.round((alpha[i] ?? 0) * 0.38); }
-  const shadowPng = await sharp(shadow, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+  for (let i = 0; i < W * H; i++) {
+    shadow[i * 4 + 3] = Math.round((alpha[i] ?? 0) * 0.38);
+  }
+  const shadowPng = await sharp(shadow, { raw: { width: W, height: H, channels: 4 } })
+    .png()
+    .toBuffer();
   const out = await sharp(scene)
     .composite([
       { input: shadowPng, top: Math.round(H * 0.012), left: 0 },
@@ -153,7 +173,8 @@ async function brand(ctx: PipelineContext, image: Uint8Array, p: CapabilityParam
 
   const base = sharp(image);
   const meta = await base.metadata();
-  const W = meta.width ?? 1024; const H = meta.height ?? 1024;
+  const W = meta.width ?? 1024;
+  const H = meta.height ?? 1024;
   const overlays: OverlayOptions[] = [];
 
   // A logo takes the name's place when the kit has one and the customer did not type a name for this image.
@@ -161,12 +182,15 @@ async function brand(ctx: PipelineContext, image: Uint8Array, p: CapabilityParam
   if (showName && kit?.logoKey && !p.businessName) {
     try {
       const raw = await ctx.media.getBytes(kit.logoKey);
-      logo = await sharp(raw).resize(Math.round(W * 0.16), Math.round(H * 0.1), { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+      logo = await sharp(raw)
+        .resize(Math.round(W * 0.16), Math.round(H * 0.1), { fit: 'inside', withoutEnlargement: true })
+        .png()
+        .toBuffer();
     } catch (err) {
       ctx.log.warn({ err: err instanceof Error ? err.message : err, logoKey: kit.logoKey }, 'brand logo unreadable; falling back to the name');
     }
   }
-  const badge = svgBadge({ W, H, accent, price: showPrice ? p.price ?? null : null, name: showName && !logo ? businessName : null, watermark });
+  const badge = svgBadge({ W, H, accent, price: showPrice ? (p.price ?? null) : null, name: showName && !logo ? businessName : null, watermark });
   if (badge) overlays.push({ input: Buffer.from(badge), top: 0, left: 0 });
   if (logo) {
     const lm = await sharp(logo).metadata();
@@ -183,15 +207,21 @@ function svgBadge(o: { W: number; H: number; accent: string; price: string | nul
     const fs = u * 2.2;
     const w = Math.round(o.price.length * fs * 0.62 + u * 3);
     items.push(`<rect x="${u * 1.5}" y="${o.H - u * 1.5 - fs * 1.9}" rx="${u * 0.6}" width="${w}" height="${fs * 1.9}" fill="${o.accent}"/>`);
-    items.push(`<text x="${u * 3}" y="${o.H - u * 1.5 - fs * 0.55}" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="${fs}" fill="#FFFFFF">${esc(o.price)}</text>`);
+    items.push(
+      `<text x="${u * 3}" y="${o.H - u * 1.5 - fs * 0.55}" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="${fs}" fill="#FFFFFF">${esc(o.price)}</text>`,
+    );
   }
   if (o.name) {
     const fs = u * 1.5;
-    items.push(`<text x="${o.W - u * 1.5}" y="${o.H - u * 1.8}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="${fs}" fill="#FFFFFF" stroke="#000000" stroke-opacity="0.35" stroke-width="${fs * 0.08}" paint-order="stroke">${esc(o.name)}</text>`);
+    items.push(
+      `<text x="${o.W - u * 1.5}" y="${o.H - u * 1.8}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="${fs}" fill="#FFFFFF" stroke="#000000" stroke-opacity="0.35" stroke-width="${fs * 0.08}" paint-order="stroke">${esc(o.name)}</text>`,
+    );
   }
   if (o.watermark) {
     const fs = u * 1.1;
-    items.push(`<text x="${o.W - u * 1.2}" y="${u * 2.2}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="${fs}" fill="#FFFFFF" fill-opacity="0.55">made on studo</text>`);
+    items.push(
+      `<text x="${o.W - u * 1.2}" y="${u * 2.2}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="${fs}" fill="#FFFFFF" fill-opacity="0.55">made on studo</text>`,
+    );
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${o.W}" height="${o.H}">${items.join('')}</svg>`;
 }

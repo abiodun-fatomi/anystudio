@@ -13,7 +13,12 @@ import { ProviderError, type Capability, type ProviderInput, type ProviderOpts, 
 import { BaseProvider } from './base';
 import { fetchBytes, http, kindForStatus, poll } from './http';
 
-interface Video { id: string; status: 'queued' | 'in_progress' | 'completed' | 'failed'; progress?: number; error?: { message: string; code?: string } }
+interface Video {
+  id: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  progress?: number;
+  error?: { message: string; code?: string };
+}
 
 const KNOWN: Record<string, { capability: Capability; model: string }> = {
   'openai:sora-2': { capability: 'IMAGE_TO_VIDEO', model: 'sora-2' },
@@ -25,7 +30,12 @@ export class OpenAiProvider extends BaseProvider {
     return Object.entries(KNOWN).map(([key, k]) => new OpenAiProvider(apiKey, key, k.capability, k.model));
   }
 
-  constructor(private readonly apiKey: string, key: string, capability: Capability, private readonly defaultModel: string) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capability: Capability,
+    private readonly defaultModel: string,
+  ) {
     super(key, [capability]);
   }
 
@@ -44,9 +54,11 @@ export class OpenAiProvider extends BaseProvider {
     form.set('size', this.str(input.config, 'size', p.aspect === '16:9' ? '1280x720' : '720x1280'));
     form.set('input_reference', new Blob([source.bytes], { type: source.mime }), 'reference.png');
 
-    const created = await fetch('https://api.openai.com/v1/videos', { method: 'POST', headers: auth, body: form, signal: AbortSignal.timeout(60_000) }).catch((err: Error) => {
-      throw new ProviderError('RETRYABLE', `${this.key}: ${err.message}`, this.key);
-    });
+    const created = await fetch('https://api.openai.com/v1/videos', { method: 'POST', headers: auth, body: form, signal: AbortSignal.timeout(60_000) }).catch(
+      (err: Error) => {
+        throw new ProviderError('RETRYABLE', `${this.key}: ${err.message}`, this.key);
+      },
+    );
     const createdText = await created.text();
     if (!created.ok) {
       const kind = created.status === 400 && /moderation|policy|safety/i.test(createdText) ? 'CONTENT_REJECTED' : kindForStatus(created.status);
@@ -76,7 +88,6 @@ export class OpenAiProvider extends BaseProvider {
     return { providerKey: this.key, providerJobId, artifacts: [{ bytes, mime: 'video/mp4', role: 'video' }], meta: { model } };
   }
 
-
   /**
    * POST /v1/audio/speech — one request, the MP3 back. `instructions` steer
    * delivery on the gpt-4o-mini-tts model; the older tts-1 ignores them.
@@ -86,18 +97,36 @@ export class OpenAiProvider extends BaseProvider {
     const model = this.str(input.config, 'model', this.defaultModel);
     const voice = p.providerVoiceId ?? this.str(input.config, 'defaultVoice', 'nova');
     const instructions: Record<string, string> = {
-      natural: 'Speak naturally and clearly.', ad: 'Speak like a confident, warm radio advert voice; energetic but not shouting.',
-      calm: 'Speak slowly, calmly and warmly.', energetic: 'Speak with bright, upbeat energy and a smile in the voice.', story: 'Narrate like a story, with feeling and gentle pacing.',
+      natural: 'Speak naturally and clearly.',
+      ad: 'Speak like a confident, warm radio advert voice; energetic but not shouting.',
+      calm: 'Speak slowly, calmly and warmly.',
+      energetic: 'Speak with bright, upbeat energy and a smile in the voice.',
+      story: 'Narrate like a story, with feeling and gentle pacing.',
     };
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST', headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model, voice, input: p.script, response_format: 'mp3', speed: p.speed, ...(model.includes('4o') ? { instructions: `${instructions[p.style] ?? instructions.natural} Language: ${p.language}.` } : {}) }),
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        voice,
+        input: p.script,
+        response_format: 'mp3',
+        speed: p.speed,
+        ...(model.includes('4o') ? { instructions: `${instructions[p.style] ?? instructions.natural} Language: ${p.language}.` } : {}),
+      }),
       signal: AbortSignal.timeout(opts.timeoutMs),
-    }).catch((err: Error) => { throw new ProviderError('RETRYABLE', `${this.key}: network error: ${err.message}`, this.key); });
+    }).catch((err: Error) => {
+      throw new ProviderError('RETRYABLE', `${this.key}: network error: ${err.message}`, this.key);
+    });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new ProviderError(res.status === 429 ? 'RATE_LIMITED' : res.status >= 500 ? 'RETRYABLE' : res.status === 401 ? 'PROVIDER_DOWN' : 'INVALID_INPUT', `${this.key}: HTTP ${res.status}: ${text.slice(0, 300)}`, this.key);
+      throw new ProviderError(
+        res.status === 429 ? 'RATE_LIMITED' : res.status >= 500 ? 'RETRYABLE' : res.status === 401 ? 'PROVIDER_DOWN' : 'INVALID_INPUT',
+        `${this.key}: HTTP ${res.status}: ${text.slice(0, 300)}`,
+        this.key,
+      );
     }
     const bytes = new Uint8Array(await res.arrayBuffer());
     return { providerKey: this.key, artifacts: [{ bytes, mime: 'audio/mpeg', role: 'audio' }], meta: { model, voice } };
-  }}
+  }
+}

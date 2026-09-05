@@ -23,7 +23,20 @@ import { MailModule } from '../utils/mail.module';
 import { NotificationModule } from '../modules/notification/notification.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, MailModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule, WhatsappModule, NotificationModule, SupportModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    MailModule,
+    QueueModule,
+    ProviderModule,
+    MediaModule,
+    LedgerModule,
+    GenerationModule,
+    DeveloperModule,
+    WhatsappModule,
+    NotificationModule,
+    SupportModule,
+  ],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],
 })

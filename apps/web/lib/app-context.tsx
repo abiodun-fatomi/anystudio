@@ -22,7 +22,13 @@ import { usePathname } from 'next/navigation';
 import { siblingOrigin, isLocalHost } from '@/lib/hosts';
 import { api, ApiError, type Me } from './api';
 
-export interface WorkspaceRef { id: string; type: string; name: string; currency: string; role: string }
+export interface WorkspaceRef {
+  id: string;
+  type: string;
+  name: string;
+  currency: string;
+  role: string;
+}
 
 interface AppState {
   me: Me;
@@ -54,12 +60,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let live = true;
-    api.auth.me()
+    api.auth
+      .me()
       .then((m) => {
         if (!live) return;
         setMe(m);
         let preferred: string | null = null;
-        try { preferred = localStorage.getItem(WS_KEY); } catch { /* fine */ }
+        try {
+          preferred = localStorage.getItem(WS_KEY);
+        } catch {
+          /* fine */
+        }
         const first = m.workspaces.find((w) => w.id === preferred) ?? m.workspaces[0];
         setWorkspaceId(first?.id ?? null);
       })
@@ -67,7 +78,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (e instanceof ApiError && e.status === 401) window.location.replace(signInUrl(path));
         else if (live) setFailed(true);
       });
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [path]);
 
   const refreshBalance = useCallback(async () => {
@@ -81,24 +94,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [workspaceId]);
 
-  useEffect(() => { void refreshBalance(); }, [refreshBalance]);
+  useEffect(() => {
+    void refreshBalance();
+  }, [refreshBalance]);
 
   // Another tab signed out: leave too, immediately, without asking the server.
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const ch = new BroadcastChannel(SIGNOUT_CHANNEL);
-    ch.onmessage = (e) => { if (e.data === 'signed-out') window.location.replace(signedOutUrl()); };
+    ch.onmessage = (e) => {
+      if (e.data === 'signed-out') window.location.replace(signedOutUrl());
+    };
     return () => ch.close();
   }, []);
 
   const refreshMe = useCallback(async () => {
-    try { setMe(await api.auth.me()); } catch { /* the old picture stands until the next load */ }
+    try {
+      setMe(await api.auth.me());
+    } catch {
+      /* the old picture stands until the next load */
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    try { await api.auth.logout(); } catch { /* the cookie may already be gone; leave anyway */ }
-    try { new BroadcastChannel(SIGNOUT_CHANNEL).postMessage('signed-out'); } catch { /* no other tabs then */ }
-    try { localStorage.removeItem(WS_KEY); } catch { /* fine */ }
+    try {
+      await api.auth.logout();
+    } catch {
+      /* the cookie may already be gone; leave anyway */
+    }
+    try {
+      new BroadcastChannel(SIGNOUT_CHANNEL).postMessage('signed-out');
+    } catch {
+      /* no other tabs then */
+    }
+    try {
+      localStorage.removeItem(WS_KEY);
+    } catch {
+      /* fine */
+    }
     // replace, not push: the signed-in screen must not be one back-press away.
     window.location.replace(signedOutUrl());
   }, []);
@@ -114,7 +147,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchWorkspace: (id) => {
         setWorkspaceId(id);
         setBalanceState(null);
-        try { localStorage.setItem(WS_KEY, id); } catch { /* fine */ }
+        try {
+          localStorage.setItem(WS_KEY, id);
+        } catch {
+          /* fine */
+        }
       },
       balance,
       spend: (c) => setBalanceState((b) => (b === null ? b : b - c)),
@@ -132,7 +169,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         <div>
           <p style={{ fontWeight: 700 }}>We could not reach AnyStudio just now.</p>
           <p style={{ color: 'var(--muted)', marginTop: 8 }}>Check your connection and try again.</p>
-          <button type="button" onClick={() => window.location.reload()} style={{ marginTop: 16, padding: '12px 18px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}>Try again</button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: '12px 18px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-2)' }}
+          >
+            Try again
+          </button>
         </div>
       </div>
     );

@@ -45,9 +45,14 @@ export const adPipeline: Pipeline = async (ctx) => {
 async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): Promise<PipelineResult> {
   await ctx.stage('preparing', 6, 'planning the shots');
   const request = planRequest(ctx, p);
-  const result = await ctx.callCapability('TEXT_GENERATE', { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { task: 'shot_plan' }, files: ctx.files, prompt: request }, { timeoutMs: 60_000, signal: ctx.signal });
+  const result = await ctx.callCapability(
+    'TEXT_GENERATE',
+    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { task: 'shot_plan' }, files: ctx.files, prompt: request },
+    { timeoutMs: 60_000, signal: ctx.signal },
+  );
   const parsed = shotPlanSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
-  if (!parsed.success) throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
+  if (!parsed.success)
+    throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
   const shotPlan: ShotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, p.shots) };
   // A short plan is padded with the settle shot rather than refused: the customer asked for four.
   while (shotPlan.shots.length < p.shots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
@@ -58,9 +63,23 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
   await ctx.stage('routing', 12, `dispatching ${shotPlan.shots.length} shots`);
   const parent = await ctx.db.generation.findUniqueOrThrow({ where: { id: ctx.row.id } });
   for (const [i, shot] of shotPlan.shots.entries()) {
-    await ctx.generations.createChild(parent, 'IMAGE_TO_VIDEO', {
-      sourceKey: p.sourceKey, prompt: shot.prompt, motion: shot.motion, durationSec: shot.durationSec, aspect: p.aspect, audio: false, shots: 1, format: p.format, caption: shot.caption, shotIndex: i,
-    }, i);
+    await ctx.generations.createChild(
+      parent,
+      'IMAGE_TO_VIDEO',
+      {
+        sourceKey: p.sourceKey,
+        prompt: shot.prompt,
+        motion: shot.motion,
+        durationSec: shot.durationSec,
+        aspect: p.aspect,
+        audio: false,
+        shots: 1,
+        format: p.format,
+        caption: shot.caption,
+        shotIndex: i,
+      },
+      i,
+    );
   }
   return { artifacts: [], waiting: true, providerKey: result.providerKey, costMinor: result.costMinor };
 }
@@ -92,15 +111,27 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
   }
   const endCard = plan?.endCard ?? { text: p.productName ?? '', price: p.price };
   await ctx.stage('composing', 70, `stitching ${children.length} shots`);
-  const files = Object.fromEntries(await Promise.all(shotKeys.map(async (k, i) => [`shotKeys[${i}]`, { url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)));
+  const files = Object.fromEntries(
+    await Promise.all(shotKeys.map(async (k, i) => [`shotKeys[${i}]`, { url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
+  );
   const stitched = await ctx.callCapability(
     'VIDEO_STITCH',
-    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { shotKeys, aspect: p.aspect, captions, endCard: endCard.text ? endCard : undefined, watermark: true }, files },
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      params: { shotKeys, aspect: p.aspect, captions, endCard: endCard.text ? endCard : undefined, watermark: true },
+      files,
+    },
     { timeoutMs: 5 * 60_000, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('composing', progress ?? 80, detail) },
   );
   const shotsCost = children.reduce((sum, c) => sum + (c.providerCostMinor ?? 0), 0);
   ctx.log.info({ shots: children.length, shotsCostMinor: shotsCost, totalMs: t }, 'ad assembled');
-  return { artifacts: stitched.artifacts, providerKey: stitched.providerKey, providerJobId: stitched.providerJobId, costMinor: shotsCost + (stitched.costMinor ?? 0) };
+  return {
+    artifacts: stitched.artifacts,
+    providerKey: stitched.providerKey,
+    providerJobId: stitched.providerJobId,
+    costMinor: shotsCost + (stitched.costMinor ?? 0),
+  };
 }
 
 function videoKey(child: Generation): string | null {
@@ -116,13 +147,25 @@ function planRequest(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>
     `Format: ${FORMAT_BRIEF[p.format]}`,
     `Exactly ${p.shots} shots. Durations: ${p.shots === 2 ? '8 and 8' : '8, 8, 8 and 5'} seconds, in that order.`,
     `Voice: ${tone}.`,
-    'Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); no people unless the format is ugc; realistic lighting; keep every prompt under 60 words. Each shot\'s caption is under 8 words of on-screen text.',
+    "Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); no people unless the format is ugc; realistic lighting; keep every prompt under 60 words. Each shot's caption is under 8 words of on-screen text.",
     'The first shot is the hook. The last shot settles on the product for the end card.',
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     'Return only the structure requested.',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const parts: LlmRequest['parts'] = [];
   if (ctx.files.sourceKey) parts.push({ imageUrl: ctx.files.sourceKey.url, mime: ctx.files.sourceKey.mime });
-  parts.push({ text: [p.productName ? `Product: ${p.productName}` : 'Product: identify it from the photo', p.details ? `Details: ${p.details}` : '', p.price ? `Price to show on the end card: ${p.price}` : '', p.prompt ? `The seller's own direction: ${p.prompt}` : '', 'Plan the ad.'].filter(Boolean).join('\n') });
+  parts.push({
+    text: [
+      p.productName ? `Product: ${p.productName}` : 'Product: identify it from the photo',
+      p.details ? `Details: ${p.details}` : '',
+      p.price ? `Price to show on the end card: ${p.price}` : '',
+      p.prompt ? `The seller's own direction: ${p.prompt}` : '',
+      'Plan the ad.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  });
   return { system, parts, jsonSchema: SHOT_PLAN_JSON_SCHEMA, maxTokens: 1500, temperature: 0.8 };
 }
