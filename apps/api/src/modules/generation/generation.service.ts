@@ -34,6 +34,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
 import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, DUB_LIPSYNC_COST_CODE, dubLanguage, generationDebitKey, parseCapabilityParams, redactLocked, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
+import { GenerationHooks } from './generation.hooks';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { QueueService } from '../queue/queue.service';
@@ -62,6 +63,7 @@ export class GenerationService {
     private readonly ledger: LedgerService,
     private readonly media: MediaService,
     private readonly queue: QueueService,
+    private readonly hooks: GenerationHooks,
   ) {}
 
   /**
@@ -146,6 +148,10 @@ export class GenerationService {
             credits: cost.credits,
             stage: 'queued',
             input: params as Prisma.InputJsonObject,
+            channel: req.channel ?? 'WEB',
+            apiKeyId: req.apiKeyId ?? null,
+            projectId: req.projectId ?? null,
+            merchantRef: req.merchantRef ?? null,
             ...libraryFields(params),
           },
         });
@@ -203,6 +209,7 @@ export class GenerationService {
         credits: 0,
         stage: 'queued',
         input: params as Prisma.InputJsonObject,
+        channel: parent.channel, apiKeyId: parent.apiKeyId, projectId: parent.projectId, merchantRef: parent.merchantRef,
       },
     });
     await this.queue.enqueue(child.id, capability);
@@ -343,7 +350,7 @@ export class GenerationService {
     // The copy that came back is the most searchable thing about a text generation.
     const copyText = (outcome.outputs ?? []).filter((o) => o.role === 'text' && o.text !== undefined).map((o) => flattenText(o.text)).join(' ').trim();
     const searchText = [row.searchText, copyText].filter(Boolean).join(' ').slice(0, 8000) || undefined;
-    return this.db.generation.update({
+    const done = await this.db.generation.update({
       where: { id: row.id },
       data: {
         status: 'SUCCEEDED',
@@ -357,13 +364,15 @@ export class GenerationService {
         ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
       },
     });
+    this.hooks.finished(done);
+    return done;
   }
 
   /** It ended badly. Give the credits back. */
   async fail(id: string, outcome: GenerationOutcome): Promise<Generation> {
     const row = await this.claimTerminal(id);
     if (row.credits > 0) await this.refund(row, outcome.failureReason ?? 'generation failed');
-    return this.db.generation.update({
+    const done = await this.db.generation.update({
       where: { id: row.id },
       data: {
         status: 'FAILED',
@@ -376,6 +385,8 @@ export class GenerationService {
         ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
       },
     });
+    this.hooks.finished(done);
+    return done;
   }
 
   /**

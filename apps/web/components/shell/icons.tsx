@@ -26,6 +26,10 @@ export const Icon = {
   translate: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z" /></svg>,
   lips: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M3 12c2.5-3.5 5-5 7-5 .8 0 1.4.4 2 1 .6-.6 1.2-1 2-1 2 0 4.5 1.5 7 5-2.5 3.5-5.5 5.5-9 5.5S5.5 15.5 3 12Z" /><path d="M3 12h18" /></svg>,
   film: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 5v14M17 5v14M3 9h4m10 0h4M3 15h4m10 0h4" /></svg>,
+  code: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="m8 8-4 4 4 4m8-8 4 4-4 4M14 5l-4 14" /></svg>,
+  key: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8m-3 3 2 2m-5 1 2 2" /></svg>,
+  webhook: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><circle cx="12" cy="6" r="3" /><path d="M9 17h6M13.5 8.5 16 14M10.5 8.5 8 14" /></svg>,
+  copy: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>,
   lock: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>,
   today: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4m8-4v4" /></svg>,
 };

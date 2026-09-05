@@ -38,10 +38,12 @@ import { logger } from '../../config/logger';
 import { GenerationService } from '../modules/generation/generation.service';
 import { QueueService } from '../modules/queue/queue.service';
 import { GenerationRunner } from './runner';
+import { WebhookDispatcher } from '../modules/developer/webhook.dispatcher';
 
 const HEARTBEAT_KEY = 'worker:heartbeat';
 const SWEEP_EVERY_MS = 60_000;
 const DISPATCH_EVERY_MS = 20_000;
+const WEBHOOK_EVERY_MS = 10_000;
 
 @Injectable()
 export class WorkerSupervisor {
@@ -57,6 +59,7 @@ export class WorkerSupervisor {
     private readonly runner: GenerationRunner,
     private readonly generations: GenerationService,
     private readonly queue: QueueService,
+    private readonly webhooks: WebhookDispatcher,
   ) {
     this.redis = createRedis('queue', 'worker-consumer');
   }
@@ -76,6 +79,8 @@ export class WorkerSupervisor {
     this.timers.push(setInterval(() => void this.heartbeat(), 30_000));
     this.timers.push(setInterval(() => void this.sweep(), SWEEP_EVERY_MS));
     this.timers.push(setInterval(() => void this.dispatch(), DISPATCH_EVERY_MS));
+    // Outbound webhooks: due deliveries, a bounded batch, never overlapping.
+    this.timers.push(setInterval(() => void this.webhooks.deliverDue(), WEBHOOK_EVERY_MS));
     await this.heartbeat();
     await this.dispatch();
   }

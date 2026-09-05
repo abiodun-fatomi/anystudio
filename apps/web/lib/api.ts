@@ -189,6 +189,18 @@ export interface Insights {
 
 export interface Genre { key: string; name: string; region: string; family: string; description: string; languages: string[]; bpm: [number, number] | null }
 export interface Voice { key: string; name: string; language: string; accent: string | null; gender: string | null; tags: string[]; sampleUrl: string | null; provider: string }
+export interface DevProject { id: string; name: string; slug: string; description: string | null; createdAt: string; archivedAt: string | null; activeKeys?: number }
+export interface DevKey { id: string; name: string; prefix: string; scopes: string[]; project: { id: string; name: string; slug: string }; createdBy: string | null; createdAt: string; lastUsedAt: string | null; expiresAt: string | null; revokedAt: string | null; key?: string }
+export interface DevWebhook { id: string; url: string; events: string[]; active: boolean; failures: number; lastDeliveryAt: string | null; project: { id: string; name: string; slug: string } | null; createdAt: string; secret?: string }
+export interface DevDelivery { id: string; event: string; status: 'PENDING' | 'SENT' | 'FAILED'; attempts: number; responseStatus: number | null; lastError: string | null; createdAt: string; deliveredAt: string | null; nextAttemptAt: string | null; payload: unknown }
+export interface DevUsage {
+  days: number; since: string; balance: number;
+  totals: { requests: number; succeeded: number; failed: number; credits: number; merchants: number; p50Sec: number | null };
+  byDay: Array<{ day: string; capability: string; requests: number; succeeded: number; failed: number; credits: number }>;
+  byProject: Array<{ projectId: string; name: string; requests: number; succeeded: number; credits: number; merchants: number }>;
+  byKey: Array<{ apiKeyId: string; name: string; prefix: string; requests: number; credits: number; lastUsedAt: string | null }>;
+  byMerchant: Array<{ merchantRef: string; requests: number; credits: number }>;
+}
 export interface DubLanguages { languages: Array<{ code: string; name: string; region: string; lipsync: boolean }>; sources: Array<{ code: string; name: string }>; missing: string }
 
 export const api = {
@@ -199,6 +211,22 @@ export const api = {
     unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
     unlock: (workspaceId: string, generationId: string) =>
       request<{ status: 'unlocked' | 'already_unlocked'; credits?: number; generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null } }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
+  developer: {
+    usage: (workspaceId: string, days = 30, projectId?: string) => request<DevUsage>('GET', `/workspaces/${workspaceId}/developer/usage?days=${days}${projectId ? `&projectId=${projectId}` : ''}`),
+    projects: (workspaceId: string) => request<DevProject[]>('GET', `/workspaces/${workspaceId}/developer/projects`),
+    createProject: (workspaceId: string, body: { name: string; description?: string }) => request<DevProject>('POST', `/workspaces/${workspaceId}/developer/projects`, body),
+    updateProject: (workspaceId: string, id: string, body: { name?: string; description?: string; archived?: boolean }) => request<DevProject>('PATCH', `/workspaces/${workspaceId}/developer/projects/${id}`, body),
+    keys: (workspaceId: string) => request<DevKey[]>('GET', `/workspaces/${workspaceId}/developer/keys`),
+    createKey: (workspaceId: string, body: { projectId: string; name: string; scopes?: string[]; expiresInDays?: number }) => request<DevKey & { key: string }>('POST', `/workspaces/${workspaceId}/developer/keys`, body),
+    revokeKey: (workspaceId: string, id: string) => request<DevKey>('DELETE', `/workspaces/${workspaceId}/developer/keys/${id}`),
+    webhooks: (workspaceId: string) => request<DevWebhook[]>('GET', `/workspaces/${workspaceId}/developer/webhooks`),
+    createWebhook: (workspaceId: string, body: { url: string; projectId?: string; events?: string[] }) => request<DevWebhook & { secret: string }>('POST', `/workspaces/${workspaceId}/developer/webhooks`, body),
+    updateWebhook: (workspaceId: string, id: string, body: { url?: string; events?: string[]; active?: boolean }) => request<DevWebhook>('PATCH', `/workspaces/${workspaceId}/developer/webhooks/${id}`, body),
+    deleteWebhook: (workspaceId: string, id: string) => request<{ deleted: boolean }>('DELETE', `/workspaces/${workspaceId}/developer/webhooks/${id}`),
+    testWebhook: (workspaceId: string, id: string) => request<{ delivery: DevDelivery }>('POST', `/workspaces/${workspaceId}/developer/webhooks/${id}/test`),
+    deliveries: (workspaceId: string, id: string) => request<DevDelivery[]>('GET', `/workspaces/${workspaceId}/developer/webhooks/${id}/deliveries`),
+    redeliver: (workspaceId: string, id: string, deliveryId: string) => request<{ delivery: DevDelivery }>('POST', `/workspaces/${workspaceId}/developer/webhooks/${id}/deliveries/${deliveryId}/redeliver`),
   },
   library: {
     list: (workspaceId: string, q: LibraryQuery = {}) => {

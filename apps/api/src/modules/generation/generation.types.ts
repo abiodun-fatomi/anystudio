@@ -6,7 +6,7 @@
  * HTTP, and it should not have to construct a DTO to do it.
  */
 
-import type { Generation, GenerationKind } from '@prisma/client';
+import type { Generation, GenerationChannel, GenerationKind } from '@prisma/client';
 import type { Capability, GenerationOutput, ProviderErrorKind } from '@anystudio/shared';
 
 /** Everything needed to reserve credits and write the row. */
@@ -31,6 +31,12 @@ export interface GenerationRequest {
   /** For shots of a plan: the PARENT row. */
   parentId?: string;
   kind?: GenerationKind;
+  /** Where it came from; defaults to the web studio. */
+  channel?: GenerationChannel;
+  /** For API requests: the key and project, and the organization's own merchant reference. */
+  apiKeyId?: string;
+  projectId?: string;
+  merchantRef?: string;
 }
 
 /** How a generation finished, from the worker's point of view. */

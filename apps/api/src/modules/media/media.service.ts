@@ -98,6 +98,58 @@ export class MediaService {
   }
 
   /**
+   * Bytes the server already holds — fetched from a URL an organization
+   * gave us, or downloaded from WhatsApp — stored and verified exactly as a
+   * browser upload would be. Same limits, same sniffing, same row.
+   */
+  async ingest(workspaceId: string, userId: string | null, bytes: Uint8Array, claimedMime: string, filename: string): Promise<MediaAsset> {
+    const family = familyOf(claimedMime);
+    if (!family) throw new ValidationError({ mime: `Unsupported file type ${claimedMime}` });
+    if (bytes.byteLength > LIMITS[family].maxBytes) throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
+    const asset = await this.db.mediaAsset.create({ data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: filename.slice(0, 200), key: 'pending' } });
+    const key = MediaService.key(workspaceId, 'uploads', `${asset.id}.${extFor(claimedMime)}`);
+    await this.db.mediaAsset.update({ where: { id: asset.id }, data: { key } });
+    await this.put(key, bytes, claimedMime);
+    logger.info({ workspaceId, assetId: asset.id, key, mime: claimedMime, bytes: bytes.byteLength }, 'server-side upload stored');
+    return this.complete(workspaceId, asset.id);
+  }
+
+  /**
+   * Fetch a public URL on the caller's behalf, within limits: HTTPS only, no
+   * private hosts, a size ceiling read from the headers before the body, and
+   * a short timeout. An organization's product images live at URLs; making
+   * them download and re-upload would be the API's worst step.
+   */
+  async ingestUrl(workspaceId: string, userId: string | null, url: string): Promise<MediaAsset> {
+    let target: URL;
+    try { target = new URL(url); } catch { throw new ValidationError({ url: 'That is not a valid URL.' }); }
+    if (target.protocol !== 'https:') throw new ValidationError({ url: 'Only https URLs are fetched.' });
+    const host = target.hostname.toLowerCase();
+    if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+      throw new ValidationError({ url: 'That address cannot be fetched.' });
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const res = await fetch(target, { signal: controller.signal, redirect: 'follow', headers: { accept: 'image/*,video/*,audio/*' } });
+      if (!res.ok) throw new ValidationError({ url: `The URL answered ${res.status}.` });
+      const mime = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+      const family = familyOf(mime);
+      if (!family) throw new ValidationError({ url: `The URL serves ${mime || 'an unknown type'}, not an image, video or audio file.` });
+      const declared = Number(res.headers.get('content-length') ?? 0);
+      if (declared > LIMITS[family].maxBytes) throw new ValidationError({ url: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const name = target.pathname.split('/').pop() || `download.${extFor(mime)}`;
+      return await this.ingest(workspaceId, userId, buf, mime, name);
+    } catch (err) {
+      if (err instanceof ValidationError) throw err;
+      throw new ValidationError({ url: `Could not fetch that URL: ${err instanceof Error ? (err.name === 'AbortError' ? 'timed out' : err.message) : err}` });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * The browser says the PUT finished. Verify the object, normalise images,
    * record what it really is, and promote or reject the row.
    */

@@ -28,6 +28,7 @@ const NAV: Array<{ href: string; label: string; icon: IconName; tour: string; mo
   { href: '/brand', label: 'Brand', icon: 'brand', tour: 'brand-kit' },
   { href: '/publishing', label: 'Publishing', icon: 'publish', tour: 'publishing' },
   { href: '/insights', label: 'Insights', icon: 'insights', tour: 'insights' },
+  { href: '/developer', label: 'Developer', icon: 'code', tour: 'developer' },
   { href: '/billing', label: 'Credits', icon: 'credits', tour: 'credits', mobile: true },
   { href: '/settings', label: 'Settings', icon: 'settings', tour: 'settings', mobile: true },
 ];
