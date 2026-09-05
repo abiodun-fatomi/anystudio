@@ -40,8 +40,9 @@ export function Popover({ trigger, children, align = 'start', side = 'bottom', m
     if (e.key === 'End') { e.preventDefault(); items.at(-1)?.focus(); }
   };
 
+  // The trigger's own onClick still runs (a bell that loads on open), then the toggle.
   const t = isValidElement(trigger)
-    ? cloneElement(trigger, { onClick: () => setOpen((o) => !o), 'aria-expanded': open, 'aria-controls': id, 'aria-haspopup': menu ? 'menu' : 'dialog' })
+    ? cloneElement(trigger, { onClick: () => { trigger.props.onClick?.(); setOpen((o) => !o); }, 'aria-expanded': open, 'aria-controls': id, 'aria-haspopup': menu ? 'menu' : 'dialog' })
     : trigger;
 
   return (
