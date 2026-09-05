@@ -62,6 +62,8 @@ export interface Me {
     email: string | null;
     phone: string | null;
     avatarKey?: string | null;
+    /** Signed, an hour; refreshed with the rest of /auth/me. */
+    avatarUrl?: string | null;
     locale?: string | null;
     timezone?: string | null;
     deleteRequestedAt?: string | null;

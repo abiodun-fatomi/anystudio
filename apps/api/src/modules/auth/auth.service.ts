@@ -26,6 +26,7 @@ import { RegistrationService } from './registration.service';
 import { PasswordResetService } from './password-reset.service';
 import { VerificationService } from './verification.service';
 import { GoogleProvider, OAUTH_COOKIE, OAUTH_COOKIE_OPTS } from './providers/google.provider';
+import { MediaService } from '../media/media.service';
 import type {
   LoginDto,
   MfaDto,
@@ -59,6 +60,7 @@ export class AuthService {
     private readonly resets: PasswordResetService,
     private readonly verification: VerificationService,
     private readonly google: GoogleProvider,
+    private readonly media: MediaService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -563,8 +565,11 @@ export class AuthService {
       where: { id: { in: [...actor.workspaceRoles.keys()] } },
       select: { id: true, type: true, name: true, currency: true },
     });
+    // The picture as a signed URL, the same way the profile screen gets it —
+    // the top bar shows this payload, not the profile.
+    const avatarUrl = user.avatarKey ? await this.media.signRead(user.avatarKey, 60 * 60).catch(() => null) : null;
     return {
-      user,
+      user: { ...user, avatarUrl },
       surface: actor.surface,
       workspaces: workspaces.map((w) => ({ ...w, role: actor.workspaceRoles.get(w.id) })),
       // Reveals that a grant exists; carries no authority. Reaching the console

@@ -176,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             menu
             trigger={
               <button type="button" className={styles.avatarBtn} aria-label="Account menu">
-                <Avatar name={me.user.name ?? me.user.email ?? 'You'} />
+                <Avatar name={me.user.name ?? me.user.email ?? 'You'} src={me.user.avatarUrl} />
               </button>
             }
           >

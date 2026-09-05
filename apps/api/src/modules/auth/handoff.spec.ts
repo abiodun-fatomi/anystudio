@@ -29,7 +29,7 @@ function harness(origin: string) {
     workspaceMember: { findFirst: vi.fn(async () => ({ id: 'm' })) },
   };
   const sessions = { mint: vi.fn(async () => ({ access: 'a', refresh: 'r', accessExpiresAt: new Date(), refreshExpiresAt: new Date() })) };
-  const svc = new AuthService(db as never, sessions as never, {} as never, {} as never, {} as never, {} as never);
+  const svc = new AuthService(db as never, sessions as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   // setCookies is private and touches express; the test cares that a session was minted, not how it was carried.
   (svc as unknown as { setCookies: () => void }).setCookies = vi.fn();
   const req = { get: (h: string) => (h === 'x-anystudio-origin' ? origin : undefined), ip: '1.1.1.1' } as unknown as Request;
