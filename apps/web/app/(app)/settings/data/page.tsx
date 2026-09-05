@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
-import { Button, Dialog, Input, Skeleton, useToast } from '@/components/ui';
+import { Button, Dialog, Input, Skeleton, useToast, LoadError } from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -18,7 +18,7 @@ import styles from '../settings.module.css';
 export default function DataPage() {
   const { toast } = useToast();
   const { refreshMe } = useApp();
-  const { profile, reload } = useProfile();
+  const { profile, error, reload } = useProfile();
   const [exporting, setExporting] = useState(false);
   const [open, setOpen] = useState(false);
   const [reauth, setReauth] = useState<ReauthValue>({});
@@ -26,6 +26,7 @@ export default function DataPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
+  if (!profile && error) return <div className={styles.group}><LoadError what="your data settings" message={error} onRetry={() => void reload()} /></div>;
   if (!profile) return <div className={styles.group}><Skeleton style={{ height: 180 }} /></div>;
 
   const exportAll = async () => {

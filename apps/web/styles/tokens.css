@@ -74,7 +74,7 @@
   /* controls */
   --control-h:44px; --control-h-sm:36px; --control-h-lg:52px; --touch:48px;
   /* layout */
-  --rail-w:232px; --rail-w-collapsed:64px; --bar-h:56px; --content-max:1200px;
+  --rail-w:232px; --rail-w-collapsed:64px; --bar-h:56px; --content-max:1480px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){ --elev-2:0 2px 4px rgba(0,0,0,.5),0 12px 32px rgba(0,0,0,.45); }

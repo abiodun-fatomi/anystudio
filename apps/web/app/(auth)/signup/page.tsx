@@ -9,6 +9,7 @@
  * pre-ticked consent, and so does the NDPA.
  */
 import { useState, type FormEvent } from 'react';
+import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
@@ -78,7 +79,7 @@ export default function SignupPage() {
       </div>
       <div className="field">
         <label htmlFor="pw">Password</label>
-        <input id="pw" className="inp" type="password" autoComplete="new-password" minLength={8}
+        <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8}
           value={form.password} onChange={set('password')} required />
       </div>
 

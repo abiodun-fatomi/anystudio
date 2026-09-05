@@ -5,10 +5,11 @@
  */
 export { Button, type ButtonProps } from './Button';
 export { Input, Textarea, Select } from './Field';
+export { PasswordInput, PasswordControl } from './Password';
 export { Checkbox, Radio, Switch, Slider } from './Choice';
 export { Tabs, SegmentedControl } from './Tabs';
 export { Dialog, ConfirmDialog } from './Dialog';
 export { Popover, MenuItem, MenuSeparator, MenuHeading, Tooltip } from './Popover';
 export { ToastProvider, useToast } from './Toast';
-export { Badge, Avatar, Card, CardHeader, Skeleton, Progress, EmptyState, Table, tableCell, Pagination, Breadcrumbs, Stat } from './Display';
+export { Badge, Avatar, Card, CardHeader, Skeleton, Progress, EmptyState, Table, tableCell, Pagination, Breadcrumbs, Stat, LoadError } from './Display';
 export { Combobox, type ComboOption } from './Combobox';

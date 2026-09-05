@@ -69,6 +69,7 @@ export type AuthEventName =
   | 'member.role'
   | 'member.remove'
   | 'member.transfer'
+  | 'workspace.create'
   | 'workspace.update'
   | 'workspace.delete'
   | 'billing.checkout'

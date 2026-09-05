@@ -21,6 +21,8 @@ import { Icon, type IconName } from './icons';
 import styles from './AppShell.module.css';
 
 /** The rail. `tour` keys are what the onboarding tour spotlights; keep them. */
+const RAIL_MIN = 200; const RAIL_MAX = 380; const RAIL_DEFAULT = 232;
+
 const NAV: Array<{ href: string; label: string; icon: IconName; tour: string; mobile?: boolean }> = [
   { href: '/today', label: 'Today', icon: 'today', tour: 'today', mobile: true },
   { href: '/studio', label: 'Studio', icon: 'studio', tour: 'create', mobile: true },
@@ -39,13 +41,38 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { me, workspace, workspaces, switchWorkspace, balance, signOut } = useApp();
   const path = usePathname();
   const [rail, setRail] = useState<'full' | 'icons'>('full');
+  const [railWidth, setRailWidth] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [theme, setTheme] = useState<Theme>('system');
-  useEffect(() => { setTheme(readTheme()); }, []);
+  useEffect(() => {
+    setTheme(readTheme());
+    try {
+      const r = localStorage.getItem('anystudio:rail');
+      if (r === 'icons' || r === 'full') setRail(r);
+      const w = Number(localStorage.getItem('anystudio:rail-width'));
+      if (w >= RAIL_MIN && w <= RAIL_MAX) setRailWidth(w);
+    } catch { /* no storage, defaults */ }
+  }, []);
+  const toggleRail = () => setRail((r) => { const next = r === 'full' ? 'icons' : 'full'; try { localStorage.setItem('anystudio:rail', next); } catch { /* fine */ } return next; });
+  const setWidth = (w: number | null) => { setRailWidth(w); try { if (w === null) localStorage.removeItem('anystudio:rail-width'); else localStorage.setItem('anystudio:rail-width', String(w)); } catch { /* fine */ } };
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX; const startW = railWidth ?? RAIL_DEFAULT;
+    setDragging(true);
+    const move = (ev: PointerEvent) => setRailWidth(Math.min(RAIL_MAX, Math.max(RAIL_MIN, startW + ev.clientX - startX)));
+    const up = (ev: PointerEvent) => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); setDragging(false); setWidth(Math.min(RAIL_MAX, Math.max(RAIL_MIN, startW + ev.clientX - startX))); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  const nudge = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft') setWidth(Math.max(RAIL_MIN, (railWidth ?? RAIL_DEFAULT) - 16));
+    else if (e.key === 'ArrowRight') setWidth(Math.min(RAIL_MAX, (railWidth ?? RAIL_DEFAULT) + 16));
+    else if (e.key === 'Home') setWidth(null);
+  };
   const pickTheme = (t: Theme) => { setTheme(t); applyTheme(t); };
   const isActive = (href: string) => path === href || path.startsWith(`${href}/`);
 
   return (
-    <div className={styles.frame} data-rail={rail}>
+    <div className={styles.frame} data-rail={rail} data-dragging={dragging || undefined} style={railWidth ? ({ '--rail-w': `${railWidth}px` } as React.CSSProperties) : undefined}>
       <a href="#main" className={styles.skip}>Skip to content</a>
 
       <aside className={styles.rail} aria-label="Primary">
@@ -56,7 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className={styles.brandName}>AnyStudio</span>
         </Link>
         <nav className={styles.nav}>
-          {NAV.map((n) => (
+          {NAV.filter((n) => n.href !== '/developer' || workspace.type === 'ORGANIZATION').map((n) => (
             <Link key={n.href} href={n.href} className={styles.item} data-tour={n.tour} aria-current={isActive(n.href) ? 'page' : undefined} title={n.label}>
               {Icon[n.icon]({})}
               <span className={styles.label}>{n.label}</span>
@@ -64,12 +91,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className={styles.railFoot}>
-          {me.canSwitchToStaff && <a href={siblingOrigin(window.location.host, 'admin')} className="mono">Staff console →</a>}
-          <button type="button" className={cx(styles.item)} onClick={() => setRail((r) => (r === 'full' ? 'icons' : 'full'))} aria-label={rail === 'full' ? 'Collapse the sidebar' : 'Expand the sidebar'}>
-            <Icon.menu />
+          {me.canSwitchToStaff && <a href={siblingOrigin(window.location.host, 'admin')} className={styles.staffLink} style={{ fontFamily: 'var(--f-mono)' }}>Staff console →</a>}
+          <button type="button" className={cx(styles.item)} onClick={toggleRail} aria-label={rail === 'full' ? 'Collapse the sidebar' : 'Expand the sidebar'} aria-expanded={rail === 'full'} title={rail === 'full' ? 'Collapse' : 'Expand'}>
+            {rail === 'full' ? <Icon.collapse /> : <Icon.expand />}
             <span className={styles.label}>Collapse</span>
           </button>
         </div>
+        <div className={styles.handle} role="separator" aria-orientation="vertical" aria-label="Resize the sidebar (drag, or arrow keys; Home resets)" aria-valuenow={railWidth ?? RAIL_DEFAULT} aria-valuemin={RAIL_MIN} aria-valuemax={RAIL_MAX} tabIndex={0}
+          data-dragging={dragging || undefined} onPointerDown={startDrag} onDoubleClick={() => setWidth(null)} onKeyDown={nudge} />
       </aside>
 
       <div className={styles.body}>

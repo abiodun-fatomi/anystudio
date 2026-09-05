@@ -5,6 +5,7 @@
  * where to go, because it knows whether this person has a workspace yet.
  */
 import { Suspense, useState, type FormEvent } from 'react';
+import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
@@ -76,7 +77,7 @@ function LoginForm() {
           </div>
           <div className="field">
             <label htmlFor="pw">Password</label>
-            <input id="pw" className="inp" type="password" autoComplete="current-password"
+            <PasswordControl id="pw" className="inp" autoComplete="current-password"
               value={password} onChange={(e) => setPassword(e.target.value)} required />
             <p style={{ marginTop: 9, textAlign: 'right', fontSize: 13.5 }}><Link href="/forgot">Forgot your password?</Link></p>
           </div>

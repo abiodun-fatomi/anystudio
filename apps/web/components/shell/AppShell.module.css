@@ -6,7 +6,8 @@
 
 /* ---- rail ---- */
 .rail{position:sticky;top:0;height:100dvh;z-index:var(--z-rail);display:flex;flex-direction:column;gap:var(--s-1);padding:var(--s-3);
-  background:var(--paper);border-right:1px solid var(--line-soft);overflow:hidden;transition:width var(--dur) var(--ease)}
+  background:var(--paper);border-right:1px solid var(--line-soft);overflow:visible;transition:width var(--dur) var(--ease)}
+.rail > *{min-width:0}
 @media(max-width:767px){.rail{display:none}}
 .brand{display:flex;align-items:center;gap:10px;height:var(--bar-h);padding:0 var(--s-2);margin-bottom:var(--s-2);
   font-family:var(--f-display);font-weight:800;font-size:var(--t-4);letter-spacing:-.03em;color:var(--ink);text-decoration:none;white-space:nowrap}
@@ -23,17 +24,25 @@ button.item{width:100%;border:0;background:none;font:inherit;cursor:pointer;text
 .item[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:12px;bottom:12px;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
 .item:focus-visible{outline:2.5px solid var(--accent);outline-offset:-2px}
 .label{overflow:hidden;text-overflow:ellipsis}
-/* icons-only: hide labels, centre glyphs, show a tooltip via title */
-.frame[data-rail="icons"] .label,.frame[data-rail="icons"] .brandName,.frame[data-rail="icons"] .railFoot{display:none}
+/* icons-only: hide labels and the staff link, centre glyphs, keep the expand button — a rail you cannot reopen is a trap */
+.frame[data-rail="icons"] .label,.frame[data-rail="icons"] .brandName,.frame[data-rail="icons"] .staffLink{display:none}
 .frame[data-rail="icons"] .item{justify-content:center;padding:0}
 .frame[data-rail="icons"] .brand{justify-content:center;padding:0}
+.frame[data-rail="icons"] .handle{display:none}
 @media(max-width:1200px){
-  .label,.brandName,.railFoot{display:none}
+  .label,.brandName,.staffLink,.handle{display:none}
   .item{justify-content:center;padding:0}
   .brand{justify-content:center;padding:0}
 }
 .railFoot{margin-top:auto;padding:var(--s-3) var(--s-2) var(--s-1);border-top:1px solid var(--line-soft);display:grid;gap:var(--s-2)}
-.collapse{margin-top:auto;align-self:flex-end}
+.staffLink{font-size:var(--t-1)}
+/* the divider: grab it to set the rail's width; double-click to reset */
+.handle{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:1;background:transparent}
+.handle::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:2px;background:transparent;transition:background var(--dur-fast) var(--ease)}
+.handle:hover::after,.handle[data-dragging="true"]::after{background:var(--accent)}
+.handle:focus-visible{outline:2.5px solid var(--accent);outline-offset:-2px}
+.frame[data-dragging="true"]{user-select:none;cursor:col-resize}
+.frame[data-dragging="true"] .rail{transition:none}
 
 /* the bar+main column must be allowed to shrink, or a wide table widens the page */
 .body{min-width:0;display:flex;flex-direction:column;min-height:100dvh}
@@ -73,7 +82,8 @@ button.item{width:100%;border:0;background:none;font:inherit;cursor:pointer;text
 .themeSeg button:focus-visible{outline:2.5px solid var(--accent);outline-offset:-2px}
 
 /* ---- content ---- */
-.main{min-width:0;padding:var(--s-5) var(--s-5) calc(var(--s-7) + env(safe-area-inset-bottom));max-width:var(--content-max);width:100%}
+/* centred, and wide: a 1440-wide screen should not show a 1200 column hugging the rail with a dead strip on the right */
+.main{min-width:0;padding:var(--s-5) var(--s-6) calc(var(--s-7) + env(safe-area-inset-bottom));max-width:var(--content-max);width:100%;margin-inline:auto}
 @media(max-width:767px){.main{padding:var(--s-4) var(--s-4) calc(var(--s-9) + env(safe-area-inset-bottom))}}
 
 /* ---- bottom tabs (mobile) ---- */
