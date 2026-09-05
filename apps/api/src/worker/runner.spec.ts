@@ -16,6 +16,7 @@ import { QueueService } from '../modules/queue/queue.service';
 import { ProviderRegistry } from '../modules/provider/provider.registry';
 import { ProviderRouter } from '../modules/provider/provider.router';
 import { GenerationRunner } from './runner';
+import { AudioService } from '../modules/audio/audio.service';
 import { Pipelines } from './pipelines';
 
 const url = process.env.DATABASE_URL;
@@ -60,7 +61,11 @@ suite('GenerationRunner', () => {
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_EDIT' } }, create: { key: 'stub:any', capability: 'IMAGE_EDIT', priority: 10, costPerCall: 4 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO' } }, create: { key: 'stub:any', capability: 'IMAGE_TO_VIDEO', priority: 10, costPerCall: 80 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'VIDEO_STITCH' } }, create: { key: 'stub:any', capability: 'VIDEO_STITCH', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
-    for (const c of [{ code: 'video.ad_15s', credits: 260, label: 'Ad' }, { code: 'video.shot', credits: 0, label: 'Shot' }]) {
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'MUSIC' } }, create: { key: 'stub:any', capability: 'MUSIC', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'VOICEOVER' } }, create: { key: 'stub:any', capability: 'VOICEOVER', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.musicGenre.upsert({ where: { key: 'test-afrobeats' }, create: { key: 'test-afrobeats', name: 'Afrobeats', region: 'Nigeria', family: 'african', description: 'test', promptHints: 'log drum, shakers, warm bass', languages: ['en'] }, update: {} });
+    await db.voiceProfile.upsert({ where: { key: 'test-voice' }, create: { key: 'test-voice', providerKey: 'stub:any', providerVoiceId: 'stub-v', name: 'Stub voice', language: 'en-NG', tags: [] }, update: { providerKey: 'stub:any', active: true } });
+    for (const c of [{ code: 'video.ad_15s', credits: 260, label: 'Ad' }, { code: 'video.shot', credits: 0, label: 'Shot' }, { code: 'audio.music.preview', credits: 10, label: 'Song preview' }, { code: 'audio.music.unlock', credits: 30, label: 'Unlock' }, { code: 'audio.voiceover', credits: 8, label: 'Voiceover' }]) {
       await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
     }
   });
@@ -79,6 +84,52 @@ suite('GenerationRunner', () => {
     await ledger.grant({ walletId: wallet.id, amount: START, idempotencyKey: `seed:${wallet.id}`, reason: 'fixture' });
     userId = user.id; workspaceId = workspace.id; walletId = wallet.id;
     await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/src.png`, mime: 'image/png' } });
+  });
+
+  it('a song: lyrics are written, the full track is vaulted and locked, the preview is open, unlocking pays once and copies it out', async () => {
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'MUSIC', clientKey: 'song-1', params: { brief: 'a song about my ankara bags', genre: 'test-afrobeats', vocal: 'female', durationSec: 60 } });
+    expect(generation.credits).toBe(10);
+    expect(await runner.run(generation.id)).toBe('succeeded');
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    const outputs = row.outputs as Array<{ role: string; key: string; locked?: boolean; text?: { lyrics?: string } }>;
+    const full = outputs.find((o) => o.role === 'audio')!;
+    expect(full.locked).toBe(true);
+    expect(full.key).toContain('/vault/');
+    expect(media.objects.has(full.key)).toBe(true);
+    const preview = outputs.find((o) => o.role === 'preview')!;
+    expect(preview.key).not.toContain('/vault/');
+    expect(outputs.find((o) => o.role === 'text')?.text?.lyrics).toContain('[Chorus]');
+    expect((row.input as { lyricsWritten?: string }).lyricsWritten).toContain('[Verse]');
+    // The customer view never carries the vault key.
+    const view = await generations.get(workspaceId, generation.id);
+    expect((view.generation.outputs as Array<{ role: string; key: string }>).find((o) => o.role === 'audio')?.key).toBe('');
+    expect(await ledger.balance(walletId)).toBe(START - 10);
+
+    const audio = new AudioService(db, ledger, Object.assign(media, { copy: async (from: string, to: string) => { media.objects.set(to, media.objects.get(from)!); } }));
+    const actor = { userId, surface: 'APP' as const, staffRole: null, workspaceRoles: new Map([[workspaceId, 'OWNER' as const]]), mfaLevel: 0, lastStepUpAt: null, impersonating: false };
+    const req = { ip: '127.0.0.1', requestId: 'r', get: () => 'test' } as never;
+    const first = await audio.unlock(actor, workspaceId, generation.id, req);
+    expect(first.status).toBe('unlocked');
+    expect(await ledger.balance(walletId)).toBe(START - 40);
+    const again = await audio.unlock(actor, workspaceId, generation.id, req);
+    expect(again.status).toBe('already_unlocked');
+    expect(await ledger.balance(walletId)).toBe(START - 40);
+    const after = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    const opened = (after.outputs as Array<{ role: string; key: string; locked?: boolean }>).find((o) => o.role === 'audio')!;
+    expect(opened.locked).toBe(false);
+    expect(opened.key).not.toContain('/vault/');
+    expect(media.objects.has(opened.key)).toBe(true);
+  });
+
+  it('a voiceover routes to the voice\'s own vendor and records the script alongside the audio', async () => {
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'VOICEOVER', clientKey: 'vo-1', params: { script: 'Fresh ankara bags, **now** in stock.', voiceId: 'test-voice' } });
+    expect(await runner.run(generation.id)).toBe('succeeded');
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    const outputs = row.outputs as Array<{ role: string; text?: { script?: string; words?: number } }>;
+    expect(outputs.find((o) => o.role === 'audio')).toBeTruthy();
+    expect(outputs.find((o) => o.role === 'text')?.text?.script).toBe('Fresh ankara bags, now in stock.');
+    expect(await ledger.balance(walletId)).toBe(START - 8);
+    await expect(generations.request({ workspaceId, requestedById: userId, capability: 'VOICEOVER', clientKey: 'vo-2', params: { script: 'x', voiceId: 'no-such-voice' } }).then((r) => runner.run(r.generation.id))).resolves.toBe('failed');
   });
 
   it('runs a copy generation end to end: outputs on the row, credits stand, stage narrated', async () => {

@@ -101,6 +101,16 @@ function stubText(input: ProviderInput) {
     };
   }
   if (task === 'field') return { value: `Stub rewrite of ${(input.params as { field?: string }).field ?? 'a field'}` };
+  if (task === 'lyrics') {
+    return {
+      title: 'Stub song',
+      sections: [
+        { tag: 'verse', lines: ['Morning in the market, sun is high', 'Colours on the table, people passing by'] },
+        { tag: 'chorus', lines: ['This is the one, this is the one', 'Made with love, and now it is done'] },
+        { tag: 'outro', lines: ['Come and see, come and see'] },
+      ],
+    };
+  }
   return stubCopy(input);
 }
 

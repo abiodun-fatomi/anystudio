@@ -10,7 +10,7 @@
 import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
-export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle';
+export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice';
 
 export type Field =
   | { key: string; kind: 'text'; label: string; placeholder?: string; hint?: string; maxLength?: number; rows?: number; required?: boolean }
@@ -19,7 +19,9 @@ export type Field =
   | { key: string; kind: 'switch'; label: string; hint?: string }
   | { key: string; kind: 'sizes'; label: string }
   | { key: string; kind: 'platforms'; label: string }
-  | { key: string; kind: 'slider'; label: string; min: number; max: number; step: number; format: (v: number) => string };
+  | { key: string; kind: 'slider'; label: string; min: number; max: number; step: number; format: (v: number) => string }
+  /** A pick from a server catalogue (genres, voices), fetched by the panel. */
+  | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices'; hint?: string };
 
 export interface Tool {
   id: ToolId;
@@ -129,6 +131,33 @@ export const TOOLS: Tool[] = [
     ],
     defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false },
     costCodeFor: (v) => (Number(v.shots) === 4 ? 'video.ad_30s' : Number(v.shots) === 2 ? 'video.ad_15s' : undefined),
+  },
+  {
+    id: 'music', label: 'Make a song', short: 'Song', icon: 'music', capability: 'MUSIC', needsSource: false,
+    narrative: { queued: 'Waiting for a slot', preparing: 'Writing the words', routing: 'Choosing a studio', generating: 'Composing — a full song takes a minute or two', composing: 'Mixing', storing: 'Cutting your preview', done: 'Done' },
+    fields: [
+      { key: 'genre', kind: 'catalogue', source: 'genres', label: 'Genre', hint: 'From Afrobeats to cumbia — pick the sound.' },
+      { key: 'brief', kind: 'text', label: 'What is the song about?', placeholder: 'A birthday song for my sister Kemi who loves jollof and dancing', rows: 3, maxLength: 2000, required: true },
+      { key: 'title', kind: 'text', label: 'Title', placeholder: 'Leave blank and we will name it', maxLength: 120 },
+      { key: 'vocal', kind: 'segment', label: 'Voice', options: [{ id: 'female', label: 'Female' }, { id: 'male', label: 'Male' }, { id: 'duet', label: 'Duet' }, { id: 'choir', label: 'Choir' }, { id: 'instrumental', label: 'No vocals' }] },
+      { key: 'language', kind: 'select', label: 'Lyrics in', options: [{ value: 'en', label: 'English' }, { value: 'pcm', label: 'Pidgin' }, { value: 'yo', label: 'Yoruba' }, { value: 'ig', label: 'Igbo' }, { value: 'ha', label: 'Hausa' }, { value: 'tw', label: 'Twi' }, { value: 'sw', label: 'Swahili' }, { value: 'zu', label: 'Zulu' }, { value: 'fr', label: 'French' }, { value: 'pt', label: 'Portuguese' }, { value: 'es', label: 'Spanish' }, { value: 'ar', label: 'Arabic' }, { value: 'hi', label: 'Hindi' }, { value: 'ko', label: 'Korean' }] },
+      { key: 'mood', kind: 'text', label: 'Mood', placeholder: 'joyful · romantic · confident · nostalgic', maxLength: 60 },
+      { key: 'tempo', kind: 'segment', label: 'Tempo', options: [{ id: 'slow', label: 'Slow' }, { id: 'mid', label: 'Mid' }, { id: 'fast', label: 'Fast' }] },
+      { key: 'durationSec', kind: 'segment', label: 'Length', options: [{ id: '60', label: '1 min' }, { id: '120', label: '2 min' }, { id: '180', label: '3 min' }] },
+      { key: 'lyrics', kind: 'text', label: 'Your own lyrics', placeholder: 'Leave blank and we write them. Or paste yours, with [Verse] and [Chorus] lines.', rows: 5, maxLength: 3000, hint: 'You hear a 30-second preview first. Unlock the full song when you love it.' },
+    ],
+    defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120 },
+  },
+  {
+    id: 'voice', label: 'Record a voiceover', short: 'Voice', icon: 'mic', capability: 'VOICEOVER', needsSource: false,
+    narrative: { queued: 'Waiting for a slot', preparing: 'Reading your script', routing: 'Booking the voice', generating: 'Recording', storing: 'Saving', done: 'Done' },
+    fields: [
+      { key: 'voiceId', kind: 'catalogue', source: 'voices', label: 'Voice', hint: 'Nigerian, Kenyan and South African English voices are here too.' },
+      { key: 'script', kind: 'text', label: 'Script', placeholder: 'Fresh ankara bags, now in stock. Message us to order — delivery across Lagos today.', rows: 5, maxLength: 4000, required: true, hint: 'About 150 words is a minute.' },
+      { key: 'style', kind: 'segment', label: 'Read it', options: [{ id: 'natural', label: 'Natural' }, { id: 'ad', label: 'Ad' }, { id: 'energetic', label: 'Upbeat' }, { id: 'calm', label: 'Calm' }, { id: 'story', label: 'Story' }] },
+      { key: 'speed', kind: 'slider', label: 'Speed', min: 0.8, max: 1.2, step: 0.05, format: (v) => `${v.toFixed(2)}×` },
+    ],
+    defaults: { style: 'natural', speed: 1, language: 'en' },
   },
 ];
 

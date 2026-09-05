@@ -17,6 +17,7 @@ interface Video { id: string; status: 'queued' | 'in_progress' | 'completed' | '
 
 const KNOWN: Record<string, { capability: Capability; model: string }> = {
   'openai:sora-2': { capability: 'IMAGE_TO_VIDEO', model: 'sora-2' },
+  'openai:tts': { capability: 'VOICEOVER', model: 'gpt-4o-mini-tts' },
 };
 
 export class OpenAiProvider extends BaseProvider {
@@ -29,6 +30,7 @@ export class OpenAiProvider extends BaseProvider {
   }
 
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    if (input.capability === 'VOICEOVER') return this.speak(input, opts);
     if (input.capability !== 'IMAGE_TO_VIDEO') this.unsupported(input.capability);
     const p = this.params(input, 'IMAGE_TO_VIDEO');
     const model = this.str(input.config, 'model', this.defaultModel);
@@ -73,4 +75,29 @@ export class OpenAiProvider extends BaseProvider {
     const bytes = new Uint8Array(await res.arrayBuffer());
     return { providerKey: this.key, providerJobId, artifacts: [{ bytes, mime: 'video/mp4', role: 'video' }], meta: { model } };
   }
-}
+
+
+  /**
+   * POST /v1/audio/speech — one request, the MP3 back. `instructions` steer
+   * delivery on the gpt-4o-mini-tts model; the older tts-1 ignores them.
+   */
+  private async speak(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const p = this.params(input, 'VOICEOVER');
+    const model = this.str(input.config, 'model', this.defaultModel);
+    const voice = p.providerVoiceId ?? this.str(input.config, 'defaultVoice', 'nova');
+    const instructions: Record<string, string> = {
+      natural: 'Speak naturally and clearly.', ad: 'Speak like a confident, warm radio advert voice; energetic but not shouting.',
+      calm: 'Speak slowly, calmly and warmly.', energetic: 'Speak with bright, upbeat energy and a smile in the voice.', story: 'Narrate like a story, with feeling and gentle pacing.',
+    };
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST', headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model, voice, input: p.script, response_format: 'mp3', speed: p.speed, ...(model.includes('4o') ? { instructions: `${instructions[p.style] ?? instructions.natural} Language: ${p.language}.` } : {}) }),
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    }).catch((err: Error) => { throw new ProviderError('RETRYABLE', `${this.key}: network error: ${err.message}`, this.key); });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ProviderError(res.status === 429 ? 'RATE_LIMITED' : res.status >= 500 ? 'RETRYABLE' : res.status === 401 ? 'PROVIDER_DOWN' : 'INVALID_INPUT', `${this.key}: HTTP ${res.status}: ${text.slice(0, 300)}`, this.key);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { providerKey: this.key, artifacts: [{ bytes, mime: 'audio/mpeg', role: 'audio' }], meta: { model, voice } };
+  }}

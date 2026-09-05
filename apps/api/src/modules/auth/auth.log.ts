@@ -73,7 +73,8 @@ export type AuthEventName =
   | 'workspace.delete'
   | 'billing.checkout'
   | 'billing.verify'
-  | 'billing.cancel';
+  | 'billing.cancel'
+  | 'audio.unlock';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 

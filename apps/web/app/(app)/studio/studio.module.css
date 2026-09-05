@@ -104,3 +104,14 @@
 .fail{display:grid;gap:var(--s-2);padding:var(--s-3);border-radius:var(--r-sm);background:var(--danger-wash);color:var(--ink);font-size:var(--t-2)}
 .fail strong{color:var(--danger)}
 .refunded{display:inline-flex;align-items:center;gap:6px;color:var(--ok);font-weight:600}
+
+/* ---- audio ---- */
+.audio{display:grid;gap:var(--s-3);padding:var(--s-3);border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line-soft)}
+.audio[data-locked="true"]{background:linear-gradient(135deg,var(--accent-wash),var(--surface))}
+.audioHead{display:flex;align-items:center;gap:var(--s-3)}
+.audioIcon{width:40px;height:40px;border-radius:var(--r-md);background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.audioMeta{display:grid;gap:2px;min-width:0;flex:1}
+.audioMeta strong{font-size:var(--t-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audioMeta span{font-size:var(--t-1);color:var(--muted)}
+.player{width:100%;height:40px}
+.unlockRow{display:flex;justify-content:space-between;align-items:center;gap:var(--s-3);flex-wrap:wrap;font-size:var(--t-2);color:var(--ink-soft)}

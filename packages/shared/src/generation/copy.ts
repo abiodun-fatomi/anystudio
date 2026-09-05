@@ -149,3 +149,47 @@ export const COPY_FIELDS: Record<string, { label: string; max: number }> = {
   'seo.title': { label: 'SEO title', max: 70 },
   'seo.metaDescription': { label: 'Meta description', max: 160 },
 };
+
+// ---------------------------------------------------------------- lyrics
+
+/**
+ * A song's words, in sections the music model understands. The pipeline
+ * writes these with the copy model before the music model sings them, so
+ * the seller can see and change the words the song will have.
+ */
+export const LYRICS_SECTION_TAGS = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'outro'] as const;
+export const lyricsSchema = z.object({
+  title: z.string().min(1).max(120),
+  sections: z.array(z.object({
+    tag: z.enum(LYRICS_SECTION_TAGS),
+    lines: z.array(z.string().max(200)).min(1).max(12),
+  })).min(1).max(12),
+});
+export type Lyrics = z.infer<typeof lyricsSchema>;
+
+export const LYRICS_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: 'A short title for the song' },
+    sections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          tag: { type: 'string', enum: [...LYRICS_SECTION_TAGS] },
+          lines: { type: 'array', items: { type: 'string' }, description: 'One lyric line per item' },
+        },
+        required: ['tag', 'lines'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['title', 'sections'],
+  additionalProperties: false,
+};
+
+/** "[Verse]\nline\nline\n\n[Chorus]\n…" — the form both music models read. */
+export function lyricsToText(l: Lyrics): string {
+  const label: Record<(typeof LYRICS_SECTION_TAGS)[number], string> = { intro: 'Intro', verse: 'Verse', 'pre-chorus': 'Pre-Chorus', chorus: 'Chorus', bridge: 'Bridge', outro: 'Outro' };
+  return l.sections.map((s) => `[${label[s.tag]}]\n${s.lines.join('\n')}`).join('\n\n');
+}

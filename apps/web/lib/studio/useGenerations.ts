@@ -201,11 +201,29 @@ export function useGenerations() {
     } catch { /* an empty pane is fine */ }
   }, [workspace.id, watch, resolveUrls]);
 
-  return { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField };
+  /** Pay for the rest of a song. The server debits once however many times this is pressed. */
+  const unlock = useCallback(async (clientKey: string): Promise<{ ok: boolean; status?: number; message?: string }> => {
+    const card = cards.find((c) => c.clientKey === clientKey);
+    if (!card?.id) return { ok: false, message: 'Not ready yet.' };
+    try {
+      const r = await api.audio.unlock(workspace.id, card.id);
+      if (r.credits) spend(r.credits);
+      const urls: Record<string, string> = {};
+      for (const o of r.generation.outputs) if (o.key && o.url) urls[o.key] = o.url;
+      patch(clientKey, (c) => ({ ...c, outputs: r.generation.outputs.map(({ url: _u, ...o }) => o), urls: { ...c.urls, ...urls } }));
+      void refreshBalance();
+      return { ok: true };
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      return { ok: false, status: err.status, message: err.message };
+    }
+  }, [cards, workspace.id, spend, patch, refreshBalance]);
+
+  return { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock };
 }
 
 export function toolFor(capability: string): string {
-  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer' } as Record<string, string>)[capability] ?? 'scene';
+  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer', MUSIC: 'music', VOICEOVER: 'voice' } as Record<string, string>)[capability] ?? 'scene';
 }
 
 function getPath(obj: unknown, path: string): unknown {

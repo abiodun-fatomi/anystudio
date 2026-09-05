@@ -131,9 +131,15 @@ export type ExportSize = keyof typeof EXPORT_SIZES;
 export interface GenerationOutput {
   /** Storage key of the file. */
   key: string;
-  /** What it is: the branded image, a size variant, the reel, the caption set. */
-  role: 'image' | 'variant' | 'video' | 'audio' | 'text' | 'thumb' | 'mask';
+  /** What it is: the branded image, a size variant, the reel, the caption set, a song's preview clip. */
+  role: 'image' | 'variant' | 'video' | 'audio' | 'preview' | 'text' | 'thumb' | 'mask';
   mime: string;
+  /**
+   * The full song before it is paid for. A locked output's key points into
+   * the workspace's vault prefix, which the API refuses to sign; unlocking
+   * copies it out and clears this.
+   */
+  locked?: boolean;
   bytes?: number;
   width?: number;
   height?: number;
@@ -256,16 +262,38 @@ export const capabilityParams = {
   VOICEOVER: z.object({
     script: z.string().min(1).max(4000),
     language: z.string().max(16).default('en'),
+    /** A VoiceProfile key from the catalogue. The voice decides the provider. */
     voiceId: z.string().max(80).optional(),
+    /** How to read it. Providers that take direction get it; the rest ignore it. */
+    style: z.enum(['natural', 'ad', 'calm', 'energetic', 'story']).default('natural'),
+    speed: z.number().min(0.7).max(1.3).default(1),
+    /** Filled by the pipeline from the voice row: the vendor's id for the voice. */
+    providerVoiceId: z.string().max(120).optional(),
   }),
+  /**
+   * A song. Made once at full length, kept in the vault; the customer hears
+   * a preview and pays to unlock the whole thing (the Frobits loop).
+   */
   MUSIC: z.object({
+    /** What the song is about, in the seller's words. */
     brief: z.string().min(3).max(2000),
+    /** A MusicGenre key from the catalogue. */
     genre: z.string().max(60),
-    mood: z.string().max(40).optional(),
+    title: z.string().max(120).optional(),
+    mood: z.string().max(60).optional(),
     tempo: z.enum(['slow', 'mid', 'fast']).optional(),
-    vocal: z.enum(['male', 'female', 'duet', 'choir', 'instrumental']).default('instrumental'),
+    vocal: z.enum(['male', 'female', 'duet', 'choir', 'instrumental']).default('female'),
+    /** Language of the lyrics. */
     language: z.string().max(16).default('en'),
-    durationSec: z.number().int().min(15).max(240).default(30),
+    /** Their own lyrics. Absent with vocals → the pipeline writes them first. */
+    lyrics: z.string().max(3000).optional(),
+    durationSec: z.number().int().min(30).max(240).default(120),
+    /** Set by the pipeline on the row after the lyrics step so a retry does not write them twice. */
+    lyricsWritten: z.string().max(3000).optional(),
+    /** Filled by the pipeline from the genre row: what the model is told about instruments and rhythm. */
+    styleHints: z.string().max(1000).optional(),
+    /** Filled by the pipeline: the final "[Verse]…" text the model sings. */
+    lyricsText: z.string().max(4000).optional(),
   }),
   DUB: z.object({
     sourceKey: objectKey,
@@ -308,7 +336,16 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   VIDEO_STITCH: 'video.stitch',
   TEXT_GENERATE: 'text.description',
   VOICEOVER: 'audio.voiceover',
-  MUSIC: 'audio.music',
+  MUSIC: 'audio.music.preview',
   DUB: 'video.translate',
   LIPSYNC: 'video.lipsync',
 };
+
+/** How much of a song is heard before paying, and what the rest costs. */
+export const MUSIC_PREVIEW_SEC = 30;
+export const MUSIC_UNLOCK_COST_CODE = 'audio.music.unlock';
+
+/** Outputs as a customer may see them: a locked track keeps its shape and loses its key. */
+export function redactLocked<T extends { locked?: boolean; key: string }>(outputs: T[] | null | undefined): T[] {
+  return (outputs ?? []).map((o) => (o.locked ? { ...o, key: '' } : o));
+}

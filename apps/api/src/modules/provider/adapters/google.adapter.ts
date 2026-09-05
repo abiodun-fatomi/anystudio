@@ -31,6 +31,8 @@ const KNOWN: Record<string, { capabilities: Capability[]; model: string }> = {
   'vertex:gemini-3-pro-image': { capabilities: ['IMAGE_EDIT', 'IMAGE_GENERATE', 'BACKGROUND_REPLACE', 'RELIGHT'], model: 'gemini-3-pro-image-preview' },
   'vertex:veo-3.1-fast': { capabilities: ['IMAGE_TO_VIDEO'], model: 'veo-3.1-fast-generate-preview' },
   'google:gemini-2.5-flash-lite': { capabilities: ['TEXT_GENERATE'], model: 'gemini-2.5-flash-lite' },
+  /** Cloud Text-to-Speech. Needs the service account (an API key for Generative Language does not open this door). */
+  'google:tts': { capabilities: ['VOICEOVER'], model: 'en-NG-Standard-A' },
 };
 
 export class GoogleProvider extends BaseProvider {
@@ -55,6 +57,8 @@ export class GoogleProvider extends BaseProvider {
         return this.veo(model, input, opts);
       case 'TEXT_GENERATE':
         return this.text(model, input, opts);
+      case 'VOICEOVER':
+        return this.speak(model, input, opts);
       default:
         return this.image(model, input, opts);
     }
@@ -184,6 +188,25 @@ export class GoogleProvider extends BaseProvider {
     if (!textOut) throw new ProviderError('RETRYABLE', `${this.key}: empty completion`, this.key, { raw: res.json });
     return { providerKey: this.key, artifacts: [{ mime: 'application/json', role: 'text', text: req.jsonSchema ? parseJson(this.key, textOut) : textOut }], meta: { model, usage: pick(res.json, 'usageMetadata') } };
   }
+
+  /**
+   * POST https://texttospeech.googleapis.com/v1/text:synthesize with the
+   * service-account token. The voice name carries its language
+   * ("en-NG-Standard-A"), so the language code is derived from it.
+   */
+  private async speak(defaultVoice: string, input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const p = this.params(input, 'VOICEOVER');
+    const name = p.providerVoiceId ?? defaultVoice;
+    const languageCode = name.split('-').slice(0, 2).join('-');
+    const headers = await this.auth.serviceHeaders();
+    const res = await http<{ audioContent?: string }>(this.key, 'https://texttospeech.googleapis.com/v1/text:synthesize', {
+      headers, timeoutMs: opts.timeoutMs, signal: opts.signal,
+      body: { input: { text: p.script }, voice: { languageCode, name }, audioConfig: { audioEncoding: 'MP3', speakingRate: p.speed, pitch: 0 } },
+    });
+    const b64 = res.json?.audioContent;
+    if (!b64) throw new ProviderError('RETRYABLE', `${this.key}: no audioContent in response`, this.key);
+    return { providerKey: this.key, artifacts: [{ bytes: new Uint8Array(Buffer.from(b64, 'base64')), mime: 'audio/mpeg', role: 'audio' }], meta: { voice: name } };
+  }
 }
 
 /** Gemini's schema dialect rejects a few JSON-Schema keywords; drop them rather than fail. */
@@ -244,6 +267,12 @@ export class GoogleAuth {
       return path.startsWith('projects/') ? `https://${host}/v1/${path}` : `https://${host}/v1/projects/${this.creds.project}/locations/${loc}/publishers/google/${path}`;
     }
     return `https://generativelanguage.googleapis.com/v1beta/${path}`;
+  }
+
+  /** Bearer token for Google Cloud services other than Vertex (Text-to-Speech). Service account only. */
+  async serviceHeaders(): Promise<Record<string, string>> {
+    if (!this.sa) throw new ProviderError('PROVIDER_DOWN', 'google: this service needs GOOGLE_VERTEX_SA_JSON (a service account), not an API key', 'google');
+    return { authorization: `Bearer ${await this.accessToken()}` };
   }
 
   async headers(): Promise<Record<string, string>> {

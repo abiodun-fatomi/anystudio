@@ -7,11 +7,11 @@
  * error — the panel says what this would cost and offers the two ways to
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
-import { useEffect, useState } from 'react';
-import { api, type Quote } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { api, type Genre, type Quote, type Voice } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, type Field, type Tool } from '@/lib/studio/tools';
-import { Button, Input, SegmentedControl, Select, Slider, Switch, Textarea } from '@/components/ui';
+import { Button, Combobox, Input, SegmentedControl, Select, Slider, Switch, Textarea } from '@/components/ui';
 import styles from './studio.module.css';
 
 export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy }: {
@@ -30,7 +30,7 @@ export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;
   const short = after !== null && after < 0;
-  const missingRequired = tool.fields.some((f) => f.kind === 'text' && f.required && !String(values[f.key] ?? '').trim());
+  const missingRequired = tool.fields.some((f) => (f.kind === 'text' && f.required && !String(values[f.key] ?? '').trim()) || (f.kind === 'catalogue' && !String(values[f.key] ?? '').trim()));
   const blocked = busy || !quote || short || (tool.needsSource && !hasSource) || missingRequired;
   const why = !hasSource && tool.needsSource ? 'Add a photo first.' : missingRequired ? 'Fill in the required field.' : short ? 'Not enough credits.' : null;
 
@@ -56,7 +56,7 @@ export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy 
 
           <div className={styles.generate}>
             <Button full size="lg" loading={busy} disabled={blocked} onClick={() => quote && onGenerate(quote)} title={why ?? undefined}>
-              {tool.id === 'copy' ? 'Write it' : tool.id === 'video' ? (Number(values.shots) > 1 ? 'Make the ad' : 'Make the reel') : 'Make it'}
+              {tool.id === 'copy' ? 'Write it' : tool.id === 'video' ? (Number(values.shots) > 1 ? 'Make the ad' : 'Make the reel') : tool.id === 'music' ? 'Make the song' : tool.id === 'voice' ? 'Record it' : 'Make it'}
             </Button>
             {why && <p className={styles.quoteNote} style={{ marginTop: 'var(--s-2)', textAlign: 'center' }}>{why}</p>}
           </div>
@@ -66,10 +66,30 @@ export function ToolPanel({ tool, values, onChange, hasSource, onGenerate, busy 
       {/* Phone: the cost and the button stay in thumb reach. */}
       <div className={styles.generateBar}>
         <span className={styles.quoteInline}>{credits ?? '—'} credits · {after === null ? '—' : after.toLocaleString()} after</span>
-        <Button loading={busy} disabled={blocked} onClick={() => quote && onGenerate(quote)}>{tool.id === 'copy' ? 'Write it' : 'Make it'}</Button>
+        <Button loading={busy} disabled={blocked} onClick={() => quote && onGenerate(quote)}>{tool.id === 'copy' ? 'Write it' : tool.id === 'music' ? 'Make the song' : tool.id === 'voice' ? 'Record it' : 'Make it'}</Button>
       </div>
     </section>
   );
+}
+
+/** Genres and voices come from the server; the first option is chosen when nothing is. */
+const catalogueCache: { genres?: Promise<Genre[]>; voices?: Promise<Voice[]> } = {};
+function CatalogueField({ field, value, onChange }: { field: Extract<Field, { kind: 'catalogue' }>; value: string; onChange: (v: unknown) => void }) {
+  const [genres, setGenres] = useState<Genre[] | null>(null);
+  const [voices, setVoices] = useState<Voice[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (field.source === 'genres') { catalogueCache.genres ??= api.audio.genres(); catalogueCache.genres.then((g) => { if (live) setGenres(g); }).catch(() => { if (live) setGenres([]); }); }
+    else { catalogueCache.voices ??= api.audio.voices(); catalogueCache.voices.then((v) => { if (live) setVoices(v); }).catch(() => { if (live) setVoices([]); }); }
+    return () => { live = false; };
+  }, [field.source]);
+  const options = useMemo(() => field.source === 'genres'
+    ? (genres ?? []).map((g) => ({ value: g.key, label: g.name, sub: `${g.region} · ${g.description}`, keywords: `${g.family} ${g.region} ${g.languages.join(' ')}` }))
+    : (voices ?? []).map((v) => ({ value: v.key, label: v.name, sub: [v.accent ? `${v.accent} ${v.language.startsWith('en') ? 'English' : v.language}` : v.language, v.gender, ...v.tags].filter(Boolean).join(' · '), keywords: `${v.language} ${v.accent ?? ''} ${v.gender ?? ''} ${v.tags.join(' ')} ${v.provider}` })), [field.source, genres, voices]);
+  useEffect(() => { if (!value && options[0]) onChange(options[0].value); }, [value, options, onChange]);
+  const loaded = field.source === 'genres' ? genres !== null : voices !== null;
+  if (loaded && options.length === 0) return <Input label={field.label} value="" readOnly hint={field.source === 'voices' ? 'No voice vendor is configured in this environment yet.' : 'The catalogue is empty.'} />;
+  return <Combobox label={field.label} hint={field.hint} options={options} value={value} onChange={onChange} placeholder={loaded ? 'Search…' : 'Loading…'} emptyText="Nothing matches — try a region or a word like 'church' or 'club'" />;
 }
 
 function FieldControl({ field, value, onChange }: { field: Field; value: unknown; onChange: (v: unknown) => void }) {
@@ -91,6 +111,8 @@ function FieldControl({ field, value, onChange }: { field: Field; value: unknown
       return <Switch label={field.label} hint={field.hint} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
     case 'slider':
       return <Slider label={field.label} min={field.min} max={field.max} step={field.step} value={Number(value ?? field.min)} onChange={onChange} format={field.format} />;
+    case 'catalogue':
+      return <CatalogueField field={field} value={String(value ?? '')} onChange={onChange} />;
     case 'sizes': {
       const chosen = new Set((value as string[] | undefined) ?? []);
       return (

@@ -28,8 +28,9 @@ route to the stub adapter without any key at all.
 | `BFL_API_KEY` | Black Forest Labs | api.bfl.ai → sign up | Flux Kontext Pro — budget edit tier | $0.04/image |
 | `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET` | Higgsfield | platform.higgsfield.ai → API keys | Their own DoP image-to-video models (`higgsfield:dop-turbo`, row disabled until resale terms are on file). The Kling row through them stays disabled: Kling's ToS §4.6 forbids commercial use without written permission and §4.5 requires attribution. | ~$0.60/clip (verify) |
 | `HEYGEN_API_KEY` | HeyGen | already held | Dubbing and avatars (Phase 11) | per-minute; not public, sales call |
+| `ELEVENLABS_API_KEY` | ElevenLabs | elevenlabs.io → Profile → API keys (paid plan for commercial music) | Eleven Music v2 for songs (`elevenlabs:music`, primary), multilingual TTS for voiceovers (`elevenlabs:tts`, primary) | ~$0.11–1.09 per song by length; TTS by character |
 
-Later phases, not yet needed: ElevenLabs (`ELEVENLABS_API_KEY` — voiceover, dubbing v1, music), Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract), sync.so (lip sync).
+Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract), sync.so (lip sync).
 
 ## Infrastructure keys (already in the env group; listed for completeness)
 
@@ -130,3 +131,27 @@ Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per m
 - Flutterwave **cancel** needs the per-customer subscription id, looked up from `GET /v3/subscriptions?email=…` at cancel time.
 - Paddle **refunds** arrive as `adjustment.*` events; credits are clawed back through the ledger. If they were already spent the row says `refunded_clawback_failed` and a person decides.
 - Plan credits do not yet expire at period end (open decision in the spec): today they accumulate like pack credits. `LedgerKind.EXPIRY` and `ledger.expire()` exist for when that is decided.
+
+
+## Audio (Phase 10)
+
+**Songs — the preview-then-unlock loop.** A request costs `audio.music.preview` (10 credits) and makes the *whole* song once: the copy model writes sectioned lyrics in the chosen language (unless the seller pasted their own), the genre row's `promptHints` and the lyrics go to the music provider, the full track is stored under the workspace's **vault** prefix — which no customer-facing path will sign — and ffmpeg cuts a 30-second faded preview. `POST /workspaces/:id/generations/:gid/unlock` debits `audio.music.unlock` (30 credits, once per song however often it is pressed), copies the track out of the vault and opens it for download. The WhatsApp bot (Phase 12) reuses the same two calls.
+
+| Row | Vendor | Notes |
+|---|---|---|
+| `elevenlabs:music` (p10) | Eleven Music v2 | Prompt mode for instrumentals; a composition plan of chunks (lyrics per section, styles, durations) when there are words. Refuses artist names — the genre hints never use them. |
+| `fal:minimax-music-v2` (p20) | MiniMax via fal | `prompt` + `lyrics_prompt` with `[Verse]`/`[Chorus]` tags. fal lists commercial use. |
+| `mubert:track` | Mubert | Disabled; not on contract. |
+
+**Genres** live in `music_genres` (68 seeded: Afrobeats, Amapiano, Highlife, Fuji, Jùjú, Bongo Flava, Gqom, Soukous, Mbalax, Raï, dancehall, reggaetón, K-pop, Bollywood, cumbia, samba, gospel, jazz, drill, lo-fi, cinematic, birthday…). Adding one is an INSERT; fixing how one sounds is an edit to its `promptHints`.
+
+**Voiceovers** cost `audio.voiceover` (8). The voice row (`voice_profiles`) names the vendor and its voice id, and the router is constrained to that vendor — a fallback in someone else's voice is worse than a failure.
+
+| Row | Vendor | Voices seeded |
+|---|---|---|
+| `elevenlabs:tts` (p10) | `eleven_multilingual_v2` | Rachel, Adam, Bella, Antoni, Domi, Josh (premade ids). Add African-English voices from the library as rows once the plan allows. |
+| `google:tts` (p20) | Cloud Text-to-Speech, service account | en-NG (4), en-KE (2), en-ZA, fr-FR, pt-BR |
+| `openai:tts` (p30) | `gpt-4o-mini-tts` | nova, onyx, coral |
+| `spitch:tts` | Spitch | Disabled: Yoruba, Igbo, Hausa by quote. |
+
+**Verify in the sandbox before launch:** Eleven Music's composition-plan field names against the live docs (the `chunks` shape used here is the documented v2 one); that the stub's 30-second preview cut matches the real track's loudness; MiniMax's `audio_setting` acceptance.

@@ -561,6 +561,55 @@ model Plan {
   @@map("plans")
 }
 
+/// A music genre the customer can pick. Rows, not constants, because the
+/// catalogue is global (Amapiano next to cumbia next to K-pop) and grows by
+/// request; `promptHints` is what the pipeline tells the model, so a genre
+/// that comes out wrong is fixed by editing a row, not a release.
+model MusicGenre {
+  key         String   @id
+  name        String
+  /// Where it is from, in words a seller uses: "Nigeria", "South Africa", "Latin America".
+  region      String
+  /// A coarse family for the picker's grouping: african, afro-diaspora, pop, urban, electronic, latin, roots, mood.
+  family      String
+  description String
+  /// What the model is told: instruments, rhythm, production, vocal delivery.
+  promptHints String
+  bpmMin      Int?
+  bpmMax      Int?
+  /// Languages lyrics are usually in, first is the default.
+  languages   String[]
+  active      Boolean  @default(true)
+  sort        Int      @default(100)
+  updatedAt   DateTime @updatedAt
+
+  @@index([family, sort])
+  @@map("music_genres")
+}
+
+/// A voice the customer can pick for a voiceover. The row names the provider
+/// and its id for the voice, so the pipeline routes to exactly that provider.
+model VoiceProfile {
+  key             String   @id
+  /// The ProviderModel key that serves it, e.g. "elevenlabs:tts".
+  providerKey     String
+  /// The vendor's id for the voice.
+  providerVoiceId String
+  name            String
+  language        String
+  accent          String?
+  gender          String?
+  /// Words for the picker: "warm", "announcer", "conversational".
+  tags            String[]
+  sampleUrl       String?
+  active          Boolean  @default(true)
+  sort            Int      @default(100)
+  updatedAt       DateTime @updatedAt
+
+  @@index([language, sort])
+  @@map("voice_profiles")
+}
+
 /// A one-time top-up. Same shape as a plan without the recurrence.
 model CreditPack {
   code          String   @id
