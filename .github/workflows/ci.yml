@@ -92,6 +92,7 @@ jobs:
             --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
 
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm db:deploy
       - run: pnpm db:seed
