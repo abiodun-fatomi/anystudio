@@ -15,3 +15,26 @@ describe('phone normalisation', () => {
     expect(() => RegistrationService.normalisePhone('hello')).toThrow();
   });
 });
+
+describe('where a person is', () => {
+  it('reads the country off the phone, and prices the market from it', async () => {
+    const { currencyForCountry, regionForCountry } = await import('@anystudio/shared');
+    expect(RegistrationService.countryOfPhone('+2348012345678')).toBe('NG');
+    expect(RegistrationService.countryOfPhone('+254712345678')).toBe('KE');
+    expect(RegistrationService.countryOfPhone('+447400123456')).toBe('GB');
+    expect(RegistrationService.countryOfPhone('+12015550123')).toBe('US');
+    expect(currencyForCountry('NG')).toBe('NGN');
+    expect(currencyForCountry('GB')).toBe('GBP');
+    expect(currencyForCountry('KE')).toBe('USD');
+    expect(currencyForCountry(null)).toBe('NGN');
+    expect(regionForCountry('KE')).toBe('ke');
+  });
+
+  it('falls back to the edge country header, and ignores the unknown markers', () => {
+    const req = (v?: string) => ({ get: (h: string) => (h === 'x-anystudio-country' ? v : undefined) }) as never;
+    expect(RegistrationService.countryOfRequest(req('gh'))).toBe('GH');
+    expect(RegistrationService.countryOfRequest(req('XX'))).toBeNull();
+    expect(RegistrationService.countryOfRequest(req('T1'))).toBeNull();
+    expect(RegistrationService.countryOfRequest(req())).toBeNull();
+  });
+});

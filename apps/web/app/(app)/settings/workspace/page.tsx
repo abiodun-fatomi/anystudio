@@ -8,6 +8,7 @@
  * what the signed-in person can actually do.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { CURRENCY_WORDS, MARKET_CURRENCIES } from '@anystudio/shared';
 import { api, type GrantableRole, type InviteRow, type MemberRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { Avatar, Badge, Button, ConfirmDialog, Dialog, Input, Select, Skeleton, useToast } from '@/components/ui';
@@ -54,6 +55,21 @@ export default function WorkspacePage() {
   const [removeTarget, setRemoveTarget] = useState<MemberRow | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmName, setConfirmName] = useState('');
+
+  const [savingCurrency, setSavingCurrency] = useState(false);
+  const setCurrency = async (currency: string) => {
+    if (currency === workspace.currency) return;
+    setSavingCurrency(true);
+    try {
+      await api.workspace.setCurrency(workspace.id, currency);
+      await refreshMe();
+      toast({ title: `Priced in ${currency} from now on`, body: 'Your credits are unchanged; the next purchase uses the new currency.', tone: 'ok' });
+    } catch (e) {
+      toast({ title: 'Could not change the currency', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setSavingCurrency(false);
+    }
+  };
 
   const rename = async () => {
     setSaving(true);
@@ -158,7 +174,14 @@ export default function WorkspacePage() {
             readOnly={!isAdmin}
             hint={isAdmin ? undefined : 'Only an admin can rename it.'}
           />
-          <Input label="Currency" value={workspace.currency} readOnly hint="Changing currency or region is a support request." />
+          <Select
+            label="Currency"
+            value={workspace.currency}
+            options={MARKET_CURRENCIES.map((c) => ({ value: c, label: `${c} — ${CURRENCY_WORDS[c].symbol} ${CURRENCY_WORDS[c].name}` }))}
+            onChange={(e) => void setCurrency(e.target.value)}
+            disabled={!isOwner || savingCurrency}
+            hint={isOwner ? 'What credit packs and plans are priced in. Credits you already have are not affected.' : 'Only the owner can change the currency.'}
+          />
         </div>
         {isAdmin && (
           <div className={styles.saveBar}>

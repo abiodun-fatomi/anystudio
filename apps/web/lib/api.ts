@@ -276,6 +276,7 @@ export interface Profile {
   phone: string | null;
   phoneVerifiedAt: string | null;
   phoneIsWhatsApp: boolean;
+  country: string | null;
   avatarKey: string | null;
   avatarUrl: string | null;
   locale: string | null;
@@ -855,8 +856,15 @@ export const api = {
   },
   account: {
     profile: () => request<Profile>('GET', '/me/profile'),
-    updateProfile: (patch: { name?: string; avatarKey?: string | null; locale?: string | null; timezone?: string | null }) =>
-      request<{ id: string; name: string | null; avatarKey: string | null; locale: string | null; timezone: string | null }>('PATCH', '/me/profile', patch),
+    updateProfile: (patch: {
+      name?: string;
+      avatarKey?: string | null;
+      locale?: string | null;
+      timezone?: string | null;
+      phone?: string;
+      country?: string;
+      phoneIsWhatsApp?: boolean;
+    }) => request<{ id: string; name: string | null; avatarKey: string | null; locale: string | null; timezone: string | null }>('PATCH', '/me/profile', patch),
     requestEmailChange: (email: string, reauth: Reauth) => request<{ status: 'sent' }>('POST', '/me/email', { email, ...reauth }),
     confirmEmailChange: (token: string) => request<{ status: 'changed'; email: string } | { status: 'invalid_token' }>('POST', '/me/email/confirm', { token }),
     changePassword: (newPassword: string, reauth: Reauth) =>
@@ -924,6 +932,8 @@ export const api = {
     /** Merge-patch the welcome answers. */
     patchProfile: (id: string, patch: WorkspaceProfile) => request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),
     rename: (id: string, name: string) => request<{ id: string; name: string }>('PATCH', `/workspaces/${id}`, { name }),
+    /** The currency prices are shown and charged in. Credits already held are unaffected. */
+    setCurrency: (id: string, currency: string) => request<{ id: string; currency: string }>('PATCH', `/workspaces/${id}`, { currency }),
     remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
   },
   media: {

@@ -23,6 +23,8 @@ import { Prisma, PrismaClient, type AuthEventType, type ConsentChannel, type Sur
 import type { Request } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
+import { isSupportedCountry, type CountryCode } from 'libphonenumber-js/min';
+import { RegistrationService } from '../auth/registration.service';
 import { logger } from '../../../config/logger';
 import { Mailer } from '../../utils/mail-service';
 import { hashPassword, verifyPassword } from '../../utils/crypto/password';
@@ -99,6 +101,7 @@ export class AccountService {
       phone: user.phone,
       phoneVerifiedAt: user.phoneVerifiedAt,
       phoneIsWhatsApp: user.phoneIsWhatsApp,
+      country: user.country,
       avatarKey: user.avatarKey,
       avatarUrl,
       locale: user.locale,
@@ -120,6 +123,29 @@ export class AccountService {
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.locale !== undefined) data.locale = dto.locale;
     if (dto.timezone !== undefined) data.timezone = dto.timezone;
+    if (dto.country !== undefined) {
+      const country = dto.country.toUpperCase();
+      if (!isSupportedCountry(country as CountryCode)) throw new ValidationError({ fields: [{ path: 'country', message: 'Pick a country from the list.' }] });
+      data.country = country;
+    }
+    if (dto.phoneIsWhatsApp !== undefined) data.phoneIsWhatsApp = dto.phoneIsWhatsApp;
+    if (dto.phone !== undefined) {
+      // Read a local number in the country being saved (or the one on file).
+      const current = await this.user(actor.userId);
+      const phone = RegistrationService.normalisePhone(dto.phone, dto.country ?? current.country ?? undefined);
+      if (phone !== current.phone) {
+        const taken = await this.db.user.findUnique({ where: { phone }, select: { id: true } });
+        if (taken && taken.id !== actor.userId) throw new ConflictError('That number is on another account.');
+        data.phone = phone;
+        // A new number has not been proven yet; the WhatsApp link follows it.
+        data.phoneVerifiedAt = null;
+        // Where the number says they are wins over a stale country.
+        if (dto.country === undefined) {
+          const fromPhone = RegistrationService.countryOfPhone(phone);
+          if (fromPhone) data.country = fromPhone;
+        }
+      }
+    }
     if (dto.avatarKey !== undefined) {
       if (dto.avatarKey === null) data.avatarKey = null;
       else {

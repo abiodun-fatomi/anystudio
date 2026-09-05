@@ -1,3 +1,4 @@
+import { MARKET_CURRENCIES, type MarketCurrency } from '@anystudio/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
@@ -37,6 +38,11 @@ export class WorkspaceUpdateDto {
   @IsNotEmpty()
   @MaxLength(80)
   name?: string;
+
+  @ApiPropertyOptional({ enum: MARKET_CURRENCIES, description: 'The currency prices are shown and charged in. Credits already held are unaffected.' })
+  @IsOptional()
+  @IsIn(MARKET_CURRENCIES)
+  currency?: MarketCurrency;
 }
 
 export class WorkspaceDeleteDto {

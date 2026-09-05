@@ -82,6 +82,10 @@ export async function middleware(req: NextRequest) {
     // decide which surface the request belongs to.
     const headers = new Headers(req.headers);
     headers.set('x-anystudio-origin', `${req.nextUrl.protocol}//${host}`);
+    // Where the browser is, as Cloudflare saw it — a fallback the API uses
+    // to price an account that has no phone number to go by.
+    const country = req.headers.get('cf-ipcountry');
+    if (country) headers.set('x-anystudio-country', country);
     if (NAVIGATION_API_PATHS.includes(pathname)) return passThroughRedirect(target, headers, req.nextUrl);
     return NextResponse.rewrite(target, { request: { headers } });
   }

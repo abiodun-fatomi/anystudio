@@ -18,6 +18,9 @@ const flag = (cc: string) => String.fromCodePoint(...[...cc.toUpperCase()].map((
 const COUNTRIES = getCountries()
   .map((cc) => ({ cc, name: names?.of(cc) ?? cc, dial: getCountryCallingCode(cc) }))
   .sort((a, b) => a.name.localeCompare(b.name));
+
+/** Every country, for a plain country <Select>: value is ISO-2, label is the flag and name. Call after mount (names differ between Node and the browser). */
+export const countryOptions = (): Array<{ value: string; label: string }> => COUNTRIES.map((c) => ({ value: c.cc, label: `${flag(c.cc)} ${c.name}` }));
 /** The ones sellers here reach for first, pinned to the top. */
 const PINNED: CountryCode[] = ['NG', 'GH', 'KE', 'ZA', 'US', 'GB'];
 

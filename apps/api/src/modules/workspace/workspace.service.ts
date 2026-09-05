@@ -69,10 +69,26 @@ export class WorkspaceService {
 
   /** Rename. Small on purpose: region and currency are support actions. */
   async update(workspaceId: string, dto: WorkspaceUpdateDto, actorId: string, req: Request) {
-    const current = await this.db.workspace.findFirst({ where: { id: workspaceId, deletedAt: null }, select: { id: true } });
+    const current = await this.db.workspace.findFirst({ where: { id: workspaceId, deletedAt: null }, select: { id: true, currency: true } });
     if (!current) throw new NotFoundError('workspace');
-    const ws = await this.db.workspace.update({ where: { id: workspaceId }, data: { name: dto.name?.trim() }, select: { id: true, name: true } });
-    authLog('workspace.update', 'succeeded', { userId: actorId, workspaceId, fields: Object.keys(dto) }, req);
+    // Currency only changes what the next purchase is priced in; credits are
+    // credits. The region (where files live) stays — that is a support action.
+    const ws = await this.db.workspace.update({
+      where: { id: workspaceId },
+      data: { ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.currency !== undefined ? { currency: dto.currency } : {}) },
+      select: { id: true, name: true, currency: true, region: true },
+    });
+    authLog(
+      'workspace.update',
+      'succeeded',
+      {
+        userId: actorId,
+        workspaceId,
+        fields: Object.keys(dto),
+        ...(dto.currency && dto.currency !== current.currency ? { currencyFrom: current.currency, currencyTo: dto.currency } : {}),
+      },
+      req,
+    );
     return Helpers.successResponse(200, 'Saved', ws);
   }
 
