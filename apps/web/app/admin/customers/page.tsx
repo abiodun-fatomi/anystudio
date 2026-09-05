@@ -1,10 +1,10 @@
 'use client';
 /** Find a person by email, phone, name or id. */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type AdminCustomer } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Button, Input, Pagination, Skeleton, Table, tableCell } from '@/components/ui';
+import { Button, Input, Pager, useCursorPages, Skeleton, Table, tableCell } from '@/components/ui';
 import styles from '../admin.module.css';
 
 export default function CustomersPage() {
@@ -19,21 +19,12 @@ function Customers() {
   const params = useSearchParams();
   const router = useRouter();
   const [q, setQ] = useState(params.get('q') ?? '');
-  const [rows, setRows] = useState<AdminCustomer[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const search = async (after?: string) => {
-    if (!after) setRows(null);
-    try {
-      const r = await api.admin.customers(q.trim(), after);
-      setRows((cur) => (after && cur ? [...cur, ...r.customers] : r.customers));
-      setCursor(r.nextCursor);
-    } catch {
-      setRows([]);
-    }
-  };
-  useEffect(() => {
-    void search();
-  }, []);
+  const pages = useCursorPages<AdminCustomer>(async (cursor, take) => {
+    const r = await api.admin.customers(q.trim(), cursor ?? undefined, take);
+    return { rows: r.customers, nextCursor: r.nextCursor };
+  });
+  const { rows } = pages;
+  const search = () => pages.reset();
   return (
     <div className="rise">
       <PageHeader title="Customers" lede="Search by email, phone, name or id. Open one for their workspaces, balances, generations and payments." />
@@ -90,14 +81,20 @@ function Customers() {
               ))}
             </tbody>
           </Table>
-          <Pagination>
-            <span>{rows.length} shown</span>
-            {cursor && (
-              <Button variant="ghost" size="sm" onClick={() => void search(cursor)}>
-                More
-              </Button>
-            )}
-          </Pagination>
+          <Pager
+            page={pages.page}
+            count={rows.length}
+            noun="customers"
+            size={pages.size}
+            hasOlder={pages.hasOlder}
+            hasNewer={pages.hasNewer}
+            busy={pages.busy}
+            onOlder={() => void pages.older()}
+            onNewer={() => void pages.newer()}
+            onSize={(n) => void pages.changeSize(n)}
+            olderLabel="Next"
+            newerLabel="Previous"
+          />
         </>
       )}
     </div>
