@@ -68,6 +68,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The stub provider renders its test audio and video with ffmpeg (the
+      # Docker image has it; the runner image does not). Without it every
+      # audio/video generation in the worker specs fails as "provider down".
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+
       # Generated per run rather than written above, so no key-shaped literal
       # ever exists in this file or in a build log. APP_KEY encrypts TOTP seeds
       # at rest; a fresh one each run is exactly right for a throwaway database.

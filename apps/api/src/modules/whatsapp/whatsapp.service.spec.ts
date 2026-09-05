@@ -122,7 +122,7 @@ suite('WhatsappService', () => {
         { key: `${contact.workspaceId}/story.jpg`, role: 'variant', size: 'story', mime: 'image/jpeg' },
       ],
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await hooks.drain();
     const kinds = client.sent.map((s) => s.message.kind);
     expect(kinds.slice(-3)).toEqual(['image', 'image', 'buttons']);
     expect((client.sent.at(-3)!.message as { url: string }).url).toBe(`https://signed/${contact.workspaceId}/out.jpg`);
@@ -154,7 +154,7 @@ suite('WhatsappService', () => {
         { key: '', role: 'text', mime: 'application/json', text: { title: 'Thirty and Shining' } },
       ],
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await hooks.drain();
     expect(client.sent.at(-2)!.message.kind).toBe('audio');
     const offer = last() as { kind: string; text: string; buttons: Array<{ id: string }> };
     expect(offer.text).toContain('Thirty and Shining');

@@ -107,7 +107,9 @@ async function stubVideo(label: string) {
     );
     return { bytes: new Uint8Array(stdout), mime: 'video/mp4', role: 'video' as const, width: 720, height: 1280, durationMs: 2000 };
   } catch (err) {
-    throw new ProviderError('PROVIDER_DOWN', `stub video needs ffmpeg for ${label}: ${err instanceof Error ? err.message : err}`, 'stub:any');
+    // Not PROVIDER_DOWN: a missing binary does not come back on retry, and this is our own setup (INVALID_INPUT refunds, alerts,
+    // and does not retry) — three requeues would only hide the real message.
+    throw new ProviderError('INVALID_INPUT', `stub video needs ffmpeg for ${label}: ${err instanceof Error ? err.message : err}`, 'stub:any');
   }
 }
 
@@ -120,7 +122,7 @@ async function stubAudio() {
     );
     return { bytes: new Uint8Array(stdout), mime: 'audio/mpeg', role: 'audio' as const, durationMs: 2000 };
   } catch (err) {
-    throw new ProviderError('PROVIDER_DOWN', `stub audio needs ffmpeg: ${err instanceof Error ? err.message : err}`, 'stub:any');
+    throw new ProviderError('INVALID_INPUT', `stub audio needs ffmpeg: ${err instanceof Error ? err.message : err}`, 'stub:any');
   }
 }
 

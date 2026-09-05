@@ -28,6 +28,7 @@ export interface SendResult {
 
 @Injectable()
 export class WhatsappClient {
+  private localSeq = 0;
   readonly configured: boolean;
   private readonly version = process.env.WHATSAPP_API_VERSION ?? 'v21.0';
   private readonly phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? '';
@@ -47,7 +48,10 @@ export class WhatsappClient {
       this.sent.push({ to, message });
       if (this.sent.length > 500) this.sent.splice(0, this.sent.length - 500);
       logger.info({ to: mask(to), kind: message.kind }, 'whatsapp (not configured): would send');
-      return { messageId: `local-${this.sent.length}`, ok: true };
+      // Unique for the life of the process, whatever happens to the buffer:
+      // the id is a unique column, and a test that clears `sent` between
+      // cases must not hand out `local-1` twice.
+      return { messageId: `local-${++this.localSeq}`, ok: true };
     }
     const res = await this.graph(`${this.phoneNumberId}/messages`, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
