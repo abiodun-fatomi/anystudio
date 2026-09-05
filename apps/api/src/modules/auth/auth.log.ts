@@ -44,6 +44,7 @@ export type AuthEventName =
   | 'auth.register'
   | 'auth.login'
   | 'auth.mfa'
+  | 'auth.handoff'
   | 'auth.step_up'
   | 'auth.forgot'
   | 'auth.reset'

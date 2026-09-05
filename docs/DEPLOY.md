@@ -72,10 +72,20 @@ for the 5–15 minutes that takes.
 ### 2.3 Check
 
 - `https://dev.anystudio.ai` — the landing page, `/pricing`, `/developers`, `/org`
-- `https://app.dev.anystudio.ai/login` — the sign-in page
+- `https://dev.anystudio.ai/login` — the sign-in page (`/signup`, `/forgot`,
+  `/reset` live here too; `app.` is for people who are signed in and sends
+  those paths back across)
 - `curl -I https://app.dev.anystudio.ai` → `server: cloudflare`
 
 Sign-in fails with a network error until the dev API exists (section 3).
+
+How a sign-in crosses hosts: the session cookie is `__Host-` scoped, so only
+`app.dev.anystudio.ai` can set it. A sign-in on `dev.anystudio.ai` therefore
+returns `{ status: "handoff", url }` — a one-time, one-minute token on
+`app.dev.anystudio.ai/auth/handoff` — and the page there redeems it
+(`POST /auth/handoff`) and mints the session. The API decides from the
+request's origin and `APP_ENV`, so nothing is configured; Google sign-in
+starts on the app host directly (the button links across).
 
 ### 2.4 Promoting code between environments
 
@@ -260,7 +270,7 @@ automatic and the branch protection is decorative.
 2. Section 3: import the blueprint — it creates the dev API and its Postgres
    together — then set the env group, the GitHub variables, deploy, and add
    `api.dev.anystudio.ai`
-4. Sign up on `app.dev.anystudio.ai/signup` — landing on `/welcome` proves the whole chain
+4. Sign up on `dev.anystudio.ai/signup` — landing on `app.dev.anystudio.ai/welcome` proves the whole chain, hand-off included
 5. Repeat for staging
 6. Only then production
 

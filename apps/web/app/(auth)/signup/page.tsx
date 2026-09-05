@@ -13,6 +13,7 @@ import { PasswordControl } from '@/components/ui/Password';
 import { PhoneInput, emptyPhone, type PhoneValue } from '@/components/ui/PhoneInput';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { followHandoff } from '@/lib/handoff';
 import { api, ApiError } from '@/lib/api';
 import { GoogleButton } from '@/components/GoogleButton';
 import styles from '../auth.module.css';
@@ -43,6 +44,7 @@ export default function SignupPage() {
         sourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
       });
       if (r.status === 'signed_in') router.replace(r.next);
+      else if (r.status === 'handoff') followHandoff(r.url);
       else setError('Sign-up is not available on this site.');
     } catch (err) {
       if (err instanceof ApiError) {

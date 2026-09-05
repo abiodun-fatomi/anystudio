@@ -18,7 +18,7 @@
  */
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { siblingOrigin, isLocalHost } from '@/lib/hosts';
 import { api, ApiError, type Me } from './api';
 
@@ -45,7 +45,6 @@ const WS_KEY = 'anystudio:workspace';
 export const SIGNOUT_CHANNEL = 'anystudio:auth';
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const path = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [failed, setFailed] = useState(false);
@@ -65,11 +64,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWorkspaceId(first?.id ?? null);
       })
       .catch((e: unknown) => {
-        if (e instanceof ApiError && e.status === 401) router.replace(`/login?next=${encodeURIComponent(path)}`);
+        if (e instanceof ApiError && e.status === 401) window.location.replace(signInUrl(path));
         else if (live) setFailed(true);
       });
     return () => { live = false; };
-  }, [router, path]);
+  }, [path]);
 
   const refreshBalance = useCallback(async () => {
     if (!workspaceId) return;
@@ -150,11 +149,20 @@ export function useApp(): AppState {
 
 /**
  * Signed out means the landing, on the marketing host: `app.` is for people
- * who are signed in. The sign-in page itself stays on `app.` because the
- * session cookie is __Host- scoped to that hostname. Locally there is no
- * host split, so the login page is the landing.
+ * who are signed in. Locally there is no host split, so the login page is
+ * the landing.
  */
 export function signedOutUrl(): string {
   const host = window.location.host;
   return isLocalHost(host) ? '/login?signedout=1' : `${siblingOrigin(host, '')}/?signedout=1`;
+}
+
+/**
+ * The sign-in page, which lives on the marketing host, carrying the path to
+ * come back to (on this host — the hand-off brings it across).
+ */
+export function signInUrl(next: string): string {
+  const host = window.location.host;
+  const base = isLocalHost(host) || host.startsWith('admin.') ? '' : siblingOrigin(host, '');
+  return `${base}/login?next=${encodeURIComponent(next)}`;
 }

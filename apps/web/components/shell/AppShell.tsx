@@ -15,10 +15,11 @@ import { useApp } from '@/lib/app-context';
 import { applyTheme, readTheme, type Theme } from '@/lib/theme';
 import { siblingOrigin } from '@/lib/hosts';
 import { cx } from '@/lib/cx';
-import { Avatar, MenuHeading, MenuItem, MenuSeparator, Popover } from '@/components/ui';
+import { Avatar, MenuItem, MenuSeparator, Popover } from '@/components/ui';
 import { GuidedTour } from '@/components/GuidedTour';
 import { Icon, type IconName } from './icons';
 import { Bell } from './Bell';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import styles from './AppShell.module.css';
 
 /** The rail. `tour` keys are what the onboarding tour spotlights; keep them. */
@@ -36,10 +37,9 @@ const NAV: Array<{ href: string; label: string; icon: IconName; tour: string; mo
   { href: '/settings', label: 'Settings', icon: 'settings', tour: 'settings', mobile: true },
 ];
 
-const WS_TYPE: Record<string, string> = { PERSONAL: 'Personal', BUSINESS: 'Business', ORGANIZATION: 'Organization' };
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { me, workspace, workspaces, switchWorkspace, balance, signOut } = useApp();
+  const { me, workspace, balance, signOut } = useApp();
   const path = usePathname();
   const [rail, setRail] = useState<'full' | 'icons'>('full');
   const [railWidth, setRailWidth] = useState<number | null>(null);
@@ -104,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className={styles.body}>
         <header className={styles.bar}>
-          <WorkspaceSwitcher current={workspace} all={workspaces} onPick={switchWorkspace} />
+          <WorkspaceSwitcher />
           <div className={styles.spacer} />
           <CreditPill balance={balance} />
           <Bell />
@@ -147,30 +147,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function WorkspaceSwitcher({ current, all, onPick }: { current: { id: string; name: string; type: string }; all: Array<{ id: string; name: string; type: string }>; onPick: (id: string) => void }) {
-  const trigger = (
-    <button type="button" className={styles.wsBtn} data-tour="workspace">
-      <Avatar name={current.name} size="sm" square />
-      <span className={styles.wsText}><span className={styles.wsName}>{current.name}</span><span className={styles.wsType}>{WS_TYPE[current.type] ?? current.type}</span></span>
-      <Icon.chevron width={16} height={16} />
-    </button>
-  );
-  if (all.length <= 1) return trigger;
-  return (
-    <Popover menu trigger={trigger}>
-      {(close) => (
-        <>
-          <MenuHeading>Workspaces</MenuHeading>
-          {all.map((w) => (
-            <MenuItem key={w.id} onSelect={() => { onPick(w.id); close(); }} leading={w.id === current.id ? <Icon.check width={16} height={16} /> : <span style={{ width: 16 }} />}>
-              <span style={{ display: 'grid' }}><span>{w.name}</span><span className={styles.wsType}>{WS_TYPE[w.type] ?? w.type}</span></span>
-            </MenuItem>
-          ))}
-        </>
-      )}
-    </Popover>
-  );
-}
 
 /** The balance, tweened between values so a spend reads as a spend. */
 function CreditPill({ balance }: { balance: number | null }) {

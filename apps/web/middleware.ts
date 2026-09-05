@@ -5,11 +5,14 @@
  *   app.anystudio.ai    (app.dev… / app.staging…)                  — the portal
  *
  * The marketing host serves the landing, pricing, developer and organization
- * pages (route handlers returning the finished documents) and bounces every
- * app route across to the app host. The app host does the reverse. The app host has no
- * landing: "/" goes straight to Today, and Today's own auth check sends a
- * signed-out visitor to /login. Cookies are __Host- scoped, so nothing set
- * on one hostname is visible on the other — the split costs nothing.
+ * pages (route handlers returning the finished documents) and the sign-in
+ * pages, and bounces every app route across to the app host. The app host
+ * does the reverse: it is for people who are signed in. It has no landing —
+ * "/" goes straight to Today, and Today's own auth check sends a signed-out
+ * visitor to the marketing host's /login. Cookies are __Host- scoped, so
+ * nothing set on one hostname is visible on the other; a sign-in on the
+ * marketing host therefore ends with a one-time hop to /auth/handoff on the
+ * app host, where the session cookie is minted.
  *
  * On localhost there is no host split; everything is reachable on one origin.
  *
@@ -23,8 +26,15 @@ import { baseHost, isLocalHost, siblingOrigin } from '@/lib/hosts';
 /** The marketing pages. On the app host these belong to the other hostname. */
 const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
 
+/**
+ * The sign-in pages. They live on the marketing host — `app.` is for people
+ * who are signed in — and finish on the app host through /auth/handoff, which
+ * is where the session cookie can be set. The admin host keeps its own.
+ */
+const AUTH_PATHS = ['/login', '/signup', '/forgot', '/reset'];
+
 /** Paths that belong to the portal. Anything else on the marketing host is content. */
-const APP_PREFIXES = ['/login', '/signup', '/forgot', '/reset', '/verify', '/email-change', '/invite', '/welcome', '/today', '/studio', '/create', '/library',
+const APP_PREFIXES = ['/auth', '/verify', '/email-change', '/invite', '/welcome', '/today', '/studio', '/create', '/library',
   '/products', '/brand', '/publishing', '/insights', '/developer', '/notifications', '/billing', '/settings', '/api'];
 
 export function middleware(req: NextRequest) {
@@ -79,7 +89,7 @@ export function middleware(req: NextRequest) {
     // A marketing page reached on the app host belongs on the marketing one —
     // otherwise the same content answers on two hostnames and splits its own
     // search ranking.
-    if (MARKETING_PATHS.includes(pathname)) {
+    if (MARKETING_PATHS.includes(pathname) || AUTH_PATHS.includes(pathname)) {
       return NextResponse.redirect(`https://${host.slice(4)}${pathname}${search}`, 307);
     }
     return NextResponse.next();

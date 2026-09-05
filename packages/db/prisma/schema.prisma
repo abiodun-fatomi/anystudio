@@ -269,6 +269,8 @@ enum TokenPurpose {
   WORKSPACE_INVITE
   ORG_INVITE
   EMAIL_CHANGE
+  /// One-time, one-minute: a sign-in completed on the marketing host, redeemed on the app host for the real session.
+  SESSION_HANDOFF
 }
 
 model AuthToken {

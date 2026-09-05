@@ -66,11 +66,18 @@ export interface RegisterInput {
   sourceUrl?: string;
 }
 
+/**
+ * A proven sign-in. `signed_in`: the session cookie came with this response.
+ * `handoff`: the form was on the marketing host, so the browser must visit
+ * `url` (on the app host, where the __Host- cookie can be set) to finish.
+ */
+export type SignedIn = { status: 'signed_in'; next: string } | { status: 'handoff'; url: string };
+
 /** A duplicate email/phone arrives as ApiError(409, 'conflict'), not as a status. */
-export type RegisterResult = { status: 'signed_in'; next: string } | { status: 'not_available' };
+export type RegisterResult = SignedIn | { status: 'not_available' };
 
 export type LoginResult =
-  | { status: 'signed_in'; next: string }
+  | SignedIn
   | { status: 'mfa_required'; challengeId: string; factors: string[] }
   | { status: 'invalid_credentials' };
 
@@ -368,6 +375,9 @@ export const api = {
     resendVerification: () => request<{ status: 'sent' }>('POST', '/auth/verify/resend'),
     reset: (token: string, password: string) =>
       request<{ status: 'reset' | 'invalid_token' }>('POST', '/auth/reset', { token, password }),
+    /** The app host's half of a sign-in that happened on the marketing host. */
+    handoff: (token: string) =>
+      request<{ status: 'signed_in'; next: string } | { status: 'invalid_token' }>('POST', '/auth/handoff', { token }),
   },
   workspace: {
     get: (id: string) => request<Workspace>('GET', `/workspaces/${id}`),

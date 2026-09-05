@@ -36,6 +36,12 @@ export class MfaDto {
   code: string;
 }
 
+export class HandoffDto {
+  @ApiProperty({ description: 'The one-time token from the marketing host sign-in' })
+  @IsString() @Length(20, 200)
+  token: string;
+}
+
 export class StepUpDto {
   @ApiProperty({ example: '123456' })
   @IsString() @Length(6, 400)

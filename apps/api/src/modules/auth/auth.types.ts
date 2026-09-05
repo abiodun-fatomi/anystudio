@@ -4,15 +4,22 @@
  */
 import type { User } from '@prisma/client';
 
+/**
+ * A proven sign-in. `signed_in` means the session cookie is on this response;
+ * `handoff` means the browser was on the marketing host and must visit `url`
+ * (on the app host) to have its session minted there.
+ */
+export type SignedIn = { status: 'signed_in'; next: string } | { status: 'handoff'; url: string };
+
 export type LoginResult =
-  | { status: 'signed_in'; next: string }
+  | SignedIn
   | { status: 'mfa_required'; challengeId: string; factors: string[] }
   | { status: 'invalid_credentials' };
 
-export type MfaResult = { status: 'signed_in'; next: string } | { status: 'invalid_code' };
+export type MfaResult = SignedIn | { status: 'invalid_code' };
 
 /** A duplicate email/phone is a 409 error, not a status here. */
-export type RegisterResult = { status: 'signed_in'; next: string } | { status: 'not_available' };
+export type RegisterResult = SignedIn | { status: 'not_available' };
 
 export type RefreshResult =
   | { status: 'ok' }

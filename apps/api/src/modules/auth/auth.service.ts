@@ -11,8 +11,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type User, type Surface, type StaffRole } from '@prisma/client';
 import type { Request, Response } from 'express';
-import { createHash, randomUUID } from 'node:crypto';
-import { surfaceForOrigin, type AppEnv } from '@anystudio/shared';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { surfaceForOrigin, isMarketingOrigin, appOriginFor, type AppEnv } from '@anystudio/shared';
 import { SessionService, COOKIE, type IssuedSession } from './session.service';
 import { verifyPassword, needsRehash, hashPassword } from '../../utils/crypto/password';
 import { verifyCode } from '../../utils/crypto/totp';
@@ -26,14 +26,19 @@ import { RegistrationService } from './registration.service';
 import { PasswordResetService } from './password-reset.service';
 import { VerificationService } from './verification.service';
 import { GoogleProvider, OAUTH_COOKIE, OAUTH_COOKIE_OPTS } from './providers/google.provider';
-import type { LoginDto, MfaDto, RegisterDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, StepUpDto,
+import type { LoginDto, MfaDto, RegisterDto, HandoffDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, StepUpDto,
   GoogleStartQueryDto, GoogleCallbackQueryDto } from './auth.dto';
-import type { LoginResult, MfaResult, RegisterResult, RefreshResult, Verified } from './auth.types';
+import type { LoginResult, MfaResult, RegisterResult, RefreshResult, Verified, SignedIn } from './auth.types';
 import { Helpers } from '../../utils/helpers';
 import { MESSAGES } from '../../utils/constant';
 import { GoogleSignInError, VerificationFlavour } from '../../utils/enums';
 
+const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex');
+/** A landing page is a path on the app host, never somewhere else. */
+const safeNext = (v: unknown): string => (typeof v === 'string' && v.startsWith('/') && !v.startsWith('//') ? v : '/today');
 const CHALLENGE_TTL_MS = 5 * 60_000;
+/** A sign-in minted on the marketing host has this long to reach the app host. */
+const HANDOFF_TTL_MS = 60_000;
 
 @Injectable()
 export class AuthService {
@@ -85,9 +90,9 @@ export class AuthService {
     }
 
     await this.verification.issue(outcome.user.id, this.publicOrigin(req), req, VerificationFlavour.Welcome);
-    await this.issueSession(outcome.user, surface, 1, req, res);
-    authLog('auth.register', 'succeeded', { userId: outcome.user.id, surface, mfa: 1 }, req);
-    return Helpers.successResponse<RegisterResult>(201, MESSAGES.REGISTERED, { status: 'signed_in', next: '/welcome' });
+    const result = await this.finishSignIn(outcome.user, surface, 1, '/welcome', req, res);
+    authLog('auth.register', 'succeeded', { userId: outcome.user.id, surface, mfa: 1, handoff: result.status === 'handoff' }, req);
+    return Helpers.successResponse<RegisterResult>(201, MESSAGES.REGISTERED, result);
   }
 
   /**
@@ -110,10 +115,9 @@ export class AuthService {
       return Helpers.successResponse<LoginResult>(200, MESSAGES.MFA_REQUIRED,
         { status: 'mfa_required', challengeId: outcome.challengeId, factors: outcome.factors });
     }
-    await this.issueSession(outcome.user, surface, outcome.mfaLevel, req, res);
-    authLog('auth.login', 'succeeded', { userId: outcome.user.id, surface, mfa: outcome.mfaLevel }, req);
-    return Helpers.successResponse<LoginResult>(200, MESSAGES.SIGNED_IN,
-      { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
+    const result = await this.finishSignIn(outcome.user, surface, outcome.mfaLevel, await this.landingFor(outcome.user.id, surface), req, res);
+    authLog('auth.login', 'succeeded', { userId: outcome.user.id, surface, mfa: outcome.mfaLevel, handoff: result.status === 'handoff' }, req);
+    return Helpers.successResponse<LoginResult>(200, MESSAGES.SIGNED_IN, result);
   }
 
   /**
@@ -128,10 +132,48 @@ export class AuthService {
       authLog('auth.mfa', 'refused', { reason: 'invalid_code', surface }, req);
       return Helpers.successResponse<MfaResult>(200, MESSAGES.INVALID_CODE, { status: 'invalid_code' });
     }
-    await this.issueSession(outcome.user, surface, 2, req, res);
-    authLog('auth.mfa', 'succeeded', { userId: outcome.user.id, surface, mfa: 2 }, req);
-    return Helpers.successResponse<MfaResult>(200, MESSAGES.SIGNED_IN,
-      { status: 'signed_in', next: await this.landingFor(outcome.user.id, surface) });
+    const result = await this.finishSignIn(outcome.user, surface, 2, await this.landingFor(outcome.user.id, surface), req, res);
+    authLog('auth.mfa', 'succeeded', { userId: outcome.user.id, surface, mfa: 2, handoff: result.status === 'handoff' }, req);
+    return Helpers.successResponse<MfaResult>(200, MESSAGES.SIGNED_IN, result);
+  }
+
+  /**
+   * The app host's half of a sign-in that happened on the marketing host.
+   *
+   * The token is single-use, a minute old at most, and only ever redeemed
+   * from the app origin — a __Host- cookie can only be set by the host that
+   * will read it, so the marketing host hands the proven identity across
+   * instead of a session. The MFA level travels with it, so a staff account
+   * that proved a second factor keeps that proof.
+   */
+  async completeHandoff(dto: HandoffDto, req: Request, res: Response) {
+    const surface = this.surfaceFromOrigin(req);
+    const origin = this.publicOrigin(req);
+    if (surface !== 'APP' || isMarketingOrigin(origin, this.appEnv())) {
+      authLog('auth.handoff', 'refused', { reason: 'wrong_surface', surface }, req);
+      return Helpers.successResponse<SignedIn | { status: 'invalid_token' }>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid_token' });
+    }
+    const row = await this.db.authToken.findUnique({ where: { tokenHash: sha256(dto.token) } });
+    if (!row || row.purpose !== 'SESSION_HANDOFF' || !row.userId || row.consumedAt || row.expiresAt < new Date()) {
+      authLog('auth.handoff', 'refused', { reason: 'invalid_token' }, req);
+      return Helpers.successResponse<SignedIn | { status: 'invalid_token' }>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid_token' });
+    }
+    // Consume first: two tabs redeeming the same link must not both win.
+    const consumed = await this.db.authToken.updateMany({ where: { id: row.id, consumedAt: null }, data: { consumedAt: new Date() } });
+    if (consumed.count === 0) {
+      authLog('auth.handoff', 'refused', { reason: 'already_used' }, req);
+      return Helpers.successResponse<SignedIn | { status: 'invalid_token' }>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid_token' });
+    }
+    const user = await this.db.user.findUnique({ where: { id: row.userId } });
+    if (!user || user.status === 'DELETED' || user.status === 'SUSPENDED') {
+      authLog('auth.handoff', 'refused', { reason: 'account_unavailable', userId: row.userId }, req);
+      return Helpers.successResponse<SignedIn | { status: 'invalid_token' }>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid_token' });
+    }
+    const payload = (row.payload ?? {}) as { mfaLevel?: number; next?: string };
+    const mfaLevel = payload.mfaLevel === 2 ? 2 : 1;
+    await this.issueSession(user, 'APP', mfaLevel, req, res);
+    authLog('auth.handoff', 'succeeded', { userId: user.id, surface: 'APP', mfa: mfaLevel }, req);
+    return Helpers.successResponse<SignedIn>(200, MESSAGES.SIGNED_IN, { status: 'signed_in', next: safeNext(payload.next) });
   }
 
   /** Confirm a fresh second factor for the current session. */
@@ -277,6 +319,30 @@ export class AuthService {
     res.redirect(302, state.r !== '/' ? state.r : landing);
   }
 
+  /**
+   * End a proven sign-in: a session cookie when the browser is already on the
+   * host that will read it, a one-time hand-off to the app host when it is on
+   * the marketing site (where the sign-in and sign-up pages live). The token
+   * is hashed at rest like every other, lives a minute, and carries the MFA
+   * level and the landing page so the app host mints exactly the session this
+   * host would have.
+   */
+  private async finishSignIn(user: User, surface: Surface, mfaLevel: number, next: string, req: Request, res: Response): Promise<SignedIn> {
+    const env = this.appEnv();
+    if (surface === 'APP' && isMarketingOrigin(this.publicOrigin(req), env)) {
+      const token = randomBytes(32).toString('base64url');
+      await this.db.authToken.create({
+        data: {
+          purpose: 'SESSION_HANDOFF', userId: user.id, tokenHash: sha256(token),
+          payload: { mfaLevel, next }, expiresAt: new Date(Date.now() + HANDOFF_TTL_MS), createdIp: req.ip,
+        },
+      });
+      return { status: 'handoff', url: `${appOriginFor(env)}/auth/handoff?token=${token}` };
+    }
+    await this.issueSession(user, surface, mfaLevel, req, res);
+    return { status: 'signed_in', next };
+  }
+
   /** Mint a session for a verified user and set its cookies. */
   private async issueSession(user: User, surface: Surface, mfaLevel: number, req: Request, res: Response): Promise<void> {
     const issued = await this.sessions.mint({
@@ -320,9 +386,12 @@ export class AuthService {
    * session by typing "ADMIN" into JSON.
    */
   surfaceFromOrigin(req: Request): Surface {
+    return surfaceForOrigin(this.publicOrigin(req), this.appEnv()) ?? 'APP';
+  }
+
+  private appEnv(): AppEnv {
     const raw = process.env.APP_ENV;
-    const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
-    return surfaceForOrigin(this.publicOrigin(req), env) ?? 'APP';
+    return raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
   }
 
   /**

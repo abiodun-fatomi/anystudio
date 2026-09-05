@@ -8,6 +8,7 @@ import { Suspense, useState, type FormEvent } from 'react';
 import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { followHandoff } from '@/lib/handoff';
 import { api, ApiError } from '@/lib/api';
 import { GoogleButton } from '@/components/GoogleButton';
 import styles from '../auth.module.css';
@@ -25,6 +26,7 @@ const GOOGLE_ERRORS: Record<string, string> = {
   google_email_unverified: 'That Google account has an unconfirmed email address, so we cannot use it to sign in.',
   google_unavailable: 'Google sign-in is not set up yet. Please use your email and password.',
   mfa_required: 'Staff accounts sign in with a password and a second factor, not with Google.',
+  handoff_expired: 'That sign-in took too long to finish. Please sign in again.',
 };
 
 function LoginForm() {
@@ -47,6 +49,7 @@ function LoginForm() {
     try {
       const r = challenge ? await api.auth.mfa(challenge, code) : await api.auth.login(identifier, password);
       if (r.status === 'signed_in') return router.replace(next ?? r.next);
+      if (r.status === 'handoff') return followHandoff(r.url, next);
       if (r.status === 'mfa_required') return setChallenge(r.challengeId);
       setError(challenge ? 'That code did not match.' : 'Those details did not match an account.');
     } catch (err) {
