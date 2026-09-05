@@ -1,0 +1,3 @@
+# The branches that matter are PR-only, so this guards the feature branches
+# people actually push: no type errors leave the laptop.
+pnpm typecheck
