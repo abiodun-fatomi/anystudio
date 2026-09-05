@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
 import type { Request } from 'express';
-import { MUSIC_UNLOCK_COST_CODE, type GenerationOutput } from '@anystudio/shared';
+import { DUB_LANGUAGES, DUB_SOURCE_LANGUAGES, DUB_VENDOR_KEYS, MUSIC_UNLOCK_COST_CODE, dubLanguagesAvailable, type GenerationOutput } from '@anystudio/shared';
 import { ConflictError, NotFoundError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
@@ -33,6 +33,21 @@ export class AudioService {
   async voices(available: (providerKey: string) => boolean) {
     const rows = await this.db.voiceProfile.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { name: 'asc' }] });
     return rows.filter((v) => available(v.providerKey)).map((v) => ({ key: v.key, name: v.name, language: v.language, accent: v.accent, gender: v.gender, tags: v.tags, sampleUrl: v.sampleUrl, provider: v.providerKey.split(':')[0] }));
+  }
+
+  /**
+   * Dub targets, grouped by region, with the source languages a seller may
+   * name. A stub-only environment gets the whole list so the tool can be
+   * exercised; a real one gets what its vendors can do.
+   */
+  dubLanguages(available: (providerKey: string) => boolean) {
+    const stubbed = available('stub:any') && !available(DUB_VENDOR_KEYS.elevenlabs) && !available(DUB_VENDOR_KEYS.heygen);
+    const rows = stubbed ? [...DUB_LANGUAGES] : dubLanguagesAvailable(available);
+    return {
+      languages: rows.map((l) => ({ code: l.code, name: l.name, region: l.region, lipsync: Boolean(l.heygen) || stubbed })),
+      sources: DUB_SOURCE_LANGUAGES,
+      missing: 'Yoruba, Igbo, Hausa and Pidgin are not offered by any dubbing vendor yet.',
+    };
   }
 
   /** What unlocking costs, for the button. */

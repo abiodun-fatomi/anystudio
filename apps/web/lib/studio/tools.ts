@@ -10,7 +10,7 @@
 import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
-export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice';
+export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
 
 export type Field =
   | { key: string; kind: 'text'; label: string; placeholder?: string; hint?: string; maxLength?: number; rows?: number; required?: boolean }
@@ -20,8 +20,15 @@ export type Field =
   | { key: string; kind: 'sizes'; label: string }
   | { key: string; kind: 'platforms'; label: string }
   | { key: string; kind: 'slider'; label: string; min: number; max: number; step: number; format: (v: number) => string }
-  /** A pick from a server catalogue (genres, voices), fetched by the panel. */
-  | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices'; hint?: string };
+  /** A pick from a server catalogue (genres, voices, dub languages), fetched by the panel. */
+  | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices' | 'languages' | 'sourceLanguages'; hint?: string }
+  /** A file the tool works on, uploaded from the panel: the param holds the storage key. */
+  | { key: string; kind: 'file'; label: string; accept: 'video' | 'audio'; hint?: string; required?: boolean }
+  /** A box that must be ticked before the button works — permission for a real person's face and voice. */
+  | { key: string; kind: 'consent'; label: string; hint?: string };
+
+/** A field shown only when the values say so. */
+export type ConditionalField = Field & { showIf?: (values: Record<string, unknown>) => boolean };
 
 export interface Tool {
   id: ToolId;
@@ -33,10 +40,12 @@ export interface Tool {
   needsSource: boolean;
   /** What to tell someone while they wait. The worker's own stage detail overrides this when present. */
   narrative: Record<string, string>;
-  fields: Field[];
+  fields: ConditionalField[];
   defaults: Record<string, unknown>;
   /** A tool whose price depends on its settings names the CreditCost code; otherwise the capability's default applies. */
   costCodeFor?: (values: Record<string, unknown>) => string | undefined;
+  /** Values the panel keeps for itself (which branch is showing); never sent as params. */
+  localKeys?: string[];
 }
 
 const SIZE_OPTIONS = Object.entries(EXPORT_SIZES).map(([id, s]) => ({ id: id as ExportSize, label: `${s.aspect} · ${s.width}×${s.height}`, short: id.replace('_', ' ') }));
@@ -159,6 +168,36 @@ export const TOOLS: Tool[] = [
     ],
     defaults: { style: 'natural', speed: 1, language: 'en' },
   },
+  {
+    id: 'translate', label: 'Translate a video', short: 'Translate', icon: 'translate', capability: 'DUB', needsSource: false,
+    narrative: { queued: 'Waiting for a video slot', preparing: 'Listening to your video', routing: 'Choosing a studio that speaks the language', generating: 'Dubbing — a minute of video takes a few minutes', composing: 'Matching the lips to the new voice', storing: 'Saving your video', done: 'Done' },
+    fields: [
+      { key: 'sourceKey', kind: 'file', accept: 'video', label: 'The video', required: true, hint: 'MP4 or MOV, up to five minutes. Someone talking to camera works best.' },
+      { key: 'targetLanguage', kind: 'catalogue', source: 'languages', label: 'Speak it in', hint: 'The same voice, in another language.' },
+      { key: 'sourceLanguage', kind: 'catalogue', source: 'sourceLanguages', label: 'It is currently in' },
+      { key: 'lipsync', kind: 'switch', label: 'Move the lips to match', hint: 'Costs more; the mouth is re-animated for the new words.' },
+      { key: 'speakers', kind: 'segment', label: 'People speaking', options: [{ id: '0', label: 'Let it count' }, { id: '1', label: '1' }, { id: '2', label: '2' }, { id: '3', label: '3+' }] },
+      { key: 'keepBackground', kind: 'switch', label: 'Keep the music and background sound' },
+      { key: 'consent', kind: 'consent', label: 'I have permission to use this person’s face and voice', hint: 'Dubbing clones the voice. Only your own videos, or ones you have been given the right to use.' },
+    ],
+    defaults: { sourceLanguage: 'auto', lipsync: false, speakers: 0, keepBackground: true, quality: 'speed', consent: false },
+    costCodeFor: (v) => (v.lipsync === true ? 'video.translate_lipsync' : undefined),
+  },
+  {
+    id: 'lipsync', label: 'Lip-sync new words', short: 'Lip-sync', icon: 'lips', capability: 'LIPSYNC', needsSource: false,
+    narrative: { queued: 'Waiting for a video slot', preparing: 'Recording the script', routing: 'Choosing a studio', generating: 'Re-animating the mouth — a few minutes', storing: 'Saving your video', done: 'Done' },
+    fields: [
+      { key: 'sourceKey', kind: 'file', accept: 'video', label: 'The video', required: true, hint: 'MP4 or MOV, up to three minutes, one face clearly visible.' },
+      { key: 'mode', kind: 'segment', label: 'The new words come from', options: [{ id: 'script', label: 'A script we record' }, { id: 'audio', label: 'An audio file' }] },
+      { key: 'voiceId', kind: 'catalogue', source: 'voices', label: 'Voice', showIf: (v) => v.mode !== 'audio' },
+      { key: 'script', kind: 'text', label: 'Script', placeholder: 'Same great bags, now with delivery across Lagos in one day.', rows: 4, maxLength: 4000, showIf: (v) => v.mode !== 'audio' },
+      { key: 'audioKey', kind: 'file', accept: 'audio', label: 'The audio', hint: 'MP3, M4A or WAV, up to 30 MB.', showIf: (v) => v.mode === 'audio' },
+      { key: 'quality', kind: 'segment', label: 'Quality', options: [{ id: 'speed', label: 'Quick' }, { id: 'precision', label: 'Best' }] },
+      { key: 'consent', kind: 'consent', label: 'I have permission to use this person’s face', hint: 'Only your own videos, or ones you have been given the right to use.' },
+    ],
+    defaults: { mode: 'script', language: 'en', quality: 'speed', consent: false },
+    localKeys: ['mode'],
+  },
 ];
 
 export const toolById = (id: string | null | undefined): Tool => TOOLS.find((t) => t.id === id) ?? TOOLS[0]!;
@@ -169,8 +208,27 @@ export function coerceParams(tool: Tool, values: Record<string, unknown>): Recor
   for (const [k, d] of Object.entries(tool.defaults)) {
     if (typeof d === 'number' && typeof out[k] === 'string') out[k] = Number(out[k]);
   }
-  for (const [k, v] of Object.entries(out)) if (v === '' || v === undefined) delete out[k];
+  // A hidden field's value is not sent: the other branch's script does not ride along with an audio file.
+  for (const f of tool.fields) if (f.showIf && !f.showIf(out)) delete out[f.key];
+  // The panel's own switches (which branch is showing) are not params.
+  for (const k of tool.localKeys ?? []) delete out[k];
+  for (const [k, v] of Object.entries(out)) if (v === '' || v === undefined || (k === 'consent' && v !== true)) delete out[k];
   return out;
+}
+
+/** What stops the button: a required file, an empty required text, a catalogue with nothing picked, or a consent box left unticked. */
+export function missingFor(tool: Tool, values: Record<string, unknown>): string | null {
+  for (const f of tool.fields) {
+    if (f.showIf && !f.showIf(values)) continue;
+    const v = values[f.key];
+    if (f.kind === 'file' && f.required && !String(v ?? '').trim()) return `Add ${f.label.toLowerCase()} first.`;
+    if (f.kind === 'text' && f.required && !String(v ?? '').trim()) return 'Fill in the required field.';
+    if (f.kind === 'catalogue' && !String(v ?? '').trim()) return `Pick ${f.label.toLowerCase()}.`;
+    if (f.kind === 'consent' && v !== true) return 'Tick the permission box first.';
+  }
+  if (tool.id === 'lipsync' && values.mode === 'audio' && !String(values.audioKey ?? '').trim()) return 'Add the audio first.';
+  if (tool.id === 'lipsync' && values.mode !== 'audio' && !String(values.script ?? '').trim()) return 'Write the script first.';
+  return null;
 }
 
 export const PLATFORM_OPTIONS = [

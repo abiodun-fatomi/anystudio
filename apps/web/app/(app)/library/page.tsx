@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/app-context';
 import { api, type LibraryItem, type LibraryProduct, type LibraryType } from '@/lib/api';
 import { toolFor } from '@/lib/studio/useGenerations';
+import { toolById } from '@/lib/studio/tools';
 import { PageHeader } from '@/components/shell/Page';
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Input, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -93,7 +94,9 @@ function Library() {
   const again = (item: LibraryItem) => {
     try { sessionStorage.setItem('anystudio:prefill', JSON.stringify({ toolId: toolFor(item.capability), params: item.params ?? {} })); } catch { /* fine */ }
     const u = new URLSearchParams({ tool: toolFor(item.capability) });
-    if (item.sourceKey) u.set('source', item.sourceKey);
+    // A video the tool brought itself is prefilled into its panel, not put on the canvas.
+    const ownsSource = toolById(toolFor(item.capability)).fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+    if (item.sourceKey && !ownsSource) u.set('source', item.sourceKey);
     router.push(`/studio?${u}`);
   };
 

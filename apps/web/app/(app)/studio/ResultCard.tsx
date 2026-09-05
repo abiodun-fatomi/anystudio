@@ -34,12 +34,14 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
   const tool = toolById(card.toolId);
   const live = card.status === 'requesting' || card.status === 'QUEUED' || card.status === 'RUNNING';
   const isAudio = card.capability === 'MUSIC' || card.capability === 'VOICEOVER';
+  const isSpokenVideo = card.capability === 'DUB' || card.capability === 'LIPSYNC';
+  const spoken = isSpokenVideo ? (card.outputs.find((o) => o.role === 'text')?.text as { language?: string; lipsync?: boolean; script?: string | null; voice?: string | null } | undefined) : undefined;
   const fullTrack = card.outputs.find((o) => o.role === 'audio');
   const locked = Boolean(fullTrack?.locked);
   const main = card.outputs.find((o) => o.role === 'image') ?? card.outputs.find((o) => o.role === 'video')
     ?? (locked ? card.outputs.find((o) => o.role === 'preview') : fullTrack) ?? card.outputs.find((o) => o.role === 'preview');
   const variants = card.outputs.filter((o) => o.role === 'variant');
-  const text = isAudio ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
+  const text = isAudio || isSpokenVideo ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
   const audioText = isAudio ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined) : undefined;
   const mainUrl = main ? card.urls[main.key] : undefined;
   const missingUrls = useMemo(() => card.outputs.filter((o) => o.key && !card.urls[o.key]).map((o) => o.key), [card.outputs, card.urls]);
@@ -83,6 +85,13 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
         </div>
       )}
       {audioText && (audioText.lyrics || audioText.script) && <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />}
+      {spoken && card.status === 'SUCCEEDED' && (
+        <div className={styles.videoNote}>
+          {spoken.language && <span>Now in <strong>{spoken.language}</strong></span>}
+          <span>{spoken.lipsync ? 'Lips matched to the new voice' : card.capability === 'DUB' ? 'Voice only — the picture is untouched' : 'Mouth re-animated'}</span>
+        </div>
+      )}
+      {spoken?.script && <LyricsView label="Script" text={spoken.script} />}
       {live && !main && card.status === 'RUNNING' && card.stage !== 'queued' && <Skeleton className={styles.previewSkel} />}
 
       {variants.length > 0 && (

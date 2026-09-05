@@ -13,6 +13,7 @@ import { Injectable } from '@nestjs/common';
 import type { Capability, GenerationProvider } from '@anystudio/shared';
 import { logger } from '../../../config/logger';
 import { StubProvider } from './adapters/stub.adapter';
+import { SyncProvider } from './adapters/sync.adapter';
 import { FalProvider } from './adapters/fal.adapter';
 import { GoogleProvider } from './adapters/google.adapter';
 import { ReplicateProvider } from './adapters/replicate.adapter';
@@ -49,6 +50,7 @@ export class ProviderRegistry {
       { present: Boolean(env.HIGGSFIELD_API_KEY && env.HIGGSFIELD_API_SECRET), make: () => HiggsfieldProvider.all(env.HIGGSFIELD_API_KEY!, env.HIGGSFIELD_API_SECRET!) },
       { present: Boolean(env.HEYGEN_API_KEY), make: () => HeyGenProvider.all(env.HEYGEN_API_KEY!) },
       { present: Boolean(env.ELEVENLABS_API_KEY), make: () => ElevenLabsProvider.all(env.ELEVENLABS_API_KEY!) },
+      { present: Boolean(env.SYNC_API_KEY), make: () => SyncProvider.all(env.SYNC_API_KEY!) },
     ];
 
     for (const c of candidates) {

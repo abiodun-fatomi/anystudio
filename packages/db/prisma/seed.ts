@@ -49,8 +49,12 @@ const CREDIT_COSTS = [
   // A shot of a multi-shot ad. The PARENT row holds the price; its children
   // are work units, not money units, and carry zero credits by design.
   { code: 'video.shot',         credits: 0,   label: 'One shot of an ad' },
-  { code: 'video.translate',    credits: 90,  label: 'Voiceover in another language' },
-  { code: 'video.lipsync',      credits: 150, label: 'Lip sync' },
+  // Dubbing is priced by the minute at the vendor (ElevenLabs ~$0.50–1/min,
+  // HeyGen more); a Status-length clip at these credits covers a typical
+  // minute with margin. Longer videos are capped by the pipeline, not priced up.
+  { code: 'video.translate',    credits: 90,  label: 'Translate a video (voice only)' },
+  { code: 'video.translate_lipsync', credits: 240, label: 'Translate a video with matching lips' },
+  { code: 'video.lipsync',      credits: 150, label: 'Lip-sync new words onto a video' },
   { code: 'audio.voiceover',    credits: 8,   label: 'Voiceover' },
   { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
   { code: 'audio.music.unlock',  credits: 30, label: 'Unlock the full song' },
@@ -204,12 +208,24 @@ const PROVIDERS: Array<{
     licenceNote: 'Yoruba, Igbo, Hausa. Priced by direct quote; not yet on contract.' },
   { key: 'mubert:track', capability: 'MUSIC', priority: 30, costPerCall: 15, enabled: false,
     licenceNote: 'Paid tiers include sub-licensing and monetized content. Not yet on contract.' },
-  { key: 'elevenlabs:dubbing-v1', capability: 'DUB', priority: 10, costPerCall: 50, enabled: false,
-    licenceNote: '$0.50/min clean, 29 languages. Not yet on contract.' },
-  { key: 'heygen:translate', capability: 'DUB', priority: 20, costPerCall: 190, enabled: false,
-    licenceNote: 'Per-minute credit cost not public; sales conversation needed.' },
-  { key: 'sync:lipsync-2', capability: 'LIPSYNC', priority: 10, costPerCall: 260, enabled: false,
-    licenceNote: 'Per-minute; consent gate required before enabling. Not yet on contract.' },
+  // ---- dubbing and lip-sync (Phase 11) ------------------------------------------
+  // The runner narrows DUB to the vendors that speak the target language and
+  // puts HeyGen first when the lips must move (it does both in one pass);
+  // otherwise ElevenLabs dubs the sound and a LIPSYNC row finishes the job.
+  { key: 'elevenlabs:dubbing-v1', capability: 'DUB', priority: 10, costPerCall: 50, enabled: true,
+    config: { watermark: 'false', highestResolution: 'true' },
+    licenceNote: 'ElevenLabs Dubbing: ~$0.50–1.00/min, 30 languages, voice preserved; commercial on paid plans. No African languages beyond Arabic/French/Portuguese. Checked 2026-09-05.' },
+  { key: 'heygen:translate', capability: 'DUB', priority: 20, costPerCall: 190, enabled: true,
+    config: { mode: 'speed' },
+    licenceNote: 'HeyGen Video Translate v3: 175+ languages incl. English (Nigeria/Kenya/SA), Swahili, Zulu, Amharic; lip resync built in. Credits per minute on the API plan; commercial use on paid plans. Consent terms apply to real faces. Checked 2026-09-05.' },
+  { key: 'fal:sync-lipsync', capability: 'LIPSYNC', priority: 10, costPerCall: 120, enabled: true,
+    config: { endpoint: 'fal-ai/sync-lipsync/v2', model: 'lipsync-2', syncMode: 'cut_off' },
+    licenceNote: 'sync.so lipsync-2 via fal; billed per second of output. Commercial use per fal terms. Checked 2026-09-05.' },
+  { key: 'heygen:lipsync', capability: 'LIPSYNC', priority: 20, costPerCall: 190, enabled: true,
+    config: { mode: 'speed' },
+    licenceNote: 'HeyGen Lipsync v3. Same plan and consent terms as translate. Checked 2026-09-05.' },
+  { key: 'sync:lipsync-2', capability: 'LIPSYNC', priority: 30, costPerCall: 260, enabled: false,
+    licenceNote: 'sync.so direct; needs SYNC_API_KEY and a contract. Registered but off until then.' },
 ];
 
 async function reference() {
