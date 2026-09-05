@@ -44,6 +44,11 @@
 # every row an upsert, so a fresh database has something to sell and an old
 # one picks up price changes. It also grants the first staff member when
 # BOOTSTRAP_SUPERADMIN_EMAIL is set (docs/DEPLOY.md §11).
+#
+# ONE npm script, not `a && b`: Render does not run this line through a
+# shell, so `&&` reaches npm as extra arguments to the first script — the
+# migrations ran, the seed silently never did. npm runs a script's own body
+# through a shell, so the chaining lives in package.json ("release").
 
 previewsEnabled: false
 
@@ -76,7 +81,7 @@ services:
     plan: starter # pre-deploy commands are not available on free instances
     region: frankfurt # must match the database's region to reach it privately
     healthCheckPath: /health # liveness, not /ready — see health.controller.ts
-    preDeployCommand: npm run db:deploy && npm run db:seed
+    preDeployCommand: npm run release
     autoDeploy: false
     envVars:
       # Injected by Render, never typed by a human and never in this file.

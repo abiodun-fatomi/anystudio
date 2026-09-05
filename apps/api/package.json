@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "db:seed": "node prisma/seed-dist/seed.js",
+    "release": "npm run db:deploy && npm run db:seed",
     "start:worker": "node dist/src/worker/main.js",
     "dev:worker": "tsx watch src/worker/main.ts"
   },
