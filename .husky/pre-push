@@ -1,3 +1,6 @@
 # The branches that matter are PR-only, so this guards the feature branches
-# people actually push: no type errors leave the laptop.
+# people actually push: no type errors leave the laptop. The Prisma client is
+# generated first — every service imports its types, and a fresh install
+# leaves node_modules without it (CI does the same, in the same order).
+pnpm db:generate >/dev/null
 pnpm typecheck
