@@ -71,7 +71,7 @@ export class AuthService {
     const outcome = await this.registration.register(
       {
         name: dto.name, email: dto.email.toLowerCase(), password: dto.password,
-        phone: RegistrationService.normalisePhone(dto.phone),
+        phone: RegistrationService.normalisePhone(dto.phone, dto.country),
         phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
         marketing: dto.marketing, sourceUrl: dto.sourceUrl,
       },
@@ -519,9 +519,11 @@ export class AuthService {
   /** Email or E.164 phone — one field, both accepted. */
   private async findByIdentifier(identifier: string): Promise<User | null> {
     const id = identifier.trim();
-    return id.includes('@')
-      ? this.db.user.findUnique({ where: { email: id } })
-      : this.db.user.findUnique({ where: { phone: id.replace(/[\s-]/g, '') } });
+    if (id.includes('@')) return this.db.user.findUnique({ where: { email: id } });
+    // A phone typed any way it is usually typed — with spaces, brackets, or as a local number.
+    let phone = id.replace(/[\s().-]/g, '');
+    try { phone = RegistrationService.normalisePhone(id); } catch { /* look it up as typed; it will simply not match */ }
+    return this.db.user.findUnique({ where: { phone } });
   }
 
   private async activeStaffRole(userId: string): Promise<StaffRole | null> {
