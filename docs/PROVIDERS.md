@@ -82,3 +82,51 @@ A credit is ~$0.015 at launch (business: 2,400 for $29).
 Veo 3.1 Fast (~$2–3.20 per 8 s) does not clear the reel price and stays at priority 30 — a fallback, not the default — until the reel is repriced or a premium tier exists. Promoting it is a row edit. Stitching is ours (ffmpeg) and costs nothing at the vendor.
 
 `VIDEO_DAILY_LIMIT` (default 20 parents/standalone videos per workspace per rolling day) is the guardrail that fails closed; `ProviderModel.enabled` is the kill switch.
+
+## Payments (Phase 8)
+
+Two gateways behind one contract (`apps/api/src/modules/billing/billing.types.ts`). **Currency picks the gateway**: NGN, GHS, KES, ZAR, UGX, TZS, RWF, XOF, XAF, EGP, ETB, ZMW, MWK go to Flutterwave; everything else goes to Paddle, which is merchant of record and handles VAT and receipts.
+
+| Env var | Vendor | Where to get it | Used for |
+|---|---|---|---|
+| `FLUTTERWAVE_SECRET_KEY` | Flutterwave | Dashboard → Settings → API keys (v3; `FLWSECK_TEST-…` in sandbox) | Hosted Standard checkout (`POST /v3/payments`), verification (`/v3/transactions/:id/verify`), subscriptions via payment plans |
+| `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave | Dashboard → Settings → Webhooks → "secret hash" (you choose it) | Sent back as the `verif-hash` header on every webhook. v4's `flutterwave-signature` HMAC is also accepted |
+| `PADDLE_API_KEY` | Paddle Billing | Paddle → Developer tools → Authentication → API keys | Creating transactions server-side, verifying them, cancelling subscriptions |
+| `PADDLE_CLIENT_TOKEN` | Paddle Billing | Same page → Client-side tokens | Opening the checkout overlay on `/billing/pay`. Public by design; the API serves it from `GET /billing/config` |
+| `PADDLE_WEBHOOK_SECRET` | Paddle Billing | Paddle → Developer tools → Notifications → your endpoint → secret key (`pdl_ntfset_…`) | `Paddle-Signature` HMAC check |
+| `PADDLE_ENV` | — | `sandbox` or `live` | Which Paddle API host. Production logs an error unless `live` |
+
+**Webhook URLs to register**
+
+- Flutterwave: `https://<api host>/api/v1/billing/webhooks/flutterwave`
+- Paddle: `https://<api host>/api/v1/billing/webhooks/paddle` — subscribe to `transaction.completed`, `transaction.payment_failed`, `subscription.activated`, `subscription.updated`, `subscription.canceled`, `subscription.past_due`, `subscription.paused`, `subscription.resumed`, `adjustment.created`, `adjustment.updated`
+
+**Products to create at the gateway, then record on the rows**
+
+Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per market, never converted). Each gateway also needs its own product for each thing we sell, and its id goes into the row's `providerRefs`:
+
+```json
+// plans.providerRefs
+{ "paddle": { "month": "pri_01…", "year": "pri_01…" }, "flutterwave": { "month": 12345, "year": 12346 } }
+// credit_packs.providerRefs
+{ "paddle": { "once": "pri_01…" } }
+```
+
+- Paddle: one product per plan with a monthly and a yearly recurring price, one product per pack with a one-time price. Paddle's localised pricing sets the non-NGN amounts; our `priceByMarket` for USD/GBP is what the plans page shows, so keep them equal.
+- Flutterwave: one **payment plan** per plan × interval (Dashboard → Payment plans, or `POST /v3/payment-plans`), amount equal to `priceByMarket.NGN`. Packs need no Flutterwave product.
+- A plan or pack with no ref for the workspace's gateway shows as "not available through this payment provider yet" and cannot be bought — nothing is ever charged at an unknown price.
+
+**How money becomes credits**
+
+1. `POST /workspaces/:id/billing/checkout {kind, code, interval}` — the server prices it, writes a `PENDING` Payment row, gets a hosted checkout URL. The client never sends an amount.
+2. The person pays on the gateway's page and returns to `/billing/return?ref=…`.
+3. The return page calls `POST …/payments/:id/verify`; webhooks call `/billing/webhooks/<gateway>`. Both paths: signature check (webhooks) → **re-fetch the charge from the gateway** → compare amount/currency/reference with the row → grant through the ledger with idempotency key `payment:<id>`. Five deliveries, one grant.
+4. A mismatch withholds credits, marks the row `FAILED: mismatch…` and logs at `error` — that line is the one to alert on.
+5. Every webhook is a `webhook_receipts` row, verified or not, with the outcome. Redeliveries stop at the unique `(provider, eventId)`.
+
+**Known gaps to verify in the sandbox before launch**
+
+- Flutterwave subscription **renewals**: the renewal `charge.completed` is matched by the customer email plus the payment-plan id, because the renewal carries a Flutterwave-generated `tx_ref`. Confirm the field name (`payment_plan` vs `plan`) on a real renewal event and adjust `interpret()` in `flutterwave.gateway.ts`.
+- Flutterwave **cancel** needs the per-customer subscription id, looked up from `GET /v3/subscriptions?email=…` at cancel time.
+- Paddle **refunds** arrive as `adjustment.*` events; credits are clawed back through the ledger. If they were already spent the row says `refunded_clawback_failed` and a person decides.
+- Plan credits do not yet expire at period end (open decision in the spec): today they accumulate like pack credits. `LedgerKind.EXPIRY` and `ledger.expire()` exist for when that is decided.

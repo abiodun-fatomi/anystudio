@@ -229,7 +229,8 @@ copies a connection string by hand.
 | `RESEND_API_KEY` / `MAIL_FROM` | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain |
 | `R2_*` | Separate keys per environment |
 | `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY` | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle |
-| `FLUTTERWAVE_*`, `PADDLE_*` | Includes webhook signing secrets. Not needed until Phase 5 |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET` | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV` | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
 | `WHATSAPP_*` | Phone number id, access token, webhook verify token |
 
 GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,

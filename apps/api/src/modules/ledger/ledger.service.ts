@@ -93,6 +93,16 @@ export class LedgerService {
     return this.apply('ADJUSTMENT', a.delta, a, a.actorId);
   }
 
+  /**
+   * Take back credits a gateway refunded. An ADJUSTMENT with no staff actor,
+   * so the row reads "refund of payment X" rather than "someone decided".
+   * Refused by the database if the credits were already spent — the caller
+   * records that and a person follows up; we do not push a wallet negative.
+   */
+  async clawback(m: LedgerMove): Promise<LedgerEntry> {
+    return this.apply('ADJUSTMENT', -Math.abs(m.amount), { ...m, idempotencyKey: `${m.idempotencyKey}:clawback` });
+  }
+
   /** Current balance, from the last row. One indexed read. */
   async balance(walletId: string): Promise<number> {
     const rows = await this.db.$queryRaw<{ balance: number }[]>`

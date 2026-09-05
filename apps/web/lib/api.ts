@@ -145,7 +145,34 @@ export interface MemberRow { userId: string; role: string; joinedAt: string; nam
 export interface InviteRow { id: string; email: string | null; role: string; expiresAt: string; createdAt: string }
 export type GrantableRole = 'ADMIN' | 'MEMBER' | 'BILLING' | 'AUDITOR';
 
+// ---------------------------------------------------------------- billing
+
+export type PaymentProvider = 'FLUTTERWAVE' | 'PADDLE' | 'STUB';
+export interface PriceOffer { price: number | null; canBuy: boolean }
+export interface Catalogue {
+  currency: string; provider: PaymentProvider | null; available: boolean;
+  packs: Array<{ code: string; credits: number; price: number | null; canBuy: boolean }>;
+  plans: Array<{ code: string; credits: number; month: PriceOffer; year: PriceOffer | null; current: boolean }>;
+  subscription: SubscriptionView | null;
+}
+export interface SubscriptionView { id: string; planCode: string; interval: string; status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'PAUSED'; provider: PaymentProvider; currentPeriodStart: string | null; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; cancelledAt: string | null }
+export interface PaymentView {
+  id: string; reference: string; provider: PaymentProvider; kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL'; status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+  itemCode: string; interval: string | null; credits: number; amountMinor: number; currency: string; checkoutUrl: string | null; failureReason: string | null; refundedAt: string | null; createdAt: string; updatedAt: string;
+}
+export interface CheckoutOut { paymentId: string; reference: string; provider: PaymentProvider; url: string; credits: number; amountMinor: number; currency: string }
+
 export const api = {
+  billing: {
+    config: () => request<{ paddle: { clientToken: string; environment: 'sandbox' | 'production' } | null; gateways: PaymentProvider[] }>('GET', '/billing/config'),
+    catalogue: (workspaceId: string) => request<Catalogue>('GET', `/workspaces/${workspaceId}/billing/catalogue`),
+    checkout: (workspaceId: string, body: { kind: 'pack' | 'plan'; code: string; interval?: 'month' | 'year' }) => request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/checkout`, body),
+    verify: (workspaceId: string, paymentId: string, providerRef?: string) => request<PaymentView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/verify`, providerRef ? { providerRef } : {}),
+    payment: (workspaceId: string, paymentId: string) => request<PaymentView>('GET', `/workspaces/${workspaceId}/billing/payments/${paymentId}`),
+    payments: (workspaceId: string, cursor?: string) => request<{ rows: PaymentView[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`),
+    subscription: (workspaceId: string) => request<SubscriptionView | null>('GET', `/workspaces/${workspaceId}/billing/subscription`),
+    cancel: (workspaceId: string) => request<SubscriptionView>('POST', `/workspaces/${workspaceId}/billing/subscription/cancel`),
+  },
   account: {
     profile: () => request<Profile>('GET', '/me/profile'),
     updateProfile: (patch: { name?: string; avatarKey?: string | null; locale?: string | null; timezone?: string | null }) =>
