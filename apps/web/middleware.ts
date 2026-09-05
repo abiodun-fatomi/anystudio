@@ -68,6 +68,8 @@ const APP_PREFIXES = [
  * with redirects left alone, so the Location and Set-Cookie reach the browser.
  */
 const NAVIGATION_API_PATHS = ['/api/v1/auth/google/start', '/api/v1/auth/google/callback'];
+/** The same, for routes whose path carries an id: connecting an Instagram or TikTok account. */
+const NAVIGATION_API_PATTERNS = [/^\/api\/v1\/workspaces\/[^/]+\/publishing\/connect\/[a-z]+\/start$/, /^\/api\/v1\/publishing\/callback\/[a-z]+$/];
 
 export async function middleware(req: NextRequest) {
   const host = req.headers.get('host') ?? '';
@@ -91,7 +93,8 @@ export async function middleware(req: NextRequest) {
     // to price an account that has no phone number to go by.
     const country = req.headers.get('cf-ipcountry');
     if (country) headers.set('x-anystudio-country', country);
-    if (NAVIGATION_API_PATHS.includes(pathname)) return passThroughRedirect(target, headers, req.nextUrl);
+    if (NAVIGATION_API_PATHS.includes(pathname) || NAVIGATION_API_PATTERNS.some((p) => p.test(pathname)))
+      return passThroughRedirect(target, headers, req.nextUrl);
     return NextResponse.rewrite(target, { request: { headers } });
   }
 

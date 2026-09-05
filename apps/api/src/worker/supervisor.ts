@@ -40,6 +40,7 @@ import { QueueService } from '../modules/queue/queue.service';
 import { GenerationRunner } from './runner';
 import { WebhookDispatcher } from '../modules/developer/webhook.dispatcher';
 import { SupportService } from '../modules/support/support.service';
+import { PublishingService } from '../modules/publishing/publishing.service';
 
 const HEARTBEAT_KEY = 'worker:heartbeat';
 const SWEEP_EVERY_MS = 60_000;
@@ -47,6 +48,10 @@ const DISPATCH_EVERY_MS = 20_000;
 const WEBHOOK_EVERY_MS = 10_000;
 /** Help chats nobody has touched for a day are closed and their transcript sent. */
 const SUPPORT_SWEEP_EVERY_MS = 15 * 60_000;
+/** Scheduled posts: the database is the queue, so this is a poll, not a consumer. */
+const PUBLISH_EVERY_MS = 15_000;
+/** Social tokens about to expire are exchanged for fresh ones. */
+const TOKEN_REFRESH_EVERY_MS = 6 * 60 * 60_000;
 
 @Injectable()
 export class WorkerSupervisor {
@@ -64,6 +69,7 @@ export class WorkerSupervisor {
     private readonly queue: QueueService,
     private readonly webhooks: WebhookDispatcher,
     private readonly support: SupportService,
+    private readonly publishing: PublishingService,
   ) {
     this.redis = createRedis('queue', 'worker-consumer');
   }
@@ -87,6 +93,15 @@ export class WorkerSupervisor {
     this.timers.push(setInterval(() => void this.webhooks.deliverDue(), WEBHOOK_EVERY_MS));
     this.timers.push(
       setInterval(() => void this.support.sweepIdle().catch((err: unknown) => logger.error({ err }, 'support sweep failed')), SUPPORT_SWEEP_EVERY_MS),
+    );
+    // Posts due to go out. Straight from the database, never through Redis:
+    // a scheduled post must survive a Redis that is down or wiped.
+    this.timers.push(setInterval(() => void this.publishing.runDue(), PUBLISH_EVERY_MS));
+    this.timers.push(
+      setInterval(
+        () => void this.publishing.refreshTokens().catch((err: unknown) => logger.error({ err }, 'social token refresh failed')),
+        TOKEN_REFRESH_EVERY_MS,
+      ),
     );
     await this.heartbeat();
     await this.dispatch();

@@ -71,6 +71,12 @@ services:
     region: frankfurt
     plan: free
     ipAllowList: []
+    # A queue is not a cache. Under the default allkeys-lru, a full instance
+    # quietly throws away whichever keys it likes — which can be a queued
+    # generation someone has already paid credits for. noeviction makes a
+    # full instance refuse writes instead, which the API logs loudly and
+    # the credits path treats as "not started, refunded".
+    maxmemoryPolicy: noeviction
 
   - type: web
     name: anystudio-api-dev
@@ -159,6 +165,14 @@ envVarGroups:
       - key: ORIGIN_ORG # https://org.dev.anystudio.ai
         sync: false
       - key: ORIGIN_ADMIN # https://admin.dev.anystudio.ai
+        sync: false
+      - key: META_APP_ID # publishing: Instagram (docs/DEPLOY.md §13); leave unset to keep it off
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: TIKTOK_CLIENT_KEY # publishing: TikTok
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

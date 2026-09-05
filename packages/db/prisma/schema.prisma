@@ -376,6 +376,8 @@ model Workspace {
   apiKeys          ApiKey[]
   webhooks         WebhookEndpoint[]
   whatsappContacts WhatsappContact[]
+  socialAccounts   SocialAccount[]
+  publishJobs      PublishJob[]
 
   @@index([type])
   @@map("workspaces")
@@ -1022,6 +1024,7 @@ model Generation {
   assets      MediaAsset[]
   apiKey      ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
   project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  publishJobs PublishJob[]
 
   /// One row per client request, per workspace.
   @@unique([workspaceId, clientKey])
@@ -1463,4 +1466,134 @@ model SupportMessage {
 
   @@index([conversationId, createdAt])
   @@map("support_messages")
+}
+
+// ---------------------------------------------------------------------------
+// PUBLISHING — connected accounts and the posts that go out through them
+//
+// A connected account is a customer's Instagram or TikTok, reached with a
+// token they granted through the platform's own consent screen. The token
+// is encrypted at rest under APP_KEY, like a TOTP seed: a database dump must
+// not be a list of people's social accounts. A post is a job with its own
+// retry and its own failure surface, separate from the generation that made
+// the picture — the picture is fine; it is the posting that can fail.
+//
+// The database is the queue. A due job is claimed with a conditional update
+// (SCHEDULED → PUBLISHING) by whichever worker tick gets there first, so no
+// Redis is involved and a Redis outage cannot lose a scheduled post.
+// ---------------------------------------------------------------------------
+
+enum SocialPlatform {
+  INSTAGRAM
+  TIKTOK
+}
+
+enum SocialAccountStatus {
+  CONNECTED
+  /// The token expired or was revoked at the platform; posting through it
+  /// fails until the person connects again. Surfaced, never silent.
+  NEEDS_REAUTH
+  DISCONNECTED
+}
+
+model SocialAccount {
+  id          String         @id @default(uuid()) @db.Uuid
+  workspaceId String         @db.Uuid
+  platform    SocialPlatform
+  /// The platform's id for the account: the Instagram professional account
+  /// id, or the TikTok open_id.
+  externalId  String
+  handle      String?
+  displayName String?
+  avatarUrl   String?
+
+  /// AES-256-GCM under APP_KEY (utils/crypto/encrypt.ts).
+  accessToken    String
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  scopes         String[]
+  /// Instagram only: the Facebook Page the professional account hangs off,
+  /// which is what the page token belongs to.
+  pageId         String?
+
+  status         SocialAccountStatus @default(CONNECTED)
+  /// Operator-facing: why it needs re-authorising, from the platform.
+  lastError      String?
+  connectedById  String              @db.Uuid
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  disconnectedAt DateTime?
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobs      PublishJob[]
+
+  /// Reconnecting the same account updates the row rather than adding one.
+  @@unique([workspaceId, platform, externalId])
+  @@index([workspaceId, status])
+  /// The refresher: tokens about to expire, soonest first.
+  @@index([status, tokenExpiresAt])
+  @@map("social_accounts")
+}
+
+enum PublishStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+/// What shape the post takes on the platform. Instagram: a feed image, a
+/// reel or a story. TikTok: a video, or a photo post.
+enum PublishFormat {
+  IMAGE
+  VIDEO
+  REEL
+  STORY
+}
+
+model PublishJob {
+  id           String         @id @default(uuid()) @db.Uuid
+  workspaceId  String         @db.Uuid
+  accountId    String         @db.Uuid
+  /// The generation the media came from, when it came from one. Kept for
+  /// the library's "posted" badge; the job survives the generation's removal.
+  generationId String?        @db.Uuid
+  createdById  String         @db.Uuid
+  platform     SocialPlatform
+  format       PublishFormat
+  /// The storage key of the file to post — never a URL; URLs expire.
+  mediaKey     String
+  mediaMime    String?
+  caption      String
+  scheduledFor DateTime
+  status       PublishStatus  @default(SCHEDULED)
+
+  /// Retries: the worker attempts at most three times, with a growing gap.
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime?
+  /// Operator-facing, from the platform; never shown verbatim.
+  lastError     String?
+  /// The sentence the customer sees when it fails for good.
+  failureReason String?
+  /// Every attempt, oldest first: { at, ok, error?, externalPostId? }.
+  log           Json?
+
+  externalPostId String?
+  externalUrl    String?
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace  Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account    SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  generation Generation?   @relation(fields: [generationId], references: [id], onDelete: SetNull)
+
+  /// The calendar: a workspace's posts by when they go out.
+  @@index([workspaceId, scheduledFor])
+  /// The worker: everything due, soonest first.
+  @@index([status, nextAttemptAt])
+  @@index([accountId])
+  @@index([generationId])
+  @@map("publish_jobs")
 }

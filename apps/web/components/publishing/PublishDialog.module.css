@@ -1,0 +1,190 @@
+.root {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--s-5);
+  min-height: 420px;
+}
+@media (max-width: 720px) {
+  .root {
+    grid-template-columns: 1fr;
+  }
+}
+.preview {
+  display: grid;
+  align-content: start;
+  gap: var(--s-3);
+}
+.preview img,
+.preview video {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: var(--r-md);
+  background: var(--sunk);
+  display: block;
+}
+.noFile {
+  padding: var(--s-5);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: var(--t-2);
+  text-align: center;
+}
+.form {
+  display: grid;
+  align-content: start;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.section {
+  display: grid;
+  gap: var(--s-2);
+}
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--t-2);
+}
+.manage {
+  font-size: var(--t-1);
+  color: var(--accent);
+}
+.empty {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  padding: var(--s-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  line-height: 1.5;
+}
+.accounts {
+  display: grid;
+  gap: var(--s-2);
+}
+.account {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1.5px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.account:hover {
+  border-color: var(--line);
+}
+.account[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.account:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.account:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.account img,
+.avatarFallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.accountText {
+  display: grid;
+  min-width: 0;
+}
+.handle {
+  font-weight: 600;
+  font-size: var(--t-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.platform {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.tick {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: transparent;
+  border: 1.5px solid var(--line);
+}
+.account[aria-pressed='true'] .tick {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.share {
+  display: grid;
+  gap: var(--s-3);
+}
+.lede {
+  color: var(--ink-soft);
+  font-size: var(--t-2);
+  line-height: 1.5;
+  margin: 0;
+}
+.steps {
+  margin: 0;
+  padding: 0 0 0 var(--s-5);
+  display: grid;
+  gap: var(--s-2);
+  font-size: var(--t-2);
+}
+.steps li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.steps li:last-child {
+  border-bottom: 0;
+}
+.download {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+  color: var(--ink);
+  font-size: var(--t-1);
+  font-weight: 600;
+  text-decoration: none;
+}
+.download:hover {
+  text-decoration: none;
+  background: var(--line-soft);
+}
+.fine {
+  margin: 0;
+  font-size: var(--t-1);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}

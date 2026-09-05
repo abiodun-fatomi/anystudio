@@ -13,6 +13,7 @@ import { toolById } from '@/lib/studio/tools';
 import type { GenerationCard } from '@/lib/studio/useGenerations';
 import { Badge, Button, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
+import { PublishDialog } from '@/components/publishing/PublishDialog';
 import styles from './studio.module.css';
 
 const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = {
@@ -77,6 +78,7 @@ export function ResultCard({
     ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined)
     : undefined;
   const mainUrl = main ? card.urls[main.key] : undefined;
+  const [posting, setPosting] = useState(false);
   const missingUrls = useMemo(() => card.outputs.filter((o) => o.key && !card.urls[o.key]).map((o) => o.key), [card.outputs, card.urls]);
   const narrative = card.detail ?? tool.narrative[card.stage] ?? 'Working';
   const elapsed = useElapsed(card.createdAt, live);
@@ -208,6 +210,11 @@ export function ResultCard({
             Download
           </Button>
         )}
+        {card.status === 'SUCCEEDED' && main && (main.role === 'image' || main.role === 'video') && !locked && card.id && (
+          <Button variant="subtle" size="sm" onClick={() => setPosting(true)}>
+            Post…
+          </Button>
+        )}
         {card.status === 'SUCCEEDED' && main?.role === 'image' && (
           <Button variant="ghost" size="sm" onClick={() => onUseAsSource(main.key)}>
             Use as source
@@ -229,6 +236,31 @@ export function ResultCard({
           </Button>
         )}
       </div>
+      {card.id && (
+        <PublishDialog
+          open={posting}
+          onClose={() => setPosting(false)}
+          target={{
+            generationId: card.id,
+            title: null,
+            text: card.outputs.find((o) => o.role === 'text')?.text,
+            outputs: card.outputs
+              .filter((o) => o.role === 'image' || o.role === 'video' || o.role === 'variant')
+              .map((o) => ({
+                key: o.key,
+                role: o.role,
+                mime: o.mime,
+                size: o.size,
+                width: o.width,
+                height: o.height,
+                durationMs: o.durationMs,
+                bytes: o.bytes,
+                locked: o.locked,
+                url: card.urls[o.key] ?? null,
+              })),
+          }}
+        />
+      )}
     </article>
   );
 }

@@ -39,6 +39,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SupportModule } from './modules/support/support.module';
+import { PublishingModule } from './modules/publishing/publishing.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { SupportModule } from './modules/support/support.module';
     NotificationModule,
     AdminModule,
     SupportModule,
+    PublishingModule,
   ],
   controllers: [HealthController],
   providers: [

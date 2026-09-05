@@ -17,6 +17,7 @@ import { toolById } from '@/lib/studio/tools';
 import { PageHeader } from '@/components/shell/Page';
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Input, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
+import { PublishDialog } from '@/components/publishing/PublishDialog';
 import styles from './library.module.css';
 
 const TYPES: Array<{ id: LibraryType; label: string }> = [
@@ -54,6 +55,7 @@ function Library() {
   const [products, setProducts] = useState<LibraryProduct[] | null>(null);
   const [open, setOpen] = useState<LibraryItem | null>(null);
   const [remove, setRemove] = useState<LibraryItem | null>(null);
+  const [posting, setPosting] = useState<LibraryItem | null>(null);
   const [busy, setBusy] = useState(false);
   const req = useRef(0);
 
@@ -384,13 +386,26 @@ function Library() {
                   Make a video
                 </Button>
               )}
-              <Button onClick={() => again(open)}>Make again</Button>
+              <Button variant="subtle" onClick={() => again(open)}>
+                Make again
+              </Button>
+              {(open.type === 'image' || open.type === 'video') && open.outputs.some((o) => o.key && !o.locked) && (
+                <Button leading={<Icon.publish width={16} height={16} />} onClick={() => setPosting(open)}>
+                  Post…
+                </Button>
+              )}
             </>
           ) : undefined
         }
       >
         {open && <ItemDetail item={open} workspaceId={workspace.id} />}
       </Dialog>
+
+      <PublishDialog
+        open={posting !== null}
+        onClose={() => setPosting(null)}
+        target={posting ? { generationId: posting.id, title: posting.title, text: posting.text, outputs: posting.outputs } : null}
+      />
 
       <ConfirmDialog
         open={remove !== null}
