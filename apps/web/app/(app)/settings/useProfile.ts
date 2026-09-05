@@ -8,7 +8,17 @@ export function useProfile() {
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
     try {
-      setProfile(await api.account.profile());
+      const p = await api.account.profile();
+      // An older API (a deploy in flight) may answer without the newer
+      // sections; the screens read them as empty rather than crashing.
+      setProfile({
+        ...p,
+        hasPassword: p.hasPassword ?? true,
+        mfa: p.mfa ?? { enabled: false, factors: [], recoveryCodesLeft: 0 },
+        identities: p.identities ?? [],
+        pendingEmail: p.pendingEmail ?? null,
+        deletion: p.deletion ?? null,
+      });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load your profile.');

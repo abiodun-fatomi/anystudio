@@ -23,15 +23,16 @@ export function Bell() {
   const refreshCount = useCallback(() => {
     api.notifications
       .unread()
-      .then((r) => setUnread(r.unread))
+      .then((r) => setUnread(r?.unread ?? 0))
       .catch(() => undefined);
   }, []);
   const load = useCallback(() => {
     api.notifications
       .list({ take: 10 })
       .then((r) => {
-        setItems(r.items);
-        setUnread(r.unread);
+        // An older API (a deploy in flight) may not know this route yet.
+        setItems(Array.isArray(r?.items) ? r.items : []);
+        setUnread(r?.unread ?? 0);
       })
       .catch(() => setItems([]));
   }, []);
