@@ -121,8 +121,16 @@ export class AuthService {
     const surface = this.surfaceFromOrigin(req);
     const outcome = await this.verifyPassword(dto.identifier, dto.password, surface, req);
 
-    // One shape, one timing profile, whatever went wrong.
+    // One shape, one timing profile, whatever went wrong — except on the
+    // console, where a PROVEN password that still cannot get in is told why
+    // (no staff grant, or no authenticator yet): whoever holds the password
+    // holds the account already, and "wrong password" would send them to
+    // reset a password that was right.
     if (outcome.kind === 'rejected') {
+      if (outcome.reason) {
+        authLog('auth.login', 'refused', { reason: outcome.reason, surface }, req);
+        return Helpers.successResponse<LoginResult>(200, MESSAGES.INVALID_CREDENTIALS, { status: outcome.reason });
+      }
       // No userId on purpose: the response does not reveal whether the account
       // exists, and neither should the line describing it.
       authLog('auth.login', 'refused', { reason: 'invalid_credentials', surface }, req);
@@ -486,7 +494,7 @@ export class AuthService {
 
     if (surface === 'ADMIN' && !(await this.activeStaffRole(user.id))) {
       await this.event(user.id, 'LOGIN_FAILED', surface, req, { reason: 'no_staff_grant' });
-      return { kind: 'rejected' };
+      return { kind: 'rejected', reason: 'not_staff' };
     }
 
     const factors = await this.db.mfaFactor.findMany({
@@ -498,7 +506,7 @@ export class AuthService {
       if (surface === 'ADMIN' && factors.length === 0) {
         // Staff without a factor cannot get in. Enrolment happens on APP first.
         await this.event(user.id, 'LOGIN_FAILED', surface, req, { reason: 'staff_without_mfa' });
-        return { kind: 'rejected' };
+        return { kind: 'rejected', reason: 'factor_required' };
       }
       const challengeId = await this.openChallenge(user.id, surface, req);
       await this.event(user.id, 'MFA_CHALLENGED', surface, req);

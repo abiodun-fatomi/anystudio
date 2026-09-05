@@ -96,7 +96,14 @@ export type SignedIn = { status: 'signed_in'; next: string } | { status: 'handof
 /** A duplicate email/phone arrives as ApiError(409, 'conflict'), not as a status. */
 export type RegisterResult = SignedIn | { status: 'not_available' };
 
-export type LoginResult = SignedIn | { status: 'mfa_required'; challengeId: string; factors: string[] } | { status: 'invalid_credentials' };
+export type LoginResult =
+  | SignedIn
+  | { status: 'mfa_required'; challengeId: string; factors: string[] }
+  | { status: 'invalid_credentials' }
+  /** Console only, after a proven password: the account is not on staff. */
+  | { status: 'not_staff' }
+  /** Console only, after a proven password: no authenticator on the account yet. */
+  | { status: 'factor_required' };
 
 // Help & support
 export interface SupportMessage {

@@ -11,7 +11,18 @@ import type { User } from '@prisma/client';
  */
 export type SignedIn = { status: 'signed_in'; next: string } | { status: 'handoff'; url: string };
 
-export type LoginResult = SignedIn | { status: 'mfa_required'; challengeId: string; factors: string[] } | { status: 'invalid_credentials' };
+/**
+ * `not_staff` and `factor_required` exist only on the ADMIN surface and only
+ * once the password has been proven: the person already holds the account,
+ * so telling them what the console still needs from it reveals nothing to
+ * anyone else. Before the password is proven every refusal is the same.
+ */
+export type LoginResult =
+  | SignedIn
+  | { status: 'mfa_required'; challengeId: string; factors: string[] }
+  | { status: 'invalid_credentials' }
+  | { status: 'not_staff' }
+  | { status: 'factor_required' };
 
 export type MfaResult = SignedIn | { status: 'invalid_code' };
 
@@ -22,6 +33,6 @@ export type RefreshResult = { status: 'ok' } | { status: 'invalid' } | { status:
 
 /** Internal: what verifyPassword hands back before a session exists. */
 export type Verified =
-  | { kind: 'rejected' }
+  | { kind: 'rejected'; reason?: 'not_staff' | 'factor_required' }
   | { kind: 'mfa_required'; challengeId: string; factors: Array<'TOTP' | 'WEBAUTHN'> }
   | { kind: 'signed_in'; user: User; mfaLevel: number };

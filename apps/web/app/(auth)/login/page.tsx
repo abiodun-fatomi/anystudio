@@ -4,7 +4,7 @@
  * screen asks for it — no redirect, no lost state. On success the API says
  * where to go, because it knows whether this person has a workspace yet.
  */
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -43,6 +43,11 @@ function LoginForm() {
   const [challenge, setChallenge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(GOOGLE_ERRORS[returned ?? ''] ?? null);
   const [busy, setBusy] = useState(false);
+  // The staff console has its own hostname and its own rules: the same
+  // account and password as everywhere else, then an authenticator, always.
+  // Decided after mount so server and client markup agree.
+  const [console_, setConsole] = useState(false);
+  useEffect(() => setConsole(window.location.host.startsWith('admin.')), []);
 
   /** Handles both steps; which one depends on whether a challenge is open. */
   async function submit(e: FormEvent) {
@@ -54,6 +59,10 @@ function LoginForm() {
       if (r.status === 'signed_in') return router.replace(next ?? r.next);
       if (r.status === 'handoff') return followHandoff(r.url, next, to);
       if (r.status === 'mfa_required') return setChallenge(r.challengeId);
+      if (r.status === 'not_staff')
+        return setError('That password is right, but this account is not on staff. A superadmin grants access from Staff in the console.');
+      if (r.status === 'factor_required')
+        return setError('That password is right, but the console needs an authenticator. Add one under Settings → Security on the app, then come back.');
       setError(challenge ? 'That code did not match.' : 'Those details did not match an account.');
     } catch (err) {
       setError(err instanceof ApiError ? `${err.message}${err.requestId ? ` (ref ${err.requestId.slice(0, 8)})` : ''}` : 'Could not reach AnyStudio.');
@@ -64,19 +73,27 @@ function LoginForm() {
 
   return (
     <form onSubmit={submit} noValidate>
-      <h1 style={{ fontSize: 'clamp(27px,3.6vw,34px)', fontWeight: 800 }}>{challenge ? 'One more step.' : 'Welcome back.'}</h1>
+      <h1 style={{ fontSize: 'clamp(27px,3.6vw,34px)', fontWeight: 800 }}>{challenge ? 'One more step.' : console_ ? 'Staff sign-in.' : 'Welcome back.'}</h1>
       <p style={{ color: 'var(--muted)', marginTop: 10 }}>
-        {challenge ? 'Enter the six-digit code from your authenticator app.' : 'Your library, brand kits and credits are where you left them.'}
+        {challenge
+          ? 'Enter the six-digit code from your authenticator app.'
+          : console_
+            ? 'The same account and password as the app, then your authenticator — always, on this host.'
+            : 'Your library, brand kits and credits are where you left them.'}
       </p>
 
       {!challenge ? (
         <>
-          <div style={{ marginTop: 26 }}>
-            <GoogleButton next={next ?? undefined} label="Continue with Google" />
-          </div>
-          <div className={styles.or}>or</div>
+          {!console_ && (
+            <>
+              <div style={{ marginTop: 26 }}>
+                <GoogleButton next={next ?? undefined} label="Continue with Google" />
+              </div>
+              <div className={styles.or}>or</div>
+            </>
+          )}
 
-          <div className="field">
+          <div className="field" style={console_ ? { marginTop: 26 } : undefined}>
             <label htmlFor="id">Email or phone</label>
             <input
               id="id"
@@ -123,9 +140,11 @@ function LoginForm() {
         {busy ? 'Checking…' : challenge ? 'Confirm' : 'Sign in'}
       </button>
 
-      <p style={{ textAlign: 'center', marginTop: 18, color: 'var(--muted)', fontSize: 14.5 }}>
-        New here? <Link href="/signup">Create an account</Link>
-      </p>
+      {!console_ && (
+        <p style={{ textAlign: 'center', marginTop: 18, color: 'var(--muted)', fontSize: 14.5 }}>
+          New here? <Link href="/signup">Create an account</Link>
+        </p>
+      )}
     </form>
   );
 }
