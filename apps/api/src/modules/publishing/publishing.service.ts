@@ -314,11 +314,16 @@ export class PublishingService {
     workspaceId: string,
     q: PublishListQueryDto,
   ): Promise<{ rows: Array<PublishJob & { account: AccountView; mediaUrl: string | null }>; nextCursor: string | null }> {
-    const take = q.take ?? 50;
     const upcoming = (q.view ?? 'upcoming') === 'upcoming';
+    // A window (the calendar) shows everything in it, cancelled included, in
+    // time order; the list views page by status.
+    const windowed = Boolean(q.from && q.to);
+    const take = windowed ? 500 : (q.take ?? 50);
     const rows = await this.db.publishJob.findMany({
-      where: { workspaceId, status: upcoming ? { in: ['SCHEDULED', 'PUBLISHING'] } : { in: ['PUBLISHED', 'FAILED', 'CANCELLED'] } },
-      orderBy: upcoming ? { scheduledFor: 'asc' } : { updatedAt: 'desc' },
+      where: windowed
+        ? { workspaceId, scheduledFor: { gte: new Date(q.from!), lt: new Date(q.to!) } }
+        : { workspaceId, status: upcoming ? { in: ['SCHEDULED', 'PUBLISHING'] } : { in: ['PUBLISHED', 'FAILED', 'CANCELLED'] } },
+      orderBy: windowed || upcoming ? { scheduledFor: 'asc' } : { updatedAt: 'desc' },
       take: take + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: { account: true },

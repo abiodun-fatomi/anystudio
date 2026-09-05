@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/shell/Page';
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, SegmentedControl, Skeleton, Textarea, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { FORMAT_WORDS, PLATFORM_WORDS } from '@/components/publishing/PublishDialog';
+import { Calendar } from './Calendar';
 import styles from './publishing.module.css';
 
 const CONNECT_ERRORS: Record<string, string> = {
@@ -77,7 +78,10 @@ function Publishing() {
 
   const [platforms, setPlatforms] = useState<PublishPlatform[] | null>(null);
   const [accounts, setAccounts] = useState<SocialAccount[] | null>(null);
-  const [view, setView] = useState<'upcoming' | 'history'>((params.get('view') as 'history') === 'history' ? 'history' : 'upcoming');
+  const initialView = params.get('view');
+  const [view, setView] = useState<'upcoming' | 'history' | 'calendar'>(initialView === 'history' || initialView === 'calendar' ? initialView : 'upcoming');
+  // Bumped after any change made outside the calendar, so it re-reads its month.
+  const [calendarKey, setCalendarKey] = useState(0);
   const [jobs, setJobs] = useState<PublishJob[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [more, setMore] = useState(false);
@@ -93,6 +97,11 @@ function Publishing() {
   }, [workspace.id]);
   const loadJobs = useCallback(
     async (after?: string) => {
+      if (view === 'calendar') {
+        setJobs([]);
+        setCalendarKey((k) => k + 1);
+        return;
+      }
       try {
         const r = await api.publishing.list(workspace.id, { view, cursor: after, take: 50 });
         setJobs((cur) => (after && cur ? [...cur, ...r.rows] : r.rows));
@@ -287,12 +296,15 @@ function Publishing() {
             onChange={setView}
             items={[
               { id: 'upcoming', label: 'Upcoming' },
+              { id: 'calendar', label: 'Calendar' },
               { id: 'history', label: 'History' },
             ]}
           />
         </div>
 
-        {jobs === null ? (
+        {view === 'calendar' ? (
+          <Calendar workspaceId={workspace.id} onEdit={setEditing} onCancel={setCancelling} onRetry={retry} refreshKey={calendarKey} />
+        ) : jobs === null ? (
           <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} height={72} />

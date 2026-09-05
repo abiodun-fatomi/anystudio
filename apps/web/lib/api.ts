@@ -1166,6 +1166,12 @@ export const api = {
         'GET',
         `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ view: opts.view ?? 'upcoming', ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`,
       ),
+    /** Everything scheduled in [from, to), whatever its status — the calendar. */
+    window: (workspaceId: string, from: Date, to: Date) =>
+      request<{ rows: PublishJob[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ from: from.toISOString(), to: to.toISOString() })}`,
+      ),
     patch: (workspaceId: string, id: string, body: { caption?: string; scheduledFor?: string }) =>
       request<PublishJob>('PATCH', `/workspaces/${workspaceId}/publishing/jobs/${id}`, body),
     cancel: (workspaceId: string, id: string) => request<PublishJob>('POST', `/workspaces/${workspaceId}/publishing/jobs/${id}/cancel`),
