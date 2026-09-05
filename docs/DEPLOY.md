@@ -119,7 +119,7 @@ traffic is the commit that was just tested. Production waits for the
 required reviewer on the `production` environment, exactly like the web.
 
 ```
-push → Check ──ok──▶ Deploy: API (migrations run in Render's pre-deploy step)
+push → Check ──ok──▶ Deploy: API (migrations, then the seed, run in Render's pre-deploy step)
                             ▶ worker (only where RENDER_WORKER_SERVICE_ID is set)
                             ▶ smoke: /health.release == sha, /ready == ready
 ```

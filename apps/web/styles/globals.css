@@ -245,7 +245,11 @@ button {
   }
 }
 .rise {
-  animation: rise var(--dur) var(--ease) both;
+  /* `backwards`, not `both`: a kept transform — even the identity one the
+     last keyframe leaves — makes this box the containing block for every
+     position: fixed inside it, and a bar meant for the bottom of the
+     screen ends up at the bottom of the page instead. */
+  animation: rise var(--dur) var(--ease) backwards;
 }
 /*
  * Anything that stands in for content while it loads: invisible for the

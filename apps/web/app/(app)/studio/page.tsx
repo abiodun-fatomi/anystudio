@@ -111,6 +111,17 @@ function Studio() {
     [setUrl],
   );
 
+  // The photo on the canvas was removed from the strip: clear the canvas too.
+  const sourceRemoved = useCallback(
+    (asset: MediaAssetRow) => {
+      if (asset.key === sourceKey) {
+        setSourceMeta(null);
+        setUrl({ source: null });
+      }
+    },
+    [sourceKey, setUrl],
+  );
+
   const toolValues = useMemo(() => ({ ...tool.defaults, ...(values[tool.id] ?? {}) }), [tool, values]);
   const setValue = (key: string, v: unknown) => setValues((all) => ({ ...all, [tool.id]: { ...(all[tool.id] ?? {}), [key]: v } }));
 
@@ -178,7 +189,7 @@ function Studio() {
   return (
     <div className="rise">
       <div className={styles.studio}>
-        <SourcePane selected={sourceKey} onSelect={selectSource} refreshKey={refreshKey} />
+        <SourcePane selected={sourceKey} onSelect={selectSource} onRemoved={sourceRemoved} refreshKey={refreshKey} />
 
         <section className={`${styles.pane} ${styles.canvas}`} aria-label="Canvas">
           <div className={styles.stage}>
@@ -233,7 +244,6 @@ function Studio() {
           onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
         />
       </div>
-      <div className={styles.mobileSpacer} />
 
       <section id="outputs" className={styles.outputs} aria-label="Results">
         <div className={styles.outputsHead}>
@@ -267,6 +277,7 @@ function Studio() {
           </div>
         )}
       </section>
+      <div className={styles.mobileSpacer} />
     </div>
   );
 }

@@ -4,41 +4,32 @@
  * person may well open it on a phone that is not signed in. Same shape as
  * /verify — runs on arrival, scrubs the token from the address bar.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useLinkToken, useRedeemOnce } from '@/lib/link-token';
 
 type State = 'working' | 'done' | 'invalid';
 
 function EmailChange() {
-  const params = useSearchParams();
+  const token = useLinkToken('/email-change');
   const [state, setState] = useState<State>('working');
   const [email, setEmail] = useState<string | null>(null);
-  useEffect(() => {
-    const token = params.get('token');
-    if (!token) {
-      setState('invalid');
-      return;
-    }
-    window.history.replaceState(null, '', '/email-change');
-    let live = true;
-    api.account
-      .confirmEmailChange(token)
-      .then((r) => {
-        if (!live) return;
-        if (r.status === 'changed') {
-          setEmail(r.email);
-          setState('done');
-        } else setState('invalid');
-      })
-      .catch(() => {
-        if (live) setState('invalid');
-      });
-    return () => {
-      live = false;
-    };
-  }, [params]);
+  useRedeemOnce(
+    token,
+    (t) => {
+      api.account
+        .confirmEmailChange(t)
+        .then((r) => {
+          if (r.status === 'changed') {
+            setEmail(r.email);
+            setState('done');
+          } else setState('invalid');
+        })
+        .catch(() => setState('invalid'));
+    },
+    () => setState('invalid'),
+  );
 
   if (state === 'working')
     return (
@@ -80,9 +71,5 @@ function EmailChange() {
 }
 
 export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <EmailChange />
-    </Suspense>
-  );
+  return <EmailChange />;
 }

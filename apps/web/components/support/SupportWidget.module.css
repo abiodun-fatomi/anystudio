@@ -118,6 +118,11 @@
     width: 54px;
     height: 54px;
   }
+  /* The studio keeps its "Make it" bar on the tab bar's shoulder; the
+     launcher climbs above it rather than sit on the button. */
+  .launcher[data-lifted] {
+    bottom: calc(140px + env(safe-area-inset-bottom));
+  }
 }
 
 .panel {

@@ -5,10 +5,10 @@
  * straight back; the token is only consumed once the signed-in email
  * matches the one invited.
  */
-import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
+import { useLinkToken, useRedeemOnce } from '@/lib/link-token';
 import { Button, EmptyState } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 
@@ -19,34 +19,25 @@ type Outcome =
   | { status: 'wrong_account'; invitedEmail: string | null };
 
 function Invite() {
-  const params = useSearchParams();
+  const token = useLinkToken('/invite');
   const { me, refreshMe, switchWorkspace, signOut } = useApp();
   const [o, setO] = useState<Outcome>({ status: 'working' });
-  useEffect(() => {
-    const token = params.get('token');
-    if (!token) {
-      setO({ status: 'invalid_token' });
-      return;
-    }
-    window.history.replaceState(null, '', '/invite');
-    let live = true;
-    api.members
-      .accept(token)
-      .then(async (r) => {
-        if (!live) return;
-        if (r.status === 'joined') {
-          await refreshMe();
-          switchWorkspace(r.workspace.id);
-          setO({ status: 'joined', name: r.workspace.name, id: r.workspace.id });
-        } else setO(r);
-      })
-      .catch(() => {
-        if (live) setO({ status: 'invalid_token' });
-      });
-    return () => {
-      live = false;
-    };
-  }, [params, refreshMe, switchWorkspace]);
+  useRedeemOnce(
+    token,
+    (t) => {
+      api.members
+        .accept(t)
+        .then(async (r) => {
+          if (r.status === 'joined') {
+            await refreshMe();
+            switchWorkspace(r.workspace.id);
+            setO({ status: 'joined', name: r.workspace.name, id: r.workspace.id });
+          } else setO(r);
+        })
+        .catch(() => setO({ status: 'invalid_token' }));
+    },
+    () => setO({ status: 'invalid_token' }),
+  );
 
   if (o.status === 'working')
     return (

@@ -3,12 +3,14 @@
  * SOURCE — drop, paste or pick. Uploads go straight to storage with a
  * progress bar each; a rejected file says why in one line, and the recent
  * uploads below are what "use as source" and "pick from library" pick from.
+ * Each one can be taken away again — a wrong upload should not sit in the
+ * strip forever — which removes it from the library too.
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { api, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
-import { Progress, Skeleton } from '@/components/ui';
+import { ConfirmDialog, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
@@ -19,11 +21,25 @@ interface Pending {
   error?: string;
 }
 
-export function SourcePane({ selected, onSelect, refreshKey }: { selected: string | null; onSelect: (asset: MediaAssetRow) => void; refreshKey: number }) {
+export function SourcePane({
+  selected,
+  onSelect,
+  onRemoved,
+  refreshKey,
+}: {
+  selected: string | null;
+  onSelect: (asset: MediaAssetRow) => void;
+  /** A photo is gone; the page drops it from the canvas if it was showing. */
+  onRemoved?: (asset: MediaAssetRow) => void;
+  refreshKey: number;
+}) {
   const { workspace } = useApp();
+  const { toast } = useToast();
   const [over, setOver] = useState(false);
   const [pending, setPending] = useState<Pending[]>([]);
   const [recent, setRecent] = useState<MediaAssetRow[] | null>(null);
+  const [removing, setRemoving] = useState<MediaAssetRow | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
   // A placeholder only where something will replace it: a new account has no
   // recent photos, and three shimmering squares that vanish read as a glitch.
   // How many there were last time is remembered per workspace.
@@ -100,6 +116,31 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
     void accept(e.dataTransfer.files);
   };
 
+  const doRemove = async () => {
+    const asset = removing;
+    if (!asset) return;
+    setRemoveBusy(true);
+    try {
+      await api.media.remove(workspace.id, asset.id);
+      setRecent((r) => {
+        const next = (r ?? []).filter((x) => x.id !== asset.id);
+        try {
+          sessionStorage.setItem(`anystudio:recent-sources:${workspace.id}`, String(next.length));
+        } catch {
+          /* fine */
+        }
+        return next;
+      });
+      setRemoving(null);
+      onRemoved?.(asset);
+      toast({ title: 'Photo removed', tone: 'ok' });
+    } catch (err) {
+      toast({ title: 'Could not remove the photo', body: err instanceof Error ? err.message : 'Try again in a moment.', tone: 'danger' });
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
+
   return (
     <section className={`${styles.pane} ${styles.source}`} aria-label="Source">
       <div className={styles.paneHead}>
@@ -168,26 +209,52 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
         {recent && recent.length > 0 && (
           <div className={styles.recent} role="listbox" aria-label="Recent photos">
             {recent.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                role="option"
-                aria-selected={a.key === selected}
-                aria-pressed={a.key === selected}
-                className={styles.thumb}
-                onClick={() => onSelect(a)}
-                title={a.filename ?? 'Photo'}
-              >
-                {urls[a.key] ? (
-                  <img src={urls[a.key]} alt={a.filename ?? 'Uploaded photo'} loading="lazy" />
-                ) : (
-                  <Skeleton style={{ width: '100%', height: '100%' }} />
-                )}
-              </button>
+              <div key={a.id} className={styles.thumbWrap} data-selected={a.key === selected || undefined}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={a.key === selected}
+                  aria-pressed={a.key === selected}
+                  className={styles.thumb}
+                  onClick={() => onSelect(a)}
+                  title={a.filename ?? 'Photo'}
+                >
+                  {urls[a.key] ? (
+                    <img src={urls[a.key]} alt={a.filename ?? 'Uploaded photo'} loading="lazy" />
+                  ) : (
+                    <Skeleton style={{ width: '100%', height: '100%' }} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={styles.thumbRemove}
+                  aria-label={`Remove ${a.filename ?? 'photo'}`}
+                  title="Remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRemoving(a);
+                  }}
+                >
+                  <Icon.x width={12} height={12} />
+                </button>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onClose={() => {
+          if (!removeBusy) setRemoving(null);
+        }}
+        onConfirm={() => void doRemove()}
+        busy={removeBusy}
+        title="Remove this photo?"
+        description={`${removing?.filename ?? 'The photo'} leaves the studio and the library. Anything already made from it stays.`}
+        confirmLabel="Remove"
+        danger
+      />
     </section>
   );
 }

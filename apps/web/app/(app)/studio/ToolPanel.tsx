@@ -108,7 +108,8 @@ export function ToolPanel({
       {/* Phone: the cost and the button stay in thumb reach. */}
       <div className={styles.generateBar}>
         <span className={styles.quoteInline}>
-          {credits ?? '—'} credits · {after === null ? '—' : after.toLocaleString()} after
+          <strong>{credits === null ? tool.label : `${credits} credits`}</strong>
+          <span>{why ?? (after === null ? 'The cost shows once it can be priced' : `${after.toLocaleString()} after`)}</span>
         </span>
         <Button loading={busy} disabled={blocked} onClick={() => quote && onGenerate(quote)}>
           {label}

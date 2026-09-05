@@ -121,7 +121,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </nav>
             <div className={styles.foot}>
               <div className={styles.who}>
-                <Avatar name={me.user.name ?? me.user.email ?? 'Staff'} />
+                <Avatar name={me.user.name ?? me.user.email ?? 'Staff'} src={me.user.avatarUrl} />
                 <span>
                   <strong>{me.user.name ?? me.user.email}</strong>
                   <span className={styles.role}>{role}</span>
