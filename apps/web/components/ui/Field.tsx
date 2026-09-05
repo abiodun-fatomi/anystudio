@@ -37,9 +37,11 @@ const describedBy = (id: string, error?: ReactNode, hint?: ReactNode) => (error 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement>, FieldChrome {
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** The trailing slot holds a control (a button), not decoration: it stays clickable and visible to assistive tech. */
+  trailingInteractive?: boolean;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ label, hint, error, optional, className, leading, trailing, id: given, ...rest }, ref) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ label, hint, error, optional, className, leading, trailing, trailingInteractive, id: given, ...rest }, ref) {
   const auto = useId();
   const id = given ?? auto;
   return (
@@ -47,7 +49,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ l
       <div className={styles.control}>
         {leading && <span className={styles.leading} aria-hidden="true">{leading}</span>}
         <input ref={ref} id={id} className={cx(styles.input, leading ? styles.withLeading : null, trailing ? styles.withTrailing : null)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, error, hint)} {...rest} />
-        {trailing && <span className={styles.trailing} aria-hidden="true">{trailing}</span>}
+        {trailing && <span className={styles.trailing} aria-hidden={trailingInteractive ? undefined : 'true'} style={trailingInteractive ? { pointerEvents: 'auto' } : undefined}>{trailing}</span>}
       </div>
     </Chrome>
   );

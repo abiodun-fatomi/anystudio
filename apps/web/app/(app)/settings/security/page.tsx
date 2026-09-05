@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api, ApiError, type ActivityRow, type SessionRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
-import { Badge, Button, ConfirmDialog, Dialog, Input, Skeleton, useToast } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, Dialog, Input, Skeleton, useToast, PasswordInput, LoadError } from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -37,7 +37,7 @@ function when(iso: string): string {
 export default function SecurityPage() {
   const { toast } = useToast();
   const { signOut } = useApp();
-  const { profile, reload } = useProfile();
+  const { profile, error, reload } = useProfile();
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [activity, setActivity] = useState<ActivityRow[] | null>(null);
   const loadLists = useCallback(async () => {
@@ -129,6 +129,7 @@ export default function SecurityPage() {
     catch (e) { toast({ title: 'Cannot remove that', body: e instanceof Error ? e.message : undefined, tone: 'warn' }); }
   };
 
+  if (!profile && error) return <div className={styles.group}><LoadError what="your security settings" message={error} onRetry={() => void reload()} /></div>;
   if (!profile) return <div className={styles.group}><Skeleton style={{ height: 180 }} /></div>;
 
   const askCode = !profile.hasPassword && profile.mfa.enabled;
@@ -141,8 +142,8 @@ export default function SecurityPage() {
         <form onSubmit={(e) => { e.preventDefault(); void changePassword(); }} className={styles.grid2}>
           <ReauthField profile={profile} value={pw.reauth} onChange={(r) => setPw((p) => ({ ...p, reauth: r }))} errors={pwErrors} />
           {!profile.hasPassword && !askCode && <div />}
-          <Input label="New password" type="password" autoComplete="new-password" minLength={8} value={pw.next} onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))} error={pwErrors.newPassword} hint="At least 8 characters. A sentence you will remember beats a word you will not." />
-          <Input label="New password, again" type="password" autoComplete="new-password" value={pw.again} onChange={(e) => setPw((p) => ({ ...p, again: e.target.value }))} error={pwErrors.again} />
+          <PasswordInput label="New password" autoComplete="new-password" minLength={8} value={pw.next} onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))} error={pwErrors.newPassword} hint="At least 8 characters. A sentence you will remember beats a word you will not." />
+          <PasswordInput label="New password, again" autoComplete="new-password" value={pw.again} onChange={(e) => setPw((p) => ({ ...p, again: e.target.value }))} error={pwErrors.again} />
           <div className={styles.saveBar} style={{ gridColumn: '1 / -1' }}><Button type="submit" loading={pwBusy} disabled={pw.next.length < 8 || !pw.again}>{profile.hasPassword ? 'Change password' : 'Set password'}</Button></div>
         </form>
       </section>
@@ -251,7 +252,7 @@ export default function SecurityPage() {
       <Dialog open={disableOpen} onClose={() => setDisableOpen(false)} title="Turn off two-step sign-in?" description="Your password alone will sign in. This is the one change that makes every later change easier, so it needs both."
         footer={<><Button variant="ghost" onClick={() => setDisableOpen(false)}>Keep it on</Button><Button variant="danger" onClick={() => void doDisable()} loading={busy}>Turn off</Button></>}>
         <div style={{ display: 'grid', gap: 'var(--s-3)' }}>
-          {profile.hasPassword && <Input label="Your password" type="password" autoComplete="current-password" value={disable.currentPassword ?? ''} onChange={(e) => setDisable((d) => ({ ...d, currentPassword: e.target.value }))} error={disableErr.currentPassword} />}
+          {profile.hasPassword && <PasswordInput label="Your password" autoComplete="current-password" value={disable.currentPassword ?? ''} onChange={(e) => setDisable((d) => ({ ...d, currentPassword: e.target.value }))} error={disableErr.currentPassword} />}
           <Input label="Code from the app, or a recovery code" inputMode="numeric" autoComplete="one-time-code" value={disable.code ?? ''} onChange={(e) => setDisable((d) => ({ ...d, code: e.target.value }))} error={disableErr.code} />
         </div>
       </Dialog>

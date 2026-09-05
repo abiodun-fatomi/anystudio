@@ -27,6 +27,15 @@ export default function BillingPage() {
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [sub, setSub] = useState<SubscriptionView | null | undefined>(undefined);
   const [payments, setPayments] = useState<PaymentView[] | null>(null);
+  const [payCursor, setPayCursor] = useState<string | null>(null);
+  const [payMore, setPayMore] = useState(false);
+  const olderPayments = async () => {
+    if (!payCursor) return;
+    setPayMore(true);
+    try { const p = await api.billing.payments(workspace.id, payCursor); setPayments((cur) => [...(cur ?? []), ...p.rows]); setPayCursor(p.nextCursor); }
+    catch { /* the button stays; try again */ }
+    finally { setPayMore(false); }
+  };
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const canBuy = ['OWNER', 'ADMIN', 'BILLING'].includes(workspace.role);
@@ -52,7 +61,7 @@ export default function BillingPage() {
   useEffect(() => {
     let live = true;
     api.billing.subscription(workspace.id).then((s) => { if (live) setSub(s); }).catch(() => { if (live) setSub(null); });
-    api.billing.payments(workspace.id).then((p) => { if (live) setPayments(p.rows); }).catch(() => { if (live) setPayments([]); });
+    api.billing.payments(workspace.id).then((p) => { if (live) { setPayments(p.rows); setPayCursor(p.nextCursor); } }).catch(() => { if (live) setPayments([]); });
     return () => { live = false; };
   }, [workspace.id]);
 
@@ -96,6 +105,12 @@ export default function BillingPage() {
             </tbody>
           </Table>
         )}
+        {payments && payments.length > 0 && (
+          <Pagination>
+            <span>{payments.length} payment{payments.length === 1 ? '' : 's'} shown{payCursor ? '' : ' · that is all of them'}</span>
+            {payCursor && <Button variant="ghost" size="sm" loading={payMore} onClick={() => void olderPayments()}>Show older</Button>}
+          </Pagination>
+        )}
       </Section>
 
       <ConfirmDialog open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={() => void cancel()} busy={cancelling} title="Cancel your plan?" description={`It runs until ${sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'the end of the paid period'} and then stops. Credits you already have stay. You can start a plan again any time.`} confirmLabel="Cancel plan" danger />
@@ -123,7 +138,7 @@ export default function BillingPage() {
               </tbody>
             </Table>
             <Pagination>
-              <span>{rows.length} row{rows.length === 1 ? '' : 's'}</span>
+              <span>{rows.length} row{rows.length === 1 ? '' : 's'} shown, newest first{cursor ? '' : ' · that is the whole statement'}</span>
               {cursor && <Button variant="ghost" size="sm" loading={more} onClick={() => { setMore(true); void load(cursor); }}>Show older</Button>}
             </Pagination>
           </>

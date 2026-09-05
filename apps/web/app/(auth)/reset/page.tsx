@@ -7,6 +7,7 @@
  * browser history or get sent as a Referer to anything we link to.
  */
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -72,12 +73,12 @@ function ResetForm() {
       <p style={{ color: 'var(--muted)', marginTop: 10 }}>At least 8 characters. A short sentence you&apos;ll remember beats a word with numbers.</p>
       <div className="field" style={{ marginTop: 26 }}>
         <label htmlFor="pw">New password</label>
-        <input id="pw" className="inp" type="password" autoComplete="new-password" minLength={8} autoFocus
+        <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8} autoFocus
           value={password} onChange={(e) => setPassword(e.target.value)} required />
       </div>
       <div className="field">
         <label htmlFor="pw2">Type it again</label>
-        <input id="pw2" className="inp" type="password" autoComplete="new-password" minLength={8}
+        <PasswordControl id="pw2" className="inp" autoComplete="new-password" minLength={8}
           value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
       </div>
       {error && <p className="err" role="alert">{error}</p>}

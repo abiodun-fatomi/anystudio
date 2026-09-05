@@ -25,6 +25,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
 import { AuthService } from '../auth/auth.service';
+import { NotificationService } from '../notification/notification.service';
 import type { Actor } from '../auth/policy';
 import { LedgerService } from '../ledger/ledger.service';
 import { GatewayRegistry } from './gateways/gateway.registry';
@@ -43,6 +44,7 @@ export class BillingService {
     private readonly ledger: LedgerService,
     private readonly gateways: GatewayRegistry,
     private readonly auth: AuthService,
+    private readonly notifications: NotificationService,
   ) {}
 
   // ----------------------------------------------------------------- config
@@ -186,6 +188,7 @@ export class BillingService {
       },
     });
     logger.info({ paymentId: fresh.id, workspaceId: fresh.workspaceId, provider: fresh.provider, providerRef: v.providerRef, credits: fresh.credits, amountMinor: updated.amountMinor, currency: updated.currency, kind: fresh.kind, via, ledgerEntryId: entry.id }, 'payment settled; credits granted');
+    if (fresh.userId) void this.notifications.notify(fresh.userId, { workspaceId: fresh.workspaceId, kind: 'CREDITS', title: `${fresh.credits.toLocaleString()} credits added`, body: fresh.kind === 'RENEWAL' ? 'Your plan renewed.' : fresh.kind === 'SUBSCRIPTION' ? 'Your plan is active. The credits are in your balance.' : 'Your top-up cleared. The credits are in your balance.', href: '/billing', refId: fresh.id });
     return updated;
   }
 

@@ -19,6 +19,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { siblingOrigin, isLocalHost } from '@/lib/hosts';
 import { api, ApiError, type Me } from './api';
 
 export interface WorkspaceRef { id: string; type: string; name: string; currency: string; role: string }
@@ -87,7 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const ch = new BroadcastChannel(SIGNOUT_CHANNEL);
-    ch.onmessage = (e) => { if (e.data === 'signed-out') window.location.replace('/login?signedout=1'); };
+    ch.onmessage = (e) => { if (e.data === 'signed-out') window.location.replace(signedOutUrl()); };
     return () => ch.close();
   }, []);
 
@@ -100,7 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try { new BroadcastChannel(SIGNOUT_CHANNEL).postMessage('signed-out'); } catch { /* no other tabs then */ }
     try { localStorage.removeItem(WS_KEY); } catch { /* fine */ }
     // replace, not push: the signed-in screen must not be one back-press away.
-    window.location.replace('/login?signedout=1');
+    window.location.replace(signedOutUrl());
   }, []);
 
   const value = useMemo<AppState | null>(() => {
@@ -145,4 +146,15 @@ export function useApp(): AppState {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useApp must be used inside AppProvider');
   return ctx;
+}
+
+/**
+ * Signed out means the landing, on the marketing host: `app.` is for people
+ * who are signed in. The sign-in page itself stays on `app.` because the
+ * session cookie is __Host- scoped to that hostname. Locally there is no
+ * host split, so the login page is the landing.
+ */
+export function signedOutUrl(): string {
+  const host = window.location.host;
+  return isLocalHost(host) ? '/login?signedout=1' : `${siblingOrigin(host, '')}/?signedout=1`;
 }

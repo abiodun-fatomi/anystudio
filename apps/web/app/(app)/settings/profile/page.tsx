@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
-import { Button, Input, Select, Skeleton, useToast } from '@/components/ui';
+import { Button, Input, Select, Skeleton, useToast, LoadError } from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -23,7 +23,7 @@ const ZONES = ['Africa/Lagos', 'Africa/Accra', 'Africa/Nairobi', 'Africa/Johanne
 export default function ProfilePage() {
   const { workspace, refreshMe } = useApp();
   const { toast } = useToast();
-  const { profile, reload } = useProfile();
+  const { profile, error, reload } = useProfile();
   const [draft, setDraft] = useState<{ name?: string; locale?: string; timezone?: string }>({});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -35,6 +35,7 @@ export default function ProfilePage() {
   const browserZone = useRef<string>('');
   useEffect(() => { try { browserZone.current = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* fine */ } }, []);
 
+  if (!profile && error) return <div className={styles.group}><LoadError what="your profile" message={error} onRetry={() => void reload()} /></div>;
   if (!profile) return <div className={styles.group}><Skeleton style={{ height: 180 }} /></div>;
 
   const v = { name: profile.name ?? '', locale: profile.locale ?? '', timezone: profile.timezone ?? '', ...draft };

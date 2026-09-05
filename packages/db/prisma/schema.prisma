@@ -119,6 +119,8 @@ model User {
   generations      Generation[]
   apiKeysCreated   ApiKey[]
   whatsappContacts WhatsappContact[]
+  notifications    Notification[]
+  platformReads    PlatformMessageRead[]
 
   @@index([status])
   @@map("users")
@@ -1315,4 +1317,82 @@ model WhatsappMessage {
 
   @@index([contactId, createdAt])
   @@map("whatsapp_messages")
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS — the bell
+//
+// Two kinds of thing land in it. A personal notification is a row written
+// for one person by something that happened to them: their image is ready,
+// their song failed, credits arrived, someone joined their workspace. A
+// platform message is written once by staff and read by everyone it is
+// aimed at; who has read it is a small side table, so a message to fifty
+// thousand people is one row, not fifty thousand.
+// ---------------------------------------------------------------------------
+
+enum NotificationKind {
+  GENERATION_DONE
+  GENERATION_FAILED
+  CREDITS
+  MEMBER
+  PUBLISH
+  SYSTEM
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  workspaceId String?          @db.Uuid
+  kind        NotificationKind
+  title       String
+  body        String?
+  /// Where tapping it goes, as an app path.
+  href        String?
+  /// What it is about, for de-duplication and for the client to react (a generation id, a payment id).
+  refId       String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+enum PlatformAudience {
+  ALL
+  PERSONAL
+  BUSINESS
+  ORGANIZATION
+}
+
+model PlatformMessage {
+  id          String           @id @default(uuid()) @db.Uuid
+  title       String
+  body        String
+  href        String?
+  audience    PlatformAudience @default(ALL)
+  /// Null: draft, shown to nobody.
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  createdById String?          @db.Uuid
+  createdAt   DateTime         @default(now())
+
+  reads PlatformMessageRead[]
+
+  @@index([publishedAt])
+  @@map("platform_messages")
+}
+
+model PlatformMessageRead {
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  readAt    DateTime @default(now())
+
+  message PlatformMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@map("platform_message_reads")
 }

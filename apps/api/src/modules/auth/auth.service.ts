@@ -462,6 +462,8 @@ export class AuthService {
       // Reveals that a grant exists; carries no authority. Reaching the console
       // still means signing in there with a second factor.
       canSwitchToStaff: actor.staffRole !== null,
+      // On the ADMIN surface the console needs to know the rank to show the right controls; elsewhere it is not sent.
+      ...(actor.surface === 'ADMIN' ? { staffRole: actor.staffRole } : {}),
       mfaLevel: actor.mfaLevel,
     };
   }

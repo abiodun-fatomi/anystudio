@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, type Notifications } from '@/lib/api';
-import { Button, Skeleton, Switch, useToast } from '@/components/ui';
+import { Button, Skeleton, Switch, useToast, LoadError } from '@/components/ui';
 import styles from '../settings.module.css';
 
 const WORDING = {
@@ -19,8 +19,11 @@ const WORDING = {
 export default function NotificationsPage() {
   const { toast } = useToast();
   const [n, setN] = useState<Notifications | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
-  useEffect(() => { api.account.notifications().then(setN).catch(() => setN(null)); }, []);
+  const load = () => { setError(null); api.account.notifications().then(setN).catch((e) => setError(e instanceof Error ? e.message : 'Could not load.')); };
+  useEffect(() => { load(); }, []);
+  if (!n && error) return <div className={styles.group}><LoadError what="your notification settings" message={error} onRetry={load} /></div>;
   if (!n) return <div className={styles.group}><Skeleton style={{ height: 180 }} /></div>;
 
   const flip = async (key: keyof Notifications['switches'], value: boolean) => {

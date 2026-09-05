@@ -8,6 +8,8 @@
  * them back — are ledger properties.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { NotificationService } from '../notification/notification.service';
+import { GenerationHooks } from '../generation/generation.hooks';
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import type { Request } from 'express';
@@ -83,7 +85,7 @@ suite('BillingService (stub gateway, real ledger)', () => {
   const ledger = new LedgerService(db);
   const registry = new GatewayRegistry();
   const auth = { publicOrigin: () => 'https://app.test' } as unknown as AuthService;
-  const service = new BillingService(db, ledger, registry, auth);
+  const service = new BillingService(db, ledger, registry, auth, new NotificationService(db, new GenerationHooks()));
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'test' } as unknown as Request;
 
   let workspaceId: string; let walletId: string; let userId: string;

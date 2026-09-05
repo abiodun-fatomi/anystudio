@@ -33,3 +33,12 @@ export class WorkspaceDeleteDto {
   @ApiProperty({ description: 'The workspace name, typed exactly' }) @IsString() @IsNotEmpty() @MaxLength(80)
   confirmName: string;
 }
+
+/** A second workspace: a business beside the personal one, or an organization for the API. */
+export class WorkspaceCreateDto {
+  @ApiProperty({ maxLength: 80, example: 'Acme Commerce' }) @IsString() @IsNotEmpty() @MaxLength(80)
+  name!: string;
+
+  @ApiProperty({ enum: ['BUSINESS', 'ORGANIZATION'] }) @IsIn(['BUSINESS', 'ORGANIZATION'])
+  type!: 'BUSINESS' | 'ORGANIZATION';
+}

@@ -70,3 +70,7 @@
 .statK{font-family:var(--f-mono);font-size:var(--t-1);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .statV{font-family:var(--f-display);font-size:var(--t-8);font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
 .statS{font-size:var(--t-2);color:var(--muted)}
+
+.retry{min-height:var(--control-h-sm);padding:0 var(--s-4);border-radius:var(--r-pill);border:1px solid var(--line);background:var(--surface-2);font:inherit;font-weight:600;color:var(--ink);cursor:pointer}
+.retry:hover{background:var(--sunk)}
+.retry:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}

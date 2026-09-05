@@ -54,6 +54,8 @@ export interface Me {
   surface: 'APP' | 'ORG' | 'ADMIN';
   workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string }>;
   canSwitchToStaff: boolean;
+  /** Only on the ADMIN surface. */
+  staffRole?: 'SUPPORT' | 'OPERATOR' | 'ADMIN' | 'SUPERADMIN' | null;
   mfaLevel: number;
 }
 
@@ -189,6 +191,37 @@ export interface Insights {
 
 export interface Genre { key: string; name: string; region: string; family: string; description: string; languages: string[]; bpm: [number, number] | null }
 export interface Voice { key: string; name: string; language: string; accent: string | null; gender: string | null; tags: string[]; sampleUrl: string | null; provider: string }
+export interface AdminOverview {
+  users: { total: number; newThisWeek: number };
+  workspaces: Record<string, number>;
+  generations: { today: number; failedToday: number; runningNow: number; queuedStale: number; whatsappToday: number; apiToday: number };
+  credits: { soldLast30d: number; paymentsLast30d: number };
+  providers: { enabled: number; breakersOpen: string[]; noAdapter: string[] };
+  recentFailures: Array<{ id: string; capability: string; failureKind: string | null; failureReason: string | null; providerKey: string | null; workspaceId: string; createdAt: string }>;
+}
+export interface AdminCustomer { id: string; name: string | null; email: string | null; phone: string | null; status: string; createdAt: string; lastLoginAt: string | null; workspaces: Array<{ id: string; name: string; type: string; role: string }> }
+export interface AdminCustomerDetail {
+  user: AdminCustomer & { phoneIsWhatsApp: boolean; emailVerifiedAt: string | null; phoneVerifiedAt: string | null; deleteRequestedAt: string | null; locale: string | null; timezone: string | null; identities: Array<{ provider: string; createdAt: string }>; mfaFactors: Array<{ type: string; confirmedAt: string | null }>; staffGrants: Array<{ role: string; expiresAt: string | null }> };
+  workspaces: Array<{ id: string; name: string; type: string; currency: string; role: string; deletedAt: string | null; balance: number }>;
+  generations: AdminGeneration[];
+  payments: AdminPayment[];
+  events: AdminEvent[];
+}
+export interface AdminWorkspace {
+  workspace: { id: string; name: string; type: string; currency: string; region: string; profile: unknown; createdAt: string; deletedAt: string | null };
+  balance: number;
+  members: Array<{ role: string; id: string; name: string | null; email: string | null }>;
+  subscriptions: Array<{ id: string; planCode: string; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean }>;
+  ledger: Array<{ id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string }>;
+  generations: AdminGeneration[];
+}
+export interface AdminGeneration { id: string; workspaceId: string; capability: string; status: string; credits: number; channel: string; providerKey: string | null; providerJobId?: string | null; failureKind: string | null; failureReason?: string | null; stage?: string | null; attempts?: number; providerCostMinor?: number | null; createdAt: string; finishedAt?: string | null; title: string | null }
+export interface AdminProvider { key: string; capability: string; priority: number; costPerCall: number; enabled: boolean; breakerOpenedAt: string | null; workspaceType: string | null; config: unknown; licenceNote: string | null; registered: boolean; breakerOpen: boolean; callsLast24h: number }
+export interface AdminPayment { id: string; workspaceId: string; userId: string | null; provider: string; kind: string; status: string; reference: string; providerRef: string | null; itemCode: string; credits: number; amountMinor: number; currency: string; failureReason: string | null; createdAt: string }
+export interface AdminEvent { id: string; userId: string | null; type: string; surface: string | null; ip: string | null; createdAt: string; detail: unknown; user?: { email: string | null; phone: string | null; name: string | null } | null }
+export interface AdminStaffGrant { id: string; role: string; reason: string; expiresAt: string | null; createdAt: string; user: { id: string; name: string | null; email: string | null }; grantedBy: string | null }
+export interface AdminMessage { id: string; title: string; body: string; href: string | null; audience: string; publishedAt: string | null; expiresAt: string | null; createdAt: string; _count?: { reads: number } }
+export interface NotificationItem { id: string; kind: 'GENERATION_DONE' | 'GENERATION_FAILED' | 'CREDITS' | 'MEMBER' | 'PUBLISH' | 'SYSTEM' | 'PLATFORM'; title: string; body: string | null; href: string | null; refId: string | null; read: boolean; createdAt: string }
 export interface DevProject { id: string; name: string; slug: string; description: string | null; createdAt: string; archivedAt: string | null; activeKeys?: number }
 export interface DevKey { id: string; name: string; prefix: string; scopes: string[]; project: { id: string; name: string; slug: string }; createdBy: string | null; createdAt: string; lastUsedAt: string | null; expiresAt: string | null; revokedAt: string | null; key?: string }
 export interface DevWebhook { id: string; url: string; events: string[]; active: boolean; failures: number; lastDeliveryAt: string | null; project: { id: string; name: string; slug: string } | null; createdAt: string; secret?: string }
@@ -211,6 +244,38 @@ export const api = {
     unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
     unlock: (workspaceId: string, generationId: string) =>
       request<{ status: 'unlocked' | 'already_unlocked'; credits?: number; generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null } }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
+  admin: {
+    overview: () => request<AdminOverview>('GET', '/admin/overview'),
+    customers: (q: string, cursor?: string) => request<{ customers: AdminCustomer[]; nextCursor: string | null }>('GET', `/admin/customers?${new URLSearchParams({ ...(q ? { q } : {}), ...(cursor ? { cursor } : {}) })}`),
+    customer: (id: string) => request<AdminCustomerDetail>('GET', `/admin/customers/${id}`),
+    suspend: (id: string, reason: string, on: boolean) => request<{ id: string; status: string }>('POST', `/admin/customers/${id}/${on ? 'suspend' : 'unsuspend'}`, { reason }),
+    workspace: (id: string) => request<AdminWorkspace>('GET', `/admin/workspaces/${id}`),
+    credits: (id: string, delta: number, reason: string) => request<{ balance: number }>('POST', `/admin/workspaces/${id}/credits`, { delta, reason }),
+    generations: (q: Record<string, string | undefined>) => request<{ generations: AdminGeneration[]; nextCursor: string | null }>('GET', `/admin/generations?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`),
+    generation: (id: string) => request<AdminGeneration & { input: unknown; outputs: unknown; children: unknown[]; workspace: { name: string; type: string }; requestedBy: { id: string; name: string | null; email: string | null; phone: string | null } }>('GET', `/admin/generations/${id}`),
+    failGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/fail`, { reason }),
+    refundGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/refund`, { reason }),
+    providers: () => request<{ capabilities: string[]; providers: AdminProvider[] }>('GET', '/admin/providers'),
+    patchProvider: (capability: string, key: string, body: { enabled?: boolean; priority?: number; reason?: string }) => request<AdminProvider>('PATCH', `/admin/providers/${capability}/${encodeURIComponent(key)}`, body),
+    resetBreaker: (capability: string, key: string) => request<{ reset: boolean }>('POST', `/admin/providers/${capability}/${encodeURIComponent(key)}/reset-breaker`),
+    prices: () => request<Array<{ code: string; credits: number; label: string }>>('GET', '/admin/prices'),
+    patchPrice: (code: string, credits: number, reason: string) => request<{ code: string; credits: number }>('PATCH', `/admin/prices/${code}`, { credits, reason }),
+    payments: (q: Record<string, string | undefined>) => request<{ payments: AdminPayment[]; nextCursor: string | null }>('GET', `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`),
+    refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
+    audit: (q: Record<string, string | undefined>) => request<{ events: AdminEvent[]; nextCursor: string | null }>('GET', `/admin/audit?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`),
+    staff: () => request<AdminStaffGrant[]>('GET', '/admin/staff'),
+    grantStaff: (body: { email: string; role: string; reason: string; expiresAt?: string }) => request<unknown>('POST', '/admin/staff', body),
+    revokeStaff: (id: string) => request<{ revoked: boolean }>('DELETE', `/admin/staff/${id}`),
+    messages: () => request<AdminMessage[]>('GET', '/admin/messages'),
+    createMessage: (body: { title: string; body: string; href?: string; audience?: string; publish?: boolean; expiresAt?: string }) => request<AdminMessage>('POST', '/admin/messages', body),
+    updateMessage: (id: string, body: { title?: string; body?: string; href?: string; audience?: string; published?: boolean; expiresAt?: string }) => request<AdminMessage>('PATCH', `/admin/messages/${id}`, body),
+    deleteMessage: (id: string) => request<{ deleted: boolean }>('DELETE', `/admin/messages/${id}`),
+  },
+  notifications: {
+    list: (opts: { take?: number; cursor?: string; unread?: boolean } = {}) => request<{ items: NotificationItem[]; nextCursor: string | null; unread: number }>('GET', `/me/notifications?${new URLSearchParams({ ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.unread ? { unread: 'true' } : {}) })}`),
+    unread: () => request<{ unread: number }>('GET', '/me/notifications/unread'),
+    read: (body: { ids?: string[]; all?: boolean }) => request<{ unread: number }>('POST', '/me/notifications/read', body),
   },
   developer: {
     usage: (workspaceId: string, days = 30, projectId?: string) => request<DevUsage>('GET', `/workspaces/${workspaceId}/developer/usage?days=${days}${projectId ? `&projectId=${projectId}` : ''}`),
@@ -306,6 +371,7 @@ export const api = {
   },
   workspace: {
     get: (id: string) => request<Workspace>('GET', `/workspaces/${id}`),
+    create: (body: { name: string; type: 'BUSINESS' | 'ORGANIZATION' }) => request<{ id: string; type: string; name: string; currency: string; region: string }>('POST', '/workspaces', body),
     /** Merge-patch the welcome answers. */
     patchProfile: (id: string, patch: WorkspaceProfile) =>
       request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),

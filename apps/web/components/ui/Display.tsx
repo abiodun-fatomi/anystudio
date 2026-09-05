@@ -74,3 +74,18 @@ export function Breadcrumbs({ items }: { items: Array<{ label: ReactNode; href?:
 export function Stat({ label, value, sub, className }: { label: ReactNode; value: ReactNode; sub?: ReactNode; className?: string }) {
   return <div className={cx(styles.stat, className)}><div className={styles.statK}>{label}</div><div className={styles.statV}>{value}</div>{sub && <div className={styles.statS}>{sub}</div>}</div>;
 }
+
+/**
+ * A screen that could not load says so and offers the one useful action.
+ * A page that stays on its skeleton after a failed request looks blank, and
+ * blank is the worst thing a page can be — nothing to read, nothing to do.
+ */
+export function LoadError({ what = 'this', message, onRetry }: { what?: string; message?: string | null; onRetry?: () => void }) {
+  return (
+    <div className={styles.empty} role="alert">
+      <div className={styles.emptyTitle}>Could not load {what}</div>
+      <div className={styles.emptyBody}>{message ?? 'The server did not answer as expected.'} If this keeps happening, the service may be mid-deploy — try again in a minute.</div>
+      {onRetry && <div className={styles.emptyActions}><button type="button" className={styles.retry} onClick={onRetry}>Try again</button></div>}
+    </div>
+  );
+}

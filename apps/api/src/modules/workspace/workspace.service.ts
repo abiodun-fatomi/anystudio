@@ -9,11 +9,29 @@ import { ConflictError, NotFoundError, ValidationError } from '../../../config/g
 import type { Request } from 'express';
 import { authLog } from '../auth/auth.log';
 import { Helpers } from '../../utils/helpers';
-import type { WorkspaceDeleteDto, WorkspaceProfileDto, WorkspaceUpdateDto } from './workspace.dto';
+import type { WorkspaceCreateDto, WorkspaceDeleteDto, WorkspaceProfileDto, WorkspaceUpdateDto } from './workspace.dto';
 
 @Injectable()
 export class WorkspaceService {
   constructor(private readonly db: PrismaClient) {}
+
+  /**
+   * A second workspace for a signed-in person: they own it, it has its own
+   * wallet, and it starts empty — the welcome credits were for their first
+   * one. An ORGANIZATION is what unlocks the developer section. Five per
+   * person keeps the switcher a list and not a search.
+   */
+  async create(actorId: string, dto: WorkspaceCreateDto, req: Request) {
+    const owned = await this.db.workspaceMember.count({ where: { userId: actorId, role: 'OWNER', workspace: { deletedAt: null } } });
+    if (owned >= 5) throw new ConflictError('Five workspaces is the limit for one account. Delete one you no longer use first.');
+    const seed = await this.db.workspaceMember.findFirst({ where: { userId: actorId }, include: { workspace: { select: { currency: true, region: true } } }, orderBy: { createdAt: 'asc' } });
+    const ws = await this.db.workspace.create({
+      data: { type: dto.type, name: dto.name.trim(), currency: seed?.workspace.currency ?? 'NGN', region: seed?.workspace.region ?? 'ng', members: { create: { userId: actorId, role: 'OWNER' } }, wallet: { create: {} } },
+      select: { id: true, type: true, name: true, currency: true, region: true },
+    });
+    authLog('workspace.create', 'succeeded', { userId: actorId, workspaceId: ws.id, type: ws.type }, req);
+    return Helpers.successResponse(201, 'Workspace created', ws);
+  }
 
   /** Name, type, currency, region, and the welcome answers. */
   async get(workspaceId: string) {
