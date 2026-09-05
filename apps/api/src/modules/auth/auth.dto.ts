@@ -45,6 +45,18 @@ export class HandoffDto {
   token: string;
 }
 
+export class HopDto {
+  @ApiProperty({ description: 'The workspace to open on the other portal host', format: 'uuid' })
+  @IsUUID()
+  workspaceId: string;
+
+  @ApiPropertyOptional({ description: 'Path to land on there', example: '/today' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  next?: string;
+}
+
 export class StepUpDto {
   @ApiProperty({ example: '123456' })
   @IsString()

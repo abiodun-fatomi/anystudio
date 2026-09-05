@@ -15,12 +15,33 @@
  * The server session is revoked first. Then every open tab is told through
  * a BroadcastChannel, caches are dropped, and only then does the browser
  * move — so a back button cannot resurrect a screen of private data.
+ *
+ * TWO DOORS, ONE HOUSE
+ * --------------------
+ * Organizations live on org.<base>, everyone else on app.<base>; same pages,
+ * separate sessions (a __Host- cookie cannot cross hostnames). So the active
+ * workspace must belong on THIS host. Picking one that lives on the other
+ * host, or arriving here with nothing that belongs, asks the API for a
+ * one-time hand-off and the browser walks across with the session in hand.
  */
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
-import { siblingOrigin, isLocalHost } from '@/lib/hosts';
+import { surfaceForWorkspaceType } from '@anystudio/shared';
+import { siblingOrigin, isLocalHost, portalOf } from '@/lib/hosts';
 import { api, ApiError, type Me } from './api';
+
+/** Does this workspace belong on the host the browser is on? Locally, everything does. */
+function belongsHere(type: string): boolean {
+  const host = window.location.host;
+  return isLocalHost(host) || surfaceForWorkspaceType(type) === portalOf(host);
+}
+
+/** Walk across to the other portal host with this session, landing on the workspace. */
+async function hopTo(workspaceId: string, next: string): Promise<void> {
+  const { url } = await api.auth.hop(workspaceId, next);
+  window.location.assign(url);
+}
 
 export interface WorkspaceRef {
   id: string;
@@ -34,7 +55,8 @@ interface AppState {
   me: Me;
   workspace: WorkspaceRef;
   workspaces: WorkspaceRef[];
-  switchWorkspace: (id: string) => void;
+  /** `type` lets a just-created workspace be opened before /auth/me has been re-read. */
+  switchWorkspace: (id: string, type?: string) => void;
   balance: number | null;
   /** Optimistic: the number moves now; the ledger corrects it shortly. */
   spend: (credits: number) => void;
@@ -65,14 +87,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((m) => {
         if (!live) return;
         setMe(m);
-        let preferred: string | null = null;
-        try {
-          preferred = localStorage.getItem(WS_KEY);
-        } catch {
-          /* fine */
+        // A hand-off from the other host names the workspace it was for.
+        const asked = new URLSearchParams(window.location.search).get('ws');
+        let preferred: string | null = asked;
+        if (!preferred) {
+          try {
+            preferred = localStorage.getItem(WS_KEY);
+          } catch {
+            /* fine */
+          }
         }
-        const first = m.workspaces.find((w) => w.id === preferred) ?? m.workspaces[0];
-        setWorkspaceId(first?.id ?? null);
+        const here = m.workspaces.filter((w) => belongsHere(w.type));
+        const first = here.find((w) => w.id === preferred) ?? here[0];
+        if (first) {
+          setWorkspaceId(first.id);
+          if (asked) {
+            try {
+              localStorage.setItem(WS_KEY, first.id);
+            } catch {
+              /* fine */
+            }
+          }
+          return;
+        }
+        // Nothing of theirs lives on this host. Everything they have is on
+        // the other one: go there with the session rather than show a
+        // portal with no workspace in it. (Nothing anywhere → /welcome.)
+        const elsewhere = m.workspaces.find((w) => w.id === preferred) ?? m.workspaces[0];
+        if (elsewhere) {
+          hopTo(elsewhere.id, path).catch(() => setFailed(true));
+          return;
+        }
+        setWorkspaceId(null);
       })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) window.location.replace(signInUrl(path));
@@ -144,7 +190,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       me,
       workspace,
       workspaces: me.workspaces,
-      switchWorkspace: (id) => {
+      switchWorkspace: (id, type) => {
+        const kind = type ?? me.workspaces.find((w) => w.id === id)?.type;
+        if (kind && !belongsHere(kind)) {
+          // It lives on the other host: carry the session across.
+          hopTo(id, '/today').catch(() => undefined);
+          return;
+        }
         setWorkspaceId(id);
         setBalanceState(null);
         try {
@@ -207,5 +259,8 @@ export function signedOutUrl(): string {
 export function signInUrl(next: string): string {
   const host = window.location.host;
   const base = isLocalHost(host) || host.startsWith('admin.') ? '' : siblingOrigin(host, '');
-  return `${base}/login?next=${encodeURIComponent(next)}`;
+  // The org host has its own session; the sign-in page needs to know to
+  // hand the person back to THIS host, not app.
+  const door = host.startsWith('org.') ? '&to=org' : '';
+  return `${base}/login?next=${encodeURIComponent(next)}${door}`;
 }

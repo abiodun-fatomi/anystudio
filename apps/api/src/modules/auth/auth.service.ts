@@ -12,12 +12,12 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type User, type Surface, type StaffRole } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { surfaceForOrigin, isMarketingOrigin, appOriginFor, type AppEnv } from '@anystudio/shared';
+import { surfaceForOrigin, isMarketingOrigin, surfaceOriginFor, surfaceForWorkspaceType, type AppEnv } from '@anystudio/shared';
 import { SessionService, COOKIE, type IssuedSession } from './session.service';
 import { verifyPassword, needsRehash, hashPassword } from '../../utils/crypto/password';
 import { verifyCode } from '../../utils/crypto/totp';
 import { decrypt } from '../../utils/crypto/encrypt';
-import { ConflictError } from '../../../config/globals/errors';
+import { ConflictError, NotFoundError } from '../../../config/globals/errors';
 import type { Actor } from './policy';
 import { logger } from '../../../config/logger';
 import { authLog } from './auth.log';
@@ -32,6 +32,7 @@ import type {
   MfaDto,
   RegisterDto,
   HandoffDto,
+  HopDto,
   ForgotPasswordDto,
   ResetPasswordDto,
   VerifyEmailDto,
@@ -169,7 +170,9 @@ export class AuthService {
   async completeHandoff(dto: HandoffDto, req: Request, res: Response) {
     const surface = this.surfaceFromOrigin(req);
     const origin = this.publicOrigin(req);
-    if (surface !== 'APP' || isMarketingOrigin(origin, this.appEnv())) {
+    // Either portal host may redeem one — app. for businesses, org. for
+    // organizations — but never the marketing host and never the console.
+    if (surface === 'ADMIN' || isMarketingOrigin(origin, this.appEnv())) {
       authLog('auth.handoff', 'refused', { reason: 'wrong_surface', surface }, req);
       return Helpers.successResponse<SignedIn | { status: 'invalid_token' }>(200, MESSAGES.INVALID_TOKEN, { status: 'invalid_token' });
     }
@@ -191,8 +194,8 @@ export class AuthService {
     }
     const payload = (row.payload ?? {}) as { mfaLevel?: number; next?: string };
     const mfaLevel = payload.mfaLevel === 2 ? 2 : 1;
-    await this.issueSession(user, 'APP', mfaLevel, req, res);
-    authLog('auth.handoff', 'succeeded', { userId: user.id, surface: 'APP', mfa: mfaLevel }, req);
+    await this.issueSession(user, surface, mfaLevel, req, res);
+    authLog('auth.handoff', 'succeeded', { userId: user.id, surface, mfa: mfaLevel }, req);
     return Helpers.successResponse<SignedIn>(200, MESSAGES.SIGNED_IN, { status: 'signed_in', next: safeNext(payload.next) });
   }
 
@@ -346,21 +349,63 @@ export class AuthService {
   private async finishSignIn(user: User, surface: Surface, mfaLevel: number, next: string, req: Request, res: Response): Promise<SignedIn> {
     const env = this.appEnv();
     if (surface === 'APP' && isMarketingOrigin(this.publicOrigin(req), env)) {
-      const token = randomBytes(32).toString('base64url');
-      await this.db.authToken.create({
-        data: {
-          purpose: 'SESSION_HANDOFF',
-          userId: user.id,
-          tokenHash: sha256(token),
-          payload: { mfaLevel, next },
-          expiresAt: new Date(Date.now() + HANDOFF_TTL_MS),
-          createdIp: req.ip,
-        },
-      });
-      return { status: 'handoff', url: `${appOriginFor(env)}/auth/handoff?token=${token}` };
+      const token = await this.mintHandoff(user.id, mfaLevel, next, req);
+      const home = await this.homeSurface(user.id);
+      return { status: 'handoff', url: `${surfaceOriginFor(home, env)}/auth/handoff?token=${token}` };
     }
     await this.issueSession(user, surface, mfaLevel, req, res);
     return { status: 'signed_in', next };
+  }
+
+  /** A one-time token another portal host can trade for a session; a minute to use it. */
+  private async mintHandoff(userId: string, mfaLevel: number, next: string, req: Request): Promise<string> {
+    const token = randomBytes(32).toString('base64url');
+    await this.db.authToken.create({
+      data: {
+        purpose: 'SESSION_HANDOFF',
+        userId,
+        tokenHash: sha256(token),
+        payload: { mfaLevel, next },
+        expiresAt: new Date(Date.now() + HANDOFF_TTL_MS),
+        createdIp: req.ip,
+      },
+    });
+    return token;
+  }
+
+  /**
+   * The portal a sign-in should land on: app. unless everything this person
+   * belongs to is an organization, in which case org. is home. Someone with
+   * both starts on app. and hops from the workspace switcher.
+   */
+  private async homeSurface(userId: string): Promise<'APP' | 'ORG'> {
+    const rows = await this.db.workspaceMember.findMany({
+      where: { userId, workspace: { deletedAt: null } },
+      select: { workspace: { select: { type: true } } },
+    });
+    if (rows.length === 0) return 'APP';
+    return rows.every((r) => surfaceForWorkspaceType(r.workspace.type) === 'ORG') ? 'ORG' : 'APP';
+  }
+
+  /**
+   * Cross to the other portal host for a workspace that lives there. Sessions
+   * are __Host- cookies, so a session on app. is invisible to org. and the
+   * only way over is the same one-time hand-off a marketing sign-in uses;
+   * the MFA level travels with it. Membership is checked here — the URL is
+   * built for a workspace the caller actually belongs to.
+   */
+  async hop(actor: Actor, dto: HopDto, req: Request): Promise<{ url: string }> {
+    const member = await this.db.workspaceMember.findFirst({
+      where: { userId: actor.userId, workspaceId: dto.workspaceId, workspace: { deletedAt: null } },
+      select: { workspace: { select: { type: true } } },
+    });
+    if (!member) throw new NotFoundError('workspace');
+    const target = surfaceForWorkspaceType(member.workspace.type);
+    const next = safeNext(dto.next);
+    const landing = `${next}${next.includes('?') ? '&' : '?'}ws=${dto.workspaceId}`;
+    const token = await this.mintHandoff(actor.userId, actor.mfaLevel >= 2 ? 2 : 1, landing, req);
+    authLog('auth.hop', 'succeeded', { userId: actor.userId, from: actor.surface, to: target, workspaceId: dto.workspaceId }, req);
+    return { url: `${surfaceOriginFor(target, this.appEnv())}/auth/handoff?token=${token}&next=${encodeURIComponent(landing)}` };
   }
 
   /** Mint a session for a verified user and set its cookies. */
@@ -539,7 +584,6 @@ export class AuthService {
   /** Where to send someone after sign-in on this surface. */
   async landingFor(userId: string, surface: Surface): Promise<string> {
     if (surface === 'ADMIN') return '/operations';
-    if (surface === 'ORG') return '/overview';
     const first = await this.db.workspaceMember.findFirst({ where: { userId, workspace: { deletedAt: null } }, orderBy: { createdAt: 'asc' } });
     return first ? '/today' : '/welcome';
   }

@@ -33,6 +33,7 @@
       "name": "anystudio-app-development",
       "routes": [
         { "pattern": "app.dev.anystudio.ai", "custom_domain": true },
+        { "pattern": "org.dev.anystudio.ai", "custom_domain": true },
         { "pattern": "admin.dev.anystudio.ai", "custom_domain": true },
         { "pattern": "dev.anystudio.ai", "custom_domain": true },
       ],
@@ -42,6 +43,7 @@
       "name": "anystudio-app-staging",
       "routes": [
         { "pattern": "app.staging.anystudio.ai", "custom_domain": true },
+        { "pattern": "org.staging.anystudio.ai", "custom_domain": true },
         { "pattern": "admin.staging.anystudio.ai", "custom_domain": true },
         { "pattern": "staging.anystudio.ai", "custom_domain": true },
       ],
@@ -51,6 +53,7 @@
       "name": "anystudio-app-production",
       "routes": [
         { "pattern": "app.anystudio.ai", "custom_domain": true },
+        { "pattern": "org.anystudio.ai", "custom_domain": true },
         { "pattern": "admin.anystudio.ai", "custom_domain": true },
         { "pattern": "anystudio.ai", "custom_domain": true },
         { "pattern": "www.anystudio.ai", "custom_domain": true },

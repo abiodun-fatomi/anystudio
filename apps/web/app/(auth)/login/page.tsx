@@ -33,6 +33,8 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get('next');
+  // Which portal host sent them here (org. keeps its own session).
+  const to = params.get('to');
   // The Google callback cannot render a page, so it returns here with a code.
   const returned = params.get('error');
   const [identifier, setIdentifier] = useState('');
@@ -50,7 +52,7 @@ function LoginForm() {
     try {
       const r = challenge ? await api.auth.mfa(challenge, code) : await api.auth.login(identifier, password);
       if (r.status === 'signed_in') return router.replace(next ?? r.next);
-      if (r.status === 'handoff') return followHandoff(r.url, next);
+      if (r.status === 'handoff') return followHandoff(r.url, next, to);
       if (r.status === 'mfa_required') return setChallenge(r.challengeId);
       setError(challenge ? 'That code did not match.' : 'Those details did not match an account.');
     } catch (err) {

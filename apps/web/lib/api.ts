@@ -925,6 +925,7 @@ export const api = {
     resendVerification: () => request<{ status: 'sent' }>('POST', '/auth/verify/resend'),
     reset: (token: string, password: string) => request<{ status: 'reset' | 'invalid_token' }>('POST', '/auth/reset', { token, password }),
     /** The app host's half of a sign-in that happened on the marketing host. */
+    hop: (workspaceId: string, next?: string) => request<{ url: string }>('POST', '/auth/hop', { workspaceId, next }),
     handoff: (token: string) => request<{ status: 'signed_in'; next: string } | { status: 'invalid_token' }>('POST', '/auth/handoff', { token }),
   },
   workspace: {

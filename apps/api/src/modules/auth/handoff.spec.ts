@@ -10,7 +10,7 @@ import { AuthService } from './auth.service';
 
 type Row = { id: string; purpose: string; tokenHash: string; userId: string; payload: unknown; expiresAt: Date; consumedAt: Date | null };
 
-function harness(origin: string) {
+function harness(origin: string, workspaceTypes: string[] = ['BUSINESS']) {
   const rows: Row[] = [];
   const user = { id: 'u1', status: 'ACTIVE', credentialEpoch: 1 };
   const db = {
@@ -26,7 +26,10 @@ function harness(origin: string) {
       }),
     },
     user: { findUnique: vi.fn(async () => user) },
-    workspaceMember: { findFirst: vi.fn(async () => ({ id: 'm' })) },
+    workspaceMember: {
+      findFirst: vi.fn(async () => ({ id: 'm', workspace: { type: workspaceTypes[0] ?? 'BUSINESS' } })),
+      findMany: vi.fn(async () => workspaceTypes.map((type) => ({ workspace: { type } }))),
+    },
   };
   const sessions = { mint: vi.fn(async () => ({ access: 'a', refresh: 'r', accessExpiresAt: new Date(), refreshExpiresAt: new Date() })) };
   const svc = new AuthService(db as never, sessions as never, {} as never, {} as never, {} as never, {} as never, {} as never);
@@ -88,6 +91,32 @@ describe('sign-in hand-off between hosts', () => {
     const again = await app.svc.completeHandoff({ token }, app.req, app.res);
     expect(again.data).toEqual({ status: 'invalid_token' });
     expect(app.sessions.mint).toHaveBeenCalledOnce();
+  });
+
+  it('sends someone whose only workspaces are organizations to the org host, and lets that host redeem', async () => {
+    const marketing = harness('https://dev.anystudio.ai', ['ORGANIZATION']);
+    const finish = (marketing.svc as unknown as { finishSignIn: AuthService['finishSignIn'] }).finishSignIn.bind(marketing.svc);
+    const r = await finish(marketing.user as never, 'APP', 1, '/today', marketing.req, marketing.res);
+    expect(r.status).toBe('handoff');
+    if (r.status !== 'handoff') return;
+    expect(r.url.startsWith('https://org.dev.anystudio.ai/auth/handoff?token=')).toBe(true);
+
+    const org = harness('https://org.dev.anystudio.ai', ['ORGANIZATION']);
+    org.rows.push(...marketing.rows);
+    const ok = await org.svc.completeHandoff({ token: new URL(r.url).searchParams.get('token')! }, org.req, org.res);
+    expect(ok.data).toEqual({ status: 'signed_in', next: '/today' });
+    expect(org.sessions.mint).toHaveBeenCalledWith(expect.objectContaining({ surface: 'ORG', mfaLevel: 1 }));
+  });
+
+  it('someone with a business and an organization starts on app. and hops to org. for the organization', async () => {
+    const app = harness('https://app.dev.anystudio.ai', ['ORGANIZATION']);
+    const actor = { userId: 'u1', surface: 'APP', mfaLevel: 1 } as never;
+    const { url } = await app.svc.hop(actor, { workspaceId: '11111111-1111-4111-8111-111111111111', next: '/library' }, app.req);
+    const u = new URL(url);
+    expect(u.origin).toBe('https://org.dev.anystudio.ai');
+    expect(u.pathname).toBe('/auth/handoff');
+    expect(u.searchParams.get('next')).toBe('/library?ws=11111111-1111-4111-8111-111111111111');
+    expect(app.rows[0].payload).toEqual({ mfaLevel: 1, next: '/library?ws=11111111-1111-4111-8111-111111111111' });
   });
 
   it('refuses an expired token', async () => {

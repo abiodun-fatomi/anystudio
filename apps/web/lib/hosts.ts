@@ -34,3 +34,11 @@ export function siblingOrigin(host: string, surface: Surface): string {
   const base = baseHost(host);
   return `https://${surface ? `${surface}.` : ''}${base}`;
 }
+
+/**
+ * The portal a hostname serves: organizations on `org.`, everything else on
+ * `app.`. Locally there is one host and it serves both.
+ */
+export function portalOf(host: string): 'APP' | 'ORG' {
+  return host.startsWith('org.') ? 'ORG' : 'APP';
+}
