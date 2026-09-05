@@ -2,7 +2,12 @@
  * Host routing. One deployment, two hostnames per environment:
  *
  *   anystudio.ai        (dev.anystudio.ai / staging.anystudio.ai)  — marketing
- *   app.anystudio.ai    (app.dev… / app.staging…)                  — the portal
+ *   app.anystudio.ai    (app.dev… / app.staging…)                  — the portal, businesses
+ *   org.anystudio.ai    (org.dev… / org.staging…)                  — the portal, organizations
+ *
+ * app. and org. are the same pages; only the session differs. A __Host-
+ * cookie set on one is invisible to the other, so moving a person between
+ * them is a one-time hand-off (lib/app-context.tsx decides when).
  *
  * The marketing host serves the landing, pricing, developer and organization
  * pages (route handlers returning the finished documents) and the sign-in
@@ -98,7 +103,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(`https://${host.slice(4)}${pathname}${search}`, 308);
   }
 
-  const onApp = host.startsWith('app.');
+  const onApp = host.startsWith('app.') || host.startsWith('org.');
   const onAdmin = host.startsWith('admin.');
 
   // The staff console: its own hostname (so its session cookie is its own),
@@ -123,7 +128,7 @@ export async function middleware(req: NextRequest) {
     // otherwise the same content answers on two hostnames and splits its own
     // search ranking.
     if (MARKETING_PATHS.includes(pathname) || AUTH_PATHS.includes(pathname)) {
-      return NextResponse.redirect(`https://${host.slice(4)}${pathname}${search}`, 307);
+      return NextResponse.redirect(`https://${baseHost(host)}${pathname}${search}`, 307);
     }
     return NextResponse.next();
   }

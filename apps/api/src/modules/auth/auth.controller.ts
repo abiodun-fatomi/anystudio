@@ -19,6 +19,7 @@ import {
   GoogleCallbackQueryDto,
   GoogleStartQueryDto,
   HandoffDto,
+  HopDto,
   LoginDto,
   MfaDto,
   RegisterDto,
@@ -69,6 +70,14 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'signed_in or invalid_token; tokens are single-use and live a minute' })
   handoff(@Body() body: HandoffDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.authService.completeHandoff(body, req, res);
+  }
+
+  @Post('/hop')
+  @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('session')
+  @ApiOperation({ summary: 'A one-time URL that opens a workspace on the other portal host (app. ↔ org.) with this session carried across' })
+  hop(@CurrentActor() actor: Actor, @Body() body: HopDto, @Req() req: Request) {
+    return this.authService.hop(actor, body, req);
   }
 
   @Public()

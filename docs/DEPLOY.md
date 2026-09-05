@@ -36,8 +36,14 @@ read production sessions. Under `*.dev.anystudio.ai` and
 
 Each surface has a `wrangler.jsonc` with three named environments
 (`development`, `staging`, `production`). Each environment is its own Worker,
-owning two hostnames (the marketing site and the app — `middleware.ts` routes
-by host). **GitHub Actions builds and deploys them**
+owning four hostnames — the marketing site, `app.` (businesses and personal
+studios), `org.` (organizations) and `admin.` (staff) — with `middleware.ts`
+routing by host. `app.` and `org.` serve the same pages; what differs is the
+session: each is a `__Host-` cookie that cannot cross hostnames, so an
+organization is opened by a one-time hand-off (`POST /auth/hop`) and the
+sign-in page sends someone whose only workspaces are organizations straight
+to `org.`. The API must list every origin in `ORIGIN_APP` / `ORIGIN_ORG` /
+`ORIGIN_ADMIN` or CORS refuses the host. **GitHub Actions builds and deploys them**
 (`.github/workflows/web-deploy.yml`): a push to a branch deploys the matching
 environment, and the first deploy creates the Worker, its custom domains and
 their certificates. Nothing is configured in the Cloudflare dashboard.

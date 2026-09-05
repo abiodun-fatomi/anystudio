@@ -81,5 +81,20 @@ export function isMarketingOrigin(origin: string, env: AppEnv): boolean {
 
 /** The APP surface's origin for the environment a marketing request came from. */
 export function appOriginFor(env: AppEnv): string {
-  return env === 'local' ? 'http://localhost:3000' : `https://app.${marketingHost(env)}`;
+  return surfaceOriginFor('APP', env);
+}
+
+/** A surface's origin in an environment — the inverse of surfaceForOrigin. */
+export function surfaceOriginFor(surface: Surface, env: AppEnv): string {
+  if (env === 'local') return `http://localhost:${{ APP: 3000, ORG: 3002, ADMIN: 3003 }[surface]}`;
+  return `https://${surface.toLowerCase()}.${marketingHost(env)}`;
+}
+
+/**
+ * Which portal a workspace lives on. Organizations have their own hostname
+ * (org.anystudio.ai) with its own session and its own cookie; businesses and
+ * personal studios share app.anystudio.ai. Same build, different door.
+ */
+export function surfaceForWorkspaceType(type: string): 'APP' | 'ORG' {
+  return type === 'ORGANIZATION' ? 'ORG' : 'APP';
 }

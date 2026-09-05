@@ -24,9 +24,9 @@ export function OrganizationGate({ children }: { children: ReactNode }) {
     try {
       const ws = await api.workspace.create({ name: name.trim(), type: 'ORGANIZATION' });
       await refreshMe();
-      switchWorkspace(ws.id);
       setOpen(false);
-      toast({ title: `${ws.name} created`, body: 'You are now in it. Create a project and mint a key.', tone: 'ok' });
+      toast({ title: `${ws.name} created`, body: 'Opening it on the organization portal. Create a project and mint a key.', tone: 'ok' });
+      switchWorkspace(ws.id, 'ORGANIZATION');
     } catch (e) {
       toast({ title: 'Could not create it', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
     } finally {

@@ -29,14 +29,15 @@ export function WorkspaceSwitcher() {
     try {
       const ws = await api.workspace.create({ name: name.trim(), type });
       await refreshMe();
-      switchWorkspace(ws.id);
       setOpen(false);
       setName('');
       toast({
         title: `${ws.name} created`,
-        body: type === 'ORGANIZATION' ? 'You are in it now. The Developer section is yours.' : 'You are in it now.',
+        body: type === 'ORGANIZATION' ? 'Opening it on the organization portal. The Developer section is yours.' : 'You are in it now.',
         tone: 'ok',
       });
+      // An organization lives on the org. host; this walks across when it must.
+      switchWorkspace(ws.id, type);
     } catch (e) {
       toast({ title: 'Could not create it', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
     } finally {

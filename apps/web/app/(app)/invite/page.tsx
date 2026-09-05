@@ -30,8 +30,9 @@ function Invite() {
         .then(async (r) => {
           if (r.status === 'joined') {
             await refreshMe();
-            switchWorkspace(r.workspace.id);
             setO({ status: 'joined', name: r.workspace.name, id: r.workspace.id });
+            // An organization opens on the org. host; this walks across when it must.
+            switchWorkspace(r.workspace.id, r.workspace.type);
           } else setO(r);
         })
         .catch(() => setO({ status: 'invalid_token' }));
