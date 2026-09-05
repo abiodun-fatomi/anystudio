@@ -49,6 +49,8 @@ export interface WorkspaceRef {
   name: string;
   currency: string;
   role: string;
+  logoKey?: string | null;
+  logoUrl?: string | null;
 }
 
 interface AppState {

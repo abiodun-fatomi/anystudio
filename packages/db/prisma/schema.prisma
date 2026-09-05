@@ -360,6 +360,9 @@ model Workspace {
   /// want. Free-form JSON because it feeds prompts, not queries, and the
   /// questions will change more often than we want to migrate.
   profile   Json?
+  /// Storage key of the organization's logo — a MediaAsset it uploaded. Shown
+  /// in the workspace switcher in place of initials.
+  logoKey   String?
   createdAt DateTime      @default(now())
   deletedAt DateTime?
 

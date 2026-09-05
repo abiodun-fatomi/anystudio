@@ -9,11 +9,15 @@ import { ConflictError, NotFoundError, ValidationError } from '../../../config/g
 import type { Request } from 'express';
 import { authLog } from '../auth/auth.log';
 import { Helpers } from '../../utils/helpers';
+import { MediaService } from '../media/media.service';
 import type { WorkspaceCreateDto, WorkspaceDeleteDto, WorkspaceProfileDto, WorkspaceUpdateDto } from './workspace.dto';
 
 @Injectable()
 export class WorkspaceService {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly media: MediaService,
+  ) {}
 
   /**
    * A second workspace for a signed-in person: they own it, it has its own
@@ -71,12 +75,24 @@ export class WorkspaceService {
   async update(workspaceId: string, dto: WorkspaceUpdateDto, actorId: string, req: Request) {
     const current = await this.db.workspace.findFirst({ where: { id: workspaceId, deletedAt: null }, select: { id: true, currency: true } });
     if (!current) throw new NotFoundError('workspace');
+    // The logo is a media asset of this workspace — the same READY check the
+    // studio applies to a source photo, so a half-uploaded file never shows.
+    let logo: { logoKey: string | null } | Record<string, never> = {};
+    if (dto.logoKey !== undefined) {
+      if (dto.logoKey === null) logo = { logoKey: null };
+      else {
+        const asset = await this.db.mediaAsset.findUnique({ where: { key: dto.logoKey }, select: { workspaceId: true } });
+        if (!asset || asset.workspaceId !== workspaceId) throw new NotFoundError('logo');
+        await this.media.requireReady(workspaceId, dto.logoKey);
+        logo = { logoKey: dto.logoKey };
+      }
+    }
     // Currency only changes what the next purchase is priced in; credits are
     // credits. The region (where files live) stays — that is a support action.
     const ws = await this.db.workspace.update({
       where: { id: workspaceId },
-      data: { ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.currency !== undefined ? { currency: dto.currency } : {}) },
-      select: { id: true, name: true, currency: true, region: true },
+      data: { ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.currency !== undefined ? { currency: dto.currency } : {}), ...logo },
+      select: { id: true, name: true, currency: true, region: true, logoKey: true },
     });
     authLog(
       'workspace.update',

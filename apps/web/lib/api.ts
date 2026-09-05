@@ -69,7 +69,7 @@ export interface Me {
     deleteRequestedAt?: string | null;
   };
   surface: 'APP' | 'ORG' | 'ADMIN';
-  workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string }>;
+  workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string; logoKey?: string | null; logoUrl?: string | null }>;
   canSwitchToStaff: boolean;
   /** Only on the ADMIN surface. */
   staffRole?: 'SUPPORT' | 'OPERATOR' | 'ADMIN' | 'SUPERADMIN' | null;
@@ -1145,6 +1145,8 @@ export const api = {
     rename: (id: string, name: string) => request<{ id: string; name: string }>('PATCH', `/workspaces/${id}`, { name }),
     /** The currency prices are shown and charged in. Credits already held are unaffected. */
     setCurrency: (id: string, currency: string) => request<{ id: string; currency: string }>('PATCH', `/workspaces/${id}`, { currency }),
+    /** An uploaded image (media asset key) as the organization's logo; null removes it. */
+    setLogo: (id: string, logoKey: string | null) => request<{ id: string; logoKey: string | null }>('PATCH', `/workspaces/${id}`, { logoKey }),
     remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
   },
   publishing: {

@@ -1,6 +1,6 @@
 import { MARKET_CURRENCIES, type MarketCurrency } from '@anystudio/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export const CHANNELS = ['whatsapp', 'instagram', 'tiktok', 'facebook', 'jiji', 'shop', 'market'] as const;
 export const TONES = ['warm', 'direct', 'playful', 'premium'] as const;
@@ -43,6 +43,13 @@ export class WorkspaceUpdateDto {
   @IsOptional()
   @IsIn(MARKET_CURRENCIES)
   currency?: MarketCurrency;
+
+  @ApiPropertyOptional({ description: 'Storage key of an uploaded image to use as the logo; null removes it', nullable: true, maxLength: 400 })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(400)
+  logoKey?: string | null;
 }
 
 export class WorkspaceDeleteDto {

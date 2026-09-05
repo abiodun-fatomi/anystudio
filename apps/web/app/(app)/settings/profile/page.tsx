@@ -134,6 +134,26 @@ export default function ProfilePage() {
     }
   };
 
+  // The organization's logo: an owner or admin uploads it here; it shows in
+  // the workspace switcher for everyone in the organization.
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const isOrg = workspace.type === 'ORGANIZATION';
+  const canBrand = ['OWNER', 'ADMIN'].includes(workspace.role);
+  const setLogo = async (file: File | null) => {
+    setLogoBusy(true);
+    try {
+      const key = file ? (await uploadFile(workspace.id, file)).key : null;
+      await api.workspace.setLogo(workspace.id, key);
+      await refreshMe();
+      toast({ title: file ? 'Logo saved' : 'Logo removed', tone: 'ok' });
+    } catch (e) {
+      toast({ title: 'That logo did not upload', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   const pickPicture = async (file: File) => {
     setUploading(true);
     try {
@@ -263,6 +283,59 @@ export default function ProfilePage() {
           </Button>
         </div>
       </section>
+
+      {isOrg && (
+        <section className={styles.group} aria-labelledby="p-org">
+          <div className={styles.groupHead}>
+            <div>
+              <h2 id="p-org" className={styles.groupTitle}>
+                Your organization
+              </h2>
+              <p className={styles.groupLede}>
+                The logo shows beside <strong>{workspace.name}</strong> at the top of every page, for everyone in the organization.
+                {canBrand ? '' : ' An owner or admin can change it.'} The name is under Workspace.
+              </p>
+            </div>
+          </div>
+          <div className={styles.avatarRow}>
+            <div className={styles.logoBig}>
+              {workspace.logoUrl ? (
+                <img src={workspace.logoUrl} alt="" />
+              ) : (
+                workspace.name
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((w) => w[0]?.toUpperCase())
+                  .join('')
+              )}
+            </div>
+            {canBrand && (
+              <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                <input
+                  ref={logoInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void setLogo(f);
+                    e.target.value = '';
+                  }}
+                />
+                <Button variant="subtle" size="sm" loading={logoBusy} onClick={() => logoInput.current?.click()}>
+                  {workspace.logoKey ? 'Change logo' : 'Add a logo'}
+                </Button>
+                {workspace.logoKey && (
+                  <Button variant="ghost" size="sm" disabled={logoBusy} onClick={() => void setLogo(null)}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className={styles.group} aria-labelledby="p-email">
         <div className={styles.groupHead}>

@@ -615,15 +615,24 @@ export class AuthService {
     });
     const workspaces = await this.db.workspace.findMany({
       where: { id: { in: [...actor.workspaceRoles.keys()] } },
-      select: { id: true, type: true, name: true, currency: true },
+      select: { id: true, type: true, name: true, currency: true, logoKey: true },
     });
     // The picture as a signed URL, the same way the profile screen gets it —
-    // the top bar shows this payload, not the profile.
+    // the top bar shows this payload, not the profile. Workspace logos the same way.
     const avatarUrl = user.avatarKey ? await this.media.signRead(user.avatarKey, 60 * 60).catch(() => null) : null;
+    const logos = await Promise.all(workspaces.map((w) => (w.logoKey ? this.media.signRead(w.logoKey, 60 * 60).catch(() => null) : null)));
     return {
       user: { ...user, avatarUrl },
       surface: actor.surface,
-      workspaces: workspaces.map((w) => ({ ...w, role: actor.workspaceRoles.get(w.id) })),
+      workspaces: workspaces.map((w, i) => ({
+        id: w.id,
+        type: w.type,
+        name: w.name,
+        currency: w.currency,
+        logoKey: w.logoKey,
+        logoUrl: logos[i],
+        role: actor.workspaceRoles.get(w.id),
+      })),
       // Reveals that a grant exists; carries no authority. Reaching the console
       // still means signing in there with a second factor.
       canSwitchToStaff: actor.staffRole !== null,
