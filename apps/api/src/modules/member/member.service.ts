@@ -35,23 +35,43 @@ const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex
 
 @Injectable()
 export class MemberService {
-  constructor(private readonly db: PrismaClient, private readonly mailer: Mailer, private readonly auth: AuthService, private readonly notifications: NotificationService) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly mailer: Mailer,
+    private readonly auth: AuthService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   /** Members and open invitations, in one read. */
   async list(workspaceId: string) {
     const [members, invites] = await Promise.all([
       this.db.workspaceMember.findMany({
-        where: { workspaceId }, orderBy: { createdAt: 'asc' },
+        where: { workspaceId },
+        orderBy: { createdAt: 'asc' },
         select: { userId: true, role: true, createdAt: true, user: { select: { name: true, email: true, avatarKey: true, lastLoginAt: true } } },
       }),
       this.db.authToken.findMany({
         where: { purpose: 'WORKSPACE_INVITE', consumedAt: null, expiresAt: { gt: new Date() }, payload: { path: ['workspaceId'], equals: workspaceId } },
-        orderBy: { createdAt: 'desc' }, select: { id: true, email: true, payload: true, expiresAt: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, email: true, payload: true, expiresAt: true, createdAt: true },
       }),
     ]);
     return {
-      members: members.map((m) => ({ userId: m.userId, role: m.role, joinedAt: m.createdAt, name: m.user.name, email: m.user.email, lastLoginAt: m.user.lastLoginAt })),
-      invites: invites.map((i) => ({ id: i.id, email: i.email, role: (i.payload as { role?: string } | null)?.role ?? 'MEMBER', expiresAt: i.expiresAt, createdAt: i.createdAt })),
+      members: members.map((m) => ({
+        userId: m.userId,
+        role: m.role,
+        joinedAt: m.createdAt,
+        name: m.user.name,
+        email: m.user.email,
+        lastLoginAt: m.user.lastLoginAt,
+      })),
+      invites: invites.map((i) => ({
+        id: i.id,
+        email: i.email,
+        role: (i.payload as { role?: string } | null)?.role ?? 'MEMBER',
+        expiresAt: i.expiresAt,
+        createdAt: i.createdAt,
+      })),
     };
   }
 
@@ -67,25 +87,41 @@ export class MemberService {
     const existing = await this.db.workspaceMember.findFirst({ where: { workspaceId, user: { email } } });
     if (existing) throw new ConflictError('That person is already in this workspace.');
     const count = await this.db.workspaceMember.count({ where: { workspaceId } });
-    const open = await this.db.authToken.count({ where: { purpose: 'WORKSPACE_INVITE', consumedAt: null, expiresAt: { gt: new Date() }, payload: { path: ['workspaceId'], equals: workspaceId } } });
+    const open = await this.db.authToken.count({
+      where: { purpose: 'WORKSPACE_INVITE', consumedAt: null, expiresAt: { gt: new Date() }, payload: { path: ['workspaceId'], equals: workspaceId } },
+    });
     const cap = MAX_MEMBERS[ws.type] ?? 5;
     if (count + open >= cap) throw new ConflictError(`This workspace can have ${cap} people. Remove someone or cancel an invitation first.`);
 
-    await this.db.authToken.updateMany({ where: { purpose: 'WORKSPACE_INVITE', email, consumedAt: null, payload: { path: ['workspaceId'], equals: workspaceId } }, data: { consumedAt: new Date() } });
+    await this.db.authToken.updateMany({
+      where: { purpose: 'WORKSPACE_INVITE', email, consumedAt: null, payload: { path: ['workspaceId'], equals: workspaceId } },
+      data: { consumedAt: new Date() },
+    });
     const token = randomBytes(32).toString('base64url');
     const row = await this.db.authToken.create({
-      data: { purpose: 'WORKSPACE_INVITE', email, tokenHash: sha256(token), payload: { workspaceId, role: dto.role, invitedById: actor.userId }, expiresAt: new Date(Date.now() + INVITE_TTL_MS), createdIp: req.ip },
+      data: {
+        purpose: 'WORKSPACE_INVITE',
+        email,
+        tokenHash: sha256(token),
+        payload: { workspaceId, role: dto.role, invitedById: actor.userId },
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        createdIp: req.ip,
+      },
     });
     const inviter = await this.db.user.findUnique({ where: { id: actor.userId }, select: { name: true } });
     const link = `${this.auth.publicOrigin(req)}/invite?token=${token}`;
-    await this.mailer.send(workspaceInvite(email, inviter?.name ?? null, ws.name, dto.role, link))
+    await this.mailer
+      .send(workspaceInvite(email, inviter?.name ?? null, ws.name, dto.role, link))
       .catch((err: unknown) => logger.error({ err, workspaceId }, 'invite mail failed'));
     authLog('member.invite', 'succeeded', { userId: actor.userId, workspaceId, role: dto.role }, req);
     return { id: row.id, email, role: dto.role, expiresAt: row.expiresAt };
   }
 
   async cancelInvite(actor: Actor, workspaceId: string, inviteId: string, req: Request): Promise<{ status: 'cancelled' }> {
-    const { count } = await this.db.authToken.updateMany({ where: { id: inviteId, purpose: 'WORKSPACE_INVITE', consumedAt: null, payload: { path: ['workspaceId'], equals: workspaceId } }, data: { consumedAt: new Date() } });
+    const { count } = await this.db.authToken.updateMany({
+      where: { id: inviteId, purpose: 'WORKSPACE_INVITE', consumedAt: null, payload: { path: ['workspaceId'], equals: workspaceId } },
+      data: { consumedAt: new Date() },
+    });
     if (!count) throw new NotFoundError('invitation');
     authLog('member.invite', 'succeeded', { userId: actor.userId, workspaceId, cancelled: inviteId }, req);
     return { status: 'cancelled' };
@@ -117,17 +153,28 @@ export class MemberService {
     ]);
     authLog('member.accept', 'succeeded', { userId: actor.userId, workspaceId, role }, req);
     void this.db.user.findUnique({ where: { id: actor.userId }, select: { name: true, email: true } }).then((u) =>
-      this.notifications.notifyWorkspace(workspaceId, actor.userId, { kind: 'MEMBER', title: `${u?.name ?? u?.email ?? 'Someone'} joined the workspace`, body: `As ${role.toLowerCase()}. Manage members in Settings → Workspace.`, href: '/settings/workspace', refId: `joined:${actor.userId}:${workspaceId}` }));
+      this.notifications.notifyWorkspace(workspaceId, actor.userId, {
+        kind: 'MEMBER',
+        title: `${u?.name ?? u?.email ?? 'Someone'} joined the workspace`,
+        body: `As ${role.toLowerCase()}. Manage members in Settings → Workspace.`,
+        href: '/settings/workspace',
+        refId: `joined:${actor.userId}:${workspaceId}`,
+      }),
+    );
     return { status: 'joined' as const, workspace: ws, role };
   }
 
   /** Change a member's role. Owners are transferred, not edited. */
   async setRole(actor: Actor, workspaceId: string, userId: string, role: GrantableRole, req: Request) {
     const m = await this.member(workspaceId, userId);
-    if (m.role === 'OWNER') throw new ConflictError('The owner\'s role changes by transferring ownership.');
+    if (m.role === 'OWNER') throw new ConflictError("The owner's role changes by transferring ownership.");
     if (userId === actor.userId) throw new ConflictError('Ask another admin to change your own role.');
     this.assertCanGrant(actor, workspaceId, role);
-    const row = await this.db.workspaceMember.update({ where: { workspaceId_userId: { workspaceId, userId } }, data: { role }, select: { userId: true, role: true } });
+    const row = await this.db.workspaceMember.update({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      data: { role },
+      select: { userId: true, role: true },
+    });
     authLog('member.role', 'succeeded', { userId: actor.userId, workspaceId, target: userId, role }, req);
     return row;
   }

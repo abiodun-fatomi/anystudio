@@ -19,9 +19,11 @@ export class BillingController {
   @Get('/workspaces/:workspaceId/billing/catalogue')
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')
-  @ApiOperation({ summary: 'Packs and plans in this workspace\'s currency, and the current plan' })
+  @ApiOperation({ summary: "Packs and plans in this workspace's currency, and the current plan" })
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
-  catalogue(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) { return this.billing.catalogue(workspaceId); }
+  catalogue(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
+    return this.billing.catalogue(workspaceId);
+  }
 
   @Post('/workspaces/:workspaceId/billing/checkout')
   @RequireWorkspaceRole('AUDITOR')
@@ -37,7 +39,12 @@ export class BillingController {
   @ApiCookieAuth('session')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ask the gateway whether this payment went through; grants credits if so (idempotent)' })
-  verify(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Param('paymentId', ParseUUIDPipe) paymentId: string, @Body() body: VerifyPaymentDto, @Req() req: Request) {
+  verify(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Body() body: VerifyPaymentDto,
+    @Req() req: Request,
+  ) {
     return this.billing.verifyPayment(workspaceId, paymentId, body, req);
   }
 
@@ -45,32 +52,42 @@ export class BillingController {
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'Settled payments, newest first' })
-  payments(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() q: PaymentsQueryDto) { return this.billing.payments(workspaceId, q); }
+  payments(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() q: PaymentsQueryDto) {
+    return this.billing.payments(workspaceId, q);
+  }
 
   @Get('/workspaces/:workspaceId/billing/payments/:paymentId')
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'One payment' })
-  payment(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Param('paymentId', ParseUUIDPipe) paymentId: string) { return this.billing.payment(workspaceId, paymentId); }
+  payment(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Param('paymentId', ParseUUIDPipe) paymentId: string) {
+    return this.billing.payment(workspaceId, paymentId);
+  }
 
   @Get('/workspaces/:workspaceId/billing/subscription')
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'The current plan, if any' })
-  subscription(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) { return this.billing.subscription(workspaceId); }
+  subscription(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
+    return this.billing.subscription(workspaceId);
+  }
 
   @Post('/workspaces/:workspaceId/billing/subscription/cancel')
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stop the plan at the end of the paid period' })
-  cancel(@CurrentActor() actor: Actor, @Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Req() req: Request) { return this.billing.cancelSubscription(actor, workspaceId, req); }
+  cancel(@CurrentActor() actor: Actor, @Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Req() req: Request) {
+    return this.billing.cancelSubscription(actor, workspaceId, req);
+  }
 
   /** Public, non-secret: what the web app needs to open a Paddle checkout. One build, every environment. */
   @Public()
   @Get('/billing/config')
   @ApiOperation({ summary: 'Client-side payment configuration (public tokens only)' })
-  config() { return this.billing.clientConfig(); }
+  config() {
+    return this.billing.clientConfig();
+  }
 
   // ---- webhooks: no session, signature-checked inside, always 200 once recorded.
 

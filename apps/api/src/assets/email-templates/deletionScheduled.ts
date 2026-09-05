@@ -7,15 +7,25 @@ export function deletionScheduled(to: string, name: string | null, deleteOn: Dat
   return {
     to,
     subject: 'Your AnyStudio account will be deleted on ' + date,
-    text: [greet(name), '',
+    text: [
+      greet(name),
+      '',
       `You asked us to delete your AnyStudio account. Your photos, videos, copy and credits will be gone on ${date}.`,
-      'Changed your mind? Sign in before then and press "Keep my account":', cancelUrl, '',
+      'Changed your mind? Sign in before then and press "Keep my account":',
+      cancelUrl,
+      '',
       "If you didn't ask for this, sign in now, cancel it, and change your password.",
-      '', SIGNATURE].join('\n'),
-    html: html([greet(name),
-      `You asked us to delete your AnyStudio account. Your photos, videos, copy and credits will be gone on <strong>${date}</strong>.`,
-      'Changed your mind? Sign in before then and press "Keep my account".',
-      "If you didn't ask for this, sign in now, cancel it, and change your password."],
-      { label: 'Keep my account', url: cancelUrl }),
+      '',
+      SIGNATURE,
+    ].join('\n'),
+    html: html(
+      [
+        greet(name),
+        `You asked us to delete your AnyStudio account. Your photos, videos, copy and credits will be gone on <strong>${date}</strong>.`,
+        'Changed your mind? Sign in before then and press "Keep my account".',
+        "If you didn't ask for this, sign in now, cancel it, and change your password.",
+      ],
+      { label: 'Keep my account', url: cancelUrl },
+    ),
   };
 }

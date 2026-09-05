@@ -45,9 +45,9 @@ previewsEnabled: false
 
 databases:
   - name: anystudio-db-dev
-    region: frankfurt            # same region as the API: private network, one hop
-    postgresMajorVersion: "18"
-    plan: 0.1c-256mb             # 0.1 CPU / 256 MB / 15 GB — the dev floor, ~$10.50/mo
+    region: frankfurt # same region as the API: private network, one hop
+    postgresMajorVersion: '18'
+    plan: 0.1c-256mb # 0.1 CPU / 256 MB / 15 GB — the dev floor, ~$10.50/mo
     # Empty list = reachable only from Render services in this region. The
     # database that holds password hashes and the credit ledger gets no
     # public endpoint at all. To connect a GUI from your laptop, add your IP
@@ -69,9 +69,9 @@ services:
     branch: development
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    plan: starter                # pre-deploy commands are not available on free instances
-    region: frankfurt            # must match the database's region to reach it privately
-    healthCheckPath: /health     # liveness, not /ready — see health.controller.ts
+    plan: starter # pre-deploy commands are not available on free instances
+    region: frankfurt # must match the database's region to reach it privately
+    healthCheckPath: /health # liveness, not /ready — see health.controller.ts
     preDeployCommand: npm run db:deploy
     autoDeploy: false
     envVars:
@@ -89,7 +89,8 @@ services:
       - key: DIRECT_URL
         fromDatabase: { name: anystudio-db-dev, property: connectionString }
       - key: REDIS_URL
-        fromService: { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
+        fromService:
+          { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
       - fromGroup: anystudio-dev
       - key: APP_ENV
         value: dev
@@ -98,7 +99,7 @@ services:
       - key: SERVICE_NAME
         value: api
       - key: PORT
-        value: "3001"
+        value: '3001'
       - key: LOG_LEVEL
         value: debug
 
@@ -118,7 +119,8 @@ services:
       - key: DIRECT_URL
         fromDatabase: { name: anystudio-db-dev, property: connectionString }
       - key: REDIS_URL
-        fromService: { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
+        fromService:
+          { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
       - fromGroup: anystudio-dev
       - key: APP_ENV
         value: dev
@@ -130,9 +132,9 @@ services:
         value: debug
       # Concurrency per weight class. Video holds a slot for minutes.
       - key: WORKER_FAST_CONCURRENCY
-        value: "6"
+        value: '6'
       - key: WORKER_HEAVY_CONCURRENCY
-        value: "2"
+        value: '2'
 
 envVarGroups:
   # Render prompts for each of these on first sync and stores them in the
@@ -141,13 +143,13 @@ envVarGroups:
   # unchanged when it arrives.
   - name: anystudio-dev
     envVars:
-      - key: APP_KEY                    # openssl rand -base64 32 — encrypts TOTP seeds and the Google handshake cookie
+      - key: APP_KEY # openssl rand -base64 32 — encrypts TOTP seeds and the Google handshake cookie
         sync: false
-      - key: ORIGIN_APP                 # https://app.dev.anystudio.ai
+      - key: ORIGIN_APP # https://app.dev.anystudio.ai
         sync: false
-      - key: ORIGIN_ORG                 # https://org.dev.anystudio.ai
+      - key: ORIGIN_ORG # https://org.dev.anystudio.ai
         sync: false
-      - key: ORIGIN_ADMIN               # https://admin.dev.anystudio.ai
+      - key: ORIGIN_ADMIN # https://admin.dev.anystudio.ai
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -155,7 +157,7 @@ envVarGroups:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: MAIL_FROM                  # "AnyStudio <hello@anystudio.ai>"
+      - key: MAIL_FROM # "AnyStudio <hello@anystudio.ai>"
         sync: false
       - key: R2_ENDPOINT
         sync: false

@@ -9,19 +9,31 @@ import sharp from 'sharp';
 import { FIDELITY, fidelity } from './fidelity';
 import { pasteProduct } from './image';
 
-const W = 320; const H = 320;
+const W = 320;
+const H = 320;
 
 /** A textured "product": a disc with stripes, so structure exists inside the mask. */
 function productSvg(fill: string, stripes: string, cx = 160, cy = 160, r = 90): string {
-  const lines = Array.from({ length: 9 }, (_, i) => `<line x1="${cx - r}" y1="${cy - r + i * (2 * r) / 8}" x2="${cx + r}" y2="${cy - r + i * (2 * r) / 8}" stroke="${stripes}" stroke-width="6"/>`).join('');
+  const lines = Array.from(
+    { length: 9 },
+    (_, i) =>
+      `<line x1="${cx - r}" y1="${cy - r + (i * (2 * r)) / 8}" x2="${cx + r}" y2="${cy - r + (i * (2 * r)) / 8}" stroke="${stripes}" stroke-width="6"/>`,
+  ).join('');
   return `<clipPath id="c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath><circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/><g clip-path="url(#c)">${lines}</g>`;
 }
-const scene = (bg: string, product: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${bg}${product}</svg>`)).png().toBuffer();
-const cutout = (product: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${product}</svg>`)).png().toBuffer();
+const scene = (bg: string, product: string) =>
+  sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${bg}${product}</svg>`))
+    .png()
+    .toBuffer();
+const cutout = (product: string) =>
+  sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${product}</svg>`))
+    .png()
+    .toBuffer();
 
 const PRODUCT = productSvg('#D6006E', '#FFFFFF');
 const PLAIN = '<rect width="100%" height="100%" fill="#DDDDDD"/>';
-const MARBLE = '<rect width="100%" height="100%" fill="#8A8A8A"/><circle cx="60" cy="60" r="40" fill="#BBBBBB"/><rect x="200" y="220" width="100" height="80" fill="#666666"/>';
+const MARBLE =
+  '<rect width="100%" height="100%" fill="#8A8A8A"/><circle cx="60" cy="60" r="40" fill="#BBBBBB"/><rect x="200" y="220" width="100" height="80" fill="#666666"/>';
 
 describe('fidelity', () => {
   it('scores an untouched product on a new background as kept', async () => {

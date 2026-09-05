@@ -23,8 +23,15 @@ import { fetchBytes } from '../modules/provider/adapters/http';
 const exec = promisify(execFile);
 
 const EXT: Record<string, string> = {
-  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm',
-  'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/wav': 'wav', 'application/json': 'json',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/wav': 'wav',
+  'application/json': 'json',
 };
 
 export async function storeArtifacts(media: MediaService, row: Generation, artifacts: ProviderArtifact[]): Promise<GenerationOutput[]> {
@@ -50,13 +57,35 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
     if (a.mime.startsWith('image/') && (!width || !height)) {
       try {
         const m = await sharp(bytes).metadata();
-        width = m.width; height = m.height;
-      } catch { /* dimensions are a nicety */ }
+        width = m.width;
+        height = m.height;
+      } catch {
+        /* dimensions are a nicety */
+      }
     }
 
     await media.put(key, bytes, a.mime);
-    await media.recordOutput({ workspaceId: row.workspaceId, generationId: row.id, key, kind: 'OUTPUT', mime: a.mime, bytes: bytes.byteLength, width, height, durationMs: a.durationMs });
-    const output: GenerationOutput = { key, role: a.role, mime: a.mime, bytes: bytes.byteLength, width, height, durationMs: a.durationMs, ...(a.size ? { size: a.size } : {}) };
+    await media.recordOutput({
+      workspaceId: row.workspaceId,
+      generationId: row.id,
+      key,
+      kind: 'OUTPUT',
+      mime: a.mime,
+      bytes: bytes.byteLength,
+      width,
+      height,
+      durationMs: a.durationMs,
+    });
+    const output: GenerationOutput = {
+      key,
+      role: a.role,
+      mime: a.mime,
+      bytes: bytes.byteLength,
+      width,
+      height,
+      durationMs: a.durationMs,
+      ...(a.size ? { size: a.size } : {}),
+    };
     outputs.push(output);
 
     const thumb = await thumbnail(bytes, a.mime).catch((err) => {
@@ -66,7 +95,15 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
     if (thumb) {
       const thumbKey = MediaService.key(row.workspaceId, `gen/${row.id}`, `thumb-${a.role}-${n}.webp`, row.createdAt);
       await media.put(thumbKey, thumb, 'image/webp');
-      await media.recordOutput({ workspaceId: row.workspaceId, generationId: row.id, key: thumbKey, kind: 'DERIVED', mime: 'image/webp', bytes: thumb.byteLength, width: 512 });
+      await media.recordOutput({
+        workspaceId: row.workspaceId,
+        generationId: row.id,
+        key: thumbKey,
+        kind: 'DERIVED',
+        mime: 'image/webp',
+        bytes: thumb.byteLength,
+        width: 512,
+      });
       outputs.push({ key: thumbKey, role: 'thumb', mime: 'image/webp', bytes: thumb.byteLength });
     }
   }
@@ -84,7 +121,11 @@ async function thumbnail(bytes: Uint8Array, mime: string): Promise<Buffer | null
     try {
       const src = join(dir, 'in.mp4');
       await writeFile(src, bytes);
-      const { stdout } = await exec('ffmpeg', ['-v', 'error', '-ss', '0.5', '-i', src, '-frames:v', '1', '-vf', 'scale=512:-2', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'], { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024 });
+      const { stdout } = await exec(
+        'ffmpeg',
+        ['-v', 'error', '-ss', '0.5', '-i', src, '-frames:v', '1', '-vf', 'scale=512:-2', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'],
+        { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024 },
+      );
       return await sharp(stdout).webp({ quality: 78 }).toBuffer();
     } finally {
       await rm(dir, { recursive: true, force: true });

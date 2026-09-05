@@ -38,12 +38,35 @@ import { DeveloperModule } from './modules/developer/developer.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { SupportModule } from './modules/support/support.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule, MailModule, RateLimitModule, QueueModule, ProviderModule, MediaModule,
-    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule, LibraryModule, InsightsModule, AudioModule, DeveloperModule, WhatsappModule, NotificationModule, AdminModule,
+    PrismaModule,
+    MailModule,
+    RateLimitModule,
+    QueueModule,
+    ProviderModule,
+    MediaModule,
+    AuthModule,
+    OnboardingModule,
+    LedgerModule,
+    WalletModule,
+    WorkspaceModule,
+    GenerationModule,
+    BrandModule,
+    AccountModule,
+    MemberModule,
+    BillingModule,
+    LibraryModule,
+    InsightsModule,
+    AudioModule,
+    DeveloperModule,
+    WhatsappModule,
+    NotificationModule,
+    AdminModule,
+    SupportModule,
   ],
   controllers: [HealthController],
   providers: [

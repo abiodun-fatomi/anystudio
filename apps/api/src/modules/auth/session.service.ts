@@ -159,10 +159,7 @@ export class SessionService {
    * being asked to sign in again is a small cost; an attacker keeping a rotating
    * foothold indefinitely is not.
    */
-  async rotate(
-    refreshToken: string,
-    surface: Surface,
-  ): Promise<{ result: 'ok'; issued: IssuedSession } | { result: 'reuse_detected' | 'invalid' }> {
+  async rotate(refreshToken: string, surface: Surface): Promise<{ result: 'ok'; issued: IssuedSession } | { result: 'reuse_detected' | 'invalid' }> {
     const hash = sha256(refreshToken);
     const current = await this.db.session.findUnique({
       where: { refreshHash: hash },

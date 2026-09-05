@@ -25,7 +25,7 @@ describe('GlobalExceptionFilter', () => {
     expect(h.json.mock.calls[0]?.[0]).toMatchObject({ error: 'invalid_input', fields: [{ path: 'email' }, { path: 'password' }] });
   });
 
-  it('never leaks an unexpected error\'s message', () => {
+  it("never leaks an unexpected error's message", () => {
     const h = host();
     new GlobalExceptionFilter().catch(new Error('ECONNREFUSED 10.0.0.5:5432'), h.host);
     expect(h.res.status).toHaveBeenCalledWith(500);

@@ -11,48 +11,48 @@ services:
       POSTGRES_USER: anystudio
       POSTGRES_PASSWORD: anystudio
       POSTGRES_DB: anystudio
-    ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U anystudio"]
+      test: ['CMD-SHELL', 'pg_isready -U anystudio']
       interval: 5s
       retries: 12
 
   redis:
     image: redis:7-alpine
     # appendonly so a restart does not silently drop queued generations
-    command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
-    volumes: ["redisdata:/data"]
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['6379:6379']
+    volumes: ['redisdata:/data']
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       retries: 12
 
   # Stands in for Cloudflare R2. Same S3 API, so no code path differs locally.
   minio:
     image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+    command: ['server', '/data', '--console-address', ':9001']
     environment:
       MINIO_ROOT_USER: anystudio
       MINIO_ROOT_PASSWORD: anystudio
-    ports: ["9000:9000", "9001:9001"]
-    volumes: ["miniodata:/data"]
+    ports: ['9000:9000', '9001:9001']
+    volumes: ['miniodata:/data']
 
   # Catches every outbound email so verification links are readable at :8025
   # and nothing is ever sent to a real address from a developer machine.
   mailpit:
     image: axllent/mailpit:latest
-    ports: ["1025:1025", "8025:8025"]
+    ports: ['1025:1025', '8025:8025']
 
   migrate:
     build: { context: ., dockerfile: apps/api/Dockerfile, target: build }
-    command: ["pnpm", "db:deploy"]
+    command: ['pnpm', 'db:deploy']
     environment:
       DATABASE_URL: postgresql://anystudio:anystudio@postgres:5432/anystudio?schema=public
     depends_on:
       postgres: { condition: service_healthy }
-    restart: "no"
+    restart: 'no'
 
 volumes:
   pgdata:

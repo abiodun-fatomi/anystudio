@@ -67,11 +67,8 @@ export class VerificationService {
     });
 
     const link = `${appOrigin}/verify?token=${token}`;
-    const mail = flavour === 'welcome'
-      ? welcomeAndVerify(user.email, user.name, link)
-      : verifyEmail(user.email, user.name, link);
-    await this.mailer.send(mail).catch((err: unknown) =>
-      logger.error({ err, purpose: 'EMAIL_VERIFY' }, 'verification mail failed'));
+    const mail = flavour === 'welcome' ? welcomeAndVerify(user.email, user.name, link) : verifyEmail(user.email, user.name, link);
+    await this.mailer.send(mail).catch((err: unknown) => logger.error({ err, purpose: 'EMAIL_VERIFY' }, 'verification mail failed'));
   }
 
   /**

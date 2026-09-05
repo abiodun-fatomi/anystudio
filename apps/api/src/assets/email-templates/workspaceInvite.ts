@@ -15,15 +15,25 @@ export function workspaceInvite(to: string, inviterName: string | null, workspac
   return {
     to,
     subject: `${who} invited you to ${workspaceName} on AnyStudio`,
-    text: [greet(null), '',
+    text: [
+      greet(null),
+      '',
       `${who} invited you to join ${workspaceName} on AnyStudio as ${as}.`,
-      'Open this link within 7 days to accept:', link, '',
+      'Open this link within 7 days to accept:',
+      link,
+      '',
       "If you don't know them, ignore this — nothing happens unless the link is opened.",
-      '', SIGNATURE].join('\n'),
-    html: html([greet(null),
-      `<strong>${who}</strong> invited you to join <strong>${workspaceName}</strong> on AnyStudio as ${as}.`,
-      'The link works for 7 days.',
-      "If you don't know them, ignore this email — nothing happens unless the link is opened."],
-      { label: `Join ${workspaceName}`, url: link }),
+      '',
+      SIGNATURE,
+    ].join('\n'),
+    html: html(
+      [
+        greet(null),
+        `<strong>${who}</strong> invited you to join <strong>${workspaceName}</strong> on AnyStudio as ${as}.`,
+        'The link works for 7 days.',
+        "If you don't know them, ignore this email — nothing happens unless the link is opened.",
+      ],
+      { label: `Join ${workspaceName}`, url: link },
+    ),
   };
 }

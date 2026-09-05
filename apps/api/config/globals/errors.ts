@@ -20,28 +20,40 @@ export class AppError extends Error {
 }
 
 export class NotFoundError extends AppError {
-  constructor(what: string) { super('not_found', 404, `${what} not found`); }
+  constructor(what: string) {
+    super('not_found', 404, `${what} not found`);
+  }
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Sign in to continue.') { super('unauthorized', 401, message); }
+  constructor(message = 'Sign in to continue.') {
+    super('unauthorized', 401, message);
+  }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = 'You do not have access to that.') { super('forbidden', 403, message); }
+  constructor(message = 'You do not have access to that.') {
+    super('forbidden', 403, message);
+  }
 }
 
 /** 402 Payment Required is the honest status here, and it is what the UI keys on. */
 export class ConflictError extends AppError {
-  constructor(message: string) { super('conflict', 409, message); }
+  constructor(message: string) {
+    super('conflict', 409, message);
+  }
 }
 
 export class InsufficientCreditsError extends AppError {
-  constructor() { super('insufficient_credits', 402, 'Not enough credits for that. Your work is saved.'); }
+  constructor() {
+    super('insufficient_credits', 402, 'Not enough credits for that. Your work is saved.');
+  }
 }
 
 export class ValidationError extends AppError {
-  constructor(details: Record<string, unknown>) { super('invalid_input', 400, 'Some of that did not look right.', details); }
+  constructor(details: Record<string, unknown>) {
+    super('invalid_input', 400, 'Some of that did not look right.', details);
+  }
 }
 
 export class RateLimitedError extends AppError {

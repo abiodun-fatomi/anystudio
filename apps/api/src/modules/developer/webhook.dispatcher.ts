@@ -28,7 +28,11 @@ const TIMEOUT_MS = 10_000;
 export class WebhookDispatcher implements OnModuleInit {
   private delivering = false;
 
-  constructor(private readonly db: PrismaClient, private readonly hooks: GenerationHooks, private readonly media: MediaService) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly hooks: GenerationHooks,
+    private readonly media: MediaService,
+  ) {}
 
   onModuleInit(): void {
     this.hooks.onFinished((row) => this.onGenerationFinished(row));
@@ -39,7 +43,9 @@ export class WebhookDispatcher implements OnModuleInit {
     if (row.channel !== 'API' || row.kind === 'CHILD') return;
     const event = row.status === 'SUCCEEDED' ? 'generation.succeeded' : row.status === 'FAILED' ? 'generation.failed' : null;
     if (!event) return;
-    const endpoints = await this.db.webhookEndpoint.findMany({ where: { workspaceId: row.workspaceId, active: true, OR: [{ projectId: null }, { projectId: row.projectId ?? undefined }] } });
+    const endpoints = await this.db.webhookEndpoint.findMany({
+      where: { workspaceId: row.workspaceId, active: true, OR: [{ projectId: null }, { projectId: row.projectId ?? undefined }] },
+    });
     const wanted = endpoints.filter((e) => e.events.length === 0 || e.events.includes(event));
     if (wanted.length === 0) return;
     const payload = await this.generationPayload(row);
@@ -49,13 +55,33 @@ export class WebhookDispatcher implements OnModuleInit {
 
   /** The row as the public API returns it, with fresh signed URLs (an hour; the body says so). */
   async generationPayload(row: Generation) {
-    const outputs = redactLocked((row.outputs as Array<{ key: string; role: string; mime: string; bytes?: number; width?: number; height?: number; durationMs?: number; locked?: boolean; text?: unknown }> | null) ?? []);
+    const outputs = redactLocked(
+      (row.outputs as Array<{
+        key: string;
+        role: string;
+        mime: string;
+        bytes?: number;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+        locked?: boolean;
+        text?: unknown;
+      }> | null) ?? [],
+    );
     const keys = outputs.map((o) => o.key).filter(Boolean);
-    const urls = keys.length ? await this.media.readUrls(row.workspaceId, keys).catch(() => ({} as Record<string, string>)) : {};
+    const urls = keys.length ? await this.media.readUrls(row.workspaceId, keys).catch(() => ({}) as Record<string, string>) : {};
     return {
-      id: row.id, status: row.status, capability: row.capability, clientKey: row.clientKey, merchantRef: row.merchantRef, projectId: row.projectId,
-      credits: row.credits, costCode: row.costCode, createdAt: row.createdAt, finishedAt: row.finishedAt,
-      outputs: outputs.map((o) => ({ ...o, url: o.key ? urls[o.key] ?? null : null })),
+      id: row.id,
+      status: row.status,
+      capability: row.capability,
+      clientKey: row.clientKey,
+      merchantRef: row.merchantRef,
+      projectId: row.projectId,
+      credits: row.credits,
+      costCode: row.costCode,
+      createdAt: row.createdAt,
+      finishedAt: row.finishedAt,
+      outputs: outputs.map((o) => ({ ...o, url: o.key ? (urls[o.key] ?? null) : null })),
       urlsExpireInSec: 3600,
       ...(row.status === 'FAILED' ? { failure: { kind: row.failureKind, message: customerMessage(row) } } : {}),
     };
@@ -71,7 +97,12 @@ export class WebhookDispatcher implements OnModuleInit {
     if (this.delivering) return 0;
     this.delivering = true;
     try {
-      const due = await this.db.webhookDelivery.findMany({ where: { status: 'PENDING', nextAttemptAt: { lte: new Date() } }, orderBy: { nextAttemptAt: 'asc' }, take: BATCH, include: { endpoint: true } });
+      const due = await this.db.webhookDelivery.findMany({
+        where: { status: 'PENDING', nextAttemptAt: { lte: new Date() } },
+        orderBy: { nextAttemptAt: 'asc' },
+        take: BATCH,
+        include: { endpoint: true },
+      });
       let sent = 0;
       for (const d of due) if ((await this.attempt(d, d.endpoint)).status === 'SENT') sent++;
       return sent;
@@ -99,8 +130,16 @@ export class WebhookDispatcher implements OnModuleInit {
     try {
       const res = await fetch(endpoint.url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'user-agent': 'AnyStudio-Webhooks/1', 'x-anystudio-signature': signature, 'x-anystudio-event': d.event, 'x-anystudio-delivery': d.id },
-        body, signal: controller.signal, redirect: 'manual',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'AnyStudio-Webhooks/1',
+          'x-anystudio-signature': signature,
+          'x-anystudio-event': d.event,
+          'x-anystudio-delivery': d.id,
+        },
+        body,
+        signal: controller.signal,
+        redirect: 'manual',
       });
       status = res.status;
       if (res.status < 200 || res.status >= 300) error = `HTTP ${res.status}`;
@@ -113,7 +152,10 @@ export class WebhookDispatcher implements OnModuleInit {
     const attempts = d.attempts + 1;
     if (!error) {
       const [row] = await Promise.all([
-        this.db.webhookDelivery.update({ where: { id: d.id }, data: { status: 'SENT', attempts, responseStatus: status, lastError: null, deliveredAt: new Date() } }),
+        this.db.webhookDelivery.update({
+          where: { id: d.id },
+          data: { status: 'SENT', attempts, responseStatus: status, lastError: null, deliveredAt: new Date() },
+        }),
         this.db.webhookEndpoint.update({ where: { id: endpoint.id }, data: { failures: 0, lastDeliveryAt: new Date() } }),
       ]);
       logger.info({ deliveryId: d.id, endpointId: endpoint.id, event: d.event, attempts, status }, 'webhook delivered');
@@ -125,10 +167,26 @@ export class WebhookDispatcher implements OnModuleInit {
     const failures = endpoint.failures + 1;
     const pause = failures >= WEBHOOK_PAUSE_AFTER;
     const [row] = await Promise.all([
-      this.db.webhookDelivery.update({ where: { id: d.id }, data: { status: giveUp ? 'FAILED' : 'PENDING', attempts, responseStatus: status, lastError: error.slice(0, 500), nextAttemptAt } }),
+      this.db.webhookDelivery.update({
+        where: { id: d.id },
+        data: { status: giveUp ? 'FAILED' : 'PENDING', attempts, responseStatus: status, lastError: error.slice(0, 500), nextAttemptAt },
+      }),
       this.db.webhookEndpoint.update({ where: { id: endpoint.id }, data: { failures, lastDeliveryAt: new Date(), ...(pause ? { active: false } : {}) } }),
     ]);
-    logger.warn({ deliveryId: d.id, endpointId: endpoint.id, event: d.event, attempts, status, err: error, giveUp, paused: pause, nextAttemptAt: giveUp ? null : nextAttemptAt }, pause ? 'webhook endpoint paused after repeated failures' : giveUp ? 'webhook delivery abandoned' : 'webhook delivery failed; will retry');
+    logger.warn(
+      {
+        deliveryId: d.id,
+        endpointId: endpoint.id,
+        event: d.event,
+        attempts,
+        status,
+        err: error,
+        giveUp,
+        paused: pause,
+        nextAttemptAt: giveUp ? null : nextAttemptAt,
+      },
+      pause ? 'webhook endpoint paused after repeated failures' : giveUp ? 'webhook delivery abandoned' : 'webhook delivery failed; will retry',
+    );
     return row;
   }
 }

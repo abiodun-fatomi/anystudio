@@ -26,7 +26,18 @@ suite('WhatsappService', () => {
   const ledger = new LedgerService(db);
   const media = new MediaService(db);
   // Media the customer sends is "downloaded" from the null client; ingest is stubbed to record a READY asset without storage.
-  media.ingest = async (workspaceId, userId, bytes, mime) => db.mediaAsset.create({ data: { workspaceId, uploadedById: userId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/${crypto.randomUUID()}.jpg`, mime, bytes: bytes.byteLength } });
+  media.ingest = async (workspaceId, userId, bytes, mime) =>
+    db.mediaAsset.create({
+      data: {
+        workspaceId,
+        uploadedById: userId,
+        kind: 'SOURCE',
+        status: 'READY',
+        key: `${workspaceId}/2026/09/uploads/${crypto.randomUUID()}.jpg`,
+        mime,
+        bytes: bytes.byteLength,
+      },
+    });
   media.readUrls = async (_w, keys) => Object.fromEntries(keys.map((k) => [k, `https://signed/${k}`]));
   const client = new WhatsappClient();
   client.download = async () => ({ bytes: new Uint8Array(2000), mime: 'image/jpeg' });
@@ -34,18 +45,51 @@ suite('WhatsappService', () => {
   const generations = new GenerationService(db, ledger, media, new QueueService(), hooks);
   process.env.APP_ENV = 'test';
   const registry = new ProviderRegistry();
-  const svc = new WhatsappService(db, client, generations, hooks, ledger, media, new AudioService(db, ledger, media), null as unknown as BillingService, registry);
+  const svc = new WhatsappService(
+    db,
+    client,
+    generations,
+    hooks,
+    ledger,
+    media,
+    new AudioService(db, ledger, media),
+    null as unknown as BillingService,
+    registry,
+  );
   svc.onModuleInit(); // subscribe to finished generations, as Nest would
   const waId = () => `234${String(Math.floor(Math.random() * 1e9)).padStart(9, '0')}`;
   const last = () => client.sent.at(-1)!.message;
 
   beforeAll(async () => {
     await db.$connect();
-    for (const c of [{ code: 'image.storefront', credits: 10, label: 'Image' }, { code: 'audio.music.preview', credits: 10, label: 'Preview' }, { code: 'audio.music.unlock', credits: 30, label: 'Unlock' }, { code: 'text.description', credits: 2, label: 'Copy' }]) await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
-    await db.musicGenre.upsert({ where: { key: 'afrobeats' }, create: { key: 'afrobeats', name: 'Afrobeats', region: 'Nigeria', family: 'african', description: 'x', promptHints: 'log drum', languages: ['en'], sort: 1 }, update: {} });
+    for (const c of [
+      { code: 'image.storefront', credits: 10, label: 'Image' },
+      { code: 'audio.music.preview', credits: 10, label: 'Preview' },
+      { code: 'audio.music.unlock', credits: 30, label: 'Unlock' },
+      { code: 'text.description', credits: 2, label: 'Copy' },
+    ])
+      await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
+    await db.musicGenre.upsert({
+      where: { key: 'afrobeats' },
+      create: {
+        key: 'afrobeats',
+        name: 'Afrobeats',
+        region: 'Nigeria',
+        family: 'african',
+        description: 'x',
+        promptHints: 'log drum',
+        languages: ['en'],
+        sort: 1,
+      },
+      update: {},
+    });
   });
-  afterAll(async () => { await db.$disconnect(); });
-  beforeEach(() => { client.sent.length = 0; });
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+  beforeEach(() => {
+    client.sent.length = 0;
+  });
 
   it('a first "hi" creates a user, a workspace and the welcome credits, and answers with the menu', async () => {
     const id = waId();
@@ -72,7 +116,12 @@ suite('WhatsappService', () => {
     expect((row.input as { prompt: string }).prompt).toBe('on a marble counter');
     expect((last() as { text: string }).text).toContain('credits held');
 
-    await generations.succeed(row.id, { outputs: [{ key: `${contact.workspaceId}/out.jpg`, role: 'image', mime: 'image/jpeg' }, { key: `${contact.workspaceId}/story.jpg`, role: 'variant', size: 'story', mime: 'image/jpeg' }] });
+    await generations.succeed(row.id, {
+      outputs: [
+        { key: `${contact.workspaceId}/out.jpg`, role: 'image', mime: 'image/jpeg' },
+        { key: `${contact.workspaceId}/story.jpg`, role: 'variant', size: 'story', mime: 'image/jpeg' },
+      ],
+    });
     await new Promise((r) => setTimeout(r, 400));
     const kinds = client.sent.map((s) => s.message.kind);
     expect(kinds.slice(-3)).toEqual(['image', 'image', 'buttons']);
@@ -98,7 +147,13 @@ suite('WhatsappService', () => {
     const row = await db.generation.findFirstOrThrow({ where: { workspaceId: contact.workspaceId!, capability: 'MUSIC' } });
     expect(row.input).toMatchObject({ genre: 'afrobeats', vocal: 'female', brief: 'my sister Kemi turning 30' });
 
-    await generations.succeed(row.id, { outputs: [{ key: `${contact.workspaceId}/preview.mp3`, role: 'preview', mime: 'audio/mpeg' }, { key: `${contact.workspaceId}/vault/2026/09/gen/x/song.mp3`, role: 'audio', mime: 'audio/mpeg', locked: true }, { key: '', role: 'text', mime: 'application/json', text: { title: 'Thirty and Shining' } }] });
+    await generations.succeed(row.id, {
+      outputs: [
+        { key: `${contact.workspaceId}/preview.mp3`, role: 'preview', mime: 'audio/mpeg' },
+        { key: `${contact.workspaceId}/vault/2026/09/gen/x/song.mp3`, role: 'audio', mime: 'audio/mpeg', locked: true },
+        { key: '', role: 'text', mime: 'application/json', text: { title: 'Thirty and Shining' } },
+      ],
+    });
     await new Promise((r) => setTimeout(r, 400));
     expect(client.sent.at(-2)!.message.kind).toBe('audio');
     const offer = last() as { kind: string; text: string; buttons: Array<{ id: string }> };

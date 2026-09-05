@@ -7,7 +7,10 @@ import { QueueService } from './queue.service';
 
 describe('QueueService', () => {
   const saved = process.env.REDIS_URL;
-  afterEach(() => { if (saved === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = saved; });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = saved;
+  });
 
   it('reports "not queued" with a reason when there is no Redis, instead of throwing', async () => {
     delete process.env.REDIS_URL;

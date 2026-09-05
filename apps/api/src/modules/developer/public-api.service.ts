@@ -34,7 +34,13 @@ const CAPABILITY_BLURB: Record<Capability, string> = {
 
 @Injectable()
 export class PublicApiService {
-  constructor(private readonly db: PrismaClient, private readonly generations: GenerationService, private readonly ledger: LedgerService, private readonly media: MediaService, private readonly webhooks: WebhookDispatcher) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly generations: GenerationService,
+    private readonly ledger: LedgerService,
+    private readonly media: MediaService,
+    private readonly webhooks: WebhookDispatcher,
+  ) {}
 
   /** What can be asked for, what it costs, and the shape of its params — derived from the schemas, never hand-written. */
   async capabilities() {
@@ -42,7 +48,13 @@ export class PublicApiService {
     const price = new Map(costs.map((c) => [c.code, c]));
     return CAPABILITIES.filter((c) => c !== 'VIDEO_STITCH').map((c) => {
       const cost = price.get(DEFAULT_COST_CODE[c]);
-      return { capability: c, description: CAPABILITY_BLURB[c], costCode: DEFAULT_COST_CODE[c], credits: cost?.credits ?? null, params: describeSchema(capabilityParams[c]) };
+      return {
+        capability: c,
+        description: CAPABILITY_BLURB[c],
+        costCode: DEFAULT_COST_CODE[c],
+        credits: cost?.credits ?? null,
+        params: describeSchema(capabilityParams[c]),
+      };
     });
   }
 
@@ -53,9 +65,16 @@ export class PublicApiService {
 
   async create(key: ApiKey, dto: ApiCreateGenerationDto) {
     const { generation, balance } = await this.generations.request({
-      workspaceId: key.workspaceId, requestedById: key.createdById, capability: dto.capability, params: dto.params,
-      clientKey: dto.clientKey ?? `api:${crypto.randomUUID()}`, costCode: dto.costCode,
-      channel: 'API', apiKeyId: key.id, projectId: key.projectId, merchantRef: dto.merchantRef,
+      workspaceId: key.workspaceId,
+      requestedById: key.createdById,
+      capability: dto.capability,
+      params: dto.params,
+      clientKey: dto.clientKey ?? `api:${crypto.randomUUID()}`,
+      costCode: dto.costCode,
+      channel: 'API',
+      apiKeyId: key.id,
+      projectId: key.projectId,
+      merchantRef: dto.merchantRef,
     });
     return { generation: await this.webhooks.generationPayload(generation), balance };
   }
@@ -68,12 +87,30 @@ export class PublicApiService {
   async list(key: ApiKey, q: ApiListGenerationsDto) {
     const limit = q.limit ?? 50;
     const rows = await this.db.generation.findMany({
-      where: { workspaceId: key.workspaceId, projectId: key.projectId, channel: 'API', kind: { not: 'CHILD' }, ...(q.merchantRef ? { merchantRef: q.merchantRef } : {}) },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1, ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      where: {
+        workspaceId: key.workspaceId,
+        projectId: key.projectId,
+        channel: 'API',
+        kind: { not: 'CHILD' },
+        ...(q.merchantRef ? { merchantRef: q.merchantRef } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
     });
     const page = rows.slice(0, limit);
     return {
-      generations: page.map((g) => ({ id: g.id, status: g.status, capability: g.capability, clientKey: g.clientKey, merchantRef: g.merchantRef, credits: g.credits, createdAt: g.createdAt, finishedAt: g.finishedAt, ...(g.status === 'FAILED' ? { failure: { kind: g.failureKind, message: customerMessage(g) } } : {}) })),
+      generations: page.map((g) => ({
+        id: g.id,
+        status: g.status,
+        capability: g.capability,
+        clientKey: g.clientKey,
+        merchantRef: g.merchantRef,
+        credits: g.credits,
+        createdAt: g.createdAt,
+        finishedAt: g.finishedAt,
+        ...(g.status === 'FAILED' ? { failure: { kind: g.failureKind, message: customerMessage(g) } } : {}),
+      })),
       nextCursor: rows.length > limit ? page[page.length - 1]!.id : null,
     };
   }
@@ -109,7 +146,16 @@ export class PublicApiService {
     return row;
   }
 
-  private assetView(a: { id: string; key: string; status: string; mime: string | null; bytes: number | null; width: number | null; height: number | null; filename: string | null }) {
+  private assetView(a: {
+    id: string;
+    key: string;
+    status: string;
+    mime: string | null;
+    bytes: number | null;
+    width: number | null;
+    height: number | null;
+    filename: string | null;
+  }) {
     return { id: a.id, key: a.key, status: a.status, mime: a.mime, bytes: a.bytes, width: a.width, height: a.height, filename: a.filename };
   }
 }
@@ -120,7 +166,9 @@ export class PublicApiService {
  * than using instanceof: the schemas come from the shared package, which
  * may resolve its own copy of zod.
  */
-export function describeSchema(schema: z.ZodTypeAny): Array<{ name: string; type: string; required: boolean; default?: unknown; values?: string[]; description?: string }> {
+export function describeSchema(
+  schema: z.ZodTypeAny,
+): Array<{ name: string; type: string; required: boolean; default?: unknown; values?: string[]; description?: string }> {
   const kind = (s: z.ZodTypeAny): string => String((s._def as { typeName?: string }).typeName ?? '');
   let inner: z.ZodTypeAny = schema;
   while (kind(inner) === 'ZodEffects') inner = (inner._def as { schema: z.ZodTypeAny }).schema;
@@ -132,14 +180,38 @@ export function describeSchema(schema: z.ZodTypeAny): Array<{ name: string; type
     let def: unknown;
     for (;;) {
       const k = kind(f);
-      if (k === 'ZodOptional') { required = false; f = (f._def as { innerType: z.ZodTypeAny }).innerType; continue; }
-      if (k === 'ZodDefault') { required = false; def = (f._def as { defaultValue: () => unknown }).defaultValue(); f = (f._def as { innerType: z.ZodTypeAny }).innerType; continue; }
-      if (k === 'ZodEffects') { f = (f._def as { schema: z.ZodTypeAny }).schema; continue; }
+      if (k === 'ZodOptional') {
+        required = false;
+        f = (f._def as { innerType: z.ZodTypeAny }).innerType;
+        continue;
+      }
+      if (k === 'ZodDefault') {
+        required = false;
+        def = (f._def as { defaultValue: () => unknown }).defaultValue();
+        f = (f._def as { innerType: z.ZodTypeAny }).innerType;
+        continue;
+      }
+      if (k === 'ZodEffects') {
+        f = (f._def as { schema: z.ZodTypeAny }).schema;
+        continue;
+      }
       break;
     }
     const k = kind(f);
-    const values = k === 'ZodEnum' ? ((f._def as { values: string[] }).values) : k === 'ZodLiteral' ? [String((f._def as { value: unknown }).value)] : undefined;
-    const type = ({ ZodString: 'string', ZodNumber: 'number', ZodBoolean: 'boolean', ZodArray: 'array', ZodEnum: 'enum', ZodLiteral: 'literal', ZodObject: 'object', ZodUnion: 'string' } as Record<string, string>)[k] ?? 'unknown';
+    const values = k === 'ZodEnum' ? (f._def as { values: string[] }).values : k === 'ZodLiteral' ? [String((f._def as { value: unknown }).value)] : undefined;
+    const type =
+      (
+        {
+          ZodString: 'string',
+          ZodNumber: 'number',
+          ZodBoolean: 'boolean',
+          ZodArray: 'array',
+          ZodEnum: 'enum',
+          ZodLiteral: 'literal',
+          ZodObject: 'object',
+          ZodUnion: 'string',
+        } as Record<string, string>
+      )[k] ?? 'unknown';
     const description = field.description ?? f.description;
     return { name, type, required, ...(def !== undefined ? { default: def } : {}), ...(values ? { values } : {}), ...(description ? { description } : {}) };
   });

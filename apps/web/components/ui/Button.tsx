@@ -35,14 +35,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   if (href) {
     return (
       <Link href={href} className={cls} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined}>
-        {leading}{children}{trailing}
+        {leading}
+        {children}
+        {trailing}
       </Link>
     );
   }
   return (
-    <button ref={ref} type={type ?? 'button'} className={cls} disabled={disabled || loading} data-loading={loading || undefined} aria-busy={loading || undefined} {...rest}>
+    <button
+      ref={ref}
+      type={type ?? 'button'}
+      className={cls}
+      disabled={disabled || loading}
+      data-loading={loading || undefined}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
       {loading && <span className={styles.spinner} aria-hidden="true" />}
-      {leading}{children}{trailing}
+      {leading}
+      {children}
+      {trailing}
     </button>
   );
 });

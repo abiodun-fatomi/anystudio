@@ -28,7 +28,11 @@ export type AppEnv = 'production' | 'staging' | 'dev' | 'local';
 
 export function surfaceForOrigin(origin: string, env: AppEnv): Surface | null {
   const host = (() => {
-    try { return new URL(origin).host; } catch { return ''; }
+    try {
+      return new URL(origin).host;
+    } catch {
+      return '';
+    }
   })();
 
   const map: Record<typeof env, Record<string, Surface>> = {
@@ -55,4 +59,27 @@ export function surfaceForOrigin(origin: string, env: AppEnv): Surface | null {
   };
 
   return map[env][host] ?? null;
+}
+
+/** The marketing hostname per environment — where the landing and the sign-in pages live. */
+export function marketingHost(env: AppEnv): string {
+  return ({ production: 'anystudio.ai', staging: 'staging.anystudio.ai', dev: 'dev.anystudio.ai', local: 'localhost:3000' } as Record<AppEnv, string>)[env];
+}
+
+/** True when a request comes from the marketing site (sign-in pages), which has no surface of its own. */
+export function isMarketingOrigin(origin: string, env: AppEnv): boolean {
+  let host = '';
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return false;
+  }
+  if (env === 'local') return false; // locally the app host is the landing; no handoff needed
+  const base = marketingHost(env);
+  return host === base || host === `www.${base}`;
+}
+
+/** The APP surface's origin for the environment a marketing request came from. */
+export function appOriginFor(env: AppEnv): string {
+  return env === 'local' ? 'http://localhost:3000' : `https://app.${marketingHost(env)}`;
 }

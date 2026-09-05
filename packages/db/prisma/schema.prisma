@@ -41,16 +41,16 @@ generator client {
 // reads on the day it means something.
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   /// Every request the API serves goes through this one. On Render it is the
   /// database's direct connection string today, and becomes the pgbouncer
   /// pool string the moment more than one instance runs.
-  url        = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   /// Migrations only. They run DDL and take advisory locks, neither of which
   /// survives a transaction pooler, so `migrate deploy` uses this and nothing
   /// else does. Falls back to DATABASE_URL when unset, which is right both
   /// locally and on a Render database with no pool in front of it yet.
-  directUrl  = env("DIRECT_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -60,35 +60,35 @@ datasource db {
 enum UserStatus {
   ACTIVE
   SUSPENDED // blocked by staff; can still sign in to read, cannot generate
-  DELETED   // soft, so the ledger and audit trail stay intact
+  DELETED // soft, so the ledger and audit trail stay intact
 }
 
 /// One person. Credentials live here and on Identity; authority does not.
 /// Nothing in this model says what the user is allowed to do — that comes from
 /// WorkspaceMember (customer authority) and StaffGrant (staff authority).
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
+  id                String     @id @default(uuid()) @db.Uuid
   /// citext: nobody should be locked out because they typed Ada@ instead of ada@
-  email           String?    @unique @db.Citext
-  emailVerifiedAt DateTime?
+  email             String?    @unique @db.Citext
+  emailVerifiedAt   DateTime?
   /// E.164. The free tier is keyed to a verified phone, so this is also the
   /// abuse boundary, not just a contact detail.
-  phone           String?    @unique
-  phoneVerifiedAt DateTime?
+  phone             String?    @unique
+  phoneVerifiedAt   DateTime?
   /// Whether that phone is reachable on WhatsApp. Functional, NOT consent to
   /// market — marketing consent is a Consent row and is asked separately.
-  phoneIsWhatsApp Boolean    @default(false)
-  name            String?
+  phoneIsWhatsApp   Boolean    @default(false)
+  name              String?
   /// Storage key of a READY MediaAsset the person uploaded as their picture.
-  avatarKey       String?
+  avatarKey         String?
   /// BCP 47 (en, fr, pt-BR, yo). Drives the copy pipeline's default language
   /// and the UI once it is translated; null means "whatever the browser says".
-  locale          String?
+  locale            String?
   /// IANA zone, for "sent at 9am your time" and the security screen's timestamps.
-  timezone        String?
+  timezone          String?
   /// Notification switches. JSON because the set of switches will change more
   /// often than we want to migrate; the shape is documented in account.dto.ts.
-  prefs           Json?
+  prefs             Json?
   /// Set when the person asks to delete the account. Thirty days later a
   /// scheduled job anonymises it; signing in and cancelling before then clears
   /// this. Nothing is destroyed at request time, because most requests are
@@ -96,31 +96,32 @@ model User {
   deleteRequestedAt DateTime?
   /// Argon2id. Null for accounts that only ever used Google, WhatsApp or a
   /// passkey — absence of a password must never mean "any password works".
-  passwordHash    String?
-  status          UserStatus @default(ACTIVE)
+  passwordHash      String?
+  status            UserStatus @default(ACTIVE)
   /// Bumped on password change, MFA removal and "sign out everywhere". Any
   /// session or refresh token minted before this instant is dead on arrival.
-  credentialEpoch Int        @default(0)
-  lastLoginAt     DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  deletedAt       DateTime?
+  credentialEpoch   Int        @default(0)
+  lastLoginAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
 
-  identities       Identity[]
-  mfaFactors       MfaFactor[]
-  recoveryCodes    RecoveryCode[]
-  sessions         Session[]
-  staffGrants      StaffGrant[]      @relation("StaffSubject")
-  grantsIssued     StaffGrant[]      @relation("StaffGrantor")
-  workspaceMembers WorkspaceMember[]
-  onboarding       OnboardingState[]
-  consents         Consent[]
-  authEvents       AuthEvent[]
-  generations      Generation[]
-  apiKeysCreated   ApiKey[]
-  whatsappContacts WhatsappContact[]
-  notifications    Notification[]
-  platformReads    PlatformMessageRead[]
+  identities           Identity[]
+  mfaFactors           MfaFactor[]
+  recoveryCodes        RecoveryCode[]
+  sessions             Session[]
+  staffGrants          StaffGrant[]          @relation("StaffSubject")
+  grantsIssued         StaffGrant[]          @relation("StaffGrantor")
+  workspaceMembers     WorkspaceMember[]
+  onboarding           OnboardingState[]
+  consents             Consent[]
+  authEvents           AuthEvent[]
+  generations          Generation[]
+  apiKeysCreated       ApiKey[]
+  whatsappContacts     WhatsappContact[]
+  notifications        Notification[]
+  supportConversations SupportConversation[]
+  platformReads        PlatformMessageRead[]
 
   @@index([status])
   @@map("users")
@@ -167,18 +168,18 @@ enum MfaType {
 /// enforced in application code, because "at least one of a filtered set" is
 /// not a constraint the database can express.
 model MfaFactor {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  type        MfaType
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  type         MfaType
   /// TOTP seed, encrypted with the app key. Never the raw seed.
-  secretEnc   String?
+  secretEnc    String?
   credentialId String?
-  label       String?
+  label        String?
   /// Unconfirmed factors do not count. A half-finished TOTP setup must never
   /// be the thing standing between an attacker and the admin console.
-  confirmedAt DateTime?
-  lastUsedAt  DateTime?
-  createdAt   DateTime  @default(now())
+  confirmedAt  DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -206,8 +207,8 @@ model RecoveryCode {
 // ---------------------------------------------------------------------------
 
 enum Surface {
-  APP   // app.anystudio.ai      — a person's own workspaces
-  ORG   // org.anystudio.ai      — organization members
+  APP // app.anystudio.ai      — a person's own workspaces
+  ORG // org.anystudio.ai      — organization members
   ADMIN // admin.anystudio.ai    — staff only, MFA always
 }
 
@@ -217,24 +218,24 @@ enum Surface {
 /// instant for staff, and a stateless token cannot be taken back. The cost is a
 /// lookup per request, which is one indexed read.
 model Session {
-  id        String  @id @default(uuid()) @db.Uuid
-  userId    String  @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
   /// The surface this session was minted FOR. An APP session presented to the
   /// admin API is rejected — not upgraded, not re-prompted. Rejected.
-  surface   Surface
+  surface         Surface
   /// SHA-256 of the session token. The plaintext exists only in the cookie.
-  tokenHash String  @unique
+  tokenHash       String    @unique
   /// Refresh tokens rotate on every use and belong to a family. Presenting an
   /// already-rotated token means it was stolen, so the whole family dies.
-  refreshHash   String? @unique
-  refreshFamily String? @db.Uuid
+  refreshHash     String?   @unique
+  refreshFamily   String?   @db.Uuid
   /// 0 = password only, 1 = plus a verified factor, 2 = a factor within the
   /// step-up window. Admin sessions are minted at 2 and decay to 1.
-  mfaLevel      Int     @default(0)
-  lastStepUpAt  DateTime?
+  mfaLevel        Int       @default(0)
+  lastStepUpAt    DateTime?
   /// Snapshot of User.credentialEpoch at mint. A mismatch kills the session,
   /// which is how "sign out everywhere" works without walking every row.
-  credentialEpoch Int   @default(0)
+  credentialEpoch Int       @default(0)
 
   ip        String?
   userAgent String?
@@ -242,12 +243,12 @@ model Session {
   /// Lagos" without building a location history of our own customers.
   geoLabel  String?
 
-  createdAt        DateTime  @default(now())
-  lastSeenAt       DateTime  @default(now())
-  idleExpiresAt    DateTime
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  idleExpiresAt     DateTime
   absoluteExpiresAt DateTime
-  revokedAt        DateTime?
-  revokedReason    String?
+  revokedAt         DateTime?
+  revokedReason     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -269,24 +270,26 @@ enum TokenPurpose {
   WORKSPACE_INVITE
   ORG_INVITE
   EMAIL_CHANGE
+  /// One-time, one-minute: a sign-in completed on the marketing host, redeemed on the app host for the real session.
+  SESSION_HANDOFF
 }
 
 model AuthToken {
-  id         String       @id @default(uuid()) @db.Uuid
-  purpose    TokenPurpose
+  id          String       @id @default(uuid()) @db.Uuid
+  purpose     TokenPurpose
   /// Hashed. A reset link in a log or a support screenshot must be inert.
-  tokenHash  String       @unique
-  userId     String?      @db.Uuid
+  tokenHash   String       @unique
+  userId      String?      @db.Uuid
   /// For invitations, where the recipient has no account yet.
-  email      String?      @db.Citext
-  phone      String?
-  payload    Json?
-  attempts   Int          @default(0)
-  maxAttempts Int         @default(5)
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime     @default(now())
-  createdIp  String?
+  email       String?      @db.Citext
+  phone       String?
+  payload     Json?
+  attempts    Int          @default(0)
+  maxAttempts Int          @default(5)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  createdIp   String?
 
   @@index([userId, purpose])
   @@index([expiresAt])
@@ -298,9 +301,9 @@ model AuthToken {
 // ---------------------------------------------------------------------------
 
 enum StaffRole {
-  SUPPORT    // read, resend verification, read-only impersonation
-  OPERATOR   // + re-run jobs, refund up to a cap, resolve abuse flags
-  ADMIN      // + provider routing, plans and pricing, org limits
+  SUPPORT // read, resend verification, read-only impersonation
+  OPERATOR // + re-run jobs, refund up to a cap, resolve abuse flags
+  ADMIN // + provider routing, plans and pricing, org limits
   SUPERADMIN // + manage staff grants
 }
 
@@ -310,18 +313,18 @@ enum StaffRole {
 /// optional expiry and a revocation, and every one of those is something you
 /// need in an incident review. A boolean tells you nothing afterwards.
 model StaffGrant {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  role      StaffRole
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  role        StaffRole
   /// Nobody grants themselves staff access — enforced in the policy layer, and
   /// visible here because grantedById is never equal to userId in valid data.
-  grantedById String  @db.Uuid
+  grantedById String    @db.Uuid
   reason      String
   /// Contractors and temporary escalations should expire on their own.
   expiresAt   DateTime?
   revokedAt   DateTime?
-  revokedById String?  @db.Uuid
-  createdAt   DateTime @default(now())
+  revokedById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
 
   user      User @relation("StaffSubject", fields: [userId], references: [id], onDelete: Cascade)
   grantedBy User @relation("StaffGrantor", fields: [grantedById], references: [id])
@@ -358,18 +361,18 @@ model Workspace {
   createdAt DateTime      @default(now())
   deletedAt DateTime?
 
-  members    WorkspaceMember[]
-  onboarding  OnboardingState[]
-  wallet      Wallet?
-  generations Generation[]
-  media       MediaAsset[]
-  brandKit    BrandKit?
-  fingerprints CopyFingerprint[]
-  payments      Payment[]
-  subscriptions Subscription[]
-  projects      Project[]
-  apiKeys       ApiKey[]
-  webhooks      WebhookEndpoint[]
+  members          WorkspaceMember[]
+  onboarding       OnboardingState[]
+  wallet           Wallet?
+  generations      Generation[]
+  media            MediaAsset[]
+  brandKit         BrandKit?
+  fingerprints     CopyFingerprint[]
+  payments         Payment[]
+  subscriptions    Subscription[]
+  projects         Project[]
+  apiKeys          ApiKey[]
+  webhooks         WebhookEndpoint[]
   whatsappContacts WhatsappContact[]
 
   @@index([type])
@@ -405,17 +408,17 @@ enum ConsentChannel {
 /// message, and requires the business to be able to produce it. So we store the
 /// EXACT WORDING SHOWN, not a version pointer to text we will later edit.
 model Consent {
-  id          String         @id @default(uuid()) @db.Uuid
-  userId      String         @db.Uuid
-  channel     ConsentChannel
-  granted     Boolean
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  channel   ConsentChannel
+  granted   Boolean
   /// Verbatim copy of the sentence the person ticked.
-  wording     String
+  wording   String
   /// Where it happened — the signup page, the settings screen, a WhatsApp keyword.
-  sourceUrl   String?
-  ip          String?
-  userAgent   String?
-  createdAt   DateTime       @default(now())
+  sourceUrl String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime       @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -535,7 +538,7 @@ model AuthEvent {
 
 /// What one operation costs a customer, in credits.
 model CreditCost {
-  code      String   @id  /// e.g. "video.reel"
+  code      String   @id /// e.g. "video.reel"
   credits   Int
   label     String
   updatedAt DateTime @updatedAt
@@ -546,23 +549,23 @@ model CreditCost {
 /// A subscription tier. Prices are fixed per market and never converted at the
 /// day's rate, so a seller budgeting in naira sees the same number every month.
 model Plan {
-  code          String   @id
-  credits       Int
+  code                String   @id
+  credits             Int
   /// { "USD": 29, "NGN": 39000, "GBP": 24 }
-  priceByMarket Json
+  priceByMarket       Json
   /// Yearly price per market, when the plan can be billed yearly. Null = monthly only.
   yearlyPriceByMarket Json?
   /// The gateway's own ids for this plan, set from the admin console once the
   /// products exist there: { "paddle": { "month": "pri_…", "year": "pri_…" },
   ///                         "flutterwave": { "month": 12345, "year": 12346 } }
   /// A plan with no ref for a gateway cannot be bought through that gateway.
-  providerRefs  Json?
+  providerRefs        Json?
   /// Shown on the plans page, in order. A plan that is not for sale is still a row (old invoices).
-  active        Boolean  @default(true)
-  sort          Int      @default(100)
+  active              Boolean  @default(true)
+  sort                Int      @default(100)
   /// Effective-dated so historical invoices still reconcile after a price change.
-  effectiveFrom DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  effectiveFrom       DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   subscriptions Subscription[]
 
@@ -652,9 +655,9 @@ enum PaymentProvider {
 }
 
 enum PaymentKind {
-  PACK          // one-time credits
-  SUBSCRIPTION  // the first charge of a plan
-  RENEWAL       // a later charge of a plan, raised by the gateway
+  PACK // one-time credits
+  SUBSCRIPTION // the first charge of a plan
+  RENEWAL // a later charge of a plan, raised by the gateway
 }
 
 enum PaymentStatus {
@@ -665,34 +668,34 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id           String          @id @default(uuid()) @db.Uuid
-  workspaceId  String          @db.Uuid
+  id              String          @id @default(uuid()) @db.Uuid
+  workspaceId     String          @db.Uuid
   /// Who pressed the button. Null for gateway-raised renewals.
-  userId       String?         @db.Uuid
-  provider     PaymentProvider
-  kind         PaymentKind
-  status       PaymentStatus   @default(PENDING)
+  userId          String?         @db.Uuid
+  provider        PaymentProvider
+  kind            PaymentKind
+  status          PaymentStatus   @default(PENDING)
   /// Our reference, sent to the gateway (tx_ref / custom_data) and matched on the way back.
-  reference    String          @unique
+  reference       String          @unique
   /// The gateway's id for the charge (Flutterwave transaction id, Paddle txn_…).
-  providerRef  String?
+  providerRef     String?
   /// Plan or pack code, and for plans the billing interval.
-  itemCode     String
-  interval     String?
-  credits      Int
+  itemCode        String
+  interval        String?
+  credits         Int
   /// What the server priced it at, in minor units. The webhook must agree.
-  amountMinor  Int
-  currency     String
-  checkoutUrl  String?
+  amountMinor     Int
+  currency        String
+  checkoutUrl     String?
   /// What the gateway told us at verification time — never card data.
   providerPayload Json?
   /// The ledger row that granted the credits, once it exists.
-  ledgerEntryId String?        @db.Uuid
-  subscriptionId String?       @db.Uuid
-  failureReason String?
-  refundedAt   DateTime?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  ledgerEntryId   String?         @db.Uuid
+  subscriptionId  String?         @db.Uuid
+  failureReason   String?
+  refundedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
@@ -719,7 +722,7 @@ model Subscription {
   /// Paddle sub_… or Flutterwave subscription id. Null until the gateway has told us.
   providerRef        String?
   planCode           String
-  interval           String             /// month | year
+  interval           String /// month | year
   status             SubscriptionStatus @default(ACTIVE)
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
@@ -786,27 +789,27 @@ enum ProviderCapability {
 /// video does not demote it for images. `priority` picks the default and the
 /// fallback order; `enabled` is the switch an operator throws during an outage.
 model ProviderModel {
-  key         String             /// "vertex:gemini-3-pro-image" — what the adapter registry answers to
-  capability  ProviderCapability
-  priority    Int                @default(10)
+  key             String /// "vertex:gemini-3-pro-image" — what the adapter registry answers to
+  capability      ProviderCapability
+  priority        Int                @default(10)
   /// Our cost per call in minor units of the billing currency — the input to
   /// the margin figure on the operations dashboard.
-  costPerCall Int
-  enabled     Boolean            @default(true)
+  costPerCall     Int
+  enabled         Boolean            @default(true)
   /// Set by the circuit breaker; cleared automatically or by an operator.
   breakerOpenedAt DateTime?
   /// When set, this row only serves workspaces of this type. An ORGANIZATION
   /// tier can be routed to a provider with licensed training data while the
   /// personal tier uses the cheap one — as a row, not a branch in code.
-  workspaceType WorkspaceType?
+  workspaceType   WorkspaceType?
   /// Vendor-specific settings the adapter reads: model id, endpoint, defaults.
   /// Changing a model version is an edit here, not a deploy.
-  config      Json?
+  config          Json?
   /// The commercial-resale terms this row was approved under, in prose, with
   /// a date. A row with no note has not been checked and must not be enabled
   /// for customer traffic.
-  licenceNote String?
-  updatedAt   DateTime           @updatedAt
+  licenceNote     String?
+  updatedAt       DateTime           @updatedAt
 
   @@id([key, capability])
   @@index([capability, enabled, priority])
@@ -840,11 +843,11 @@ model Wallet {
 }
 
 enum LedgerKind {
-  PURCHASE   // credits bought or granted by a plan renewal
-  DEBIT      // spent on a generation
-  REFUND     // returned after a failed generation
-  PROMO      // free tier, campaigns
-  EXPIRY     // plan credits that lapsed
+  PURCHASE // credits bought or granted by a plan renewal
+  DEBIT // spent on a generation
+  REFUND // returned after a failed generation
+  PROMO // free tier, campaigns
+  EXPIRY // plan credits that lapsed
   ADJUSTMENT // staff correction — always with a reason, never an edit
 }
 
@@ -895,23 +898,23 @@ model LedgerEntry {
 // ---------------------------------------------------------------------------
 
 enum GenerationStatus {
-  QUEUED    // row written, credits debited, nothing dispatched yet
-  RUNNING   // a worker owns it and has called the provider
+  QUEUED // row written, credits debited, nothing dispatched yet
+  RUNNING // a worker owns it and has called the provider
   SUCCEEDED // outputs stored; the debit stands
-  FAILED    // ended badly; credits refunded
+  FAILED // ended badly; credits refunded
   CANCELLED // withdrawn before a provider was called; credits refunded
 }
 
 /// One request for generated media, from click to outputs.
 enum GenerationKind {
   STANDALONE // one request, one result
-  PARENT     // a plan whose work is done by its children — a 30-second ad
-  CHILD      // one shot of a parent; refunded and retried on its own
+  PARENT // a plan whose work is done by its children — a 30-second ad
+  CHILD // one shot of a parent; refunded and retried on its own
 }
 
 model Generation {
-  id          String @id @default(uuid()) @db.Uuid
-  workspaceId String @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
+  workspaceId   String @db.Uuid
   /// Who asked. Kept even after they leave the workspace — the ledger entry
   /// points at this row, and an audit that cannot name a person is not one.
   requestedById String @db.Uuid
@@ -934,14 +937,14 @@ model Generation {
   /// What it actually cost, captured at request time. Prices are rows and
   /// operators change them; a later change must never rewrite what this
   /// customer was charged.
-  credits Int
+  credits  Int
 
   status GenerationStatus @default(QUEUED)
 
   /// The routable model that served it, e.g. "higgsfield:kling3_0". Null until
   /// routed, so a provider outage that prevents routing is still a real row
   /// with a real refund rather than a silent nothing.
-  providerKey String?
+  providerKey   String?
   /// The provider's own job id. The only way to reconcile a charge on their
   /// invoice with a generation on ours, and what support asks for first.
   providerJobId String?
@@ -996,11 +999,11 @@ model Generation {
   // ---- channel
   /// Where the request came from. The web studio, an organization's API key,
   /// or the WhatsApp bot — each delivers the result differently.
-  channel    GenerationChannel @default(WEB)
+  channel     GenerationChannel @default(WEB)
   /// For API requests: the key and project that made them, so usage can be
   /// metered per project and a revoked key's history stays attributable.
-  apiKeyId   String?   @db.Uuid
-  projectId  String?   @db.Uuid
+  apiKeyId    String?           @db.Uuid
+  projectId   String?           @db.Uuid
   /// The organization's own reference for the merchant this was made for
   /// (their customer id, a store slug). Opaque to us; fair-use limits and
   /// usage rollups group by it.
@@ -1010,13 +1013,13 @@ model Generation {
   startedAt  DateTime?
   finishedAt DateTime?
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  requestedBy User      @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requestedBy User         @relation(fields: [requestedById], references: [id], onDelete: Restrict)
   parent      Generation?  @relation("GenerationChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children    Generation[] @relation("GenerationChildren")
   assets      MediaAsset[]
-  apiKey      ApiKey?   @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
-  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  apiKey      ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   /// One row per client request, per workspace.
   @@unique([workspaceId, clientKey])
@@ -1053,14 +1056,14 @@ enum GenerationChannel {
 // ---------------------------------------------------------------------------
 
 enum MediaKind {
-  SOURCE  // uploaded by a customer
-  OUTPUT  // produced by a generation
+  SOURCE // uploaded by a customer
+  OUTPUT // produced by a generation
   DERIVED // thumbnails, proxies, masks — recreatable, expendable
 }
 
 enum MediaStatus {
-  PENDING  // presigned, not yet seen
-  READY    // verified and usable
+  PENDING // presigned, not yet seen
+  READY // verified and usable
   REJECTED // wrong type, too large, or failed the content gate
 }
 
@@ -1214,20 +1217,20 @@ model ApiKey {
 
 /// Where an organization wants to hear that a generation finished.
 model WebhookEndpoint {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @db.Uuid
   /// Null: every project in the workspace.
-  projectId   String?   @db.Uuid
-  url         String
+  projectId      String?   @db.Uuid
+  url            String
   /// HMAC-SHA256 signing secret, generated by us and shown once.
-  secret      String
+  secret         String
   /// "generation.succeeded", "generation.failed" — empty means all.
-  events      String[]
-  active      Boolean   @default(true)
+  events         String[]
+  active         Boolean   @default(true)
   /// Consecutive failed deliveries; the endpoint is paused past a threshold.
-  failures    Int       @default(0)
+  failures       Int       @default(0)
   lastDeliveryAt DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
 
   workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project    Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1244,18 +1247,18 @@ enum WebhookDeliveryStatus {
 }
 
 model WebhookDelivery {
-  id          String                @id @default(uuid()) @db.Uuid
-  endpointId  String                @db.Uuid
-  event       String
+  id             String                @id @default(uuid()) @db.Uuid
+  endpointId     String                @db.Uuid
+  event          String
   /// The body as sent, so a replay sends exactly what was signed.
-  payload     Json
-  status      WebhookDeliveryStatus @default(PENDING)
-  attempts    Int                   @default(0)
-  nextAttemptAt DateTime            @default(now())
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  nextAttemptAt  DateTime              @default(now())
   responseStatus Int?
-  lastError   String?
-  createdAt   DateTime              @default(now())
-  deliveredAt DateTime?
+  lastError      String?
+  createdAt      DateTime              @default(now())
+  deliveredAt    DateTime?
 
   endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
 
@@ -1275,22 +1278,22 @@ model WebhookDelivery {
 // ---------------------------------------------------------------------------
 
 model WhatsappContact {
-  id          String    @id @default(uuid()) @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
   /// The WhatsApp id: the phone in E.164 without the plus.
-  waId        String    @unique
-  userId      String?   @db.Uuid
-  workspaceId String?   @db.Uuid
-  name        String?
+  waId           String    @unique
+  userId         String?   @db.Uuid
+  workspaceId    String?   @db.Uuid
+  name           String?
   /// The conversation: { flow, step, data }. Free-form; the bot owns its shape.
-  state       Json?
+  state          Json?
   lastInboundAt  DateTime?
   lastOutboundAt DateTime?
   /// True once they asked the bot to stop. Nothing is sent until they write again.
-  optedOut    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
+  optedOut       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
 
-  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   messages  WhatsappMessage[]
 
   @@index([userId])
@@ -1303,15 +1306,15 @@ enum WhatsappDirection {
 }
 
 model WhatsappMessage {
-  id          String            @id @default(uuid()) @db.Uuid
-  contactId   String            @db.Uuid
+  id           String            @id @default(uuid()) @db.Uuid
+  contactId    String            @db.Uuid
   /// Meta's message id (wamid.…). Unique so a redelivered webhook is a no-op.
-  waMessageId String?           @unique
-  direction   WhatsappDirection
-  type        String
-  body        Json
-  generationId String?          @db.Uuid
-  createdAt   DateTime          @default(now())
+  waMessageId  String?           @unique
+  direction    WhatsappDirection
+  type         String
+  body         Json
+  generationId String?           @db.Uuid
+  createdAt    DateTime          @default(now())
 
   contact WhatsappContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
@@ -1395,4 +1398,67 @@ model PlatformMessageRead {
 
   @@id([messageId, userId])
   @@map("platform_message_reads")
+}
+
+// ---------------------------------------------------------------------------
+// Help & support: the chat floater. A conversation belongs to a person (and
+// the workspace they were in); the assistant answers first, staff can step in
+// from the console, and closing it mails the transcript.
+// ---------------------------------------------------------------------------
+
+enum SupportStatus {
+  OPEN
+  CLOSED
+}
+
+enum SupportRole {
+  USER
+  ASSISTANT
+  STAFF
+  SYSTEM
+}
+
+model SupportConversation {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  workspaceId      String?       @db.Uuid
+  status           SupportStatus @default(OPEN)
+  /// The assistant's one-line summary of what this is about, set from the first message.
+  topic            String?
+  /// The app path the person was on when they opened it.
+  page             String?
+  /// The assistant said it could not resolve this, or the person asked for a human.
+  needsHuman       Boolean       @default(false)
+  /// Set once a staff member has written in it.
+  staffJoinedAt    DateTime?
+  messageCount     Int           @default(0)
+  lastMessageAt    DateTime      @default(now())
+  closedAt         DateTime?
+  /// Who closed it: the person, staff, or the sweeper.
+  closedBy         String?
+  transcriptSentAt DateTime?
+  createdAt        DateTime      @default(now())
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@index([userId, status])
+  @@index([status, needsHuman, lastMessageAt])
+  @@index([lastMessageAt])
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @db.Uuid
+  role           SupportRole
+  text           String
+  /// For STAFF: the staff user's id and name. For ASSISTANT: model and usage.
+  meta           Json?
+  createdAt      DateTime    @default(now())
+
+  conversation SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("support_messages")
 }

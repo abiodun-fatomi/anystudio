@@ -22,17 +22,31 @@ function Verify() {
 
   useEffect(() => {
     const token = params.get('token');
-    if (!token) { setState('invalid'); return; }
+    if (!token) {
+      setState('invalid');
+      return;
+    }
     window.history.replaceState(null, '', '/verify');
     let live = true;
-    api.auth.verify(token)
-      .then((r) => { if (live) setState(r.status === 'verified' ? 'done' : 'invalid'); })
-      .catch(() => { if (live) setState('invalid'); });
-    return () => { live = false; };
+    api.auth
+      .verify(token)
+      .then((r) => {
+        if (live) setState(r.status === 'verified' ? 'done' : 'invalid');
+      })
+      .catch(() => {
+        if (live) setState('invalid');
+      });
+    return () => {
+      live = false;
+    };
   }, [params]);
 
   if (state === 'working') {
-    return <p style={{ color: 'var(--muted)' }} aria-live="polite">Confirming your email…</p>;
+    return (
+      <p style={{ color: 'var(--muted)' }} aria-live="polite">
+        Confirming your email…
+      </p>
+    );
   }
 
   if (state === 'done') {
@@ -42,7 +56,9 @@ function Verify() {
         <p style={{ color: 'var(--muted)', marginTop: 10, lineHeight: 1.55 }}>
           That&apos;s the recovery path sorted — if you ever lose your password, we can get you back in.
         </p>
-        <Link href="/today" className="btn" style={{ marginTop: 22 }}>Open my studio</Link>
+        <Link href="/today" className="btn" style={{ marginTop: 22 }}>
+          Open my studio
+        </Link>
       </div>
     );
   }
@@ -53,12 +69,18 @@ function Verify() {
       <p style={{ color: 'var(--muted)', marginTop: 10, lineHeight: 1.55 }}>
         Confirmation links work once, and for 24 hours. Sign in and we&apos;ll send you a fresh one.
       </p>
-      <Link href="/login" className="btn" style={{ marginTop: 22 }}>Sign in</Link>
+      <Link href="/login" className="btn" style={{ marginTop: 22 }}>
+        Sign in
+      </Link>
     </div>
   );
 }
 
 export default function VerifyPage() {
   // useSearchParams needs a Suspense boundary under the App Router.
-  return <Suspense fallback={null}><Verify /></Suspense>;
+  return (
+    <Suspense fallback={null}>
+      <Verify />
+    </Suspense>
+  );
 }

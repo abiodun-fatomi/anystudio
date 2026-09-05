@@ -6,7 +6,9 @@ import { GoogleProvider, safeReturnPath } from './google.provider';
 const provider = () => new GoogleProvider({} as never);
 
 describe('GoogleProvider handshake', () => {
-  beforeAll(() => { process.env.GOOGLE_CLIENT_ID = 'test.apps.googleusercontent.com'; });
+  beforeAll(() => {
+    process.env.GOOGLE_CLIENT_ID = 'test.apps.googleusercontent.com';
+  });
 
   it('derives the callback from the origin that started the flow', () => {
     expect(provider().redirectUri('https://app.dev.anystudio.ai')).toBe('https://app.dev.anystudio.ai/api/v1/auth/google/callback');
@@ -60,8 +62,7 @@ describe('safeReturnPath', () => {
     // The double slash is the obvious one. The backslash is the one that gets
     // missed: browsers normalise it, so "/\evil" resolves exactly like
     // "//evil" and turns the callback into an open redirect.
-    for (const hostile of ['//evil.example', '/\\evil.example', '/\\\\evil.example', '\\\\evil.example',
-                           'https://evil.example', '//evil.example/path']) {
+    for (const hostile of ['//evil.example', '/\\evil.example', '/\\\\evil.example', '\\\\evil.example', 'https://evil.example', '//evil.example/path']) {
       expect(safeReturnPath(hostile), hostile).toBe('/');
     }
   });

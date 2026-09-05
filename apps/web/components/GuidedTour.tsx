@@ -134,13 +134,7 @@ export function GuidedTour() {
   const pad = 8;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tour-title"
-      aria-describedby="tour-body"
-      className="tour-root"
-    >
+    <div role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" className="tour-root">
       {/* The scrim is one element with a cut-out, rather than four positioned
           strips — fewer moving parts, and it animates as one shape. */}
       <div

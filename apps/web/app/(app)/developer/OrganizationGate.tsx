@@ -27,17 +27,45 @@ export function OrganizationGate({ children }: { children: ReactNode }) {
       switchWorkspace(ws.id);
       setOpen(false);
       toast({ title: `${ws.name} created`, body: 'You are now in it. Create a project and mint a key.', tone: 'ok' });
-    } catch (e) { toast({ title: 'Could not create it', body: e instanceof Error ? e.message : undefined, tone: 'danger' }); }
-    finally { setBusy(false); }
+    } catch (e) {
+      toast({ title: 'Could not create it', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <>
-      <EmptyState icon={<Icon.code />} title="The API is for organizations"
+      <EmptyState
+        icon={<Icon.code />}
+        title="The API is for organizations"
         body={`${workspace.name} is a ${workspace.type === 'BUSINESS' ? 'business' : 'personal'} workspace. Building a storefront, a marketplace or an app on top of the studio? Create an organization workspace — it gets its own credits, projects, API keys and webhooks, and this section.`}
-        actions={<><Button onClick={() => setOpen(true)}>Create an organization</Button><Button variant="ghost" href="/studio">Back to the studio</Button></>} />
-      <Dialog open={open} onClose={() => setOpen(false)} title="New organization" description="A workspace for your company's integration. You own it; invite your engineers from Settings → Workspace." locked={busy}
-        footer={<><Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button><Button onClick={create} loading={busy} disabled={name.trim().length < 2}>Create</Button></>}>
+        actions={
+          <>
+            <Button onClick={() => setOpen(true)}>Create an organization</Button>
+            <Button variant="ghost" href="/studio">
+              Back to the studio
+            </Button>
+          </>
+        }
+      />
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New organization"
+        description="A workspace for your company's integration. You own it; invite your engineers from Settings → Workspace."
+        locked={busy}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={create} loading={busy} disabled={name.trim().length < 2}>
+              Create
+            </Button>
+          </>
+        }
+      >
         <Input label="Organization name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Commerce" maxLength={80} autoFocus />
       </Dialog>
     </>

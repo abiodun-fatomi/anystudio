@@ -19,11 +19,16 @@ import { TYPE_OF } from '../library/library.service';
 
 const DAY_MS = 24 * 3600_000;
 
-export interface InsightsQuery { days: number }
+export interface InsightsQuery {
+  days: number;
+}
 
 @Injectable()
 export class InsightsService {
-  constructor(private readonly db: PrismaClient, private readonly ledger: LedgerService) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly ledger: LedgerService,
+  ) {}
 
   async overview(workspaceId: string, q: InsightsQuery) {
     const days = Math.min(Math.max(q.days, 7), 365);
@@ -87,7 +92,10 @@ export class InsightsService {
     for (const r of daily) {
       const k = r.day.toISOString().slice(0, 10);
       const d = byDay.get(k) ?? { made: 0, failed: 0, credits: 0 };
-      if (r.status === 'SUCCEEDED') { d.made += r.count; d.credits += r.credits; } else if (r.status === 'FAILED') d.failed += r.count;
+      if (r.status === 'SUCCEEDED') {
+        d.made += r.count;
+        d.credits += r.credits;
+      } else if (r.status === 'FAILED') d.failed += r.count;
       byDay.set(k, d);
     }
     for (let i = days - 1; i >= 0; i--) {
@@ -102,7 +110,9 @@ export class InsightsService {
     for (const r of byCapability) {
       const t = TYPE_OF[r.capability] ?? 'image';
       const b = byType[t] ?? { count: 0, credits: 0, failed: 0 };
-      b.count += r.count; b.credits += r.credits; b.failed += r.failed;
+      b.count += r.count;
+      b.credits += r.credits;
+      b.failed += r.failed;
       byType[t] = b;
     }
     const ledger = Object.fromEntries(ledgerByKind.map((r) => [r.kind, r.total]));
@@ -113,7 +123,9 @@ export class InsightsService {
     return {
       range: { days, from: since.toISOString(), to: now.toISOString() },
       totals: {
-        made, failed, credits,
+        made,
+        failed,
+        credits,
         successRate: made + failed > 0 ? Math.round((made / (made + failed)) * 100) : null,
         refunded: ledger.REFUND ?? 0,
         bought: (ledger.PURCHASE ?? 0) + (ledger.PROMO ?? 0),
@@ -123,7 +135,11 @@ export class InsightsService {
       series,
       byType,
       byCapability: byCapability.map((r) => ({ capability: r.capability, type: TYPE_OF[r.capability], count: r.count, credits: r.credits, failed: r.failed })),
-      timing: timing.map((t) => ({ capability: t.capability, p50Sec: t.p50 === null ? null : Math.round(Number(t.p50)), p90Sec: t.p90 === null ? null : Math.round(Number(t.p90)) })),
+      timing: timing.map((t) => ({
+        capability: t.capability,
+        p50Sec: t.p50 === null ? null : Math.round(Number(t.p50)),
+        p90Sec: t.p90 === null ? null : Math.round(Number(t.p90)),
+      })),
       library: library[0] ?? { total: 0, added: 0, images: 0, videos: 0, copy: 0, sources: 0 },
       topProducts,
       /** Filled by the publishing phase: engagement per published asset. */

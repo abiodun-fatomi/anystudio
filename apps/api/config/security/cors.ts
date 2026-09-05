@@ -11,11 +11,7 @@ import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-option
 
 /** Every origin allowed to make credentialed calls, by environment. */
 export function allowedOrigins(): string[] {
-  const list = [
-    process.env.ORIGIN_APP,
-    process.env.ORIGIN_ORG,
-    process.env.ORIGIN_ADMIN,
-  ].filter((v): v is string => Boolean(v));
+  const list = [process.env.ORIGIN_APP, process.env.ORIGIN_ORG, process.env.ORIGIN_ADMIN].filter((v): v is string => Boolean(v));
 
   if (list.length === 0) {
     throw new Error('No ORIGIN_* configured — refusing to start with an open CORS policy');

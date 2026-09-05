@@ -27,8 +27,28 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const bytes = (n: number, type: string) => new Response(new Uint8Array(n).fill(7), { status: 200, headers: { 'content-type': type } });
 const opts = () => ({ timeoutMs: 60_000, signal: new AbortController().signal, onProgress: vi.fn() });
 
-function dubInput(params: Record<string, unknown>, files: ProviderInput['files'] = { sourceKey: { url: 'https://r2.example/v.mp4', mime: 'video/mp4' } }): ProviderInput {
-  return { generationId: 'g1', workspaceId: 'w1', capability: 'DUB', params: { sourceKey: 'w1/2026/09/uploads/v.mp4', targetLanguage: 'fr', sourceLanguage: 'auto', lipsync: false, speakers: 0, keepBackground: true, quality: 'speed', consent: true, ...params }, files, config: {} };
+function dubInput(
+  params: Record<string, unknown>,
+  files: ProviderInput['files'] = { sourceKey: { url: 'https://r2.example/v.mp4', mime: 'video/mp4' } },
+): ProviderInput {
+  return {
+    generationId: 'g1',
+    workspaceId: 'w1',
+    capability: 'DUB',
+    params: {
+      sourceKey: 'w1/2026/09/uploads/v.mp4',
+      targetLanguage: 'fr',
+      sourceLanguage: 'auto',
+      lipsync: false,
+      speakers: 0,
+      keepBackground: true,
+      quality: 'speed',
+      consent: true,
+      ...params,
+    },
+    files,
+    config: {},
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -113,12 +133,16 @@ describe('HeyGen v3', () => {
   });
 
   it('lip-syncs audio onto a video and surfaces a failure message', async () => {
-    script([
-      () => json({ data: { lipsync_id: 'ls_1' } }),
-      () => json({ id: 'ls_1', status: 'failed', failure_message: 'No face detected in the video' }),
-    ]);
+    script([() => json({ data: { lipsync_id: 'ls_1' } }), () => json({ id: 'ls_1', status: 'failed', failure_message: 'No face detected in the video' })]);
     const p = HeyGenProvider.all('hk').find((x) => x.key === 'heygen:lipsync')!;
-    const input: ProviderInput = { generationId: 'g2', workspaceId: 'w1', capability: 'LIPSYNC', params: { sourceKey: 'a', audioKey: 'b', language: 'en', quality: 'speed', consent: true }, files: { sourceKey: { url: 'https://r2/v.mp4', mime: 'video/mp4' }, audioKey: { url: 'https://r2/a.mp3', mime: 'audio/mpeg' } }, config: {} };
+    const input: ProviderInput = {
+      generationId: 'g2',
+      workspaceId: 'w1',
+      capability: 'LIPSYNC',
+      params: { sourceKey: 'a', audioKey: 'b', language: 'en', quality: 'speed', consent: true },
+      files: { sourceKey: { url: 'https://r2/v.mp4', mime: 'video/mp4' }, audioKey: { url: 'https://r2/a.mp3', mime: 'audio/mpeg' } },
+      config: {},
+    };
     await expect(p.generate(input, opts())).rejects.toMatchObject({ kind: 'INVALID_INPUT' });
     expect(classifyFailure('Policy violation')).toBe('CONTENT_REJECTED');
     expect(classifyFailure(undefined)).toBe('RETRYABLE');
@@ -126,7 +150,7 @@ describe('HeyGen v3', () => {
 });
 
 describe('sync.so', () => {
-  it('sends the two inputs, polls, and treats REJECTED as the content\'s fault', async () => {
+  it("sends the two inputs, polls, and treats REJECTED as the content's fault", async () => {
     const calls = script([
       () => json({ id: 'sy_1', status: 'PENDING' }, 201),
       () => json({ id: 'sy_1', status: 'PROCESSING' }),
@@ -135,7 +159,14 @@ describe('sync.so', () => {
       () => json({ id: 'sy_2', status: 'REJECTED', error: 'face not allowed' }),
     ]);
     const p = SyncProvider.all('sk')[0]!;
-    const input: ProviderInput = { generationId: 'g3', workspaceId: 'w1', capability: 'LIPSYNC', params: { sourceKey: 'a', audioKey: 'b', language: 'en', quality: 'precision', consent: true }, files: { sourceKey: { url: 'https://r2/v.mp4', mime: 'video/mp4' }, audioKey: { url: 'https://r2/a.mp3', mime: 'audio/mpeg' } }, config: {} };
+    const input: ProviderInput = {
+      generationId: 'g3',
+      workspaceId: 'w1',
+      capability: 'LIPSYNC',
+      params: { sourceKey: 'a', audioKey: 'b', language: 'en', quality: 'precision', consent: true },
+      files: { sourceKey: { url: 'https://r2/v.mp4', mime: 'video/mp4' }, audioKey: { url: 'https://r2/a.mp3', mime: 'audio/mpeg' } },
+      config: {},
+    };
     const promise = p.generate(input, opts());
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     await vi.runAllTimersAsync().catch(() => undefined);
@@ -143,10 +174,16 @@ describe('sync.so', () => {
     const r = await promise;
     const body = JSON.parse(String(calls[0]!.init.body)) as { model: string; input: Array<{ type: string; url: string }> };
     expect(body.model).toBe('lipsync-2-pro');
-    expect(body.input).toEqual([{ type: 'video', url: 'https://r2/v.mp4' }, { type: 'audio', url: 'https://r2/a.mp3' }]);
+    expect(body.input).toEqual([
+      { type: 'video', url: 'https://r2/v.mp4' },
+      { type: 'audio', url: 'https://r2/a.mp3' },
+    ]);
     expect(r.artifacts[0]).toMatchObject({ role: 'video', url: 'https://out/sy_1.mp4' });
 
-    const rejected = p.generate(input, opts()).then(() => 'resolved', (e: unknown) => (e instanceof ProviderError ? e.kind : 'other'));
+    const rejected = p.generate(input, opts()).then(
+      () => 'resolved',
+      (e: unknown) => (e instanceof ProviderError ? e.kind : 'other'),
+    );
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     await vi.runAllTimersAsync().catch(() => undefined);
     vi.useRealTimers();

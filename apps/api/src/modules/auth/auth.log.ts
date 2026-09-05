@@ -44,6 +44,7 @@ export type AuthEventName =
   | 'auth.register'
   | 'auth.login'
   | 'auth.mfa'
+  | 'auth.handoff'
   | 'auth.step_up'
   | 'auth.forgot'
   | 'auth.reset'
@@ -89,7 +90,8 @@ export type AuthEventName =
   | 'admin.generation'
   | 'admin.staff'
   | 'admin.message'
-  | 'admin.price';
+  | 'admin.price'
+  | 'admin.support';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 
@@ -110,12 +112,7 @@ export interface AuthLogFields {
  * `req` is optional so the sweeper and other non-HTTP callers can use the same
  * vocabulary rather than inventing a second one.
  */
-export function authLog(
-  event: AuthEventName,
-  outcome: AuthOutcome,
-  fields: AuthLogFields = {},
-  req?: Request,
-): void {
+export function authLog(event: AuthEventName, outcome: AuthOutcome, fields: AuthLogFields = {}, req?: Request): void {
   const line = {
     event,
     outcome,

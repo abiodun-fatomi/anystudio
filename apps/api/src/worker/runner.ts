@@ -122,7 +122,11 @@ export class GenerationRunner {
       const constraint = await this.routingConstraint(row);
       const decision = await this.router.route(row.capability, workspace.type, { generationId, ...constraint });
       if (decision.candidates.length === 0) {
-        throw new ProviderError('PROVIDER_DOWN', `no provider available for ${row.capability}: ${decision.excluded.map((e) => `${e.key} (${e.reason})`).join('; ')}`, 'router');
+        throw new ProviderError(
+          'PROVIDER_DOWN',
+          `no provider available for ${row.capability}: ${decision.excluded.map((e) => `${e.key} (${e.reason})`).join('; ')}`,
+          'router',
+        );
       }
 
       const brandKit = await this.db.brandKit.findUnique({ where: { workspaceId: row.workspaceId } });
@@ -158,8 +162,9 @@ export class GenerationRunner {
       }
 
       await this.events.stage(generationId, 'storing', 90);
-      const outputs = [...await storeArtifacts(this.media, row, produced.artifacts), ...(produced.extraOutputs ?? [])];
-      for (const output of outputs) await this.events.publish({ type: 'output', generationId, output: output.locked ? { ...output, key: '' } : output, at: new Date().toISOString() });
+      const outputs = [...(await storeArtifacts(this.media, row, produced.artifacts)), ...(produced.extraOutputs ?? [])];
+      for (const output of outputs)
+        await this.events.publish({ type: 'output', generationId, output: output.locked ? { ...output, key: '' } : output, at: new Date().toISOString() });
 
       const done = await this.generations.succeed(generationId, {
         providerKey: produced.providerKey,
@@ -168,7 +173,10 @@ export class GenerationRunner {
         outputs,
       });
       await this.events.publish({ type: 'done', generationId, status: 'SUCCEEDED', at: new Date().toISOString() });
-      log.info({ providerKey: done.providerKey, outputs: outputs.length, elapsedMs: Date.now() - startedAt, providerCostMinor: produced.costMinor }, 'generation succeeded');
+      log.info(
+        { providerKey: done.providerKey, outputs: outputs.length, elapsedMs: Date.now() - startedAt, providerCostMinor: produced.costMinor },
+        'generation succeeded',
+      );
       return 'succeeded';
     } catch (err) {
       return this.handleFailure(row, err, startedAt, log);
@@ -188,7 +196,9 @@ export class GenerationRunner {
   private async wakeParent(parentId: string, childId: string, log: typeof logger): Promise<void> {
     const siblings = await this.db.generation.findMany({ where: { parentId }, select: { id: true, status: true } });
     const done = siblings.filter((s) => (TERMINAL as readonly string[]).includes(s.status)).length;
-    await this.events.stage(parentId, 'waiting', Math.round(20 + (done / Math.max(1, siblings.length)) * 40), `shot ${done} of ${siblings.length} done`).catch(() => undefined);
+    await this.events
+      .stage(parentId, 'waiting', Math.round(20 + (done / Math.max(1, siblings.length)) * 40), `shot ${done} of ${siblings.length} done`)
+      .catch(() => undefined);
     if (done < siblings.length) return;
     const parent = await this.db.generation.findUnique({ where: { id: parentId }, select: { status: true, stage: true, capability: true } });
     if (parent?.status === 'RUNNING' && parent.stage === 'waiting') {
@@ -244,18 +254,30 @@ export class GenerationRunner {
         log.info({ providerKey: c.row.key, candidate: i + 1, of: candidates.length }, 'calling provider');
         const result = await c.provider.generate(fullInput, opts);
         await this.router.report(c.row.key, input.capability, { ok: true, latencyMs: Date.now() - started }, { generationId: opts.generationId });
-        log.info({ providerKey: c.row.key, latencyMs: Date.now() - started, providerJobId: result.providerJobId, artifacts: result.artifacts.length }, 'provider answered');
+        log.info(
+          { providerKey: c.row.key, latencyMs: Date.now() - started, providerJobId: result.providerJobId, artifacts: result.artifacts.length },
+          'provider answered',
+        );
         return { ...result, costMinor: result.costMinor ?? c.row.costPerCall };
       } catch (err) {
-        const pe = err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${c.row.key}: ${err instanceof Error ? err.message : String(err)}`, c.row.key);
+        const pe =
+          err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${c.row.key}: ${err instanceof Error ? err.message : String(err)}`, c.row.key);
         last = pe;
-        await this.router.report(c.row.key, input.capability, { ok: false, kind: pe.kind, latencyMs: Date.now() - started }, { generationId: opts.generationId });
+        await this.router.report(
+          c.row.key,
+          input.capability,
+          { ok: false, kind: pe.kind, latencyMs: Date.now() - started },
+          { generationId: opts.generationId },
+        );
         if (!pe.retryable) {
           log.warn({ providerKey: c.row.key, kind: pe.kind, err: pe.message }, 'provider refused; not trying another — the input is the problem');
           throw pe;
         }
         if (i < candidates.length - 1) {
-          log.warn({ providerKey: c.row.key, kind: pe.kind, err: pe.message, next: candidates[i + 1]!.row.key }, 'provider failed; falling back to the next candidate');
+          log.warn(
+            { providerKey: c.row.key, kind: pe.kind, err: pe.message, next: candidates[i + 1]!.row.key },
+            'provider failed; falling back to the next candidate',
+          );
         } else {
           log.warn({ providerKey: c.row.key, kind: pe.kind, err: pe.message }, 'provider failed; no candidates left');
         }
@@ -295,7 +317,12 @@ export class GenerationRunner {
     }
 
     try {
-      await this.generations.fail(row.id, { failureReason: reason.slice(0, 2000), failureKind: kind, providerKey: pe?.providerKey, providerJobId: pe?.meta.providerJobId });
+      await this.generations.fail(row.id, {
+        failureReason: reason.slice(0, 2000),
+        failureKind: kind,
+        providerKey: pe?.providerKey,
+        providerJobId: pe?.meta.providerJobId,
+      });
     } catch (failErr) {
       // Already terminal (a sweeper or a late webhook got there first). Nothing to refund twice.
       log.warn({ err: failErr instanceof Error ? failErr.message : failErr }, 'could not mark generation failed; it was already terminal');
@@ -303,7 +330,10 @@ export class GenerationRunner {
     }
     await this.events.publish({ type: 'done', generationId: row.id, status: 'FAILED', at: new Date().toISOString() });
     const level = kind === 'CONTENT_REJECTED' ? 'info' : kind === 'INVALID_INPUT' || kind === 'INTERNAL' ? 'error' : 'warn';
-    log[level]({ kind, err: reason, elapsedMs, attempts: row.attempts, credits: row.credits, providerKey: pe?.providerKey, raw: pe?.meta.raw }, 'generation FAILED; credits refunded');
+    log[level](
+      { kind, err: reason, elapsedMs, attempts: row.attempts, credits: row.credits, providerKey: pe?.providerKey, raw: pe?.meta.raw },
+      'generation FAILED; credits refunded',
+    );
     return 'failed';
   }
 }

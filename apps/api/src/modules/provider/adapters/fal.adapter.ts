@@ -23,8 +23,16 @@ import { ProviderError, type Capability, type ProviderArtifact, type ProviderInp
 import { BaseProvider } from './base';
 import { http, pick, poll } from './http';
 
-interface FalSubmit { request_id: string; status_url: string; response_url: string }
-interface FalStatus { status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED'; queue_position?: number; logs?: Array<{ message: string }> }
+interface FalSubmit {
+  request_id: string;
+  status_url: string;
+  response_url: string;
+}
+interface FalStatus {
+  status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED';
+  queue_position?: number;
+  logs?: Array<{ message: string }>;
+}
 
 const QUEUE = 'https://queue.fal.run';
 
@@ -73,7 +81,9 @@ export class FalProvider extends BaseProvider {
       },
       { intervalMs: input.capability === 'IMAGE_TO_VIDEO' || input.capability === 'LIPSYNC' ? 5_000 : 1_500, timeoutMs: opts.timeoutMs, signal: opts.signal },
     ).catch((err) => {
-      throw err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
+      throw err instanceof ProviderError
+        ? err
+        : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
 
     const result = await http<unknown>(this.key, response_url, { headers, timeoutMs: 30_000, signal: opts.signal });
@@ -87,7 +97,9 @@ export class FalProvider extends BaseProvider {
       case 'IMAGE_EDIT': {
         const p = this.params(input, 'IMAGE_EDIT');
         return {
-          prompt: p.preserveProduct ? `${p.prompt}. Keep the product exactly as it is — same shape, colours, label and proportions. Change only the surroundings.` : p.prompt,
+          prompt: p.preserveProduct
+            ? `${p.prompt}. Keep the product exactly as it is — same shape, colours, label and proportions. Change only the surroundings.`
+            : p.prompt,
           image_urls: [this.file(input, 'sourceKey')],
           image_size: aspectToFalSize(p.aspect),
           num_images: 1,
@@ -96,7 +108,12 @@ export class FalProvider extends BaseProvider {
       }
       case 'IMAGE_GENERATE': {
         const p = this.params(input, 'IMAGE_GENERATE');
-        return { prompt: p.style ? `${p.prompt}. Style: ${p.style}` : p.prompt, image_size: aspectToFalSize(p.aspect), num_images: p.count, enable_safety_checker: true };
+        return {
+          prompt: p.style ? `${p.prompt}. Style: ${p.style}` : p.prompt,
+          image_size: aspectToFalSize(p.aspect),
+          num_images: p.count,
+          enable_safety_checker: true,
+        };
       }
       case 'BACKGROUND_REMOVE':
         return { image_url: this.file(input, 'sourceKey') };
@@ -117,15 +134,33 @@ export class FalProvider extends BaseProvider {
       }
       case 'MUSIC': {
         const p = this.params(input, 'MUSIC');
-        const desc = [p.styleHints ?? p.genre, p.mood, p.tempo ? `${p.tempo} tempo` : '', p.vocal === 'instrumental' ? 'instrumental' : `${p.vocal} vocals`, p.brief].filter(Boolean).join(', ').slice(0, 300);
+        const desc = [
+          p.styleHints ?? p.genre,
+          p.mood,
+          p.tempo ? `${p.tempo} tempo` : '',
+          p.vocal === 'instrumental' ? 'instrumental' : `${p.vocal} vocals`,
+          p.brief,
+        ]
+          .filter(Boolean)
+          .join(', ')
+          .slice(0, 300);
         // MiniMax wants lyrics even for instrumentals; an empty structure tag keeps it wordless.
         const lyrics = p.vocal === 'instrumental' ? '[Intro]\n[Instrumental]\n[Outro]' : (p.lyricsText ?? `[Verse]\n${p.brief.slice(0, 400)}`);
-        return { prompt: desc.length >= 10 ? desc : `${desc}, upbeat song`, lyrics_prompt: lyrics.slice(0, 3000), audio_setting: { sample_rate: 44100, bitrate: 256000, format: 'mp3' } };
+        return {
+          prompt: desc.length >= 10 ? desc : `${desc}, upbeat song`,
+          lyrics_prompt: lyrics.slice(0, 3000),
+          audio_setting: { sample_rate: 44100, bitrate: 256000, format: 'mp3' },
+        };
       }
       case 'LIPSYNC': {
         const p = this.params(input, 'LIPSYNC');
         // sync.so's lipsync-2 through fal. `cut_off` ends the video when the audio does — a Status clip should not loop its last word.
-        return { video_url: this.file(input, 'sourceKey'), audio_url: this.file(input, 'audioKey'), model: this.str(input.config, 'model', p.quality === 'precision' ? 'lipsync-2-pro' : 'lipsync-2'), sync_mode: this.str(input.config, 'syncMode', 'cut_off') };
+        return {
+          video_url: this.file(input, 'sourceKey'),
+          audio_url: this.file(input, 'audioKey'),
+          model: this.str(input.config, 'model', p.quality === 'precision' ? 'lipsync-2-pro' : 'lipsync-2'),
+          sync_mode: this.str(input.config, 'syncMode', 'cut_off'),
+        };
       }
       default:
         return this.unsupported(input.capability);
@@ -134,7 +169,7 @@ export class FalProvider extends BaseProvider {
 
   /** This endpoint's response → artifacts. Every fal image/video model returns one of a few shapes. */
   private shapeOutput(input: ProviderInput, out: unknown, providerJobId: string): ProviderArtifact[] {
-    const images = (pick<Array<{ url: string; width?: number; height?: number; content_type?: string }>>(out, 'images') ?? []);
+    const images = pick<Array<{ url: string; width?: number; height?: number; content_type?: string }>>(out, 'images') ?? [];
     const image = pick<{ url: string; width?: number; height?: number; content_type?: string }>(out, 'image');
     const video = pick<{ url: string; content_type?: string }>(out, 'video');
     const audio = pick<{ url: string; content_type?: string }>(out, 'audio');
@@ -147,12 +182,19 @@ export class FalProvider extends BaseProvider {
 
     if (list.length === 0) {
       const nsfw = pick<boolean[]>(out, 'has_nsfw_concepts')?.some(Boolean);
-      throw new ProviderError(nsfw ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no output in response for ${input.capability}`, this.key, { providerJobId, raw: out });
+      throw new ProviderError(nsfw ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no output in response for ${input.capability}`, this.key, {
+        providerJobId,
+        raw: out,
+      });
     }
     return list;
   }
 }
 
 function aspectToFalSize(aspect: string): string {
-  return ({ '1:1': 'square_hd', '4:5': 'portrait_4_3', '3:4': 'portrait_4_3', '9:16': 'portrait_16_9', '16:9': 'landscape_16_9' } as Record<string, string>)[aspect] ?? 'square_hd';
+  return (
+    ({ '1:1': 'square_hd', '4:5': 'portrait_4_3', '3:4': 'portrait_4_3', '9:16': 'portrait_16_9', '16:9': 'landscape_16_9' } as Record<string, string>)[
+      aspect
+    ] ?? 'square_hd'
+  );
 }

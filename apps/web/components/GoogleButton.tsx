@@ -5,10 +5,23 @@
  * Google and back, so nothing here is a button that calls an API. `next`
  * survives the round trip in the encrypted state cookie the API sets.
  */
+'use client';
+
+import { useEffect, useState } from 'react';
 import styles from '@/app/(auth)/auth.module.css';
+import { isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 export function GoogleButton({ next, label }: { next?: string; label: string }) {
-  const href = `/api/v1/auth/google/start${next ? `?next=${encodeURIComponent(next)}` : ''}`;
+  const path = `/api/v1/auth/google/start${next ? `?next=${encodeURIComponent(next)}` : ''}`;
+  // The handshake must start and end on the app host, where the session
+  // cookie can be set. On the marketing host (where this form lives) the link
+  // points across; decided after mount so server and client markup agree.
+  const [href, setHref] = useState(path);
+  useEffect(() => {
+    const host = window.location.host;
+    if (isLocalHost(host) || host.startsWith('app.') || host.startsWith('admin.') || host.startsWith('org.')) return;
+    setHref(`${siblingOrigin(host, 'app')}${path}`);
+  }, [path]);
   return (
     <a className={styles.google} href={href}>
       <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true">

@@ -14,7 +14,10 @@ import type { WalletHistoryQueryDto } from './wallet.dto';
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly db: PrismaClient, private readonly ledger: LedgerService) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly ledger: LedgerService,
+  ) {}
 
   /** Current credits, derived from the ledger's last row. */
   async balance(workspaceId: string) {

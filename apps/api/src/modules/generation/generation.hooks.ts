@@ -26,7 +26,9 @@ export class GenerationHooks {
 
   finished(row: Generation): void {
     for (const l of this.listeners) {
-      Promise.resolve().then(() => l(row)).catch((err) => logger.error({ err, generationId: row.id, channel: row.channel }, 'a generation listener failed'));
+      Promise.resolve()
+        .then(() => l(row))
+        .catch((err) => logger.error({ err, generationId: row.id, channel: row.channel }, 'a generation listener failed'));
     }
   }
 }

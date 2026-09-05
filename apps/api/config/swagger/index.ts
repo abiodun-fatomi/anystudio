@@ -17,7 +17,7 @@ export default class SwaggerConfig {
       .setTitle('AnyStudio API')
       .setDescription(
         'One product photo in; branded images, a description, captions and a reel out. ' +
-        'Human surfaces authenticate with a per-surface session cookie; the organization API with an issued key.',
+          'Human surfaces authenticate with a per-surface session cookie; the organization API with an issued key.',
       )
       .setVersion('1.0')
       .addCookieAuth('__Host-as_app', { type: 'apiKey', in: 'cookie', name: '__Host-as_app' }, 'session')

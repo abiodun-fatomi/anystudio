@@ -19,7 +19,11 @@ export class PhotoroomProvider extends BaseProvider {
     return Object.entries(KNOWN).map(([key, caps]) => new PhotoroomProvider(apiKey, key, caps));
   }
 
-  constructor(private readonly apiKey: string, key: string, capabilities: Capability[]) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capabilities: Capability[],
+  ) {
     super(key, capabilities);
   }
 

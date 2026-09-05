@@ -16,7 +16,9 @@ export function SettingsNav() {
   return (
     <nav className={styles.nav} aria-label="Settings sections">
       {ITEMS.map((i) => (
-        <Link key={i.href} href={i.href} className={styles.navItem} aria-current={path.startsWith(i.href) ? 'page' : undefined}>{i.label}</Link>
+        <Link key={i.href} href={i.href} className={styles.navItem} aria-current={path.startsWith(i.href) ? 'page' : undefined}>
+          {i.label}
+        </Link>
       ))}
     </nav>
   );

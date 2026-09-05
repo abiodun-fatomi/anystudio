@@ -60,7 +60,15 @@ export class StubProvider extends BaseProvider {
 
 async function stubImage(label: string) {
   const bytes = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 214, g: 0, b: 110, alpha: 1 } } })
-    .composite([{ input: Buffer.from(`<svg width="1024" height="1024"><text x="48" y="120" font-size="64" font-family="sans-serif" fill="white">stub · ${label}</text></svg>`), top: 0, left: 0 }])
+    .composite([
+      {
+        input: Buffer.from(
+          `<svg width="1024" height="1024"><text x="48" y="120" font-size="64" font-family="sans-serif" fill="white">stub · ${label}</text></svg>`,
+        ),
+        top: 0,
+        left: 0,
+      },
+    ])
     .png()
     .toBuffer();
   return { bytes: new Uint8Array(bytes), mime: 'image/png', role: 'image' as const, width: 1024, height: 1024 };
@@ -68,7 +76,35 @@ async function stubImage(label: string) {
 
 async function stubVideo(label: string) {
   try {
-    const { stdout } = await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=0xD6006E:s=720x1280:d=2', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', 'frag_keyframe+empty_moov', '-f', 'mp4', 'pipe:1'], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+    const { stdout } = await exec(
+      'ffmpeg',
+      [
+        '-v',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=0xD6006E:s=720x1280:d=2',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=r=44100:cl=stereo',
+        '-t',
+        '2',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-movflags',
+        'frag_keyframe+empty_moov',
+        '-f',
+        'mp4',
+        'pipe:1',
+      ],
+      { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 },
+    );
     return { bytes: new Uint8Array(stdout), mime: 'video/mp4', role: 'video' as const, width: 720, height: 1280, durationMs: 2000 };
   } catch (err) {
     throw new ProviderError('PROVIDER_DOWN', `stub video needs ffmpeg for ${label}: ${err instanceof Error ? err.message : err}`, 'stub:any');
@@ -77,7 +113,11 @@ async function stubVideo(label: string) {
 
 async function stubAudio() {
   try {
-    const { stdout } = await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:a', 'libmp3lame', '-f', 'mp3', 'pipe:1'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await exec(
+      'ffmpeg',
+      ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:a', 'libmp3lame', '-f', 'mp3', 'pipe:1'],
+      { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 },
+    );
     return { bytes: new Uint8Array(stdout), mime: 'audio/mpeg', role: 'audio' as const, durationMs: 2000 };
   } catch (err) {
     throw new ProviderError('PROVIDER_DOWN', `stub audio needs ffmpeg: ${err instanceof Error ? err.message : err}`, 'stub:any');
@@ -118,7 +158,12 @@ function stubCopy(input: ProviderInput) {
   const p = input.params as { productName?: string; price?: string; platforms?: string[] };
   const name = p.productName ?? 'Your product';
   return {
-    description: { long: `${name} — a stub description written by no model at all.`, short: `${name}, stubbed.`, bullets: ['Stub bullet one', 'Stub bullet two'], specs: [] },
+    description: {
+      long: `${name} — a stub description written by no model at all.`,
+      short: `${name}, stubbed.`,
+      bullets: ['Stub bullet one', 'Stub bullet two'],
+      specs: [],
+    },
     captions: Object.fromEntries((p.platforms ?? ['instagram']).map((pl) => [pl, `${name} ${p.price ? `· ${p.price}` : ''} #stub`])),
     hashtags: { broad: ['#stub'], niche: [], local: [] },
     altText: `${name} on a plain background`,

@@ -36,8 +36,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const requestId = req.requestId;
 
     let body: ErrorBody = {
-      status: HttpStatus.INTERNAL_SERVER_ERROR, error: 'internal',
-      message: 'Something went wrong on our side.', data: null,
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      error: 'internal',
+      message: 'Something went wrong on our side.',
+      data: null,
     };
 
     if (err instanceof AppError) {
@@ -45,7 +47,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       // A service-level ValidationError names fields in `details`; expose them
       // in the same `fields` shape as class-validator so a form shows them inline.
       if (err.code === 'invalid_input' && err.details) {
-        body.fields = Object.entries(err.details).filter(([, v]) => typeof v === 'string').map(([path, message]) => ({ path, message: String(message) }));
+        body.fields = Object.entries(err.details)
+          .filter(([, v]) => typeof v === 'string')
+          .map(([path, message]) => ({ path, message: String(message) }));
       }
       if (err.code === 'rate_limited' && typeof err.details?.retryAfterSec === 'number') {
         res.setHeader('Retry-After', String(err.details.retryAfterSec));
@@ -57,13 +61,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const r = err.getResponse() as { message?: string | string[] };
       const lines = Array.isArray(r.message) ? r.message : [r.message ?? err.message];
       body = {
-        status: HttpStatus.BAD_REQUEST, error: 'invalid_input', message: 'Some of that did not look right.', data: null,
+        status: HttpStatus.BAD_REQUEST,
+        error: 'invalid_input',
+        message: 'Some of that did not look right.',
+        data: null,
         fields: lines.map((m) => ({ path: String(m).split(' ')[0] ?? '', message: String(m) })),
       };
     } else if (err instanceof HttpException) {
       const r = err.getResponse();
       body = {
-        status: err.getStatus(), error: 'http', data: null,
+        status: err.getStatus(),
+        error: 'http',
+        data: null,
         message: typeof r === 'string' ? r : ((r as { message?: string }).message ?? err.message),
       };
     }

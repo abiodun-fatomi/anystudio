@@ -149,8 +149,7 @@ export class LedgerService {
       if (!row) throw new Error('ledger_apply returned no row');
       return row;
     } catch (err) {
-      const code = (err as { code?: string; meta?: { code?: string } })?.meta?.code
-        ?? (err as { code?: string })?.code;
+      const code = (err as { code?: string; meta?: { code?: string } })?.meta?.code ?? (err as { code?: string })?.code;
       if (code === 'AS001') throw new InsufficientCreditsError();
       if (code === '23503') throw new NotFoundError('wallet');
       throw err;

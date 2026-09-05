@@ -15,8 +15,16 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
-  ForgotPasswordDto, GoogleCallbackQueryDto, GoogleStartQueryDto, LoginDto, MfaDto, RegisterDto,
-  ResetPasswordDto, StepUpDto, VerifyEmailDto,
+  ForgotPasswordDto,
+  GoogleCallbackQueryDto,
+  GoogleStartQueryDto,
+  HandoffDto,
+  LoginDto,
+  MfaDto,
+  RegisterDto,
+  ResetPasswordDto,
+  StepUpDto,
+  VerifyEmailDto,
 } from './auth.dto';
 import { CurrentActor, Public, RequireStepUp, RequireSurface } from './decorators';
 import type { Actor, SessionActor } from './policy';
@@ -52,6 +60,15 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'signed_in or invalid_code; five attempts per challenge' })
   completeMfa(@Body() body: MfaDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.authService.completeMfa(body, req, res);
+  }
+
+  @Public()
+  @Post('/handoff')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Redeem a sign-in that happened on the marketing host; mints the app-host session' })
+  @ApiResponse({ status: 200, description: 'signed_in or invalid_token; tokens are single-use and live a minute' })
+  handoff(@Body() body: HandoffDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authService.completeHandoff(body, req, res);
   }
 
   @Public()

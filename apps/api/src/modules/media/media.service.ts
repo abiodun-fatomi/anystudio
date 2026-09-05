@@ -84,7 +84,8 @@ export class MediaService {
   async presignUpload(workspaceId: string, userId: string, file: { filename: string; mime: string; bytes: number }): Promise<PresignedUpload> {
     const family = familyOf(file.mime);
     if (!family) throw new ValidationError({ mime: `Unsupported file type ${file.mime}` });
-    if (file.bytes > LIMITS[family].maxBytes) throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
+    if (file.bytes > LIMITS[family].maxBytes)
+      throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
 
     const asset = await this.db.mediaAsset.create({
       data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: file.filename.slice(0, 200), key: 'pending' },
@@ -92,7 +93,9 @@ export class MediaService {
     const key = MediaService.key(workspaceId, 'uploads', `${asset.id}.${extFor(file.mime)}`);
     await this.db.mediaAsset.update({ where: { id: asset.id }, data: { key } });
 
-    const url = await getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: file.mime, ContentLength: file.bytes }), { expiresIn: UPLOAD_TTL_SEC });
+    const url = await getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: file.mime, ContentLength: file.bytes }), {
+      expiresIn: UPLOAD_TTL_SEC,
+    });
     logger.info({ workspaceId, assetId: asset.id, key, mime: file.mime, bytes: file.bytes }, 'upload presigned');
     return { assetId: asset.id, key, url, method: 'PUT', headers: { 'content-type': file.mime }, expiresInSec: UPLOAD_TTL_SEC };
   }
@@ -105,8 +108,11 @@ export class MediaService {
   async ingest(workspaceId: string, userId: string | null, bytes: Uint8Array, claimedMime: string, filename: string): Promise<MediaAsset> {
     const family = familyOf(claimedMime);
     if (!family) throw new ValidationError({ mime: `Unsupported file type ${claimedMime}` });
-    if (bytes.byteLength > LIMITS[family].maxBytes) throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
-    const asset = await this.db.mediaAsset.create({ data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: filename.slice(0, 200), key: 'pending' } });
+    if (bytes.byteLength > LIMITS[family].maxBytes)
+      throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
+    const asset = await this.db.mediaAsset.create({
+      data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: filename.slice(0, 200), key: 'pending' },
+    });
     const key = MediaService.key(workspaceId, 'uploads', `${asset.id}.${extFor(claimedMime)}`);
     await this.db.mediaAsset.update({ where: { id: asset.id }, data: { key } });
     await this.put(key, bytes, claimedMime);
@@ -122,10 +128,20 @@ export class MediaService {
    */
   async ingestUrl(workspaceId: string, userId: string | null, url: string): Promise<MediaAsset> {
     let target: URL;
-    try { target = new URL(url); } catch { throw new ValidationError({ url: 'That is not a valid URL.' }); }
+    try {
+      target = new URL(url);
+    } catch {
+      throw new ValidationError({ url: 'That is not a valid URL.' });
+    }
     if (target.protocol !== 'https:') throw new ValidationError({ url: 'Only https URLs are fetched.' });
     const host = target.hostname.toLowerCase();
-    if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+    if (
+      host === 'localhost' ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal') ||
+      /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$)/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    ) {
       throw new ValidationError({ url: 'That address cannot be fetched.' });
     }
     const controller = new AbortController();
@@ -137,7 +153,8 @@ export class MediaService {
       const family = familyOf(mime);
       if (!family) throw new ValidationError({ url: `The URL serves ${mime || 'an unknown type'}, not an image, video or audio file.` });
       const declared = Number(res.headers.get('content-length') ?? 0);
-      if (declared > LIMITS[family].maxBytes) throw new ValidationError({ url: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
+      if (declared > LIMITS[family].maxBytes)
+        throw new ValidationError({ url: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
       const buf = new Uint8Array(await res.arrayBuffer());
       const name = target.pathname.split('/').pop() || `download.${extFor(mime)}`;
       return await this.ingest(workspaceId, userId, buf, mime, name);
@@ -230,7 +247,11 @@ export class MediaService {
     const out: Record<string, string> = {};
     await Promise.all(
       // The vault holds what has not been paid for. No customer-facing path signs it; unlocking copies out of it.
-      [...new Set(keys)].filter((k) => k.startsWith(`${workspaceId}/`) && !MediaService.isVault(k)).map(async (k) => { out[k] = await this.signRead(k); }),
+      [...new Set(keys)]
+        .filter((k) => k.startsWith(`${workspaceId}/`) && !MediaService.isVault(k))
+        .map(async (k) => {
+          out[k] = await this.signRead(k);
+        }),
     );
     return out;
   }
@@ -248,7 +269,9 @@ export class MediaService {
 
   /** Server-side copy, for taking a paid-for file out of the vault. */
   async copy(fromKey: string, toKey: string): Promise<void> {
-    await this.s3.send(new CopyObjectCommand({ Bucket: this.bucket, CopySource: `${this.bucket}/${encodeURIComponent(fromKey).replace(/%2F/g, '/')}`, Key: toKey }));
+    await this.s3.send(
+      new CopyObjectCommand({ Bucket: this.bucket, CopySource: `${this.bucket}/${encodeURIComponent(fromKey).replace(/%2F/g, '/')}`, Key: toKey }),
+    );
   }
 
   /** Unchecked signing for the worker, which has already loaded the row. */
@@ -266,7 +289,17 @@ export class MediaService {
   }
 
   /** Record an object the pipeline produced. */
-  async recordOutput(input: { workspaceId: string; generationId: string; key: string; kind: MediaKind; mime: string; bytes: number; width?: number; height?: number; durationMs?: number }): Promise<MediaAsset> {
+  async recordOutput(input: {
+    workspaceId: string;
+    generationId: string;
+    key: string;
+    kind: MediaKind;
+    mime: string;
+    bytes: number;
+    width?: number;
+    height?: number;
+    durationMs?: number;
+  }): Promise<MediaAsset> {
     return this.db.mediaAsset.upsert({
       where: { key: input.key },
       create: { ...input, status: 'READY' },
@@ -315,5 +348,23 @@ function familyOf(mime: string): keyof typeof LIMITS | null {
 }
 
 function extFor(mime: string): string {
-  return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/ogg': 'ogg' } as Record<string, string>)[mime] ?? 'bin';
+  return (
+    (
+      {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/heic': 'heic',
+        'image/gif': 'gif',
+        'video/mp4': 'mp4',
+        'video/quicktime': 'mov',
+        'video/webm': 'webm',
+        'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a',
+        'audio/x-m4a': 'm4a',
+        'audio/wav': 'wav',
+        'audio/ogg': 'ogg',
+      } as Record<string, string>
+    )[mime] ?? 'bin'
+  );
 }

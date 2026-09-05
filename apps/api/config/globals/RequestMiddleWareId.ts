@@ -12,7 +12,9 @@ import type { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
 
 declare module 'express-serve-static-core' {
-  interface Request { requestId: string }
+  interface Request {
+    requestId: string;
+  }
 }
 
 @Injectable()

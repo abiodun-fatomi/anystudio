@@ -26,8 +26,15 @@ function Chrome({ id, label, hint, error, optional, className, children }: Field
         </label>
       )}
       {children}
-      {error ? <div id={`${id}-err`} className={styles.error} role="alert">{error}</div>
-        : hint ? <div id={`${id}-hint`} className={styles.hint}>{hint}</div> : null}
+      {error ? (
+        <div id={`${id}-err`} className={styles.error} role="alert">
+          {error}
+        </div>
+      ) : hint ? (
+        <div id={`${id}-hint`} className={styles.hint}>
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -41,15 +48,37 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement>, Field
   trailingInteractive?: boolean;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ label, hint, error, optional, className, leading, trailing, trailingInteractive, id: given, ...rest }, ref) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { label, hint, error, optional, className, leading, trailing, trailingInteractive, id: given, ...rest },
+  ref,
+) {
   const auto = useId();
   const id = given ?? auto;
   return (
     <Chrome id={id} label={label} hint={hint} error={error} optional={optional} className={className}>
       <div className={styles.control}>
-        {leading && <span className={styles.leading} aria-hidden="true">{leading}</span>}
-        <input ref={ref} id={id} className={cx(styles.input, leading ? styles.withLeading : null, trailing ? styles.withTrailing : null)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, error, hint)} {...rest} />
-        {trailing && <span className={styles.trailing} aria-hidden={trailingInteractive ? undefined : 'true'} style={trailingInteractive ? { pointerEvents: 'auto' } : undefined}>{trailing}</span>}
+        {leading && (
+          <span className={styles.leading} aria-hidden="true">
+            {leading}
+          </span>
+        )}
+        <input
+          ref={ref}
+          id={id}
+          className={cx(styles.input, leading ? styles.withLeading : null, trailing ? styles.withTrailing : null)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(id, error, hint)}
+          {...rest}
+        />
+        {trailing && (
+          <span
+            className={styles.trailing}
+            aria-hidden={trailingInteractive ? undefined : 'true'}
+            style={trailingInteractive ? { pointerEvents: 'auto' } : undefined}
+          >
+            {trailing}
+          </span>
+        )}
       </div>
     </Chrome>
   );
@@ -60,14 +89,30 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   showCount?: boolean;
 }
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({ label, hint, error, optional, className, showCount, id: given, maxLength, value, ...rest }, ref) {
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { label, hint, error, optional, className, showCount, id: given, maxLength, value, ...rest },
+  ref,
+) {
   const auto = useId();
   const id = given ?? auto;
   const len = typeof value === 'string' ? value.length : 0;
   return (
     <Chrome id={id} label={label} hint={hint} error={error} optional={optional} className={className}>
-      <textarea ref={ref} id={id} className={cx(styles.input, styles.textarea)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, error, hint)} maxLength={maxLength} value={value} {...rest} />
-      {showCount && maxLength && <div className={styles.count} data-over={len > maxLength || undefined} aria-live="polite">{len} / {maxLength}</div>}
+      <textarea
+        ref={ref}
+        id={id}
+        className={cx(styles.input, styles.textarea)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, error, hint)}
+        maxLength={maxLength}
+        value={value}
+        {...rest}
+      />
+      {showCount && maxLength && (
+        <div className={styles.count} data-over={len > maxLength || undefined} aria-live="polite">
+          {len} / {maxLength}
+        </div>
+      )}
     </Chrome>
   );
 });
@@ -77,14 +122,32 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement>, Fi
   placeholder?: string;
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select({ label, hint, error, optional, className, options, placeholder, id: given, ...rest }, ref) {
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { label, hint, error, optional, className, options, placeholder, id: given, ...rest },
+  ref,
+) {
   const auto = useId();
   const id = given ?? auto;
   return (
     <Chrome id={id} label={label} hint={hint} error={error} optional={optional} className={className}>
-      <select ref={ref} id={id} className={cx(styles.input, styles.select)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, error, hint)} {...rest}>
-        {placeholder && <option value="" disabled>{placeholder}</option>}
-        {options.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
+      <select
+        ref={ref}
+        id={id}
+        className={cx(styles.input, styles.select)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, error, hint)}
+        {...rest}
+      >
+        {placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
+        {options.map((o) => (
+          <option key={o.value} value={o.value} disabled={o.disabled}>
+            {o.label}
+          </option>
+        ))}
       </select>
     </Chrome>
   );

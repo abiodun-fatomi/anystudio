@@ -6,24 +6,31 @@ export const GRANTABLE_ROLES = ['ADMIN', 'MEMBER', 'BILLING', 'AUDITOR'] as cons
 export type GrantableRole = (typeof GRANTABLE_ROLES)[number];
 
 export class InviteDto {
-  @ApiProperty({ example: 'kemi@bimbofabrics.ng', maxLength: 320 }) @IsEmail() @MaxLength(320)
+  @ApiProperty({ example: 'kemi@bimbofabrics.ng', maxLength: 320 })
+  @IsEmail()
+  @MaxLength(320)
   email: string;
 
-  @ApiProperty({ enum: GRANTABLE_ROLES }) @IsIn(GRANTABLE_ROLES)
+  @ApiProperty({ enum: GRANTABLE_ROLES })
+  @IsIn(GRANTABLE_ROLES)
   role: GrantableRole;
 }
 
 export class RoleDto {
-  @ApiProperty({ enum: GRANTABLE_ROLES }) @IsIn(GRANTABLE_ROLES)
+  @ApiProperty({ enum: GRANTABLE_ROLES })
+  @IsIn(GRANTABLE_ROLES)
   role: GrantableRole;
 }
 
 export class AcceptInviteDto {
-  @ApiProperty() @IsString() @Length(20, 200)
+  @ApiProperty()
+  @IsString()
+  @Length(20, 200)
   token: string;
 }
 
 export class TransferDto {
-  @ApiProperty({ format: 'uuid', description: 'The member who becomes owner' }) @IsUUID()
+  @ApiProperty({ format: 'uuid', description: 'The member who becomes owner' })
+  @IsUUID()
   userId: string;
 }

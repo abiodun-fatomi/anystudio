@@ -1,21 +1,125 @@
-.bell{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;min-height:var(--control-h-sm);border:0;border-radius:var(--r-pill);background:none;color:var(--ink);cursor:pointer}
-.bell:hover{background:var(--sunk)}
-.bell:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
-.badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--surface)}
-.panel{width:min(380px,calc(100vw - 24px));display:grid}
-.head{display:flex;justify-content:space-between;align-items:center;gap:var(--s-3);padding:var(--s-3) var(--s-3) var(--s-2);border-bottom:1px solid var(--line-soft)}
-.list{display:grid;max-height:min(60dvh,480px);overflow:auto}
-.item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s-3);padding:var(--s-3);text-decoration:none;color:var(--ink);border-bottom:1px solid var(--line-soft)}
-.item:hover{background:var(--sunk);text-decoration:none}
-.item[data-unread]{background:var(--accent-wash)}
-.item[data-unread]:hover{background:color-mix(in srgb,var(--accent-wash) 70%,var(--sunk))}
-.icon{width:32px;height:32px;border-radius:var(--r-md);background:var(--sunk);display:grid;place-items:center;color:var(--ink-soft)}
-.icon[data-kind="GENERATION_DONE"]{color:var(--ok)}
-.icon[data-kind="GENERATION_FAILED"]{color:var(--danger)}
-.icon[data-kind="CREDITS"]{color:var(--accent)}
-.text{display:grid;gap:2px;min-width:0}
-.title{font-weight:600;font-size:var(--t-2)}
-.body{font-size:var(--t-1);color:var(--ink-soft);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.when{font-size:var(--t-1);color:var(--muted)}
-.empty{padding:var(--s-5) var(--s-4);color:var(--muted);font-size:var(--t-2);text-align:center}
-.foot{padding:var(--s-2) var(--s-3);text-align:center;font-size:var(--t-2);font-weight:600}
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: var(--control-h-sm);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.bell:hover {
+  background: var(--sunk);
+}
+.bell:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.panel {
+  width: min(344px, calc(100vw - 40px));
+  display: grid;
+}
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-3) var(--s-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.list {
+  display: grid;
+  max-height: min(60dvh, 480px);
+  overflow: auto;
+}
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3);
+  text-decoration: none;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
+}
+.item:hover {
+  background: var(--sunk);
+  text-decoration: none;
+}
+.item[data-unread] {
+  background: var(--accent-wash);
+}
+.item[data-unread]:hover {
+  background: color-mix(in srgb, var(--accent-wash) 70%, var(--sunk));
+}
+.icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+}
+.icon[data-kind='GENERATION_DONE'] {
+  color: var(--ok);
+}
+.icon[data-kind='GENERATION_FAILED'] {
+  color: var(--danger);
+}
+.icon[data-kind='CREDITS'] {
+  color: var(--accent);
+}
+.text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.title {
+  font-weight: 600;
+  font-size: var(--t-2);
+}
+.body {
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.when {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.empty {
+  padding: var(--s-4) var(--s-3) var(--s-5);
+  color: var(--muted);
+  font-size: var(--t-2);
+  line-height: 1.5;
+  text-align: left;
+}
+.foot {
+  padding: var(--s-2) var(--s-3) var(--s-1);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-2);
+  font-weight: 600;
+}

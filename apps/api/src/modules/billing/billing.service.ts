@@ -52,7 +52,10 @@ export class BillingService {
   /** Paddle's client-side token is public by design (it opens checkouts, it cannot read anything). The API key never leaves the server. */
   clientConfig() {
     const token = process.env.PADDLE_CLIENT_TOKEN;
-    return { paddle: token ? { clientToken: token, environment: process.env.PADDLE_ENV === 'live' ? 'production' : 'sandbox' } : null, gateways: (['FLUTTERWAVE', 'PADDLE', 'STUB'] as const).filter((p) => this.gateways.has(p)) };
+    return {
+      paddle: token ? { clientToken: token, environment: process.env.PADDLE_ENV === 'live' ? 'production' : 'sandbox' } : null,
+      gateways: (['FLUTTERWAVE', 'PADDLE', 'STUB'] as const).filter((p) => this.gateways.has(p)),
+    };
   }
 
   // -------------------------------------------------------------- catalogue
@@ -63,7 +66,12 @@ export class BillingService {
     const currency = ws.currency.toUpperCase();
     let provider: PaymentProvider | null = null;
     let gateway: Gateway | null = null;
-    try { gateway = this.gateways.forCurrency(currency); provider = gateway.provider; } catch { provider = null; }
+    try {
+      gateway = this.gateways.forCurrency(currency);
+      provider = gateway.provider;
+    } catch {
+      provider = null;
+    }
     const [packs, plans, subscription] = await Promise.all([
       this.db.creditPack.findMany({ where: { active: true }, orderBy: { sort: 'asc' } }),
       this.db.plan.findMany({ where: { active: true }, orderBy: { sort: 'asc' } }),
@@ -74,11 +82,22 @@ export class BillingService {
       currency,
       provider,
       available: provider !== null,
-      packs: packs.map((p) => ({ code: p.code, credits: p.credits, price: price(p.priceByMarket), canBuy: provider !== null && price(p.priceByMarket) !== null && hasRef(p.providerRefs, provider, 'once') })),
+      packs: packs.map((p) => ({
+        code: p.code,
+        credits: p.credits,
+        price: price(p.priceByMarket),
+        canBuy: provider !== null && price(p.priceByMarket) !== null && hasRef(p.providerRefs, provider, 'once'),
+      })),
       plans: plans.map((p) => ({
-        code: p.code, credits: p.credits,
+        code: p.code,
+        credits: p.credits,
         month: { price: price(p.priceByMarket), canBuy: provider !== null && price(p.priceByMarket) !== null && hasRef(p.providerRefs, provider, 'month') },
-        year: p.yearlyPriceByMarket ? { price: price(p.yearlyPriceByMarket), canBuy: provider !== null && price(p.yearlyPriceByMarket) !== null && hasRef(p.providerRefs, provider, 'year') } : null,
+        year: p.yearlyPriceByMarket
+          ? {
+              price: price(p.yearlyPriceByMarket),
+              canBuy: provider !== null && price(p.yearlyPriceByMarket) !== null && hasRef(p.providerRefs, provider, 'year'),
+            }
+          : null,
         current: subscription?.planCode === p.code,
       })),
       subscription: subscription ? this.subscriptionView(subscription) : null,
@@ -100,14 +119,23 @@ export class BillingService {
     const item = await this.priceItem(dto, currency, gateway.provider);
     if (item.kind === 'plan') {
       const current = await this.currentSubscription(workspaceId);
-      if (current && !current.cancelAtPeriodEnd) throw new ConflictError(`This workspace is already on ${current.planCode}. Cancel it first, or buy a pack instead.`);
+      if (current && !current.cancelAtPeriodEnd)
+        throw new ConflictError(`This workspace is already on ${current.planCode}. Cancel it first, or buy a pack instead.`);
     }
     const user = await this.db.user.findUniqueOrThrow({ where: { id: actor.userId }, select: { email: true, name: true, phone: true } });
     const reference = `as_${item.kind}_${randomBytes(9).toString('base64url').replace(/[-_]/g, 'x')}`;
     const payment = await this.db.payment.create({
       data: {
-        workspaceId, userId: actor.userId, provider: gateway.provider, kind: item.kind === 'pack' ? 'PACK' : 'SUBSCRIPTION',
-        reference, itemCode: item.code, interval: item.interval, credits: item.credits, amountMinor: item.amountMinor, currency: item.currency,
+        workspaceId,
+        userId: actor.userId,
+        provider: gateway.provider,
+        kind: item.kind === 'pack' ? 'PACK' : 'SUBSCRIPTION',
+        reference,
+        itemCode: item.code,
+        interval: item.interval,
+        credits: item.credits,
+        amountMinor: item.amountMinor,
+        currency: item.currency,
       },
     });
     const origin = this.auth.publicOrigin(req);
@@ -115,12 +143,29 @@ export class BillingService {
     try {
       session = await gateway.createCheckout({ payment, item, customer: user, returnUrl: `${origin}/billing/return?ref=${reference}`, appOrigin: origin });
     } catch (e) {
-      await this.db.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', failureReason: `checkout: ${e instanceof Error ? e.message : String(e)}` } });
+      await this.db.payment.update({
+        where: { id: payment.id },
+        data: { status: 'FAILED', failureReason: `checkout: ${e instanceof Error ? e.message : String(e)}` },
+      });
       logger.error({ err: e, paymentId: payment.id, provider: gateway.provider, item: item.code }, 'checkout creation failed');
       throw new ConflictError('The payment page could not be opened. Nothing was charged — try again in a moment.');
     }
     await this.db.payment.update({ where: { id: payment.id }, data: { checkoutUrl: session.url, providerRef: session.providerRef } });
-    authLog('billing.checkout', 'succeeded', { userId: actor.userId, workspaceId, paymentId: payment.id, provider: gateway.provider, item: item.code, interval: item.interval, amountMinor: item.amountMinor, currency }, req);
+    authLog(
+      'billing.checkout',
+      'succeeded',
+      {
+        userId: actor.userId,
+        workspaceId,
+        paymentId: payment.id,
+        provider: gateway.provider,
+        item: item.code,
+        interval: item.interval,
+        amountMinor: item.amountMinor,
+        currency,
+      },
+      req,
+    );
     return { paymentId: payment.id, reference, provider: gateway.provider, url: session.url, credits: item.credits, amountMinor: item.amountMinor, currency };
   }
 
@@ -135,7 +180,13 @@ export class BillingService {
     if (!gateway) throw new NotFoundError('payment gateway');
     const v = await gateway.verify(payment, hint.providerRef ? { providerRef: hint.providerRef } : undefined);
     const settled = await this.settle(payment, v, 'return');
-    if (req) authLog('billing.verify', settled.status === 'SUCCEEDED' ? 'succeeded' : settled.status === 'FAILED' ? 'refused' : 'succeeded', { paymentId, status: settled.status, via: 'return' }, req);
+    if (req)
+      authLog(
+        'billing.verify',
+        settled.status === 'SUCCEEDED' ? 'succeeded' : settled.status === 'FAILED' ? 'refused' : 'succeeded',
+        { paymentId, status: settled.status, via: 'return' },
+        req,
+      );
     return this.paymentView(settled);
   }
 
@@ -151,7 +202,10 @@ export class BillingService {
     if (!v.ok) {
       if (v.state === 'failed') {
         logger.warn({ paymentId: fresh.id, provider: fresh.provider, reason: v.reason, via }, 'payment failed');
-        return this.db.payment.update({ where: { id: fresh.id }, data: { status: 'FAILED', failureReason: v.reason, providerPayload: (v.raw ?? undefined) as Prisma.InputJsonValue | undefined } });
+        return this.db.payment.update({
+          where: { id: fresh.id },
+          data: { status: 'FAILED', failureReason: v.reason, providerPayload: (v.raw ?? undefined) as Prisma.InputJsonValue | undefined },
+        });
       }
       logger.info({ paymentId: fresh.id, provider: fresh.provider, reason: v.reason, via }, 'payment still pending');
       return fresh;
@@ -161,17 +215,31 @@ export class BillingService {
     // must match; Paddle prices in its own currency with its own tax, so we
     // record what it charged — the price id was checked at checkout.
     if (fresh.provider !== 'PADDLE') {
-      const mismatch = v.currency !== fresh.currency ? `currency ${v.currency} != ${fresh.currency}` : v.amountMinor < fresh.amountMinor ? `amount ${v.amountMinor} < ${fresh.amountMinor}` : null;
+      const mismatch =
+        v.currency !== fresh.currency
+          ? `currency ${v.currency} != ${fresh.currency}`
+          : v.amountMinor < fresh.amountMinor
+            ? `amount ${v.amountMinor} < ${fresh.amountMinor}`
+            : null;
       if (mismatch) {
         // Money moved and does not match the row. This is the one line that must page someone.
-        logger.error({ paymentId: fresh.id, provider: fresh.provider, providerRef: v.providerRef, mismatch, via }, 'PAYMENT MISMATCH: charged amount does not match the priced row; credits withheld');
-        return this.db.payment.update({ where: { id: fresh.id }, data: { status: 'FAILED', failureReason: `mismatch: ${mismatch}`, providerRef: v.providerRef, providerPayload: v.raw as Prisma.InputJsonValue } });
+        logger.error(
+          { paymentId: fresh.id, provider: fresh.provider, providerRef: v.providerRef, mismatch, via },
+          'PAYMENT MISMATCH: charged amount does not match the priced row; credits withheld',
+        );
+        return this.db.payment.update({
+          where: { id: fresh.id },
+          data: { status: 'FAILED', failureReason: `mismatch: ${mismatch}`, providerRef: v.providerRef, providerPayload: v.raw as Prisma.InputJsonValue },
+        });
       }
     }
 
     const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: fresh.workspaceId }, select: { id: true } });
     const entry = await this.ledger.purchase({
-      walletId: wallet.id, amount: fresh.credits, idempotencyKey: `payment:${fresh.id}`, referenceId: fresh.id,
+      walletId: wallet.id,
+      amount: fresh.credits,
+      idempotencyKey: `payment:${fresh.id}`,
+      referenceId: fresh.id,
       reason: fresh.kind === 'PACK' ? `Credit pack ${fresh.itemCode}` : fresh.kind === 'RENEWAL' ? `${fresh.itemCode} plan renewed` : `${fresh.itemCode} plan`,
     });
 
@@ -183,23 +251,67 @@ export class BillingService {
     const updated = await this.db.payment.update({
       where: { id: fresh.id },
       data: {
-        status: 'SUCCEEDED', providerRef: v.providerRef, amountMinor: fresh.provider === 'PADDLE' && v.amountMinor > 0 ? v.amountMinor : fresh.amountMinor,
-        currency: fresh.provider === 'PADDLE' ? v.currency : fresh.currency, providerPayload: v.raw as Prisma.InputJsonValue, ledgerEntryId: entry.id, subscriptionId, failureReason: null,
+        status: 'SUCCEEDED',
+        providerRef: v.providerRef,
+        amountMinor: fresh.provider === 'PADDLE' && v.amountMinor > 0 ? v.amountMinor : fresh.amountMinor,
+        currency: fresh.provider === 'PADDLE' ? v.currency : fresh.currency,
+        providerPayload: v.raw as Prisma.InputJsonValue,
+        ledgerEntryId: entry.id,
+        subscriptionId,
+        failureReason: null,
       },
     });
-    logger.info({ paymentId: fresh.id, workspaceId: fresh.workspaceId, provider: fresh.provider, providerRef: v.providerRef, credits: fresh.credits, amountMinor: updated.amountMinor, currency: updated.currency, kind: fresh.kind, via, ledgerEntryId: entry.id }, 'payment settled; credits granted');
-    if (fresh.userId) void this.notifications.notify(fresh.userId, { workspaceId: fresh.workspaceId, kind: 'CREDITS', title: `${fresh.credits.toLocaleString()} credits added`, body: fresh.kind === 'RENEWAL' ? 'Your plan renewed.' : fresh.kind === 'SUBSCRIPTION' ? 'Your plan is active. The credits are in your balance.' : 'Your top-up cleared. The credits are in your balance.', href: '/billing', refId: fresh.id });
+    logger.info(
+      {
+        paymentId: fresh.id,
+        workspaceId: fresh.workspaceId,
+        provider: fresh.provider,
+        providerRef: v.providerRef,
+        credits: fresh.credits,
+        amountMinor: updated.amountMinor,
+        currency: updated.currency,
+        kind: fresh.kind,
+        via,
+        ledgerEntryId: entry.id,
+      },
+      'payment settled; credits granted',
+    );
+    if (fresh.userId)
+      void this.notifications.notify(fresh.userId, {
+        workspaceId: fresh.workspaceId,
+        kind: 'CREDITS',
+        title: `${fresh.credits.toLocaleString()} credits added`,
+        body:
+          fresh.kind === 'RENEWAL'
+            ? 'Your plan renewed.'
+            : fresh.kind === 'SUBSCRIPTION'
+              ? 'Your plan is active. The credits are in your balance.'
+              : 'Your top-up cleared. The credits are in your balance.',
+        href: '/billing',
+        refId: fresh.id,
+      });
     return updated;
   }
 
   private async upsertSubscription(payment: Payment, v: Extract<Verification, { ok: true }>): Promise<Subscription> {
     const existing = payment.subscriptionId
       ? await this.db.subscription.findUnique({ where: { id: payment.subscriptionId } })
-      : await this.db.subscription.findFirst({ where: { workspaceId: payment.workspaceId, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } }, orderBy: { createdAt: 'desc' } });
+      : await this.db.subscription.findFirst({
+          where: { workspaceId: payment.workspaceId, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } },
+          orderBy: { createdAt: 'desc' },
+        });
     const periodEnd = v.periodEnd ?? new Date(Date.now() + (payment.interval === 'year' ? 365 : 30) * 24 * 3600_000);
     const data = {
-      provider: payment.provider, providerRef: v.subscriptionRef ?? existing?.providerRef ?? null, planCode: payment.itemCode, interval: payment.interval ?? 'month',
-      status: 'ACTIVE' as const, currentPeriodStart: v.periodStart ?? new Date(), currentPeriodEnd: periodEnd, customerRef: v.customerRef ?? existing?.customerRef ?? null, cancelAtPeriodEnd: false, cancelledAt: null,
+      provider: payment.provider,
+      providerRef: v.subscriptionRef ?? existing?.providerRef ?? null,
+      planCode: payment.itemCode,
+      interval: payment.interval ?? 'month',
+      status: 'ACTIVE' as const,
+      currentPeriodStart: v.periodStart ?? new Date(),
+      currentPeriodEnd: periodEnd,
+      customerRef: v.customerRef ?? existing?.customerRef ?? null,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
     };
     if (existing) return this.db.subscription.update({ where: { id: existing.id }, data });
     return this.db.subscription.create({ data: { workspaceId: payment.workspaceId, ...data } });
@@ -214,13 +326,28 @@ export class BillingService {
    * our own processing bug will retry into the same bug; the receipt row
    * carries the error and the sweeper can re-drive it.
    */
-  async handleWebhook(provider: PaymentProvider, rawBody: Buffer, headers: Record<string, string | string[] | undefined>): Promise<{ status: string; outcome?: string }> {
+  async handleWebhook(
+    provider: PaymentProvider,
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+  ): Promise<{ status: string; outcome?: string }> {
     const gateway = this.gateways.get(provider);
-    if (!gateway) { logger.warn({ provider }, 'webhook for a gateway that is not configured'); return { status: 'ignored' }; }
+    if (!gateway) {
+      logger.warn({ provider }, 'webhook for a gateway that is not configured');
+      return { status: 'ignored' };
+    }
     const parsed = gateway.parseWebhook(rawBody, headers);
     let receipt;
     try {
-      receipt = await this.db.webhookReceipt.create({ data: { provider, eventId: parsed.eventId, eventType: parsed.type, signatureOk: parsed.signatureOk, payload: (parsed.body ?? { raw: rawBody.toString('utf8').slice(0, 4000) }) as Prisma.InputJsonValue } });
+      receipt = await this.db.webhookReceipt.create({
+        data: {
+          provider,
+          eventId: parsed.eventId,
+          eventType: parsed.type,
+          signatureOk: parsed.signatureOk,
+          payload: (parsed.body ?? { raw: rawBody.toString('utf8').slice(0, 4000) }) as Prisma.InputJsonValue,
+        },
+      });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         logger.info({ provider, eventId: parsed.eventId, type: parsed.type }, 'webhook redelivered; already recorded');
@@ -254,11 +381,13 @@ export class BillingService {
         return `ignored: ${intent.why}`;
       case 'charge': {
         let payment = intent.reference ? await this.db.payment.findUnique({ where: { reference: intent.reference } }) : null;
-        if (!payment && intent.providerRef) payment = await this.db.payment.findFirst({ where: { provider: gateway.provider, providerRef: intent.providerRef } });
+        if (!payment && intent.providerRef)
+          payment = await this.db.payment.findFirst({ where: { provider: gateway.provider, providerRef: intent.providerRef } });
         if (!payment && intent.status === 'succeeded') payment = await this.renewalPayment(gateway.provider, intent);
         if (!payment) return 'no_payment';
         if (intent.status === 'failed') {
-          if (payment.status === 'PENDING') await this.db.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', failureReason: 'gateway reported failure' } });
+          if (payment.status === 'PENDING')
+            await this.db.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', failureReason: 'gateway reported failure' } });
           return payment.status === 'PENDING' ? 'failed' : 'already_settled';
         }
         if (intent.status === 'pending') return 'pending';
@@ -272,19 +401,30 @@ export class BillingService {
         if (!sub && intent.reference) {
           const p = await this.db.payment.findUnique({ where: { reference: intent.reference } });
           if (p?.subscriptionId) sub = await this.db.subscription.findUnique({ where: { id: p.subscriptionId } });
-          if (!sub && p) sub = await this.db.subscription.findFirst({ where: { workspaceId: p.workspaceId, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } }, orderBy: { createdAt: 'desc' } });
+          if (!sub && p)
+            sub = await this.db.subscription.findFirst({
+              where: { workspaceId: p.workspaceId, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } },
+              orderBy: { createdAt: 'desc' },
+            });
         }
         if (!sub) return 'no_subscription';
         const status = intent.status === 'active' ? 'ACTIVE' : intent.status === 'past_due' ? 'PAST_DUE' : intent.status === 'paused' ? 'PAUSED' : 'CANCELLED';
         await this.db.subscription.update({
           where: { id: sub.id },
           data: {
-            status, providerRef: sub.providerRef ?? intent.subscriptionRef, customerRef: intent.customerRef ?? sub.customerRef,
-            currentPeriodStart: intent.periodStart ?? sub.currentPeriodStart, currentPeriodEnd: intent.periodEnd ?? sub.currentPeriodEnd,
-            cancelAtPeriodEnd: intent.cancelAtPeriodEnd ?? sub.cancelAtPeriodEnd, cancelledAt: status === 'CANCELLED' ? (sub.cancelledAt ?? new Date()) : sub.cancelledAt,
+            status,
+            providerRef: sub.providerRef ?? intent.subscriptionRef,
+            customerRef: intent.customerRef ?? sub.customerRef,
+            currentPeriodStart: intent.periodStart ?? sub.currentPeriodStart,
+            currentPeriodEnd: intent.periodEnd ?? sub.currentPeriodEnd,
+            cancelAtPeriodEnd: intent.cancelAtPeriodEnd ?? sub.cancelAtPeriodEnd,
+            cancelledAt: status === 'CANCELLED' ? (sub.cancelledAt ?? new Date()) : sub.cancelledAt,
           },
         });
-        logger.info({ subscriptionId: sub.id, workspaceId: sub.workspaceId, status, cancelAtPeriodEnd: intent.cancelAtPeriodEnd }, 'subscription updated from webhook');
+        logger.info(
+          { subscriptionId: sub.id, workspaceId: sub.workspaceId, status, cancelAtPeriodEnd: intent.cancelAtPeriodEnd },
+          'subscription updated from webhook',
+        );
         return `subscription_${status.toLowerCase()}`;
       }
       case 'refund': {
@@ -294,10 +434,19 @@ export class BillingService {
         const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: payment.workspaceId }, select: { id: true } });
         let note: string | null = null;
         try {
-          await this.ledger.clawback({ walletId: wallet.id, amount: payment.credits, idempotencyKey: `payment:${payment.id}`, referenceId: payment.id, reason: `Refund of ${payment.itemCode}` });
+          await this.ledger.clawback({
+            walletId: wallet.id,
+            amount: payment.credits,
+            idempotencyKey: `payment:${payment.id}`,
+            referenceId: payment.id,
+            reason: `Refund of ${payment.itemCode}`,
+          });
         } catch (e) {
           note = `clawback failed: ${e instanceof Error ? e.message : String(e)}`;
-          logger.error({ err: e, paymentId: payment.id, workspaceId: payment.workspaceId, credits: payment.credits }, 'refund received but credits could not be taken back (already spent?) — needs a person');
+          logger.error(
+            { err: e, paymentId: payment.id, workspaceId: payment.workspaceId, credits: payment.credits },
+            'refund received but credits could not be taken back (already spent?) — needs a person',
+          );
         }
         await this.db.payment.update({ where: { id: payment.id }, data: { status: 'REFUNDED', refundedAt: new Date(), failureReason: note } });
         return note ? 'refunded_clawback_failed' : 'refunded';
@@ -313,8 +462,10 @@ export class BillingService {
   private async renewalPayment(provider: PaymentProvider, intent: Extract<WebhookIntent, { kind: 'charge' }>): Promise<Payment | null> {
     const where: Prisma.SubscriptionWhereInput = { provider, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } };
     if (intent.subscriptionRef) where.providerRef = intent.subscriptionRef;
-    else if (intent.planRef && intent.customerEmail) { where.providerRef = intent.planRef; where.customerRef = intent.customerEmail; }
-    else return null;
+    else if (intent.planRef && intent.customerEmail) {
+      where.providerRef = intent.planRef;
+      where.customerRef = intent.customerEmail;
+    } else return null;
     const sub = await this.db.subscription.findFirst({ where, include: { plan: true, workspace: { select: { currency: true } } } });
     if (!sub) return null;
     const currency = sub.workspace.currency.toUpperCase();
@@ -322,9 +473,18 @@ export class BillingService {
     const price = priceIn(by, currency) ?? 0;
     const payment = await this.db.payment.create({
       data: {
-        workspaceId: sub.workspaceId, provider, kind: 'RENEWAL', reference: `as_renew_${randomBytes(9).toString('base64url').replace(/[-_]/g, 'x')}`,
-        providerRef: intent.providerRef, itemCode: sub.planCode, interval: sub.interval, credits: sub.plan.credits, amountMinor: toMinor(price, currency), currency,
-        subscriptionId: sub.id, providerPayload: { subscriptionRef: sub.providerRef },
+        workspaceId: sub.workspaceId,
+        provider,
+        kind: 'RENEWAL',
+        reference: `as_renew_${randomBytes(9).toString('base64url').replace(/[-_]/g, 'x')}`,
+        providerRef: intent.providerRef,
+        itemCode: sub.planCode,
+        interval: sub.interval,
+        credits: sub.plan.credits,
+        amountMinor: toMinor(price, currency),
+        currency,
+        subscriptionId: sub.id,
+        providerPayload: { subscriptionRef: sub.providerRef },
       },
     });
     logger.info({ paymentId: payment.id, subscriptionId: sub.id, workspaceId: sub.workspaceId, plan: sub.planCode }, 'renewal charge recorded');
@@ -349,8 +509,9 @@ export class BillingService {
       let ref = sub.providerRef;
       // Flutterwave's plan id is shared by every subscriber; the cancel needs the per-customer subscription id.
       if (gateway instanceof FlutterwaveGateway && sub.customerRef) ref = (await gateway.findSubscriptionId(sub.customerRef, sub.providerRef)) ?? ref;
-      try { await gateway.cancelSubscription(ref, true); }
-      catch (e) {
+      try {
+        await gateway.cancelSubscription(ref, true);
+      } catch (e) {
         logger.error({ err: e, subscriptionId: sub.id, provider: sub.provider }, 'gateway refused the cancellation');
         throw new ConflictError('The payment provider did not accept the cancellation. Try again, or contact support.');
       }
@@ -365,7 +526,9 @@ export class BillingService {
   async payments(workspaceId: string, q: PaymentsQueryDto) {
     const take = q.take ?? 30;
     const rows = await this.db.payment.findMany({
-      where: { workspaceId, status: { not: 'PENDING' } }, orderBy: { createdAt: 'desc' }, take,
+      where: { workspaceId, status: { not: 'PENDING' } },
+      orderBy: { createdAt: 'desc' },
+      take,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
     });
     return { rows: rows.map((p) => this.paymentView(p)), nextCursor: rows.length === take ? (rows[rows.length - 1]?.id ?? null) : null };
@@ -390,15 +553,33 @@ export class BillingService {
       if (!pack) throw new NotFoundError('credit pack');
       const price = priceIn(pack.priceByMarket, currency);
       if (price === null) throw new ValidationError({ code: `${pack.code} is not priced in ${currency} yet.` });
-      return { kind: 'pack', code: pack.code, credits: pack.credits, amountMinor: toMinor(price, currency), currency, providerRef: refFor(pack.providerRefs, provider, 'once'), label: `${pack.credits} AnyStudio credits` };
+      return {
+        kind: 'pack',
+        code: pack.code,
+        credits: pack.credits,
+        amountMinor: toMinor(price, currency),
+        currency,
+        providerRef: refFor(pack.providerRefs, provider, 'once'),
+        label: `${pack.credits} AnyStudio credits`,
+      };
     }
     const plan = await this.db.plan.findFirst({ where: { code: dto.code, active: true } });
     if (!plan) throw new NotFoundError('plan');
     const interval: Interval = dto.interval ?? 'month';
     const by = interval === 'year' ? plan.yearlyPriceByMarket : plan.priceByMarket;
     const price = priceIn(by, currency);
-    if (price === null || price <= 0) throw new ValidationError({ interval: `${plan.code} cannot be billed ${interval === 'year' ? 'yearly' : 'monthly'} in ${currency}.` });
-    return { kind: 'plan', code: plan.code, credits: plan.credits, interval, amountMinor: toMinor(price, currency), currency, providerRef: refFor(plan.providerRefs, provider, interval), label: `AnyStudio ${plan.code} plan, ${interval === 'year' ? 'yearly' : 'monthly'}` };
+    if (price === null || price <= 0)
+      throw new ValidationError({ interval: `${plan.code} cannot be billed ${interval === 'year' ? 'yearly' : 'monthly'} in ${currency}.` });
+    return {
+      kind: 'plan',
+      code: plan.code,
+      credits: plan.credits,
+      interval,
+      amountMinor: toMinor(price, currency),
+      currency,
+      providerRef: refFor(plan.providerRefs, provider, interval),
+      label: `AnyStudio ${plan.code} plan, ${interval === 'year' ? 'yearly' : 'monthly'}`,
+    };
   }
 
   private async workspace(id: string) {
@@ -412,11 +593,37 @@ export class BillingService {
   }
 
   private subscriptionView(s: Subscription) {
-    return { id: s.id, planCode: s.planCode, interval: s.interval, status: s.status, provider: s.provider, currentPeriodStart: s.currentPeriodStart, currentPeriodEnd: s.currentPeriodEnd, cancelAtPeriodEnd: s.cancelAtPeriodEnd, cancelledAt: s.cancelledAt };
+    return {
+      id: s.id,
+      planCode: s.planCode,
+      interval: s.interval,
+      status: s.status,
+      provider: s.provider,
+      currentPeriodStart: s.currentPeriodStart,
+      currentPeriodEnd: s.currentPeriodEnd,
+      cancelAtPeriodEnd: s.cancelAtPeriodEnd,
+      cancelledAt: s.cancelledAt,
+    };
   }
 
   private paymentView(p: Payment) {
-    return { id: p.id, reference: p.reference, provider: p.provider, kind: p.kind, status: p.status, itemCode: p.itemCode, interval: p.interval, credits: p.credits, amountMinor: p.amountMinor, currency: p.currency, checkoutUrl: p.status === 'PENDING' ? p.checkoutUrl : null, failureReason: p.failureReason, refundedAt: p.refundedAt, createdAt: p.createdAt, updatedAt: p.updatedAt };
+    return {
+      id: p.id,
+      reference: p.reference,
+      provider: p.provider,
+      kind: p.kind,
+      status: p.status,
+      itemCode: p.itemCode,
+      interval: p.interval,
+      credits: p.credits,
+      amountMinor: p.amountMinor,
+      currency: p.currency,
+      checkoutUrl: p.status === 'PENDING' ? p.checkoutUrl : null,
+      failureReason: p.failureReason,
+      refundedAt: p.refundedAt,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    };
   }
 }
 

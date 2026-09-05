@@ -34,57 +34,103 @@ import { ApiCreateGenerationDto, ApiListGenerationsDto, ApiUploadUrlDto } from '
 @UseGuards(ApiKeyGuard)
 @Controller({ version: '1' })
 export class PublicApiController {
-  constructor(private readonly api: PublicApiService, private readonly audio: AudioService, private readonly registry: ProviderRegistry) {}
+  constructor(
+    private readonly api: PublicApiService,
+    private readonly audio: AudioService,
+    private readonly registry: ProviderRegistry,
+  ) {}
 
-  @Get('/capabilities') @RequireScope('catalogue:read')
+  @Get('/capabilities')
+  @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'What can be made, what each costs, and the parameters it takes' })
-  capabilities() { return this.api.capabilities(); }
+  capabilities() {
+    return this.api.capabilities();
+  }
 
-  @Get('/balance') @RequireScope('balance:read')
+  @Get('/balance')
+  @RequireScope('balance:read')
   @ApiOperation({ summary: 'Credits left in the workspace' })
-  balance(@Req() req: Request) { return this.api.balance(req.apiKey!); }
+  balance(@Req() req: Request) {
+    return this.api.balance(req.apiKey!);
+  }
 
-  @Post('/uploads/from-url') @RequireScope('media:write')
+  @Post('/uploads/from-url')
+  @RequireScope('media:write')
   @ApiOperation({ summary: 'Fetch a public URL into the workspace as a source file' })
-  fromUrl(@Req() req: Request, @Body() body: ApiUploadUrlDto) { return this.api.uploadFromUrl(req.apiKey!, body.url); }
+  fromUrl(@Req() req: Request, @Body() body: ApiUploadUrlDto) {
+    return this.api.uploadFromUrl(req.apiKey!, body.url);
+  }
 
-  @Post('/uploads') @RequireScope('media:write')
+  @Post('/uploads')
+  @RequireScope('media:write')
   @ApiOperation({ summary: 'A presigned PUT for a file you hold; call complete afterwards' })
-  presign(@Req() req: Request, @Body() body: PresignUploadDto) { return this.api.presign(req.apiKey!, body); }
+  presign(@Req() req: Request, @Body() body: PresignUploadDto) {
+    return this.api.presign(req.apiKey!, body);
+  }
 
-  @Post('/uploads/:uploadId/complete') @RequireScope('media:write') @HttpCode(HttpStatus.OK)
+  @Post('/uploads/:uploadId/complete')
+  @RequireScope('media:write')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'The PUT finished; verify and make the file usable' })
-  complete(@Req() req: Request, @Param('uploadId', ParseUUIDPipe) uploadId: string) { return this.api.complete(req.apiKey!, uploadId); }
+  complete(@Req() req: Request, @Param('uploadId', ParseUUIDPipe) uploadId: string) {
+    return this.api.complete(req.apiKey!, uploadId);
+  }
 
-  @Post('/generations') @RequireScope('generations:write')
+  @Post('/generations')
+  @RequireScope('generations:write')
   @ApiOperation({ summary: 'Ask for a generation; poll it or receive a webhook when it finishes' })
-  create(@Req() req: Request, @Body() body: ApiCreateGenerationDto) { return this.api.create(req.apiKey!, body); }
+  create(@Req() req: Request, @Body() body: ApiCreateGenerationDto) {
+    return this.api.create(req.apiKey!, body);
+  }
 
-  @Get('/generations') @RequireScope('generations:read')
+  @Get('/generations')
+  @RequireScope('generations:read')
   @ApiOperation({ summary: "This project's generations, newest first" })
-  list(@Req() req: Request, @Query() q: ApiListGenerationsDto) { return this.api.list(req.apiKey!, q); }
+  list(@Req() req: Request, @Query() q: ApiListGenerationsDto) {
+    return this.api.list(req.apiKey!, q);
+  }
 
-  @Get('/generations/:generationId') @RequireScope('generations:read')
+  @Get('/generations/:generationId')
+  @RequireScope('generations:read')
   @ApiOperation({ summary: 'One generation with signed output URLs' })
-  get(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) { return this.api.get(req.apiKey!, id); }
+  get(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) {
+    return this.api.get(req.apiKey!, id);
+  }
 
-  @Post('/generations/:generationId/cancel') @RequireScope('generations:write') @HttpCode(HttpStatus.OK)
+  @Post('/generations/:generationId/cancel')
+  @RequireScope('generations:write')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Withdraw a generation that has not started' })
-  cancel(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) { return this.api.cancel(req.apiKey!, id); }
+  cancel(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) {
+    return this.api.cancel(req.apiKey!, id);
+  }
 
-  @Post('/generations/:generationId/unlock') @RequireScope('generations:write') @HttpCode(HttpStatus.OK)
+  @Post('/generations/:generationId/unlock')
+  @RequireScope('generations:write')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Pay for the rest of a song' })
-  unlock(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) { return this.audio.unlock(req.actor!, req.apiKey!.workspaceId, id, req); }
+  unlock(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) {
+    return this.audio.unlock(req.actor!, req.apiKey!.workspaceId, id, req);
+  }
 
-  @Get('/audio/genres') @RequireScope('catalogue:read')
+  @Get('/audio/genres')
+  @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Music genres' })
-  genres() { return this.audio.genres(); }
+  genres() {
+    return this.audio.genres();
+  }
 
-  @Get('/audio/voices') @RequireScope('catalogue:read')
+  @Get('/audio/voices')
+  @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Voices this environment can serve' })
-  voices() { return this.audio.voices((k) => this.registry.get(k) !== undefined); }
+  voices() {
+    return this.audio.voices((k) => this.registry.get(k) !== undefined);
+  }
 
-  @Get('/audio/dub-languages') @RequireScope('catalogue:read')
+  @Get('/audio/dub-languages')
+  @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Languages a video can be dubbed into' })
-  dubLanguages() { return this.audio.dubLanguages((k) => this.registry.get(k) !== undefined); }
+  dubLanguages() {
+    return this.audio.dubLanguages((k) => this.registry.get(k) !== undefined);
+  }
 }

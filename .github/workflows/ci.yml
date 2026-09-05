@@ -22,13 +22,13 @@ jobs:
           POSTGRES_USER: anystudio
           POSTGRES_PASSWORD: anystudio
           POSTGRES_DB: anystudio_test
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U anystudio" --health-interval 5s
           --health-timeout 5s --health-retries 12
       redis:
         image: redis:7-alpine
-        ports: ["6379:6379"]
+        ports: ['6379:6379']
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 12
 
     # Fixtures, not secrets. The Postgres and Redis they point at are service
@@ -92,6 +92,7 @@ jobs:
             --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
 
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm db:deploy
       - run: pnpm db:seed

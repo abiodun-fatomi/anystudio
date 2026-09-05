@@ -21,15 +21,27 @@ export const voiceoverPipeline: Pipeline = async (ctx) => {
     // A Nigerian-English voice reads Nigerian English; the language follows the voice unless the seller chose another.
     if (!p.language || p.language === 'en') language = voice.language.split('-')[0] ?? 'en';
   }
-  const script = p.script.replace(/[*_#`>]/g, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  const script = p.script
+    .replace(/[*_#`>]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   await ctx.stage('generating', 30, 'recording');
   const result = await ctx.callProvider(
-    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'VOICEOVER', files: ctx.files, params: { ...p, script, language, providerVoiceId } },
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      capability: 'VOICEOVER',
+      files: ctx.files,
+      params: { ...p, script, language, providerVoiceId },
+    },
     { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 50, detail) },
   );
   const words = script.split(/\s+/).filter(Boolean).length;
   return {
     artifacts: [...result.artifacts, { text: { script, words, voice: p.voiceId ?? null, language }, mime: 'application/json', role: 'text' }],
-    providerKey: result.providerKey, providerJobId: result.providerJobId, costMinor: result.costMinor,
+    providerKey: result.providerKey,
+    providerJobId: result.providerJobId,
+    costMinor: result.costMinor,
   };
 };

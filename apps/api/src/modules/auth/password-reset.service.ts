@@ -64,9 +64,7 @@ export class PasswordResetService {
     });
 
     const link = `${appOrigin}/reset?token=${token}`;
-    await this.mailer
-      .send(passwordReset(email, user.name, link))
-      .catch((err: unknown) => logger.error({ err }, 'password reset mail failed'));
+    await this.mailer.send(passwordReset(email, user.name, link)).catch((err: unknown) => logger.error({ err }, 'password reset mail failed'));
   }
 
   /**
@@ -97,8 +95,12 @@ export class PasswordResetService {
       }),
       this.db.authEvent.create({
         data: {
-          userId: row.userId, type: 'PASSWORD_CHANGED', surface: 'APP',
-          requestId: req.requestId, ip: req.ip, userAgent: req.get('user-agent')?.slice(0, 400),
+          userId: row.userId,
+          type: 'PASSWORD_CHANGED',
+          surface: 'APP',
+          requestId: req.requestId,
+          ip: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 400),
           detail: { via: 'reset_link' },
         },
       }),

@@ -23,12 +23,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class DeveloperService {
-  constructor(private readonly db: PrismaClient, private readonly ledger: LedgerService, private readonly dispatcher: WebhookDispatcher) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly ledger: LedgerService,
+    private readonly dispatcher: WebhookDispatcher,
+  ) {}
 
   // ---------------------------------------------------------------- projects
 
   async projects(workspaceId: string) {
-    const rows = await this.db.project.findMany({ where: { workspaceId }, orderBy: [{ archivedAt: 'asc' }, { createdAt: 'asc' }], include: { _count: { select: { apiKeys: { where: { revokedAt: null } } } } } });
+    const rows = await this.db.project.findMany({
+      where: { workspaceId },
+      orderBy: [{ archivedAt: 'asc' }, { createdAt: 'asc' }],
+      include: { _count: { select: { apiKeys: { where: { revokedAt: null } } } } },
+    });
     return rows.map((p) => ({ ...this.projectView(p), activeKeys: p._count.apiKeys }));
   }
 
@@ -46,17 +54,26 @@ export class DeveloperService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
         ...(dto.description !== undefined ? { description: dto.description.trim() || null } : {}),
-        ...(dto.archived !== undefined ? { archivedAt: dto.archived ? row.archivedAt ?? new Date() : null } : {}),
+        ...(dto.archived !== undefined ? { archivedAt: dto.archived ? (row.archivedAt ?? new Date()) : null } : {}),
       },
     });
-    authLog('developer.project', 'succeeded', { userId: actor.userId, workspaceId, projectId: row.id, action: dto.archived === true ? 'archive' : dto.archived === false ? 'restore' : 'update' }, req);
+    authLog(
+      'developer.project',
+      'succeeded',
+      { userId: actor.userId, workspaceId, projectId: row.id, action: dto.archived === true ? 'archive' : dto.archived === false ? 'restore' : 'update' },
+      req,
+    );
     return this.projectView(updated);
   }
 
   // ---------------------------------------------------------------- keys
 
   async keys(workspaceId: string, projectId?: string) {
-    const rows = await this.db.apiKey.findMany({ where: { workspaceId, ...(projectId ? { projectId } : {}) }, orderBy: [{ revokedAt: 'asc' }, { createdAt: 'desc' }], include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } } });
+    const rows = await this.db.apiKey.findMany({
+      where: { workspaceId, ...(projectId ? { projectId } : {}) },
+      orderBy: [{ revokedAt: 'asc' }, { createdAt: 'desc' }],
+      include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } },
+    });
     return rows.map((k) => this.keyView(k));
   }
 
@@ -71,20 +88,41 @@ export class DeveloperService {
     const scopes = (dto.scopes?.length ? dto.scopes : DEFAULT_SCOPES) as ApiScope[];
     const row = await this.db.apiKey.create({
       data: {
-        workspaceId, projectId: project.id, createdById: actor.userId, name: dto.name.trim(), prefix: minted.prefix, hash: minted.hash, scopes,
+        workspaceId,
+        projectId: project.id,
+        createdById: actor.userId,
+        name: dto.name.trim(),
+        prefix: minted.prefix,
+        hash: minted.hash,
+        scopes,
         expiresAt: dto.expiresInDays ? new Date(Date.now() + dto.expiresInDays * DAY_MS) : null,
       },
       include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } },
     });
-    authLog('developer.key', 'succeeded', { userId: actor.userId, workspaceId, projectId: project.id, apiKeyId: row.id, prefix: row.prefix, scopes, action: 'create' }, req);
+    authLog(
+      'developer.key',
+      'succeeded',
+      { userId: actor.userId, workspaceId, projectId: project.id, apiKeyId: row.id, prefix: row.prefix, scopes, action: 'create' },
+      req,
+    );
     return { ...this.keyView(row), key: minted.key };
   }
 
   async revokeKey(actor: Actor, workspaceId: string, keyId: string, req: Request) {
     const row = await this.db.apiKey.findFirst({ where: { id: keyId, workspaceId } });
     if (!row) throw new NotFoundError('API key');
-    if (row.revokedAt) return this.keyView(await this.db.apiKey.findUniqueOrThrow({ where: { id: row.id }, include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } } }));
-    const updated = await this.db.apiKey.update({ where: { id: row.id }, data: { revokedAt: new Date() }, include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } } });
+    if (row.revokedAt)
+      return this.keyView(
+        await this.db.apiKey.findUniqueOrThrow({
+          where: { id: row.id },
+          include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } },
+        }),
+      );
+    const updated = await this.db.apiKey.update({
+      where: { id: row.id },
+      data: { revokedAt: new Date() },
+      include: { project: { select: { name: true, slug: true } }, createdBy: { select: { name: true, email: true } } },
+    });
     authLog('developer.key', 'succeeded', { userId: actor.userId, workspaceId, apiKeyId: row.id, prefix: row.prefix, action: 'revoke' }, req);
     return this.keyView(updated);
   }
@@ -92,7 +130,11 @@ export class DeveloperService {
   // ---------------------------------------------------------------- webhooks
 
   async webhooks(workspaceId: string) {
-    const rows = await this.db.webhookEndpoint.findMany({ where: { workspaceId }, orderBy: { createdAt: 'asc' }, include: { project: { select: { name: true, slug: true } } } });
+    const rows = await this.db.webhookEndpoint.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+      include: { project: { select: { name: true, slug: true } } },
+    });
     return rows.map((w) => this.webhookView(w));
   }
 
@@ -103,7 +145,13 @@ export class DeveloperService {
     if (count >= 20) throw new ConflictError('Twenty endpoints is the limit for a workspace.');
     this.assertReachableUrl(dto.url);
     const row = await this.db.webhookEndpoint.create({
-      data: { workspaceId, projectId: dto.projectId ?? null, url: dto.url, secret: mintWebhookSecret(), events: dto.events?.length ? dto.events : [...WEBHOOK_EVENTS] },
+      data: {
+        workspaceId,
+        projectId: dto.projectId ?? null,
+        url: dto.url,
+        secret: mintWebhookSecret(),
+        events: dto.events?.length ? dto.events : [...WEBHOOK_EVENTS],
+      },
       include: { project: { select: { name: true, slug: true } } },
     });
     authLog('developer.webhook', 'succeeded', { userId: actor.userId, workspaceId, webhookId: row.id, action: 'create' }, req);
@@ -136,7 +184,11 @@ export class DeveloperService {
   /** A ping the developer asks for, delivered like any other event. */
   async testWebhook(actor: Actor, workspaceId: string, webhookId: string, req: Request) {
     const row = await this.webhook(workspaceId, webhookId);
-    const delivery = await this.dispatcher.enqueue(row, 'ping', { message: 'Hello from AnyStudio. Your endpoint is wired up.', workspaceId, at: new Date().toISOString() });
+    const delivery = await this.dispatcher.enqueue(row, 'ping', {
+      message: 'Hello from AnyStudio. Your endpoint is wired up.',
+      workspaceId,
+      at: new Date().toISOString(),
+    });
     authLog('developer.webhook', 'succeeded', { userId: actor.userId, workspaceId, webhookId: row.id, action: 'test' }, req);
     const sent = await this.dispatcher.deliverOne(delivery.id);
     return { delivery: sent };
@@ -145,7 +197,18 @@ export class DeveloperService {
   async deliveries(workspaceId: string, webhookId: string, take = 50) {
     const row = await this.webhook(workspaceId, webhookId);
     const rows = await this.db.webhookDelivery.findMany({ where: { endpointId: row.id }, orderBy: { createdAt: 'desc' }, take });
-    return rows.map((d) => ({ id: d.id, event: d.event, status: d.status, attempts: d.attempts, responseStatus: d.responseStatus, lastError: d.lastError, createdAt: d.createdAt, deliveredAt: d.deliveredAt, nextAttemptAt: d.status === 'PENDING' ? d.nextAttemptAt : null, payload: d.payload }));
+    return rows.map((d) => ({
+      id: d.id,
+      event: d.event,
+      status: d.status,
+      attempts: d.attempts,
+      responseStatus: d.responseStatus,
+      lastError: d.lastError,
+      createdAt: d.createdAt,
+      deliveredAt: d.deliveredAt,
+      nextAttemptAt: d.status === 'PENDING' ? d.nextAttemptAt : null,
+      payload: d.payload,
+    }));
   }
 
   async redeliver(workspaceId: string, webhookId: string, deliveryId: string) {
@@ -193,11 +256,21 @@ export class DeveloperService {
       this.db.wallet.findUnique({ where: { workspaceId }, select: { id: true } }),
     ]);
     return {
-      days, since,
+      days,
+      since,
       totals: { ...(totals[0] ?? { requests: 0, succeeded: 0, failed: 0, credits: 0, merchants: 0, p50: null }), p50Sec: totals[0]?.p50 ?? null },
       balance: wallet ? await this.ledger.balance(wallet.id) : 0,
-      byDay: byDay.map((r) => ({ day: r.day.toISOString().slice(0, 10), capability: r.capability, requests: r.requests, succeeded: r.succeeded, failed: r.failed, credits: r.credits })),
-      byProject, byKey, byMerchant,
+      byDay: byDay.map((r) => ({
+        day: r.day.toISOString().slice(0, 10),
+        capability: r.capability,
+        requests: r.requests,
+        succeeded: r.succeeded,
+        failed: r.failed,
+        credits: r.credits,
+      })),
+      byProject,
+      byKey,
+      byMerchant,
     };
   }
 
@@ -216,7 +289,14 @@ export class DeveloperService {
   }
 
   private async uniqueSlug(workspaceId: string, name: string): Promise<string> {
-    const base = name.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'project';
+    const base =
+      name
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40) || 'project';
     for (let i = 0; i < 20; i++) {
       const slug = i === 0 ? base : `${base}-${i + 1}`;
       if (!(await this.db.project.findUnique({ where: { workspaceId_slug: { workspaceId, slug } } }))) return slug;
@@ -227,9 +307,18 @@ export class DeveloperService {
   /** No loopback, link-local or private targets: a webhook is not a way to reach our own network. */
   private assertReachableUrl(url: string): void {
     let host = '';
-    try { host = new URL(url).hostname.toLowerCase(); } catch { throw new ValidationError({ url: 'That is not a valid URL.' }); }
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      throw new ValidationError({ url: 'That is not a valid URL.' });
+    }
     const isProd = process.env.APP_ENV === 'production';
-    const local = host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$|fc|fd)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+    const local =
+      host === 'localhost' ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal') ||
+      /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$|fc|fd)/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
     if (local && isProd) throw new ValidationError({ url: 'The endpoint must be a public HTTPS address.' });
   }
 
@@ -238,10 +327,30 @@ export class DeveloperService {
   }
 
   private keyView(k: ApiKey & { project: { name: string; slug: string }; createdBy: { name: string | null; email: string | null } }) {
-    return { id: k.id, name: k.name, prefix: k.prefix, scopes: k.scopes, project: { id: k.projectId, name: k.project.name, slug: k.project.slug }, createdBy: k.createdBy.name ?? k.createdBy.email, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, expiresAt: k.expiresAt, revokedAt: k.revokedAt };
+    return {
+      id: k.id,
+      name: k.name,
+      prefix: k.prefix,
+      scopes: k.scopes,
+      project: { id: k.projectId, name: k.project.name, slug: k.project.slug },
+      createdBy: k.createdBy.name ?? k.createdBy.email,
+      createdAt: k.createdAt,
+      lastUsedAt: k.lastUsedAt,
+      expiresAt: k.expiresAt,
+      revokedAt: k.revokedAt,
+    };
   }
 
   private webhookView(w: WebhookEndpoint & { project: { name: string; slug: string } | null }) {
-    return { id: w.id, url: w.url, events: w.events, active: w.active, failures: w.failures, lastDeliveryAt: w.lastDeliveryAt, project: w.project && w.projectId ? { id: w.projectId, name: w.project.name, slug: w.project.slug } : null, createdAt: w.createdAt };
+    return {
+      id: w.id,
+      url: w.url,
+      events: w.events,
+      active: w.active,
+      failures: w.failures,
+      lastDeliveryAt: w.lastDeliveryAt,
+      project: w.project && w.projectId ? { id: w.projectId, name: w.project.name, slug: w.project.slug } : null,
+      createdAt: w.createdAt,
+    };
   }
 }

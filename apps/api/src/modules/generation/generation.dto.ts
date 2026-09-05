@@ -20,21 +20,30 @@ export class CreateGenerationDto {
   params!: Record<string, unknown>;
 
   @ApiProperty({ description: 'Client-generated, unique per workspace. Retrying with the same key returns the same generation.', example: 'b3f1…' })
-  @IsString() @MaxLength(80) @Matches(/^[A-Za-z0-9_\-:.]+$/)
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[A-Za-z0-9_\-:.]+$/)
   clientKey!: string;
 
   @ApiPropertyOptional({ description: 'Override the CreditCost code (e.g. a plan pricing its shots under video.ad_30s)' })
-  @IsOptional() @IsString() @MaxLength(60)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
   costCode?: string;
 }
 
 export class GenerationHistoryQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional() @IsUUID()
+  @IsOptional()
+  @IsUUID()
   cursor?: string;
 
   @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 100 })
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   take?: number;
 }
 
@@ -44,16 +53,20 @@ export class QuoteQueryDto {
   capability!: Capability;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsString() @MaxLength(60)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
   costCode?: string;
 }
 
 export class EditTextDto {
   @ApiProperty({ example: 'captions.instagram', description: 'A key of COPY_FIELDS in packages/shared' })
-  @IsString() @MaxLength(60)
+  @IsString()
+  @MaxLength(60)
   field!: string;
 
   @ApiProperty({ maxLength: 3000 })
-  @IsString() @MaxLength(3000)
+  @IsString()
+  @MaxLength(3000)
   value!: string;
 }

@@ -45,11 +45,11 @@ on:
       - render.yaml
       - scripts/render-deploy.sh
       - scripts/smoke-api.sh
-  workflow_dispatch:   # redeploy the head of the current branch by hand
+  workflow_dispatch: # redeploy the head of the current branch by hand
 
 concurrency:
   group: api-${{ github.ref }}
-  cancel-in-progress: false   # never cancel a deploy half way
+  cancel-in-progress: false # never cancel a deploy half way
 
 permissions:
   contents: read
@@ -66,7 +66,7 @@ jobs:
           POSTGRES_USER: anystudio
           POSTGRES_PASSWORD: anystudio
           POSTGRES_DB: anystudio_test
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U anystudio" --health-interval 5s
           --health-timeout 5s --health-retries 12

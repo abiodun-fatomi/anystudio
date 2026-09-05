@@ -39,16 +39,24 @@ export class ElevenLabsProvider extends BaseProvider {
     return Object.entries(KNOWN).map(([key, k]) => new ElevenLabsProvider(apiKey, key, k.capability));
   }
 
-  constructor(private readonly apiKey: string, key: string, capability: Capability) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capability: Capability,
+  ) {
     super(key, [capability]);
   }
 
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     switch (input.capability) {
-      case 'MUSIC': return this.music(input, opts);
-      case 'VOICEOVER': return this.speak(input, opts);
-      case 'DUB': return this.dub(input, opts);
-      default: return this.unsupported(input.capability);
+      case 'MUSIC':
+        return this.music(input, opts);
+      case 'VOICEOVER':
+        return this.speak(input, opts);
+      case 'DUB':
+        return this.dub(input, opts);
+      default:
+        return this.unsupported(input.capability);
     }
   }
 
@@ -76,20 +84,37 @@ export class ElevenLabsProvider extends BaseProvider {
 
     const status = await poll(
       async () => {
-        const s = await http<{ status?: string; error?: string | null; target_languages?: string[] }>(this.key, `${API}/dubbing/${providerJobId}`, { headers, timeoutMs: 20_000, signal: opts.signal });
+        const s = await http<{ status?: string; error?: string | null; target_languages?: string[] }>(this.key, `${API}/dubbing/${providerJobId}`, {
+          headers,
+          timeoutMs: 20_000,
+          signal: opts.signal,
+        });
         const st = s.json.status ?? '';
         if (st === 'dubbed') return s.json;
-        if (st === 'failed' || s.json.error) throw new ProviderError(classifyDubError(s.json.error), `${this.key}: dubbing failed: ${s.json.error ?? 'no reason given'}`, this.key, { providerJobId });
+        if (st === 'failed' || s.json.error)
+          throw new ProviderError(classifyDubError(s.json.error), `${this.key}: dubbing failed: ${s.json.error ?? 'no reason given'}`, this.key, {
+            providerJobId,
+          });
         return null;
       },
-      { intervalMs: 8_000, timeoutMs: opts.timeoutMs, signal: opts.signal, onTick: (ms) => opts.onProgress?.(`ElevenLabs is dubbing (${Math.round(ms / 1000)}s)`, Math.min(80, 15 + (ms / expectMs) * 60)) },
-    ).catch((err) => { throw err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId }); });
+      {
+        intervalMs: 8_000,
+        timeoutMs: opts.timeoutMs,
+        signal: opts.signal,
+        onTick: (ms) => opts.onProgress?.(`ElevenLabs is dubbing (${Math.round(ms / 1000)}s)`, Math.min(80, 15 + (ms / expectMs) * 60)),
+      },
+    ).catch((err) => {
+      throw err instanceof ProviderError
+        ? err
+        : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
+    });
 
     opts.onProgress?.('fetching the dubbed video', 85);
     const { bytes, mime } = await this.download(`${API}/dubbing/${providerJobId}/audio/${encodeURIComponent(lang)}`, headers, opts);
     const isVideo = mime.startsWith('video/') || (!mime.startsWith('audio/') && (input.files.sourceKey?.mime ?? '').startsWith('video/'));
     return {
-      providerKey: this.key, providerJobId,
+      providerKey: this.key,
+      providerJobId,
       artifacts: [{ bytes, mime: isVideo ? 'video/mp4' : mime || 'audio/mpeg', role: isVideo ? 'video' : 'audio' }],
       // Lips untouched: the pipeline reads this to decide whether a LIPSYNC pass is still owed.
       meta: { language: p.targetLanguage, targetLang: lang, lipsync: false, targetLanguages: status.target_languages ?? [lang] },
@@ -118,7 +143,14 @@ export class ElevenLabsProvider extends BaseProvider {
       body = { composition_plan: { chunks }, model_id: model };
     } else {
       body = {
-        prompt: [p.brief, `Style: ${styles.join(', ')}.`, p.title ? `Title: ${p.title}.` : '', p.vocal === 'instrumental' ? 'Instrumental, no vocals.' : `${p.vocal} vocals, lyrics in ${p.language}.`].filter(Boolean).join(' '),
+        prompt: [
+          p.brief,
+          `Style: ${styles.join(', ')}.`,
+          p.title ? `Title: ${p.title}.` : '',
+          p.vocal === 'instrumental' ? 'Instrumental, no vocals.' : `${p.vocal} vocals, lyrics in ${p.language}.`,
+        ]
+          .filter(Boolean)
+          .join(' '),
         music_length_ms: clamp(lengthMs, 3000, 600_000),
         force_instrumental: p.vocal === 'instrumental',
         model_id: model,
@@ -126,7 +158,11 @@ export class ElevenLabsProvider extends BaseProvider {
     }
     opts.onProgress?.('composing', 20);
     const bytes = await this.audio(`${API}/music?output_format=${encodeURIComponent(format)}`, body, opts, 'music');
-    return { providerKey: this.key, artifacts: [{ bytes, mime: mimeOf(format), role: 'audio', durationMs: lengthMs }], meta: { model, mode: 'composition_plan' in body ? 'plan' : 'prompt' } };
+    return {
+      providerKey: this.key,
+      artifacts: [{ bytes, mime: mimeOf(format), role: 'audio', durationMs: lengthMs }],
+      meta: { model, mode: 'composition_plan' in body ? 'plan' : 'prompt' },
+    };
   }
 
   private async speak(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
@@ -137,7 +173,13 @@ export class ElevenLabsProvider extends BaseProvider {
     const body: Record<string, unknown> = {
       text: p.script,
       model_id: model,
-      voice_settings: { stability: p.style === 'energetic' ? 0.3 : p.style === 'calm' ? 0.7 : 0.5, similarity_boost: 0.75, style: p.style === 'ad' || p.style === 'energetic' ? 0.6 : 0.2, use_speaker_boost: true, speed: p.speed },
+      voice_settings: {
+        stability: p.style === 'energetic' ? 0.3 : p.style === 'calm' ? 0.7 : 0.5,
+        similarity_boost: 0.75,
+        style: p.style === 'ad' || p.style === 'energetic' ? 0.6 : 0.2,
+        use_speaker_boost: true,
+        speed: p.speed,
+      },
     };
     // The model reads the language from the text; a code is only sent when it is one it accepts.
     if (/^[a-z]{2}$/.test(p.language)) body.language_code = p.language;
@@ -148,7 +190,12 @@ export class ElevenLabsProvider extends BaseProvider {
 
   /** POST JSON and take the bytes. */
   private async audio(url: string, body: unknown, opts: ProviderOpts, what: string): Promise<Uint8Array> {
-    const res = await this.raw(url, { method: 'POST', headers: { 'xi-api-key': this.apiKey, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify(body) }, opts, what);
+    const res = await this.raw(
+      url,
+      { method: 'POST', headers: { 'xi-api-key': this.apiKey, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify(body) },
+      opts,
+      what,
+    );
     const buf = new Uint8Array(await res.arrayBuffer());
     if (buf.byteLength < 1000) throw new ProviderError('RETRYABLE', `${this.key}: ${what} returned ${buf.byteLength} bytes`, this.key);
     return buf;
@@ -156,7 +203,12 @@ export class ElevenLabsProvider extends BaseProvider {
 
   /** POST a form (the dubbing endpoint), take the JSON. */
   private async multipart<T>(url: string, form: FormData, headers: Record<string, string>, opts: ProviderOpts): Promise<T> {
-    const res = await this.raw(url, { method: 'POST', headers: { ...headers, accept: 'application/json' }, body: form }, { ...opts, timeoutMs: Math.min(opts.timeoutMs, 120_000) }, 'dubbing');
+    const res = await this.raw(
+      url,
+      { method: 'POST', headers: { ...headers, accept: 'application/json' }, body: form },
+      { ...opts, timeoutMs: Math.min(opts.timeoutMs, 120_000) },
+      'dubbing',
+    );
     return (await res.json()) as T;
   }
 
@@ -184,12 +236,24 @@ export class ElevenLabsProvider extends BaseProvider {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       let slug = '';
-      try { slug = String((JSON.parse(text) as { detail?: { status?: string } }).detail?.status ?? ''); } catch { /* not json */ }
-      const kind = res.status === 429 ? 'RATE_LIMITED'
-        : slug === 'bad_prompt' || slug === 'bad_composition_plan' || slug === 'dubbing_content_moderation' || res.status === 422 ? 'CONTENT_REJECTED'
-          : res.status === 401 || res.status === 402 || res.status === 403 ? 'PROVIDER_DOWN'
-            : res.status >= 500 ? 'RETRYABLE' : 'INVALID_INPUT';
-      throw new ProviderError(kind, `${this.key}: HTTP ${res.status} on ${what}${slug ? ` (${slug})` : ''}: ${text.slice(0, 300)}`, this.key, { status: res.status });
+      try {
+        slug = String((JSON.parse(text) as { detail?: { status?: string } }).detail?.status ?? '');
+      } catch {
+        /* not json */
+      }
+      const kind =
+        res.status === 429
+          ? 'RATE_LIMITED'
+          : slug === 'bad_prompt' || slug === 'bad_composition_plan' || slug === 'dubbing_content_moderation' || res.status === 422
+            ? 'CONTENT_REJECTED'
+            : res.status === 401 || res.status === 402 || res.status === 403
+              ? 'PROVIDER_DOWN'
+              : res.status >= 500
+                ? 'RETRYABLE'
+                : 'INVALID_INPUT';
+      throw new ProviderError(kind, `${this.key}: HTTP ${res.status} on ${what}${slug ? ` (${slug})` : ''}: ${text.slice(0, 300)}`, this.key, {
+        status: res.status,
+      });
     }
     return res;
   }
@@ -205,7 +269,10 @@ export function classifyDubError(error: string | null | undefined): 'CONTENT_REJ
 
 /** The style words a genre row carries, plus what the seller chose. */
 export function styleWords(hints: string | undefined, mood?: string, tempo?: string, vocal?: string, language?: string): string[] {
-  const words = (hints ?? '').split(/[,;]\s*|\s+—\s+/).map((w) => w.trim()).filter(Boolean);
+  const words = (hints ?? '')
+    .split(/[,;]\s*|\s+—\s+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
   if (mood) words.push(mood);
   if (tempo) words.push(tempo === 'fast' ? 'fast tempo' : tempo === 'slow' ? 'slow tempo' : 'mid tempo');
   if (vocal && vocal !== 'instrumental') words.push(`${vocal} vocals`);
@@ -221,13 +288,30 @@ export function splitSections(text: string): Array<{ name: string; lines: string
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     const tag = /^\[([^\]]+)\]$/.exec(line);
-    if (tag) { current = { name: tag[1]!, lines: [] }; out.push(current); continue; }
+    if (tag) {
+      current = { name: tag[1]!, lines: [] };
+      out.push(current);
+      continue;
+    }
     if (!line) continue;
-    if (!current) { current = { name: 'Verse', lines: [] }; out.push(current); }
+    if (!current) {
+      current = { name: 'Verse', lines: [] };
+      out.push(current);
+    }
     current.lines.push(line);
   }
   return out.filter((s) => s.lines.length > 0);
 }
 
-function clamp(v: number, lo: number, hi: number): number { return Math.max(lo, Math.min(hi, v)); }
-function mimeOf(format: string): string { return format.startsWith('mp3') ? 'audio/mpeg' : format.startsWith('wav') || format.startsWith('pcm') ? 'audio/wav' : format.startsWith('opus') ? 'audio/ogg' : 'audio/mpeg'; }
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+function mimeOf(format: string): string {
+  return format.startsWith('mp3')
+    ? 'audio/mpeg'
+    : format.startsWith('wav') || format.startsWith('pcm')
+      ? 'audio/wav'
+      : format.startsWith('opus')
+        ? 'audio/ogg'
+        : 'audio/mpeg';
+}

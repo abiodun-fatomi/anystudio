@@ -54,8 +54,14 @@ export class LocalProvider extends BaseProvider {
       }
       let musicPath: string | undefined;
       let voPath: string | undefined;
-      if (input.files.musicKey) { musicPath = join(dir, 'music'); await writeFile(musicPath, (await fetchBytes(this.key, input.files.musicKey.url, opts.timeoutMs)).bytes); }
-      if (input.files.voiceoverKey) { voPath = join(dir, 'vo'); await writeFile(voPath, (await fetchBytes(this.key, input.files.voiceoverKey.url, opts.timeoutMs)).bytes); }
+      if (input.files.musicKey) {
+        musicPath = join(dir, 'music');
+        await writeFile(musicPath, (await fetchBytes(this.key, input.files.musicKey.url, opts.timeoutMs)).bytes);
+      }
+      if (input.files.voiceoverKey) {
+        voPath = join(dir, 'vo');
+        await writeFile(voPath, (await fetchBytes(this.key, input.files.voiceoverKey.url, opts.timeoutMs)).bytes);
+      }
 
       opts.onProgress?.('assembling', 30);
       // The end card starts where the last shot ends; that needs the real durations.
@@ -89,7 +95,11 @@ export class LocalProvider extends BaseProvider {
 const index = (name: string): number => Number(name.slice('shotKeys['.length, -1));
 
 /** The ffmpeg command. Kept as one function so a change to the look is one diff. */
-function buildArgs(p: CapabilityParams<'VIDEO_STITCH'>, shots: string[], io: { musicPath?: string; voPath?: string; out: string; endStartSec: number }): string[] {
+function buildArgs(
+  p: CapabilityParams<'VIDEO_STITCH'>,
+  shots: string[],
+  io: { musicPath?: string; voPath?: string; out: string; endStartSec: number },
+): string[] {
   const { w, h } = FRAME[p.aspect];
   const args: string[] = ['-v', 'error', '-y'];
   for (const s of shots) args.push('-i', s);
@@ -124,19 +134,27 @@ function buildArgs(p: CapabilityParams<'VIDEO_STITCH'>, shots: string[], io: { m
   }
   if (p.endCard) {
     const tEnd = io.endStartSec.toFixed(2);
-    layers.push(`drawtext=text='${esc(p.endCard.text)}':fontsize=${Math.round(h * 0.045)}:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2-${Math.round(h * 0.03)}:enable='gte(t,${tEnd})'`);
+    layers.push(
+      `drawtext=text='${esc(p.endCard.text)}':fontsize=${Math.round(h * 0.045)}:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2-${Math.round(h * 0.03)}:enable='gte(t,${tEnd})'`,
+    );
     if (p.endCard.price) {
-      layers.push(`drawtext=text='${esc(p.endCard.price)}':fontsize=${Math.round(h * 0.06)}:fontcolor=0xFF3D93:x=(w-text_w)/2:y=(h-text_h)/2+${Math.round(h * 0.04)}:enable='gte(t,${tEnd})'`);
+      layers.push(
+        `drawtext=text='${esc(p.endCard.price)}':fontsize=${Math.round(h * 0.06)}:fontcolor=0xFF3D93:x=(w-text_w)/2:y=(h-text_h)/2+${Math.round(h * 0.04)}:enable='gte(t,${tEnd})'`,
+      );
     }
   }
   if (p.watermark) {
-    layers.push(`drawtext=text='made on studo':fontsize=${Math.round(h * 0.018)}:fontcolor=white@0.7:x=w-text_w-${Math.round(w * 0.04)}:y=h-text_h-${Math.round(h * 0.025)}`);
+    layers.push(
+      `drawtext=text='made on studo':fontsize=${Math.round(h * 0.018)}:fontcolor=white@0.7:x=w-text_w-${Math.round(w * 0.04)}:y=h-text_h-${Math.round(h * 0.025)}`,
+    );
   }
   f.push(`[vcat]${layers.length ? layers.join(',') : 'null'}[vout]`);
 
   // Audio: music bed ducked under the voiceover, or silence so every output has an audio track.
   if (musicIdx >= 0 && voIdx >= 0) {
-    f.push(`[${musicIdx}:a]volume=0.8[m];[${voIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo,asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[md];[md][vo2]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`);
+    f.push(
+      `[${musicIdx}:a]volume=0.8[m];[${voIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo,asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[md];[md][vo2]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
+    );
   } else if (musicIdx >= 0) {
     f.push(`[${musicIdx}:a]volume=0.9,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`);
   } else if (voIdx >= 0) {

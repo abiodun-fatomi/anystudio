@@ -10,8 +10,15 @@ import { ProviderError, type Capability, type ProviderInput, type ProviderOpts, 
 import { BaseProvider } from './base';
 import { fetchBytes, http, pick, poll } from './http';
 
-interface Submit { id: string; polling_url?: string }
-interface Status { status: string; result?: { sample?: string }; details?: unknown }
+interface Submit {
+  id: string;
+  polling_url?: string;
+}
+interface Status {
+  status: string;
+  result?: { sample?: string };
+  details?: unknown;
+}
 
 const KNOWN: Record<string, { capabilities: Capability[]; endpoint: string }> = {
   'bfl:flux-kontext-pro': { capabilities: ['IMAGE_EDIT', 'IMAGE_GENERATE'], endpoint: 'flux-kontext-pro' },
@@ -22,7 +29,12 @@ export class BflProvider extends BaseProvider {
     return Object.entries(KNOWN).map(([key, k]) => new BflProvider(apiKey, key, k.capabilities, k.endpoint));
   }
 
-  constructor(private readonly apiKey: string, key: string, capabilities: Capability[], private readonly defaultEndpoint: string) {
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capabilities: Capability[],
+    private readonly defaultEndpoint: string,
+  ) {
     super(key, capabilities);
   }
 

@@ -26,8 +26,18 @@
  */
 
 import {
-  COPY_FIELDS, COPY_JSON_SCHEMA, FIELD_JSON_SCHEMA, PLATFORM_LIMITS, ProviderError, SHOT_PLAN_JSON_SCHEMA,
-  copyOutputSchema, fieldOutputSchema, shotPlanSchema, type CapabilityParams, type CopyOutput, type LlmRequest,
+  COPY_FIELDS,
+  COPY_JSON_SCHEMA,
+  FIELD_JSON_SCHEMA,
+  PLATFORM_LIMITS,
+  ProviderError,
+  SHOT_PLAN_JSON_SCHEMA,
+  copyOutputSchema,
+  fieldOutputSchema,
+  shotPlanSchema,
+  type CapabilityParams,
+  type CopyOutput,
+  type LlmRequest,
 } from '@anystudio/shared';
 import type { z } from 'zod';
 import type { Pipeline, PipelineContext } from './index';
@@ -35,10 +45,23 @@ import { NEAR_DUPLICATE, minhash, sharedPhrases, similarity } from './uniqueness
 
 const LANGUAGE: Record<string, { name: string; guidance: string }> = {
   en: { name: 'English', guidance: '' },
-  'en-NG': { name: 'Nigerian English', guidance: 'Natural Nigerian register: "abeg", "sharp sharp" only if the seller\'s own words use them; prices in naira; "DM to order" is normal.' },
-  pcm: { name: 'Nigerian Pidgin', guidance: 'Write real Pidgin as spoken in Lagos, not English with "dey" sprinkled in. Keep product names and specs in English. Hashtags in English.' },
-  yo: { name: 'Yoruba', guidance: 'Use correct tone marks (àmì ohùn) and subdots (ẹ, ọ, ṣ). Keep product names, sizes and prices as given. Hashtags in English.' },
-  ig: { name: 'Igbo', guidance: 'Use standard Igbo orthography with dotted letters (ị, ọ, ụ) and tone where it changes meaning. Keep product names and prices as given. Hashtags in English.' },
+  'en-NG': {
+    name: 'Nigerian English',
+    guidance: 'Natural Nigerian register: "abeg", "sharp sharp" only if the seller\'s own words use them; prices in naira; "DM to order" is normal.',
+  },
+  pcm: {
+    name: 'Nigerian Pidgin',
+    guidance: 'Write real Pidgin as spoken in Lagos, not English with "dey" sprinkled in. Keep product names and specs in English. Hashtags in English.',
+  },
+  yo: {
+    name: 'Yoruba',
+    guidance: 'Use correct tone marks (àmì ohùn) and subdots (ẹ, ọ, ṣ). Keep product names, sizes and prices as given. Hashtags in English.',
+  },
+  ig: {
+    name: 'Igbo',
+    guidance:
+      'Use standard Igbo orthography with dotted letters (ị, ọ, ụ) and tone where it changes meaning. Keep product names and prices as given. Hashtags in English.',
+  },
   ha: { name: 'Hausa', guidance: 'Use standard Hausa (Boko) with hooked letters (ɓ, ɗ, ƙ). Keep product names and prices as given. Hashtags in English.' },
   fr: { name: 'French', guidance: 'West African French register; keep prices as given.' },
   sw: { name: 'Swahili', guidance: 'East African Swahili; keep prices as given.' },
@@ -63,11 +86,19 @@ export const copyPipeline: Pipeline = async (ctx) => {
   await ctx.stage('composing', 80, 'checking it does not repeat your other listings');
   const clash = await nearestDuplicate(ctx, copy.description.long, p.productKey);
   if (clash) {
-    ctx.log.warn({ similarity: clash.similarity, against: clash.generationId, phrases: clash.phrases }, 'description is a near-duplicate of another listing; writing it again');
+    ctx.log.warn(
+      { similarity: clash.similarity, against: clash.generationId, phrases: clash.phrases },
+      'description is a near-duplicate of another listing; writing it again',
+    );
     const again: LlmRequest = {
       ...request,
       temperature: 0.95,
-      parts: [...request.parts, { text: `This seller already has a listing that reads too much like yours. Write a genuinely different description and captions — different opening, different structure, different selling angle. Do not reuse these phrases: ${clash.phrases.map((s) => `"${s}"`).join(', ')}.` }],
+      parts: [
+        ...request.parts,
+        {
+          text: `This seller already has a listing that reads too much like yours. Write a genuinely different description and captions — different opening, different structure, different selling angle. Do not reuse these phrases: ${clash.phrases.map((s) => `"${s}"`).join(', ')}.`,
+        },
+      ],
     };
     try {
       result = await ask(ctx, p, again, copyOutputSchema);
@@ -76,7 +107,9 @@ export const copyPipeline: Pipeline = async (ctx) => {
     }
   }
   const final = result.artifacts[0]!.text as CopyOutput;
-  await ctx.db.copyFingerprint.create({ data: { workspaceId: ctx.row.workspaceId, generationId: ctx.row.id, productKey: p.productKey ?? null, minhash: minhash(final.description.long) } });
+  await ctx.db.copyFingerprint.create({
+    data: { workspaceId: ctx.row.workspaceId, generationId: ctx.row.id, productKey: p.productKey ?? null, minhash: minhash(final.description.long) },
+  });
   return result;
 };
 
@@ -85,7 +118,13 @@ async function ask<S extends z.ZodTypeAny>(ctx: PipelineContext, p: CapabilityPa
   let lastIssues: string | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     const req: LlmRequest = lastIssues
-      ? { ...request, parts: [...request.parts, { text: `Your previous answer did not fit the required structure:\n${lastIssues}\nAnswer again, fixing exactly those problems.` }] }
+      ? {
+          ...request,
+          parts: [
+            ...request.parts,
+            { text: `Your previous answer did not fit the required structure:\n${lastIssues}\nAnswer again, fixing exactly those problems.` },
+          ],
+        }
       : request;
     const result = await ctx.callProvider(
       { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'TEXT_GENERATE', params: p, files: ctx.files, prompt: req },
@@ -94,7 +133,12 @@ async function ask<S extends z.ZodTypeAny>(ctx: PipelineContext, p: CapabilityPa
     const text = result.artifacts.find((a) => a.text !== undefined)?.text;
     const parsed = schema.safeParse(text);
     if (parsed.success) {
-      return { artifacts: [{ mime: 'application/json' as const, role: 'text' as const, text: parsed.data as z.infer<S> }], providerKey: result.providerKey, providerJobId: result.providerJobId, costMinor: result.costMinor };
+      return {
+        artifacts: [{ mime: 'application/json' as const, role: 'text' as const, text: parsed.data as z.infer<S> }],
+        providerKey: result.providerKey,
+        providerJobId: result.providerJobId,
+        costMinor: result.costMinor,
+      };
     }
     lastIssues = parsed.error.issues.map((i) => `- ${i.path.join('.') || '(root)'}: ${i.message}`).join('\n');
     ctx.log.warn({ attempt, issues: lastIssues, providerKey: result.providerKey }, 'copy did not fit the schema; asking again with the errors');
@@ -123,7 +167,11 @@ async function nearestDuplicate(ctx: PipelineContext, text: string, productKey?:
 }
 
 function market(ctx: PipelineContext): string {
-  return ({ ng: 'Nigeria', gh: 'Ghana', ke: 'Kenya', za: 'South Africa', uk: 'United Kingdom', us: 'United States' } as Record<string, string>)[ctx.workspace.region] ?? ctx.workspace.region;
+  return (
+    ({ ng: 'Nigeria', gh: 'Ghana', ke: 'Kenya', za: 'South Africa', uk: 'United Kingdom', us: 'United States' } as Record<string, string>)[
+      ctx.workspace.region
+    ] ?? ctx.workspace.region
+  );
 }
 
 function voice(p: CapabilityParams<'TEXT_GENERATE'>, tone: string | null): string {
@@ -139,7 +187,9 @@ function copyRequest(p: CapabilityParams<'TEXT_GENERATE'>, ctx: PipelineContext,
   const system = [
     `You write product listings and social captions for small sellers. The seller is in ${market(ctx)}; their buyers are too. Write in ${lang.name}.`,
     lang.guidance,
-    p.language === 'en' && ctx.workspace.region === 'ng' ? 'Natural Nigerian register — no slang the seller did not use, no "amazing", no exclamation marks in a row.' : '',
+    p.language === 'en' && ctx.workspace.region === 'ng'
+      ? 'Natural Nigerian register — no slang the seller did not use, no "amazing", no exclamation marks in a row.'
+      : '',
     `Voice: ${voice(p, tone)}. Say what the product does for the buyer before what it is made of. Never invent a feature, material, size or origin that is not visible in the photo or given below — if unsure, leave it out. Never mention that anything was generated.`,
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     profile.channels ? `Where they sell: ${String((profile.channels as string[]).join(', '))}.` : '',
@@ -147,7 +197,9 @@ function copyRequest(p: CapabilityParams<'TEXT_GENERATE'>, ctx: PipelineContext,
     `Platform limits — hard, not advisory: ${limits}. Hashtags go at the end of each caption, in the caption text as well as in the hashtags object. WhatsApp Status captions end with a one-line call to action to message or order.`,
     'Open each caption differently. Do not start two of them with the same word.',
     'Return only the structure requested.',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const parts: LlmRequest['parts'] = [];
   if (ctx.files.sourceKey) parts.push({ imageUrl: ctx.files.sourceKey.url, mime: ctx.files.sourceKey.mime });
@@ -158,7 +210,9 @@ function copyRequest(p: CapabilityParams<'TEXT_GENERATE'>, ctx: PipelineContext,
       p.price ? `Price: ${p.price}` : '',
       `Platforms wanted: ${platforms.join(', ')}. Leave the other caption fields out.`,
       'Write the listing and captions now.',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
   });
 
   return { system, parts, jsonSchema: COPY_JSON_SCHEMA, maxTokens: 2500, temperature: 0.7 };
@@ -178,7 +232,9 @@ async function rewriteField(ctx: PipelineContext, p: CapabilityParams<'TEXT_GENE
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     `You are writing the ${spec.label}. Hard limit: ${spec.max} characters.${platform ? ` Platform: ${platform}; keep hashtags at the end, at most ${PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS]?.hashtags ?? 5}.` : ''}`,
     'Return only the rewritten text in the structure requested — no preamble, no quotes, no options.',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const parts: LlmRequest['parts'] = [];
   if (ctx.files.sourceKey) parts.push({ imageUrl: ctx.files.sourceKey.url, mime: ctx.files.sourceKey.mime });
   parts.push({
@@ -187,7 +243,9 @@ async function rewriteField(ctx: PipelineContext, p: CapabilityParams<'TEXT_GENE
       p.price ? `Price: ${p.price}` : '',
       p.previous ? `What is there now:\n${p.previous}` : '',
       p.instruction ? `What the seller wants different: ${p.instruction}` : 'Write a fresh version that says the same thing a different way.',
-    ].filter(Boolean).join('\n\n'),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
   });
   const result = await ask(ctx, p, { system, parts, jsonSchema: FIELD_JSON_SCHEMA, maxTokens: 800, temperature: 0.8 }, fieldOutputSchema);
   const value = (result.artifacts[0]!.text as { value: string }).value.trim().slice(0, spec.max);
@@ -202,9 +260,20 @@ function shotPlanRequest(p: CapabilityParams<'TEXT_GENERATE'>, ctx: PipelineCont
     'The first shot is the hook — the product doing the most interesting thing it does. The last shot settles on the product for the end card.',
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     'Return only the structure requested.',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const parts: LlmRequest['parts'] = [];
   if (ctx.files.sourceKey) parts.push({ imageUrl: ctx.files.sourceKey.url, mime: ctx.files.sourceKey.mime });
-  parts.push({ text: [p.productName ? `Product: ${p.productName}` : '', p.details ? `Details: ${p.details}` : '', p.price ? `Price to show on the end card: ${p.price}` : '', 'Plan the ad.'].filter(Boolean).join('\n') });
+  parts.push({
+    text: [
+      p.productName ? `Product: ${p.productName}` : '',
+      p.details ? `Details: ${p.details}` : '',
+      p.price ? `Price to show on the end card: ${p.price}` : '',
+      'Plan the ad.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  });
   return { system, parts, jsonSchema: SHOT_PLAN_JSON_SCHEMA, maxTokens: 1500, temperature: 0.8 };
 }

@@ -77,10 +77,7 @@ export class PolicyError extends Error {
  */
 export function assertSurface(actor: Actor, required: Surface): void {
   if (actor.surface !== required) {
-    throw new PolicyError(
-      'WRONG_SURFACE',
-      `This session is for ${actor.surface} and cannot be used on ${required}. Sign in again on that surface.`,
-    );
+    throw new PolicyError('WRONG_SURFACE', `This session is for ${actor.surface} and cannot be used on ${required}. Sign in again on that surface.`);
   }
 }
 
@@ -91,10 +88,7 @@ export function assertStaff(actor: Actor, min: StaffRole): void {
     throw new PolicyError('NOT_STAFF', 'This account has no staff access.');
   }
   if (STAFF_RANK[actor.staffRole] < STAFF_RANK[min]) {
-    throw new PolicyError(
-      'INSUFFICIENT_STAFF_ROLE',
-      `Requires ${min}; this account is ${actor.staffRole}.`,
-    );
+    throw new PolicyError('INSUFFICIENT_STAFF_ROLE', `Requires ${min}; this account is ${actor.staffRole}.`);
   }
 }
 
@@ -112,10 +106,7 @@ export function assertStaff(actor: Actor, min: StaffRole): void {
  */
 export function assertNoSelfDealing(actor: Actor, targetWorkspaceId: string): void {
   if (actor.workspaceRoles.has(targetWorkspaceId)) {
-    throw new PolicyError(
-      'SELF_DEALING',
-      'You belong to this workspace, so you cannot action it from the staff console. Ask another staff member.',
-    );
+    throw new PolicyError('SELF_DEALING', 'You belong to this workspace, so you cannot action it from the staff console. Ask another staff member.');
   }
 }
 
@@ -133,10 +124,7 @@ export function assertStepUp(actor: Actor, withinMinutes = 5): void {
   }
   const at = actor.lastStepUpAt?.getTime() ?? 0;
   if (Date.now() - at > withinMinutes * 60_000) {
-    throw new PolicyError(
-      'STEP_UP_REQUIRED',
-      `Confirm your second factor — it was last checked more than ${withinMinutes} minutes ago.`,
-    );
+    throw new PolicyError('STEP_UP_REQUIRED', `Confirm your second factor — it was last checked more than ${withinMinutes} minutes ago.`);
   }
 }
 
@@ -156,20 +144,13 @@ const WORKSPACE_RANK: Record<WorkspaceRole, number> = {
  * needs "at least MEMBER" excludes them, which is correct — a billing contact
  * should not be able to spend credits.
  */
-export function assertWorkspaceRole(
-  actor: Actor,
-  workspaceId: string,
-  min: WorkspaceRole,
-): void {
+export function assertWorkspaceRole(actor: Actor, workspaceId: string, min: WorkspaceRole): void {
   const role = actor.workspaceRoles.get(workspaceId);
   if (!role) {
     throw new PolicyError('NOT_A_MEMBER', 'You do not have access to this workspace.');
   }
   if (WORKSPACE_RANK[role] < WORKSPACE_RANK[min]) {
-    throw new PolicyError(
-      'INSUFFICIENT_WORKSPACE_ROLE',
-      `Requires ${min}; you are ${role} in this workspace.`,
-    );
+    throw new PolicyError('INSUFFICIENT_WORKSPACE_ROLE', `Requires ${min}; you are ${role} in this workspace.`);
   }
 }
 
@@ -183,18 +164,12 @@ export function assertWorkspaceRole(
  */
 export function assertNotImpersonating(actor: Actor): void {
   if (actor.impersonating) {
-    throw new PolicyError(
-      'READ_ONLY_IMPERSONATION',
-      'You are viewing this account as support. Impersonation is read-only.',
-    );
+    throw new PolicyError('READ_ONLY_IMPERSONATION', 'You are viewing this account as support. Impersonation is read-only.');
   }
 }
 
 /** Convenience wrapper for the common staff-mutation shape. */
-export function assertStaffMutation(
-  actor: Actor,
-  opts: { min: StaffRole; workspaceId?: string; stepUpMinutes?: number },
-): void {
+export function assertStaffMutation(actor: Actor, opts: { min: StaffRole; workspaceId?: string; stepUpMinutes?: number }): void {
   assertStaff(actor, opts.min);
   assertNotImpersonating(actor);
   if (opts.workspaceId) assertNoSelfDealing(actor, opts.workspaceId);

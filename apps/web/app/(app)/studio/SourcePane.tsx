@@ -12,7 +12,12 @@ import { Progress, Skeleton } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
-interface Pending { id: string; name: string; pct: number; error?: string }
+interface Pending {
+  id: string;
+  name: string;
+  pct: number;
+  error?: string;
+}
 
 export function SourcePane({ selected, onSelect, refreshKey }: { selected: string | null; onSelect: (asset: MediaAssetRow) => void; refreshKey: number }) {
   const { workspace } = useApp();
@@ -27,31 +32,41 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
       const rows = await api.media.list(workspace.id, { kind: 'SOURCE', take: 18 });
       setRecent(rows);
       if (rows.length) {
-        const { urls: u } = await api.media.urls(workspace.id, rows.map((r) => r.key));
+        const { urls: u } = await api.media.urls(
+          workspace.id,
+          rows.map((r) => r.key),
+        );
         setUrls((prev) => ({ ...prev, ...u }));
       }
-    } catch { setRecent([]); }
-  }, [workspace.id]);
-  useEffect(() => { void load(); }, [load, refreshKey]);
-
-  const accept = useCallback(async (files: FileList | File[]) => {
-    const list = [...files].filter((f) => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
-    if (list.length === 0) return;
-    for (const file of list) {
-      const id = crypto.randomUUID();
-      setPending((p) => [...p, { id, name: file.name, pct: 0 }]);
-      try {
-        const asset = await uploadFile(workspace.id, file, (p) => setPending((ps) => ps.map((x) => (x.id === id ? { ...x, pct: p.pct } : x))));
-        setPending((ps) => ps.filter((x) => x.id !== id));
-        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
-        setUrls((prev) => ({ ...prev, ...u }));
-        setRecent((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
-        onSelect(asset);
-      } catch (err) {
-        setPending((ps) => ps.map((x) => (x.id === id ? { ...x, error: err instanceof Error ? err.message : 'Upload failed' } : x)));
-      }
+    } catch {
+      setRecent([]);
     }
-  }, [workspace.id, onSelect]);
+  }, [workspace.id]);
+  useEffect(() => {
+    void load();
+  }, [load, refreshKey]);
+
+  const accept = useCallback(
+    async (files: FileList | File[]) => {
+      const list = [...files].filter((f) => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
+      if (list.length === 0) return;
+      for (const file of list) {
+        const id = crypto.randomUUID();
+        setPending((p) => [...p, { id, name: file.name, pct: 0 }]);
+        try {
+          const asset = await uploadFile(workspace.id, file, (p) => setPending((ps) => ps.map((x) => (x.id === id ? { ...x, pct: p.pct } : x))));
+          setPending((ps) => ps.filter((x) => x.id !== id));
+          const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
+          setUrls((prev) => ({ ...prev, ...u }));
+          setRecent((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
+          onSelect(asset);
+        } catch (err) {
+          setPending((ps) => ps.map((x) => (x.id === id ? { ...x, error: err instanceof Error ? err.message : 'Upload failed' } : x)));
+        }
+      }
+    },
+    [workspace.id, onSelect],
+  );
 
   // Paste a screenshot straight in.
   useEffect(() => {
@@ -63,23 +78,55 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
     return () => document.removeEventListener('paste', onPaste);
   }, [accept]);
 
-  const onDrop = (e: DragEvent) => { e.preventDefault(); setOver(false); void accept(e.dataTransfer.files); };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    void accept(e.dataTransfer.files);
+  };
 
   return (
     <section className={`${styles.pane} ${styles.source}`} aria-label="Source">
-      <div className={styles.paneHead}><span className={styles.paneTitle}>Source</span></div>
+      <div className={styles.paneHead}>
+        <span className={styles.paneTitle}>Source</span>
+      </div>
       <div className={styles.paneBody}>
         <div
-          role="button" tabIndex={0} className={styles.drop} data-over={over || undefined}
-          onClick={() => input.current?.click()} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.current?.click(); } }}
-          onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}
+          role="button"
+          tabIndex={0}
+          className={styles.drop}
+          data-over={over || undefined}
+          onClick={() => input.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              input.current?.click();
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={onDrop}
           aria-label="Add a product photo"
         >
-          <span className={styles.dropIcon}><Icon.plus /></span>
+          <span className={styles.dropIcon}>
+            <Icon.plus />
+          </span>
           <strong>Add a product photo</strong>
           <span>Drop it here, paste it, or tap to choose. JPG, PNG, WebP or HEIC up to 25 MB.</span>
         </div>
-        <input ref={input} type="file" accept="image/*,.heic" multiple hidden onChange={(e) => { if (e.target.files) void accept(e.target.files); e.target.value = ''; }} />
+        <input
+          ref={input}
+          type="file"
+          accept="image/*,.heic"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files) void accept(e.target.files);
+            e.target.value = '';
+          }}
+        />
 
         {pending.length > 0 && (
           <div className={styles.uploads} aria-live="polite">
@@ -95,12 +142,31 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
           </div>
         )}
 
-        {recent === null && <div className={styles.recent}>{[0, 1, 2].map((i) => <Skeleton key={i} style={{ aspectRatio: '1' }} />)}</div>}
+        {recent === null && (
+          <div className={styles.recent}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} style={{ aspectRatio: '1' }} />
+            ))}
+          </div>
+        )}
         {recent && recent.length > 0 && (
           <div className={styles.recent} role="listbox" aria-label="Recent photos">
             {recent.map((a) => (
-              <button key={a.id} type="button" role="option" aria-selected={a.key === selected} aria-pressed={a.key === selected} className={styles.thumb} onClick={() => onSelect(a)} title={a.filename ?? 'Photo'}>
-                {urls[a.key] ? <img src={urls[a.key]} alt={a.filename ?? 'Uploaded photo'} loading="lazy" /> : <Skeleton style={{ width: '100%', height: '100%' }} />}
+              <button
+                key={a.id}
+                type="button"
+                role="option"
+                aria-selected={a.key === selected}
+                aria-pressed={a.key === selected}
+                className={styles.thumb}
+                onClick={() => onSelect(a)}
+                title={a.filename ?? 'Photo'}
+              >
+                {urls[a.key] ? (
+                  <img src={urls[a.key]} alt={a.filename ?? 'Uploaded photo'} loading="lazy" />
+                ) : (
+                  <Skeleton style={{ width: '100%', height: '100%' }} />
+                )}
               </button>
             ))}
           </div>

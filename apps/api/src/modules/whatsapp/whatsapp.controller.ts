@@ -38,7 +38,11 @@ export class WhatsappController {
       throw new ForbiddenError('Bad signature.');
     }
     // Acknowledge now; the work happens after the response. Meta's clock is short.
-    void this.whatsapp.receive(body).then((r) => { if (r.handled || r.skipped) logger.info({ ...r, requestId: req.requestId }, 'whatsapp webhook processed'); })
+    void this.whatsapp
+      .receive(body)
+      .then((r) => {
+        if (r.handled || r.skipped) logger.info({ ...r, requestId: req.requestId }, 'whatsapp webhook processed');
+      })
       .catch((err) => logger.error({ err, requestId: req.requestId }, 'whatsapp webhook processing failed'));
     return { received: true };
   }

@@ -22,7 +22,9 @@ import { UnauthorizedError } from '../../../../config/globals/errors';
 import { assertStaff, assertStepUp, assertSurface, assertWorkspaceRole, type Actor } from '../policy';
 
 declare module 'express-serve-static-core' {
-  interface Request { actor?: Actor & { sessionId: string } }
+  interface Request {
+    actor?: Actor & { sessionId: string };
+  }
 }
 
 @Injectable()

@@ -13,8 +13,21 @@ import styles from '../developer.module.css';
 export default function DocsPage() {
   const { toast } = useToast();
   const [base, setBase] = useState('https://api.anystudio.ai/api/v1');
-  useEffect(() => { try { setBase(`${siblingOrigin(window.location.host, 'api')}/api/v1`); } catch { /* keep the default */ } }, []);
-  const copy = async (v: string) => { try { await navigator.clipboard.writeText(v); toast({ title: 'Copied', tone: 'ok', durationMs: 1500 }); } catch { toast({ title: 'Select it and copy by hand', tone: 'warn' }); } };
+  useEffect(() => {
+    try {
+      setBase(`${siblingOrigin(window.location.host, 'api')}/api/v1`);
+    } catch {
+      /* keep the default */
+    }
+  }, []);
+  const copy = async (v: string) => {
+    try {
+      await navigator.clipboard.writeText(v);
+      toast({ title: 'Copied', tone: 'ok', durationMs: 1500 });
+    } catch {
+      toast({ title: 'Select it and copy by hand', tone: 'warn' });
+    }
+  };
 
   const steps: Array<{ title: string; body: string; code: string }> = [
     {
@@ -72,12 +85,29 @@ export function verify(rawBody: string, header: string, secret: string): boolean
     <>
       <section className={styles.group}>
         <div className={styles.groupHead}>
-          <div><div className={styles.groupTitle}>Quick start</div><div className={styles.groupLede}>Four calls. Base URL for this environment: <span style={{ fontFamily: 'var(--f-mono)' }}>{base}</span>. Every answer is wrapped as <span style={{ fontFamily: 'var(--f-mono)' }}>{'{ status, message, data }'}</span>; every error has a <span style={{ fontFamily: 'var(--f-mono)' }}>code</span>.</div></div>
-          <a style={{ fontFamily: 'var(--f-mono)' }} href={`${base}/docs`} target="_blank" rel="noreferrer">Full reference ↗</a>
+          <div>
+            <div className={styles.groupTitle}>Quick start</div>
+            <div className={styles.groupLede}>
+              Four calls. Base URL for this environment: <span style={{ fontFamily: 'var(--f-mono)' }}>{base}</span>. Every answer is wrapped as{' '}
+              <span style={{ fontFamily: 'var(--f-mono)' }}>{'{ status, message, data }'}</span>; every error has a{' '}
+              <span style={{ fontFamily: 'var(--f-mono)' }}>code</span>.
+            </div>
+          </div>
+          <a style={{ fontFamily: 'var(--f-mono)' }} href={`${base}/docs`} target="_blank" rel="noreferrer">
+            Full reference ↗
+          </a>
         </div>
         {steps.map((s) => (
           <div key={s.title}>
-            <div className={styles.codeHead}><div><strong>{s.title}</strong><div className={styles.groupLede}>{s.body}</div></div><Button variant="ghost" size="sm" leading={<Icon.copy width={14} height={14} />} onClick={() => copy(s.code)}>Copy</Button></div>
+            <div className={styles.codeHead}>
+              <div>
+                <strong>{s.title}</strong>
+                <div className={styles.groupLede}>{s.body}</div>
+              </div>
+              <Button variant="ghost" size="sm" leading={<Icon.copy width={14} height={14} />} onClick={() => copy(s.code)}>
+                Copy
+              </Button>
+            </div>
             <pre className={styles.code}>{s.code}</pre>
           </div>
         ))}
@@ -87,17 +117,37 @@ export function verify(rawBody: string, header: string, secret: string): boolean
         <div className={styles.groupTitle}>Good to know</div>
         <div className={styles.prose}>
           <h3>Credits and prices</h3>
-          <p>Each capability has a credit price; <code>GET /capabilities</code> lists them with the params they take. Credits are held when you ask and returned if the work fails. <code>GET /balance</code> says what is left; top up from the Credits page — an out-of-credits request is a <code>402</code>, never a silent queue.</p>
+          <p>
+            Each capability has a credit price; <code>GET /capabilities</code> lists them with the params they take. Credits are held when you ask and returned
+            if the work fails. <code>GET /balance</code> says what is left; top up from the Credits page — an out-of-credits request is a <code>402</code>,
+            never a silent queue.
+          </p>
           <h3>Idempotency</h3>
-          <p>Send the same <code>clientKey</code> again and you get the same generation back, charged once. Use your order id, your job id — anything unique on your side.</p>
+          <p>
+            Send the same <code>clientKey</code> again and you get the same generation back, charged once. Use your order id, your job id — anything unique on
+            your side.
+          </p>
           <h3>Rate limits</h3>
-          <p>60 requests a minute per key on <code>POST /generations</code>, 10 a minute per <code>merchantRef</code> behind it; headers <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>Retry-After</code> tell you where you stand. Need more for a launch? Say so.</p>
+          <p>
+            60 requests a minute per key on <code>POST /generations</code>, 10 a minute per <code>merchantRef</code> behind it; headers{' '}
+            <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>Retry-After</code> tell you where you stand. Need more for a launch? Say
+            so.
+          </p>
           <h3>Songs</h3>
-          <p>A <code>MUSIC</code> generation returns a 30-second preview and a locked full track. <code>POST /generations/:id/unlock</code> pays for the rest and opens it.</p>
+          <p>
+            A <code>MUSIC</code> generation returns a 30-second preview and a locked full track. <code>POST /generations/:id/unlock</code> pays for the rest and
+            opens it.
+          </p>
           <h3>Faces and voices</h3>
-          <p><code>DUB</code> and <code>LIPSYNC</code> require <code>consent: true</code> in the params: you confirm the person in the video has agreed to their face and voice being used. Vendors run their own moderation; a refusal comes back as a failed generation with the credits returned.</p>
+          <p>
+            <code>DUB</code> and <code>LIPSYNC</code> require <code>consent: true</code> in the params: you confirm the person in the video has agreed to their
+            face and voice being used. Vendors run their own moderation; a refusal comes back as a failed generation with the credits returned.
+          </p>
           <h3>Keys</h3>
-          <p>Keys are server secrets. Never ship one in a browser, a mobile app or a public repo; if one leaks, revoke it here and mint another — the generations it made stay in your history under its prefix.</p>
+          <p>
+            Keys are server secrets. Never ship one in a browser, a mobile app or a public repo; if one leaks, revoke it here and mint another — the generations
+            it made stay in your history under its prefix.
+          </p>
         </div>
       </section>
     </>

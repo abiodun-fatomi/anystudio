@@ -30,7 +30,10 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'worker stopping: finishing jobs in hand');
     // SIGTERM arrives on every deploy. Finish the generation in hand — its
     // credits are already spent with the vendor — then leave.
-    const deadline = setTimeout(() => { logger.error('worker did not stop in time; exiting'); process.exit(1); }, 5 * 60_000);
+    const deadline = setTimeout(() => {
+      logger.error('worker did not stop in time; exiting');
+      process.exit(1);
+    }, 5 * 60_000);
     deadline.unref();
     await supervisor.stop();
     await app.close();

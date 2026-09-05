@@ -10,13 +10,19 @@ export class SearchDto {
 }
 
 export class GenerationsQueryDto extends SearchDto {
-  @ApiPropertyOptional({ enum: ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'] }) @IsOptional() @IsIn(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED']) status?: string;
+  @ApiPropertyOptional({ enum: ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'] })
+  @IsOptional()
+  @IsIn(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'])
+  status?: string;
   @ApiPropertyOptional({ enum: CAPABILITIES }) @IsOptional() @IsIn(CAPABILITIES as readonly string[]) capability?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() workspaceId?: string;
 }
 
 export class PaymentsQueryDto extends SearchDto {
-  @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'] }) @IsOptional() @IsIn(['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED']) status?: string;
+  @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'] })
+  @IsOptional()
+  @IsIn(['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'])
+  status?: string;
 }
 
 export class AuditQueryDto extends SearchDto {
@@ -29,7 +35,12 @@ export class ReasonDto {
 }
 
 export class CreditsDto extends ReasonDto {
-  @ApiProperty({ description: 'Signed: positive grants, negative removes', minimum: -100000, maximum: 100000 }) @Type(() => Number) @IsInt() @Min(-100000) @Max(100000) delta!: number;
+  @ApiProperty({ description: 'Signed: positive grants, negative removes', minimum: -100000, maximum: 100000 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(-100000)
+  @Max(100000)
+  delta!: number;
 }
 
 export class ProviderPatchDto {
@@ -52,7 +63,10 @@ export class PlatformMessageDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(120) title!: string;
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(2000) body!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) href?: string;
-  @ApiPropertyOptional({ enum: ['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'] }) @IsOptional() @IsIn(['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION']) audience?: 'ALL' | 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION';
+  @ApiPropertyOptional({ enum: ['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'] })
+  @IsOptional()
+  @IsIn(['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'])
+  audience?: 'ALL' | 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION';
   @ApiPropertyOptional() @IsOptional() @IsBoolean() publish?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() expiresAt?: string;
 }
@@ -61,7 +75,10 @@ export class PlatformMessagePatchDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) @MaxLength(120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) @MaxLength(2000) body?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) href?: string;
-  @ApiPropertyOptional({ enum: ['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'] }) @IsOptional() @IsIn(['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION']) audience?: 'ALL' | 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION';
+  @ApiPropertyOptional({ enum: ['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'] })
+  @IsOptional()
+  @IsIn(['ALL', 'PERSONAL', 'BUSINESS', 'ORGANIZATION'])
+  audience?: 'ALL' | 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION';
   @ApiPropertyOptional() @IsOptional() @IsBoolean() published?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsISO8601() expiresAt?: string;
 }

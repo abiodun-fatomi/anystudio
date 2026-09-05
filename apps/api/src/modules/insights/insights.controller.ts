@@ -14,5 +14,7 @@ export class InsightsController {
   @RequireWorkspaceRole('AUDITOR')
   @ApiOperation({ summary: 'What was made, what it cost, how fast, and how long the credits will last' })
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
-  overview(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() q: InsightsQueryDto) { return this.insights.overview(workspaceId, { days: q.days ?? 30 }); }
+  overview(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() q: InsightsQueryDto) {
+    return this.insights.overview(workspaceId, { days: q.days ?? 30 });
+  }
 }

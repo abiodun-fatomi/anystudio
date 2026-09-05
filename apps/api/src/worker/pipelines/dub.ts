@@ -24,13 +24,20 @@ export const dubPipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'DUB'>;
   const language = dubLanguage(p.targetLanguage);
   if (!language) throw new ProviderError('INVALID_INPUT', `"${p.targetLanguage}" is not a language we can dub into`, 'dub-pipeline');
-  ctx.log.info({ targetLanguage: p.targetLanguage, sourceLanguage: p.sourceLanguage, lipsync: p.lipsync, speakers: p.speakers, consent: p.consent }, 'dub requested');
+  ctx.log.info(
+    { targetLanguage: p.targetLanguage, sourceLanguage: p.sourceLanguage, lipsync: p.lipsync, speakers: p.speakers, consent: p.consent },
+    'dub requested',
+  );
 
   await guardLength(ctx, 'sourceKey', DUB_MAX_SEC);
   await ctx.stage('generating', 15, `dubbing into ${language.name}`);
   const dubbed = await ctx.callProvider(
     { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'DUB', files: ctx.files, params: p },
-    { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', Math.max(15, Math.min(70, progress ?? 40)), detail) },
+    {
+      timeoutMs: ctx.budgetMs,
+      signal: ctx.signal,
+      onProgress: (detail, progress) => void ctx.stage('generating', Math.max(15, Math.min(70, progress ?? 40)), detail),
+    },
   );
   const video = dubbed.artifacts.find((a) => a.role === 'video');
   if (!video) throw new ProviderError('RETRYABLE', `${dubbed.providerKey} returned no video`, dubbed.providerKey);
@@ -53,8 +60,16 @@ export const dubPipeline: Pipeline = async (ctx) => {
   }
 
   artifacts.push({
-    text: { targetLanguage: p.targetLanguage, language: language.name, sourceLanguage: p.sourceLanguage, lipsync, dubbedBy: dubbed.providerKey, keepBackground: p.keepBackground },
-    mime: 'application/json', role: 'text',
+    text: {
+      targetLanguage: p.targetLanguage,
+      language: language.name,
+      sourceLanguage: p.sourceLanguage,
+      lipsync,
+      dubbedBy: dubbed.providerKey,
+      keepBackground: p.keepBackground,
+    },
+    mime: 'application/json',
+    role: 'text',
   });
   return { artifacts, providerKey, providerJobId, costMinor };
 };
@@ -75,11 +90,29 @@ async function syncLips(ctx: PipelineContext, video: ProviderArtifact, quality: 
   ctx.log.info({ videoKey, audioKey, durationMs }, 'dubbed video stored; asking a lip-sync vendor');
 
   const params: CapabilityParams<'LIPSYNC'> = { sourceKey: videoKey, audioKey, language: 'auto', quality, consent: true };
-  const synced = await ctx.callCapability('LIPSYNC', {
-    generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params,
-    files: { sourceKey: { url: videoUrl, mime: video.mime || 'video/mp4', bytes: bytes.byteLength }, audioKey: { url: audioUrl, mime: 'audio/mpeg', bytes: audio.byteLength } },
-  }, { timeoutMs: Math.max(60_000, ctx.budgetMs - 60_000), signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('composing', Math.max(72, Math.min(88, progress ?? 75)), detail) });
+  const synced = await ctx.callCapability(
+    'LIPSYNC',
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      params,
+      files: {
+        sourceKey: { url: videoUrl, mime: video.mime || 'video/mp4', bytes: bytes.byteLength },
+        audioKey: { url: audioUrl, mime: 'audio/mpeg', bytes: audio.byteLength },
+      },
+    },
+    {
+      timeoutMs: Math.max(60_000, ctx.budgetMs - 60_000),
+      signal: ctx.signal,
+      onProgress: (detail, progress) => void ctx.stage('composing', Math.max(72, Math.min(88, progress ?? 75)), detail),
+    },
+  );
   const out = synced.artifacts.find((a) => a.role === 'video');
   if (!out) throw new ProviderError('RETRYABLE', `${synced.providerKey} returned no video`, synced.providerKey);
-  return { video: { ...out, durationMs: out.durationMs ?? durationMs }, providerKey: synced.providerKey, providerJobId: synced.providerJobId, costMinor: synced.costMinor };
+  return {
+    video: { ...out, durationMs: out.durationMs ?? durationMs },
+    providerKey: synced.providerKey,
+    providerJobId: synced.providerJobId,
+    costMinor: synced.costMinor,
+  };
 }

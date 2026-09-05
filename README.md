@@ -86,13 +86,13 @@ pnpm dev
 deliberate — it is the case the authorization rules have to get right, and
 testing the two roles separately hides the interesting bug.
 
-| Service | Where |
-|---|---|
-| User portal | http://localhost:3000 |
-| API | http://localhost:3001 |
-| Org portal | http://localhost:3002 |
-| Admin portal | http://localhost:3003 |
-| Mail (Mailpit) | http://localhost:8025 |
+| Service                | Where                 |
+| ---------------------- | --------------------- |
+| User portal            | http://localhost:3000 |
+| API                    | http://localhost:3001 |
+| Org portal             | http://localhost:3002 |
+| Admin portal           | http://localhost:3003 |
+| Mail (Mailpit)         | http://localhost:8025 |
 | Object storage (MinIO) | http://localhost:9001 |
 
 ---
@@ -100,7 +100,7 @@ testing the two roles separately hides the interesting bug.
 ## The decisions worth knowing before you read the code
 
 **One identity, three sessions.** The same email, phone and password work on all
-three portals. A *session*, however, is minted for exactly one surface and is
+three portals. A _session_, however, is minted for exactly one surface and is
 rejected outright on the others. Shared credentials are a convenience; a shared
 session would mean one XSS on the customer app is a full staff compromise.
 See `packages/db/prisma/schema.prisma` and `apps/api/src/modules/auth`.
@@ -126,13 +126,13 @@ console rather than a deploy.
 
 ## Documentation
 
-| Document | What it covers |
-|---|---|
-| `docs/ANYSTUDIO.md` | Product spec, architecture, data model, release sequence |
-| `docs/PORTALS.html` | The three portals — flows, feature maps, logging, rate limits, security |
+| Document              | What it covers                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `docs/ANYSTUDIO.md`   | Product spec, architecture, data model, release sequence                                            |
+| `docs/PORTALS.html`   | The three portals — flows, feature maps, logging, rate limits, security                             |
 | `design/landing.html` | Marketing prototype. `scripts/sync-prototypes.mjs` splits it into `/`, `/pricing` and `/developers` |
-| `design/auth.html` | Sign in, sign up, forgot and reset password |
-| `design/org.html` | Organization signup, both branches, and the sales door |
+| `design/auth.html`    | Sign in, sign up, forgot and reset password                                                         |
+| `design/org.html`     | Organization signup, both branches, and the sales door                                              |
 
 ---
 

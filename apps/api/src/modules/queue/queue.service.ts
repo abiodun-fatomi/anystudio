@@ -28,7 +28,16 @@ const ENQUEUE_TIMEOUT_MS = 3_000;
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${what} did not complete within ${ms}ms (redis unreachable?)`)), ms);
-    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
   });
 }
 
@@ -94,7 +103,13 @@ export class QueueService implements OnModuleDestroy {
     for (const name of Object.values(QUEUES)) {
       const q = this.queues.get(name);
       try {
-        out[name] = q ? await withTimeout(q.getJobCounts('waiting', 'active', 'failed'), ENQUEUE_TIMEOUT_MS, 'depths').then((c) => ({ waiting: c.waiting ?? 0, active: c.active ?? 0, failed: c.failed ?? 0 })) : null;
+        out[name] = q
+          ? await withTimeout(q.getJobCounts('waiting', 'active', 'failed'), ENQUEUE_TIMEOUT_MS, 'depths').then((c) => ({
+              waiting: c.waiting ?? 0,
+              active: c.active ?? 0,
+              failed: c.failed ?? 0,
+            }))
+          : null;
       } catch {
         out[name] = null;
       }

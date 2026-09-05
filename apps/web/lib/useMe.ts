@@ -15,13 +15,20 @@ export function useMe(): { me: Me | null; loading: boolean } {
 
   useEffect(() => {
     let live = true;
-    api.auth.me()
-      .then((m) => { if (live) setMe(m); })
+    api.auth
+      .me()
+      .then((m) => {
+        if (live) setMe(m);
+      })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) router.replace(`/login?next=${encodeURIComponent(path)}`);
       })
-      .finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
   }, [router, path]);
 
   return { me, loading };

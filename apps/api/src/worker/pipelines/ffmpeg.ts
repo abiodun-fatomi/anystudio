@@ -56,7 +56,20 @@ export async function durationOf(bytes: Uint8Array, ext: string): Promise<number
 }
 
 export function extOf(mime: string): string {
-  return ({ 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/ogg': 'ogg' } as Record<string, string>)[mime] ?? 'bin';
+  return (
+    (
+      {
+        'video/mp4': 'mp4',
+        'video/quicktime': 'mov',
+        'video/webm': 'webm',
+        'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a',
+        'audio/x-m4a': 'm4a',
+        'audio/wav': 'wav',
+        'audio/ogg': 'ogg',
+      } as Record<string, string>
+    )[mime] ?? 'bin'
+  );
 }
 
 /**

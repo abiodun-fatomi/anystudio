@@ -22,20 +22,42 @@ import { NotFoundError } from '../../../config/globals/errors';
 import { MediaService } from '../media/media.service';
 import type { LibraryItemPatchDto, LibraryQueryDto, LibraryType } from './library.dto';
 
-interface OutputRow { key: string; role: string; mime: string; bytes?: number; width?: number; height?: number; durationMs?: number; size?: string; text?: unknown }
+interface OutputRow {
+  key: string;
+  role: string;
+  mime: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  size?: string;
+  text?: unknown;
+}
 
 /** Which capabilities count as which kind of thing, for the type filter and the insights breakdown. */
 export const TYPE_OF: Record<ProviderCapability, Exclude<LibraryType, 'all'>> = {
-  IMAGE_GENERATE: 'image', IMAGE_EDIT: 'image', BACKGROUND_REMOVE: 'image', BACKGROUND_REPLACE: 'image', RELIGHT: 'image', UPSCALE: 'image',
-  IMAGE_TO_VIDEO: 'video', VIDEO_STITCH: 'video', DUB: 'video', LIPSYNC: 'video',
+  IMAGE_GENERATE: 'image',
+  IMAGE_EDIT: 'image',
+  BACKGROUND_REMOVE: 'image',
+  BACKGROUND_REPLACE: 'image',
+  RELIGHT: 'image',
+  UPSCALE: 'image',
+  IMAGE_TO_VIDEO: 'video',
+  VIDEO_STITCH: 'video',
+  DUB: 'video',
+  LIPSYNC: 'video',
   TEXT_GENERATE: 'copy',
-  VOICEOVER: 'audio', MUSIC: 'audio',
+  VOICEOVER: 'audio',
+  MUSIC: 'audio',
 };
 const CAPS_BY_TYPE = (t: Exclude<LibraryType, 'all'>): ProviderCapability[] => (Object.keys(TYPE_OF) as ProviderCapability[]).filter((c) => TYPE_OF[c] === t);
 
 @Injectable()
 export class LibraryService {
-  constructor(private readonly db: PrismaClient, private readonly media: MediaService) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly media: MediaService,
+  ) {}
 
   /** One page, newest first. Filters and search are applied in SQL; the rows come back through Prisma. */
   async list(workspaceId: string, q: LibraryQueryDto) {
@@ -61,8 +83,16 @@ export class LibraryService {
     const lastIds = rows.map((r) => r.lastId);
     const last = lastIds.length ? await this.db.generation.findMany({ where: { id: { in: lastIds } }, select: { id: true, outputs: true, input: true } }) : [];
     const thumbKeys = new Map(last.map((g) => [g.id, thumbKeyOf(g.outputs as OutputRow[] | null, g.input as Record<string, unknown>)]));
-    const urls = await this.media.readUrls(workspaceId, [...new Set([...thumbKeys.values()].filter((k): k is string => Boolean(k)))]).catch(() => ({}) as Record<string, string>);
-    return rows.map((r) => ({ productKey: r.productKey, title: r.title, count: r.count, lastAt: r.lastAt, thumbUrl: (thumbKeys.get(r.lastId) && urls[thumbKeys.get(r.lastId)!]) ?? null }));
+    const urls = await this.media
+      .readUrls(workspaceId, [...new Set([...thumbKeys.values()].filter((k): k is string => Boolean(k)))])
+      .catch(() => ({}) as Record<string, string>);
+    return rows.map((r) => ({
+      productKey: r.productKey,
+      title: r.title,
+      count: r.count,
+      lastAt: r.lastAt,
+      thumbUrl: (thumbKeys.get(r.lastId) && urls[thumbKeys.get(r.lastId)!]) ?? null,
+    }));
   }
 
   async get(workspaceId: string, id: string) {
@@ -111,7 +141,10 @@ export class LibraryService {
     res.setHeader('content-disposition', `attachment; filename="${base}.zip"`);
     const zip = archiver('zip', { zlib: { level: 1 } });
     zip.on('warning', (err) => logger.warn({ err, generationId: id }, 'zip warning'));
-    zip.on('error', (err) => { logger.error({ err, generationId: id }, 'zip failed'); res.destroy(err); });
+    zip.on('error', (err) => {
+      logger.error({ err, generationId: id }, 'zip failed');
+      res.destroy(err);
+    });
     zip.pipe(res);
     let n = 0;
     for (const o of outputs) {
@@ -157,7 +190,8 @@ export class LibraryService {
     if (q.from) where.push(Prisma.sql`g."createdAt" >= ${new Date(q.from)}`);
     if (q.to) where.push(Prisma.sql`g."createdAt" < ${new Date(q.to)}`);
     const tsquery = toTsQuery(q.q);
-    if (tsquery) where.push(Prisma.sql`to_tsvector('simple', coalesce(g."searchText", '') || ' ' || coalesce(g.title, '')) @@ to_tsquery('simple', ${tsquery})`);
+    if (tsquery)
+      where.push(Prisma.sql`to_tsvector('simple', coalesce(g."searchText", '') || ' ' || coalesce(g.title, '')) @@ to_tsquery('simple', ${tsquery})`);
     if (q.cursor) {
       where.push(Prisma.sql`(g."createdAt", g.id) < (SELECT c."createdAt", c.id FROM generations c WHERE c.id = ${q.cursor}::uuid)`);
     }
@@ -199,7 +233,20 @@ export class LibraryService {
       sourceKey: typeof input.sourceKey === 'string' ? input.sourceKey : null,
       sourceUrl: full && typeof input.sourceKey === 'string' ? (urls[input.sourceKey] ?? null) : null,
       text: outputs.find((o) => o.role === 'text')?.text ?? null,
-      outputs: outputs.filter((o) => o.role !== 'thumb' && o.role !== 'mask').map((o) => ({ key: o.key, role: o.role, mime: o.mime, size: o.size, width: o.width, height: o.height, durationMs: o.durationMs, bytes: o.bytes, locked: Boolean((o as { locked?: boolean }).locked), url: full && o.key ? (urls[o.key] ?? null) : null })),
+      outputs: outputs
+        .filter((o) => o.role !== 'thumb' && o.role !== 'mask')
+        .map((o) => ({
+          key: o.key,
+          role: o.role,
+          mime: o.mime,
+          size: o.size,
+          width: o.width,
+          height: o.height,
+          durationMs: o.durationMs,
+          bytes: o.bytes,
+          locked: Boolean((o as { locked?: boolean }).locked),
+          url: full && o.key ? (urls[o.key] ?? null) : null,
+        })),
       params: full ? input : undefined,
     }));
   }
@@ -213,11 +260,22 @@ function thumbKeyOf(outputs: OutputRow[] | null, input: Record<string, unknown>)
 /** "ankara wrap" → 'ankara:* & wrap:*'. Prefix matching, every word required; punctuation dropped. */
 export function toTsQuery(q: string | undefined): string | null {
   if (!q) return null;
-  const words = q.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 2).slice(0, 8);
+  const words = q
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 2)
+    .slice(0, 8);
   return words.length ? words.map((w) => `${w}:*`).join(' & ') : null;
 }
 
 function filenameBase(g: Generation): string {
-  const t = (g.title ?? TYPE_OF[g.capability]).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'anystudio';
+  const t =
+    (g.title ?? TYPE_OF[g.capability])
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'anystudio';
   return `${t}-${g.id.slice(0, 8)}`;
 }

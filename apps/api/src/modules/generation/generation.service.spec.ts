@@ -218,7 +218,7 @@ suite('GenerationService', () => {
     expect(await service.redispatchOrphans()).toEqual([]);
   });
 
-  it('tells the customer what happened in plain words, never the vendor\'s', async () => {
+  it("tells the customer what happened in plain words, never the vendor's", async () => {
     const { generation } = await request();
     await service.start(generation.id);
     await service.fail(generation.id, { failureReason: 'fal.ai: HTTP 429 quota exceeded for model x', failureKind: 'RATE_LIMITED' });

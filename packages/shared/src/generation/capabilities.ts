@@ -36,8 +36,7 @@ export const CAPABILITIES = [
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
-export const isCapability = (v: unknown): v is Capability =>
-  typeof v === 'string' && (CAPABILITIES as readonly string[]).includes(v);
+export const isCapability = (v: unknown): v is Capability => typeof v === 'string' && (CAPABILITIES as readonly string[]).includes(v);
 
 // ---------------------------------------------------------------------------
 // QUEUES
@@ -54,17 +53,10 @@ export const QUEUES = {
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
-const HEAVY: ReadonlySet<Capability> = new Set<Capability>([
-  'IMAGE_TO_VIDEO',
-  'VIDEO_STITCH',
-  'MUSIC',
-  'DUB',
-  'LIPSYNC',
-]);
+const HEAVY: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'VIDEO_STITCH', 'MUSIC', 'DUB', 'LIPSYNC']);
 
 /** Which queue carries a capability. Video and audio wait on GPUs; the rest do not. */
-export const queueFor = (capability: Capability): QueueName =>
-  HEAVY.has(capability) ? QUEUES.heavy : QUEUES.fast;
+export const queueFor = (capability: Capability): QueueName => (HEAVY.has(capability) ? QUEUES.heavy : QUEUES.fast);
 
 /**
  * The only thing a queue job carries. The worker re-reads the row; a payload
@@ -114,7 +106,11 @@ export const generationChannel = (generationId: string): string => `gen:${genera
 // ---------------------------------------------------------------------------
 
 /** A storage object key: {workspaceId}/{yyyy}/{mm}/{generationId}/{role}-{n}.{ext} */
-export const objectKey = z.string().min(3).max(512).regex(/^[A-Za-z0-9/_.-]+$/);
+export const objectKey = z
+  .string()
+  .min(3)
+  .max(512)
+  .regex(/^[A-Za-z0-9/_.-]+$/);
 
 export const ASPECTS = ['1:1', '4:5', '9:16', '16:9', '3:4'] as const;
 export type Aspect = (typeof ASPECTS)[number];
@@ -320,16 +316,18 @@ export const capabilityParams = {
    * audio file the seller uploads, or a script read by a catalogue voice
    * (the pipeline records it first).
    */
-  LIPSYNC: z.object({
-    sourceKey: objectKey,
-    audioKey: objectKey.optional(),
-    script: z.string().max(4000).optional(),
-    /** A VoiceProfile key, when reading a script. */
-    voiceId: z.string().max(80).optional(),
-    language: z.string().max(16).default('en'),
-    quality: z.enum(['speed', 'precision']).default('speed'),
-    consent: z.literal(true, { errorMap: () => ({ message: 'Confirm you have permission to use this person’s face and voice.' }) }),
-  }).refine((v) => Boolean(v.audioKey) || Boolean(v.script?.trim()), { message: 'Upload an audio file or write a script.', path: ['script'] }),
+  LIPSYNC: z
+    .object({
+      sourceKey: objectKey,
+      audioKey: objectKey.optional(),
+      script: z.string().max(4000).optional(),
+      /** A VoiceProfile key, when reading a script. */
+      voiceId: z.string().max(80).optional(),
+      language: z.string().max(16).default('en'),
+      quality: z.enum(['speed', 'precision']).default('speed'),
+      consent: z.literal(true, { errorMap: () => ({ message: 'Confirm you have permission to use this person’s face and voice.' }) }),
+    })
+    .refine((v) => Boolean(v.audioKey) || Boolean(v.script?.trim()), { message: 'Upload an audio file or write a script.', path: ['script'] }),
 } satisfies Record<Capability, z.ZodTypeAny>;
 
 /** A dub that also moves the mouth is priced under its own code. */

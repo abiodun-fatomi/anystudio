@@ -3,7 +3,11 @@ const ZERO_DECIMAL = new Set(['UGX', 'RWF', 'XOF', 'XAF', 'JPY', 'KRW']);
 
 export function money(major: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: ZERO_DECIMAL.has(currency) || Number.isInteger(major) ? 0 : 2 }).format(major);
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: ZERO_DECIMAL.has(currency) || Number.isInteger(major) ? 0 : 2,
+    }).format(major);
   } catch {
     return `${currency} ${major.toLocaleString()}`;
   }

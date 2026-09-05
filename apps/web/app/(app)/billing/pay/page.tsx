@@ -33,7 +33,12 @@ function Pay() {
   const [cfg, setCfg] = useState<{ clientToken: string; environment: 'sandbox' | 'production' } | null | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => { api.billing.config().then((c) => setCfg(c.paddle)).catch(() => setCfg(null)); }, []);
+  useEffect(() => {
+    api.billing
+      .config()
+      .then((c) => setCfg(c.paddle))
+      .catch(() => setCfg(null));
+  }, []);
   const token = cfg?.clientToken;
   const env = cfg?.environment ?? 'sandbox';
 
@@ -44,12 +49,21 @@ function Pay() {
       window.Paddle.Initialize({
         token,
         eventCallback: (e) => {
-          if (e.name === 'checkout.completed') window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed`);
-          if (e.name === 'checkout.closed') window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=closed`);
+          if (e.name === 'checkout.completed')
+            window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed`);
+          if (e.name === 'checkout.closed')
+            window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=closed`);
           if (e.name === 'checkout.error') setProblem('The payment form reported an error. Nothing was charged.');
         },
       });
-      window.Paddle.Checkout.open({ transactionId: txn, settings: { displayMode: 'overlay', theme: 'light', successUrl: `${window.location.origin}/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed` } });
+      window.Paddle.Checkout.open({
+        transactionId: txn,
+        settings: {
+          displayMode: 'overlay',
+          theme: 'light',
+          successUrl: `${window.location.origin}/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed`,
+        },
+      });
     } catch (e) {
       setProblem(e instanceof Error ? e.message : 'Could not open the payment form.');
     }
@@ -57,18 +71,60 @@ function Pay() {
 
   if (!txn) return <EmptyState title="Nothing to pay" body="Start from Add credits." actions={<Button href="/billing/plans">Add credits</Button>} />;
   if (cfg === undefined) return null;
-  if (!token) return <EmptyState title="Card payments are not switched on here" body="The Paddle client token is not configured for this environment." actions={<Button variant="ghost" href="/billing/plans">Back</Button>} />;
-  if (problem) return <EmptyState title="Could not open the payment form" body={problem} actions={<><Button href="/billing/plans">Try again</Button><Button variant="ghost" href="/billing">Credits</Button></>} />;
+  if (!token)
+    return (
+      <EmptyState
+        title="Card payments are not switched on here"
+        body="The Paddle client token is not configured for this environment."
+        actions={
+          <Button variant="ghost" href="/billing/plans">
+            Back
+          </Button>
+        }
+      />
+    );
+  if (problem)
+    return (
+      <EmptyState
+        title="Could not open the payment form"
+        body={problem}
+        actions={
+          <>
+            <Button href="/billing/plans">Try again</Button>
+            <Button variant="ghost" href="/billing">
+              Credits
+            </Button>
+          </>
+        }
+      />
+    );
   return (
     <>
-      <Script src="https://cdn.paddle.com/paddle/v2/paddle.js" strategy="afterInteractive" onLoad={() => setReady(true)} onError={() => setProblem('The payment script did not load. Check your connection and try again.')} />
+      <Script
+        src="https://cdn.paddle.com/paddle/v2/paddle.js"
+        strategy="afterInteractive"
+        onLoad={() => setReady(true)}
+        onError={() => setProblem('The payment script did not load. Check your connection and try again.')}
+      />
       <div style={{ display: 'grid', gap: 'var(--s-3)', maxWidth: 420, margin: '10vh auto', textAlign: 'center' }}>
         <strong style={{ fontSize: 'var(--t-5)', fontFamily: 'var(--f-display)' }}>Opening the payment form…</strong>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>Paddle handles the card and the receipt. If nothing appears, allow pop-ups for this site and reload.</span>
-        <Button variant="ghost" href="/billing/plans">Cancel</Button>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>
+          Paddle handles the card and the receipt. If nothing appears, allow pop-ups for this site and reload.
+        </span>
+        <Button variant="ghost" href="/billing/plans">
+          Cancel
+        </Button>
       </div>
     </>
   );
 }
 
-export default function Page() { return <div className="rise"><Suspense fallback={null}><Pay /></Suspense></div>; }
+export default function Page() {
+  return (
+    <div className="rise">
+      <Suspense fallback={null}>
+        <Pay />
+      </Suspense>
+    </div>
+  );
+}

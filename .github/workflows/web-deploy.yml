@@ -30,7 +30,7 @@ on:
 
 concurrency:
   group: web-${{ github.ref }}
-  cancel-in-progress: false   # never cancel a deploy half way
+  cancel-in-progress: false # never cancel a deploy half way
 
 permissions:
   contents: read

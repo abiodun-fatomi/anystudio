@@ -64,15 +64,17 @@ export async function http<T = unknown>(providerKey: string, url: string, opts: 
 
   const text = await res.text();
   let json: unknown = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
 
   if (!res.ok) {
-    throw new ProviderError(
-      kindForStatus(res.status),
-      `${providerKey}: HTTP ${res.status} from ${redact(url)}: ${text.slice(0, 500)}`,
-      providerKey,
-      { status: res.status, raw: json ?? text.slice(0, 2000) },
-    );
+    throw new ProviderError(kindForStatus(res.status), `${providerKey}: HTTP ${res.status} from ${redact(url)}: ${text.slice(0, 500)}`, providerKey, {
+      status: res.status,
+      raw: json ?? text.slice(0, 2000),
+    });
   }
   return { status: res.status, json: json as T, text, headers: res.headers };
 }

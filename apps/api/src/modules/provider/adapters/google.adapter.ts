@@ -133,8 +133,18 @@ export class GoogleProvider extends BaseProvider {
     const started = await http<{ name: string }>(this.key, await this.auth.url(`models/${model}:predictLongRunning`), {
       headers,
       body: {
-        instances: [{ prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt, image: { bytesBase64Encoded: image.inlineData.data, mimeType: image.inlineData.mimeType } }],
-        parameters: { aspectRatio: p.aspect === '1:1' ? '9:16' : p.aspect, durationSeconds: p.durationSec, resolution: this.str(input.config, 'resolution', '720p'), personGeneration: 'allow_adult' },
+        instances: [
+          {
+            prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
+            image: { bytesBase64Encoded: image.inlineData.data, mimeType: image.inlineData.mimeType },
+          },
+        ],
+        parameters: {
+          aspectRatio: p.aspect === '1:1' ? '9:16' : p.aspect,
+          durationSeconds: p.durationSec,
+          resolution: this.str(input.config, 'resolution', '720p'),
+          personGeneration: 'allow_adult',
+        },
       },
       timeoutMs: 60_000,
       signal: opts.signal,
@@ -144,19 +154,40 @@ export class GoogleProvider extends BaseProvider {
 
     const done = await poll(
       async () => {
-        const op = await http<{ done?: boolean; error?: { message: string; code: number }; response?: unknown }>(this.key, await this.auth.url(providerJobId), { headers, timeoutMs: 20_000, signal: opts.signal });
-        if (op.json.error) throw new ProviderError(op.json.error.code === 400 ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: ${op.json.error.message}`, this.key, { providerJobId });
+        const op = await http<{ done?: boolean; error?: { message: string; code: number }; response?: unknown }>(this.key, await this.auth.url(providerJobId), {
+          headers,
+          timeoutMs: 20_000,
+          signal: opts.signal,
+        });
+        if (op.json.error)
+          throw new ProviderError(op.json.error.code === 400 ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: ${op.json.error.message}`, this.key, {
+            providerJobId,
+          });
         return op.json.done ? op.json : null;
       },
-      { intervalMs: 8_000, timeoutMs: opts.timeoutMs, signal: opts.signal, onTick: (ms) => opts.onProgress?.(`Veo is rendering (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)) },
+      {
+        intervalMs: 8_000,
+        timeoutMs: opts.timeoutMs,
+        signal: opts.signal,
+        onTick: (ms) => opts.onProgress?.(`Veo is rendering (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
+      },
     );
 
     const uri = pick<string>(done, 'response.generateVideoResponse.generatedSamples.0.video.uri') ?? pick<string>(done, 'response.videos.0.uri');
     const filtered = pick<number>(done, 'response.generateVideoResponse.raiMediaFilteredCount');
-    if (!uri) throw new ProviderError(filtered ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no video in finished operation`, this.key, { providerJobId, raw: done });
+    if (!uri)
+      throw new ProviderError(filtered ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no video in finished operation`, this.key, {
+        providerJobId,
+        raw: done,
+      });
     // The file URL needs the same credential as the API.
     const { bytes, mime } = await fetchBytesWith(this.key, uri, headers, 120_000);
-    return { providerKey: this.key, providerJobId, artifacts: [{ bytes, mime: mime.startsWith('video/') ? mime : 'video/mp4', role: 'video', durationMs: p.durationSec * 1000 }], meta: { model } };
+    return {
+      providerKey: this.key,
+      providerJobId,
+      artifacts: [{ bytes, mime: mime.startsWith('video/') ? mime : 'video/mp4', role: 'video', durationMs: p.durationSec * 1000 }],
+      meta: { model },
+    };
   }
 
   // ---- Gemini text: structured output ---------------------------------------
@@ -186,7 +217,11 @@ export class GoogleProvider extends BaseProvider {
     if (blocked) throw new ProviderError('CONTENT_REJECTED', `${this.key}: refused (${blocked})`, this.key);
     const textOut = (pick<Array<{ text?: string }>>(res.json, 'candidates.0.content.parts') ?? []).map((p) => p.text ?? '').join('');
     if (!textOut) throw new ProviderError('RETRYABLE', `${this.key}: empty completion`, this.key, { raw: res.json });
-    return { providerKey: this.key, artifacts: [{ mime: 'application/json', role: 'text', text: req.jsonSchema ? parseJson(this.key, textOut) : textOut }], meta: { model, usage: pick(res.json, 'usageMetadata') } };
+    return {
+      providerKey: this.key,
+      artifacts: [{ mime: 'application/json', role: 'text', text: req.jsonSchema ? parseJson(this.key, textOut) : textOut }],
+      meta: { model, usage: pick(res.json, 'usageMetadata') },
+    };
   }
 
   /**
@@ -200,12 +235,18 @@ export class GoogleProvider extends BaseProvider {
     const languageCode = name.split('-').slice(0, 2).join('-');
     const headers = await this.auth.serviceHeaders();
     const res = await http<{ audioContent?: string }>(this.key, 'https://texttospeech.googleapis.com/v1/text:synthesize', {
-      headers, timeoutMs: opts.timeoutMs, signal: opts.signal,
+      headers,
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
       body: { input: { text: p.script }, voice: { languageCode, name }, audioConfig: { audioEncoding: 'MP3', speakingRate: p.speed, pitch: 0 } },
     });
     const b64 = res.json?.audioContent;
     if (!b64) throw new ProviderError('RETRYABLE', `${this.key}: no audioContent in response`, this.key);
-    return { providerKey: this.key, artifacts: [{ bytes: new Uint8Array(Buffer.from(b64, 'base64')), mime: 'audio/mpeg', role: 'audio' }], meta: { voice: name } };
+    return {
+      providerKey: this.key,
+      artifacts: [{ bytes: new Uint8Array(Buffer.from(b64, 'base64')), mime: 'audio/mpeg', role: 'audio' }],
+      meta: { voice: name },
+    };
   }
 }
 
@@ -215,7 +256,11 @@ function stripUnsupported(schema: Record<string, unknown>): Record<string, unkno
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === 'object') {
-      return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([k]) => !drop.has(k)).map(([k, val]) => [k, walk(val)]));
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>)
+          .filter(([k]) => !drop.has(k))
+          .map(([k, val]) => [k, walk(val)]),
+      );
     }
     return v;
   };
@@ -223,7 +268,10 @@ function stripUnsupported(schema: Record<string, unknown>): Record<string, unkno
 }
 
 export function parseJson(providerKey: string, text: string): unknown {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
   try {
     return JSON.parse(cleaned);
   } catch {
@@ -264,7 +312,9 @@ export class GoogleAuth {
       const loc = this.creds.location ?? 'us-central1';
       const host = loc === 'global' ? 'aiplatform.googleapis.com' : `${loc}-aiplatform.googleapis.com`;
       // Operation names from Vertex already carry the full resource path.
-      return path.startsWith('projects/') ? `https://${host}/v1/${path}` : `https://${host}/v1/projects/${this.creds.project}/locations/${loc}/publishers/google/${path}`;
+      return path.startsWith('projects/')
+        ? `https://${host}/v1/${path}`
+        : `https://${host}/v1/projects/${this.creds.project}/locations/${loc}/publishers/google/${path}`;
     }
     return `https://generativelanguage.googleapis.com/v1beta/${path}`;
   }
