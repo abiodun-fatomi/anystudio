@@ -126,14 +126,14 @@ suite('DeveloperService + PublicApiService', () => {
     expect((await dev.webhooks(workspaceId))[0]).not.toHaveProperty('secret');
     const { generation } = await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Tote', platforms: ['instagram'] } });
     await generations.succeed(generation.id, { outputs: [] });
-    await new Promise((r) => setTimeout(r, 300)); // listeners are detached from the caller
+    await hooks.drain(); // listeners are detached from the caller
     const deliveries = await dev.deliveries(workspaceId, hook.id);
     expect(deliveries.map((d) => d.event)).toEqual(['generation.succeeded']);
     expect((deliveries[0]!.payload as { data: { id: string } }).data.id).toBe(generation.id);
     // A failure is not subscribed to.
     const { generation: g2 } = await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Bag', platforms: ['instagram'] } });
     await generations.fail(g2.id, { failureReason: 'x', failureKind: 'PROVIDER_DOWN' });
-    await new Promise((r) => setTimeout(r, 300));
+    await hooks.drain();
     expect(await dev.deliveries(workspaceId, hook.id)).toHaveLength(1);
   });
 });
