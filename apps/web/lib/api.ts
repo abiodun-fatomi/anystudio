@@ -886,8 +886,11 @@ export const api = {
     revokeSession: (id: string) => request<{ status: 'revoked' }>('DELETE', `/me/sessions/${id}`),
     revokeOtherSessions: () => request<{ status: 'revoked'; count: number }>('POST', '/me/sessions/revoke-others'),
     unlinkIdentity: (id: string) => request<{ status: 'unlinked' }>('DELETE', `/me/identities/${id}`),
-    activity: (cursor?: string) =>
-      request<{ rows: ActivityRow[]; nextCursor: string | null }>('GET', `/me/security/activity?take=20${cursor ? `&cursor=${cursor}` : ''}`),
+    activity: (opts: { take?: number; cursor?: string } = {}) =>
+      request<{ rows: ActivityRow[]; nextCursor: string | null }>(
+        'GET',
+        `/me/security/activity?take=${opts.take ?? 20}${opts.cursor ? `&cursor=${opts.cursor}` : ''}`,
+      ),
     notifications: () => request<Notifications>('GET', '/me/notifications'),
     updateNotifications: (body: {
       switches?: Partial<NotificationSwitches>;

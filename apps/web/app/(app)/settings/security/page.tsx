@@ -8,11 +8,11 @@
  * screen says so, because a person who is worried wants to know what will
  * happen before they press the button.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { api, ApiError, type ActivityRow, type SessionRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
-import { Badge, Button, ConfirmDialog, Dialog, Input, Skeleton, useToast, PasswordInput, LoadError } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, Dialog, Input, Pagination, Select, Skeleton, useToast, PasswordInput, LoadError } from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -54,20 +54,58 @@ export default function SecurityPage() {
   const { profile, error, reload } = useProfile();
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [activity, setActivity] = useState<ActivityRow[] | null>(null);
-  const [activityCursor, setActivityCursor] = useState<string | null>(null);
-  const [moreBusy, setMoreBusy] = useState(false);
-  const loadLists = useCallback(async () => {
-    const [s, a] = await Promise.all([
-      api.account.sessions().catch(() => []),
-      api.account.activity().catch(() => ({ rows: [] as ActivityRow[], nextCursor: null })),
-    ]);
-    setSessions(s);
-    setActivity(a.rows);
-    setActivityCursor(a.nextCursor);
+  // Cursor pages: the stack holds the cursor each visited page started at
+  // (the first page starts at none), so "Newer" is a pop and "Older" a push.
+  const [pageSize, setPageSize] = useState(20);
+  const [pageStack, setPageStack] = useState<Array<string | null>>([null]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pageBusy, setPageBusy] = useState(false);
+  const loadSessions = useCallback(async () => {
+    const s = await api.account.sessions().catch(() => []);
+    setSessions(Array.isArray(s) ? s : []);
   }, []);
+  const loadPage = useCallback(async (cursor: string | null, take: number) => {
+    setPageBusy(true);
+    try {
+      const a = await api.account.activity({ take, cursor: cursor ?? undefined });
+      setActivity(Array.isArray(a?.rows) ? a.rows : []);
+      setNextCursor(typeof a?.nextCursor === 'string' ? a.nextCursor : null);
+    } catch {
+      setActivity((cur) => cur ?? []);
+    } finally {
+      setPageBusy(false);
+    }
+  }, []);
+  // The page size is held in a ref here so a size change does not re-run the
+  // whole first load; changing it reloads through its own handler below.
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const loadLists = useCallback(async () => {
+    await Promise.all([loadSessions(), loadPage(null, pageSizeRef.current)]);
+    setPageStack([null]);
+  }, [loadSessions, loadPage]);
   useEffect(() => {
     void loadLists();
   }, [loadLists]);
+  const pageNo = pageStack.length;
+  const olderPage = async () => {
+    if (!nextCursor) return;
+    setPageStack((st) => [...st, nextCursor]);
+    await loadPage(nextCursor, pageSize);
+    document.getElementById('s-act')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const newerPage = async () => {
+    if (pageStack.length < 2) return;
+    const st = pageStack.slice(0, -1);
+    setPageStack(st);
+    await loadPage(st[st.length - 1] ?? null, pageSize);
+    document.getElementById('s-act')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const changePageSize = async (n: number) => {
+    setPageSize(n);
+    setPageStack([null]);
+    await loadPage(null, n);
+  };
 
   // ---- password
   const [pw, setPw] = useState<{ reauth: ReauthValue; next: string; again: string }>({ reauth: {}, next: '', again: '' });
@@ -427,8 +465,15 @@ export default function SecurityPage() {
             </h2>
             <p className={styles.groupLede}>Everything that touched your account, newest first.</p>
           </div>
+          <Select
+            aria-label="Rows per page"
+            value={String(pageSize)}
+            onChange={(e) => void changePageSize(Number(e.target.value))}
+            options={[20, 50, 100].map((n) => ({ value: String(n), label: `${n} per page` }))}
+            disabled={pageBusy}
+          />
         </div>
-        <div className={styles.rows}>
+        <div className={styles.rows} aria-busy={pageBusy || undefined}>
           {activity === null ? (
             <Skeleton style={{ height: 56 }} />
           ) : activity.length === 0 ? (
@@ -456,28 +501,20 @@ export default function SecurityPage() {
             ))
           )}
         </div>
-        {activityCursor && (
-          <div style={{ paddingTop: 'var(--s-3)' }}>
-            <Button
-              variant="ghost"
-              size="sm"
-              loading={moreBusy}
-              onClick={async () => {
-                setMoreBusy(true);
-                try {
-                  const more = await api.account.activity(activityCursor);
-                  setActivity((cur) => [...(cur ?? []), ...more.rows]);
-                  setActivityCursor(more.nextCursor);
-                } catch {
-                  /* the button stays; try again */
-                } finally {
-                  setMoreBusy(false);
-                }
-              }}
-            >
-              Show older
-            </Button>
-          </div>
+        {activity !== null && (pageNo > 1 || nextCursor) && (
+          <Pagination>
+            <span>
+              Page {pageNo} · {activity.length} {activity.length === 1 ? 'event' : 'events'}
+            </span>
+            <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
+              <Button variant="ghost" size="sm" onClick={() => void newerPage()} disabled={pageNo < 2 || pageBusy}>
+                Newer
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => void olderPage()} disabled={!nextCursor || pageBusy} loading={pageBusy}>
+                Older
+              </Button>
+            </span>
+          </Pagination>
         )}
       </section>
 
