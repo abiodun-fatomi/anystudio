@@ -38,6 +38,13 @@ export interface RouteCandidate {
   provider: GenerationProvider;
 }
 
+/** How a pipeline narrows the router's choice; see `route`. */
+export interface RouteConstraint {
+  only?: string;
+  exclude?: string[];
+  prefer?: string[];
+}
+
 export interface RouteDecision {
   capability: Capability;
   candidates: RouteCandidate[];
@@ -67,19 +74,25 @@ export class ProviderRouter {
   ) {}
 
   /** Ordered candidates for a capability, or an empty list with the reasons. */
-  async route(capability: Capability, workspaceType: WorkspaceType, ctx: { generationId?: string; only?: string } = {}): Promise<RouteDecision> {
+  async route(capability: Capability, workspaceType: WorkspaceType, ctx: RouteConstraint & { generationId?: string } = {}): Promise<RouteDecision> {
     // `only`: a voice belongs to one vendor, so the row for that vendor is the only candidate.
+    // `exclude`: vendors known not to serve this request (a dub into a language they lack).
+    // `prefer`: vendors to try first regardless of priority (the one that can also move the lips).
     const rows = await this.db.providerModel.findMany({
-      where: { capability, enabled: true, OR: [{ workspaceType: null }, { workspaceType }], ...(ctx.only ? { key: ctx.only } : {}) },
+      where: { capability, enabled: true, OR: [{ workspaceType: null }, { workspaceType }], ...(ctx.only ? { key: ctx.only } : ctx.exclude?.length ? { key: { notIn: ctx.exclude } } : {}) },
       orderBy: [{ priority: 'asc' }, { key: 'asc' }],
     });
+    if (ctx.prefer?.length) {
+      const rank = (k: string) => { const i = ctx.prefer!.indexOf(k); return i === -1 ? ctx.prefer!.length : i; };
+      rows.sort((a, b) => rank(a.key) - rank(b.key) || a.priority - b.priority);
+    }
 
     const candidates: RouteCandidate[] = [];
     const excluded: RouteDecision['excluded'] = [];
     const now = Date.now();
 
-    // A tier-specific row outranks the general one at the same priority.
-    rows.sort((a, b) => a.priority - b.priority || (a.workspaceType ? -1 : 0) - (b.workspaceType ? -1 : 0));
+    // A tier-specific row outranks the general one at the same priority (a preferred vendor keeps its place).
+    if (!ctx.prefer?.length) rows.sort((a, b) => a.priority - b.priority || (a.workspaceType ? -1 : 0) - (b.workspaceType ? -1 : 0));
 
     for (const row of rows) {
       const provider = this.registry.get(row.key);

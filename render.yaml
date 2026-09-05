@@ -188,6 +188,8 @@ envVarGroups:
         sync: false
       - key: ELEVENLABS_API_KEY
         sync: false
+      - key: SYNC_API_KEY
+        sync: false
       - key: FLUTTERWAVE_SECRET_KEY
         sync: false
       - key: FLUTTERWAVE_WEBHOOK_SECRET

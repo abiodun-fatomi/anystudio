@@ -63,9 +63,11 @@ suite('GenerationRunner', () => {
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'VIDEO_STITCH' } }, create: { key: 'stub:any', capability: 'VIDEO_STITCH', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'MUSIC' } }, create: { key: 'stub:any', capability: 'MUSIC', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'VOICEOVER' } }, create: { key: 'stub:any', capability: 'VOICEOVER', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'DUB' } }, create: { key: 'stub:any', capability: 'DUB', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
+    await db.providerModel.upsert({ where: { key_capability: { key: 'stub:any', capability: 'LIPSYNC' } }, create: { key: 'stub:any', capability: 'LIPSYNC', priority: 10, costPerCall: 0 }, update: { enabled: true, breakerOpenedAt: null, config: {} } });
     await db.musicGenre.upsert({ where: { key: 'test-afrobeats' }, create: { key: 'test-afrobeats', name: 'Afrobeats', region: 'Nigeria', family: 'african', description: 'test', promptHints: 'log drum, shakers, warm bass', languages: ['en'] }, update: {} });
     await db.voiceProfile.upsert({ where: { key: 'test-voice' }, create: { key: 'test-voice', providerKey: 'stub:any', providerVoiceId: 'stub-v', name: 'Stub voice', language: 'en-NG', tags: [] }, update: { providerKey: 'stub:any', active: true } });
-    for (const c of [{ code: 'video.ad_15s', credits: 260, label: 'Ad' }, { code: 'video.shot', credits: 0, label: 'Shot' }, { code: 'audio.music.preview', credits: 10, label: 'Song preview' }, { code: 'audio.music.unlock', credits: 30, label: 'Unlock' }, { code: 'audio.voiceover', credits: 8, label: 'Voiceover' }]) {
+    for (const c of [{ code: 'video.ad_15s', credits: 260, label: 'Ad' }, { code: 'video.shot', credits: 0, label: 'Shot' }, { code: 'audio.music.preview', credits: 10, label: 'Song preview' }, { code: 'audio.music.unlock', credits: 30, label: 'Unlock' }, { code: 'audio.voiceover', credits: 8, label: 'Voiceover' }, { code: 'video.translate', credits: 90, label: 'Translate' }, { code: 'video.translate_lipsync', credits: 240, label: 'Translate with lips' }, { code: 'video.lipsync', credits: 150, label: 'Lip-sync' }]) {
       await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
     }
   });
@@ -84,7 +86,54 @@ suite('GenerationRunner', () => {
     await ledger.grant({ walletId: wallet.id, amount: START, idempotencyKey: `seed:${wallet.id}`, reason: 'fixture' });
     userId = user.id; workspaceId = workspace.id; walletId = wallet.id;
     await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/src.png`, mime: 'image/png' } });
+    await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/clip.mp4`, mime: 'video/mp4' } });
   });
+
+  it('a dub with lips: priced as such, dubbed by one vendor, lips finished by a LIPSYNC vendor when the first left them alone', async () => {
+    const sourceKey = `${workspaceId}/2026/09/uploads/clip.mp4`;
+    await expect(generations.request({ workspaceId, requestedById: userId, capability: 'DUB', clientKey: 'dub-0', params: { sourceKey, targetLanguage: 'en-NG', lipsync: true } })).rejects.toMatchObject({ details: { consent: expect.stringContaining('permission') } });
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'DUB', clientKey: 'dub-1', params: { sourceKey, targetLanguage: 'en-NG', lipsync: true, consent: true } });
+    expect(generation.costCode).toBe('video.translate_lipsync');
+    expect(generation.credits).toBe(240);
+    expect(generation.title).toBe('Dubbed into English (Nigeria)');
+    expect(await runner.run(generation.id)).toBe('succeeded');
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    const outputs = row.outputs as Array<{ role: string; key: string; text?: { lipsync?: boolean; language?: string; dubbedBy?: string } }>;
+    expect(outputs.filter((o) => o.role === 'video')).toHaveLength(1);
+    expect(outputs.find((o) => o.role === 'text')?.text).toMatchObject({ lipsync: true, language: 'English (Nigeria)', dubbedBy: 'stub:any' });
+    expect(row.providerKey).toBe('stub:any+stub:any');
+    // The dubbed intermediate and its soundtrack were stored for the lip-sync vendor, outside the outputs.
+    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/dubbed.mp3`))).toBe(true);
+    expect(await ledger.balance(walletId)).toBe(START - 240);
+
+    // Voice only: cheaper, no second vendor.
+    const quiet = await generations.request({ workspaceId, requestedById: userId, capability: 'DUB', clientKey: 'dub-2', params: { sourceKey, targetLanguage: 'fr', consent: true } });
+    expect(quiet.generation.credits).toBe(90);
+    expect(await runner.run(quiet.generation.id)).toBe('succeeded');
+    const quietRow = await db.generation.findUniqueOrThrow({ where: { id: quiet.generation.id } });
+    expect(quietRow.providerKey).toBe('stub:any');
+    expect((quietRow.outputs as Array<{ role: string; text?: { lipsync?: boolean } }>).find((o) => o.role === 'text')?.text?.lipsync).toBe(false);
+
+    // A language nobody dubs into fails before any vendor is asked, credits back.
+    const nope = await generations.request({ workspaceId, requestedById: userId, capability: 'DUB', clientKey: 'dub-3', params: { sourceKey, targetLanguage: 'yo', consent: true } });
+    expect(await runner.run(nope.generation.id)).toBe('failed');
+    expect(await ledger.balance(walletId)).toBe(START - 240 - 90);
+  }, 60_000);
+
+  it('a lip-sync from a script records the voice first, then syncs, and keeps the words on the row', async () => {
+    const sourceKey = `${workspaceId}/2026/09/uploads/clip.mp4`;
+    await expect(generations.request({ workspaceId, requestedById: userId, capability: 'LIPSYNC', clientKey: 'ls-0', params: { sourceKey, consent: true } })).rejects.toMatchObject({ details: { script: expect.stringContaining('audio file or write a script') } });
+    const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'LIPSYNC', clientKey: 'ls-1', params: { sourceKey, script: 'New stock **today**.', voiceId: 'test-voice', consent: true } });
+    expect(generation.credits).toBe(150);
+    expect(await runner.run(generation.id)).toBe('succeeded');
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    const outputs = row.outputs as Array<{ role: string; text?: { script?: string; voice?: string } }>;
+    expect(outputs.find((o) => o.role === 'video')).toBeTruthy();
+    expect(outputs.find((o) => o.role === 'text')?.text).toMatchObject({ script: 'New stock today.', voice: 'test-voice' });
+    expect(row.providerKey).toBe('stub:any+stub:any');
+    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/voice.mp3`))).toBe(true);
+    expect(await ledger.balance(walletId)).toBe(START - 150);
+  }, 60_000);
 
   it('a song: lyrics are written, the full track is vaulted and locked, the preview is open, unlocking pays once and copies it out', async () => {
     const { generation } = await generations.request({ workspaceId, requestedById: userId, capability: 'MUSIC', clientKey: 'song-1', params: { brief: 'a song about my ankara bags', genre: 'test-afrobeats', vocal: 'female', durationSec: 60 } });

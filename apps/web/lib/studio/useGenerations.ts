@@ -223,7 +223,7 @@ export function useGenerations() {
 }
 
 export function toolFor(capability: string): string {
-  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer', MUSIC: 'music', VOICEOVER: 'voice' } as Record<string, string>)[capability] ?? 'scene';
+  return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer', MUSIC: 'music', VOICEOVER: 'voice', DUB: 'translate', LIPSYNC: 'lipsync' } as Record<string, string>)[capability] ?? 'scene';
 }
 
 function getPath(obj: unknown, path: string): unknown {

@@ -295,16 +295,48 @@ export const capabilityParams = {
     /** Filled by the pipeline: the final "[Verse]…" text the model sings. */
     lyricsText: z.string().max(4000).optional(),
   }),
+  /**
+   * A video, spoken again in another language in the same voice. With
+   * `lipsync` the mouth is re-animated to match; without it the picture is
+   * untouched and only the sound changes.
+   */
   DUB: z.object({
     sourceKey: objectKey,
+    /** A DUB_LANGUAGES code. */
     targetLanguage: z.string().max(16),
+    /** ISO 639-1, or 'auto' to let the vendor listen first. */
+    sourceLanguage: z.string().max(16).default('auto'),
     lipsync: z.boolean().default(false),
+    /** 0 lets the vendor count the speakers. */
+    speakers: z.number().int().min(0).max(10).default(0),
+    /** Keep music and ambience under the new voice. */
+    keepBackground: z.boolean().default(true),
+    quality: z.enum(['speed', 'precision']).default('speed'),
+    /** The seller confirms they may use this person's face and voice. Required — a dub clones a voice. */
+    consent: z.literal(true, { errorMap: () => ({ message: 'Confirm you have permission to use this person’s face and voice.' }) }),
   }),
+  /**
+   * New words on an existing video, mouth re-animated to match: either an
+   * audio file the seller uploads, or a script read by a catalogue voice
+   * (the pipeline records it first).
+   */
   LIPSYNC: z.object({
     sourceKey: objectKey,
-    audioKey: objectKey,
-  }),
+    audioKey: objectKey.optional(),
+    script: z.string().max(4000).optional(),
+    /** A VoiceProfile key, when reading a script. */
+    voiceId: z.string().max(80).optional(),
+    language: z.string().max(16).default('en'),
+    quality: z.enum(['speed', 'precision']).default('speed'),
+    consent: z.literal(true, { errorMap: () => ({ message: 'Confirm you have permission to use this person’s face and voice.' }) }),
+  }).refine((v) => Boolean(v.audioKey) || Boolean(v.script?.trim()), { message: 'Upload an audio file or write a script.', path: ['script'] }),
 } satisfies Record<Capability, z.ZodTypeAny>;
+
+/** A dub that also moves the mouth is priced under its own code. */
+export const DUB_LIPSYNC_COST_CODE = 'video.translate_lipsync';
+/** Vendors bill dubbing by the minute; these caps keep one credit price honest. */
+export const DUB_MAX_SEC = 300;
+export const LIPSYNC_MAX_SEC = 180;
 
 export type CapabilityParams<C extends Capability = Capability> = z.infer<(typeof capabilityParams)[C]>;
 

@@ -30,8 +30,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, type Generation, type Workspace } from '@prisma/client';
 import {
+  DUB_VENDOR_KEYS,
   ProviderError,
+  dubLanguage,
+  dubVendorsFor,
   type Capability,
+  type CapabilityParams,
   type GenerationOutput,
   type ProviderArtifact,
   type ProviderFile,
@@ -42,7 +46,7 @@ import { logger } from '../../config/logger';
 import { GenerationService } from '../modules/generation/generation.service';
 import { GenerationEvents } from '../modules/generation/generation.events';
 import { MediaService } from '../modules/media/media.service';
-import { ProviderRouter, type RouteCandidate } from '../modules/provider/provider.router';
+import { ProviderRouter, type RouteCandidate, type RouteConstraint } from '../modules/provider/provider.router';
 import { QueueService } from '../modules/queue/queue.service';
 import { fetchBytes } from '../modules/provider/adapters/http';
 import { Pipelines, type PipelineContext } from './pipelines';
@@ -115,8 +119,8 @@ export class GenerationRunner {
       const files = await this.resolveFiles(row);
 
       await this.events.stage(generationId, 'routing', 10);
-      const only = await this.routingConstraint(row);
-      const decision = await this.router.route(row.capability, workspace.type, { generationId, only });
+      const constraint = await this.routingConstraint(row);
+      const decision = await this.router.route(row.capability, workspace.type, { generationId, ...constraint });
       if (decision.candidates.length === 0) {
         throw new ProviderError('PROVIDER_DOWN', `no provider available for ${row.capability}: ${decision.excluded.map((e) => `${e.key} (${e.reason})`).join('; ')}`, 'router');
       }
@@ -132,7 +136,7 @@ export class GenerationRunner {
         log,
         callProvider: (input, opts) => this.callWithFallback(decision.candidates, input, { ...opts, generationId }, log),
         callCapability: async (capability, input, opts) => {
-          const d = await this.router.route(capability, workspace.type, { generationId });
+          const d = await this.router.route(capability, workspace.type, { generationId, ...(opts.route ?? {}) });
           if (d.candidates.length === 0) throw new ProviderError('PROVIDER_DOWN', `no provider available for ${capability}`, 'router');
           return this.callWithFallback(d.candidates, { ...input, capability }, { ...opts, generationId }, log);
         },
@@ -195,14 +199,32 @@ export class GenerationRunner {
 
   /** Try each candidate in order; stop early on errors that retrying cannot fix. */
   /**
-   * A voice belongs to one vendor. When the row names a voice, only that
-   * vendor's row may serve it — a fallback to another vendor would read the
-   * script in a different person's voice, which is worse than failing.
+   * What the request itself says about who may serve it.
+   *
+   * A voice belongs to one vendor: when the row names a voice, only that
+   * vendor's row may serve it — a fallback would read the script in a
+   * different person's voice, which is worse than failing.
+   *
+   * A dub goes to a vendor that speaks the language: the ones known not to
+   * are excluded, and when the seller wants the lips moved too, the vendor
+   * that does both in one pass is tried first.
    */
-  private async routingConstraint(row: Generation): Promise<string | undefined> {
-    if (row.capability !== 'VOICEOVER') return undefined;
-    const voiceId = (row.input as { voiceId?: string }).voiceId;
-    if (!voiceId) return undefined;
+  private async routingConstraint(row: Generation): Promise<RouteConstraint> {
+    if (row.capability === 'VOICEOVER') {
+      const voiceId = (row.input as { voiceId?: string }).voiceId;
+      if (!voiceId) return {};
+      return { only: await this.vendorForVoice(voiceId) };
+    }
+    if (row.capability === 'DUB') {
+      const p = row.input as CapabilityParams<'DUB'>;
+      const { can, cannot } = dubVendorsFor(p.targetLanguage);
+      if (!dubLanguage(p.targetLanguage)) throw new ProviderError('INVALID_INPUT', `"${p.targetLanguage}" is not a language we can dub into`, 'runner');
+      return { exclude: cannot, prefer: p.lipsync ? [DUB_VENDOR_KEYS.heygen, ...can] : can };
+    }
+    return {};
+  }
+
+  private async vendorForVoice(voiceId: string): Promise<string> {
     const voice = await this.db.voiceProfile.findUnique({ where: { key: voiceId }, select: { providerKey: true, active: true } });
     if (!voice?.active) throw new ProviderError('INVALID_INPUT', `unknown voice "${voiceId}"`, 'runner');
     return voice.providerKey;

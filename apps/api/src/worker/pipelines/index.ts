@@ -13,9 +13,12 @@ import type { BrandKit, Generation, PrismaClient, Workspace } from '@prisma/clie
 import type { Capability, GenerationOutput, GenerationStage, ProviderArtifact, ProviderFile, ProviderInput, ProviderResult } from '@anystudio/shared';
 import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
+import type { RouteConstraint } from '../../modules/provider/provider.router';
 import { copyPipeline } from './copy';
 import { musicPipeline } from './music';
 import { voiceoverPipeline } from './voiceover';
+import { dubPipeline } from './dub';
+import { lipsyncPipeline } from './lipsync';
 import { brandedImagePipeline } from './image';
 import { adPipeline } from './ad';
 import type { GenerationService } from '../../modules/generation/generation.service';
@@ -39,11 +42,11 @@ export interface PipelineContext {
     input: Omit<ProviderInput, 'config'>,
     opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
   ) => Promise<ProviderResult>;
-  /** Route and call a DIFFERENT capability — a pipeline that cuts out before it edits. */
+  /** Route and call a DIFFERENT capability — a pipeline that cuts out before it edits, or records before it lip-syncs. */
   callCapability: (
     capability: Capability,
     input: Omit<ProviderInput, 'config' | 'capability'>,
-    opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
+    opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void; route?: RouteConstraint },
   ) => Promise<ProviderResult>;
   stage: (stage: GenerationStage, progress: number, detail?: string) => Promise<void>;
 }
@@ -77,6 +80,8 @@ export class Pipelines {
     IMAGE_EDIT: brandedImagePipeline,
     MUSIC: musicPipeline,
     VOICEOVER: voiceoverPipeline,
+    DUB: dubPipeline,
+    LIPSYNC: lipsyncPipeline,
   };
 
   run(ctx: PipelineContext): Promise<PipelineResult> {

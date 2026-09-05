@@ -53,7 +53,11 @@ function Studio() {
       if (!raw) return;
       sessionStorage.removeItem('anystudio:prefill');
       const pre = JSON.parse(raw) as { toolId?: string; params?: Record<string, unknown> };
-      if (pre.toolId && pre.params) { const { sourceKey: _s, ...rest } = pre.params; setValues((all) => ({ ...all, [pre.toolId!]: rest })); }
+      if (pre.toolId && pre.params) {
+        const t = toolById(pre.toolId);
+        const { sourceKey: _s, ...rest } = pre.params;
+        setValues((all) => ({ ...all, [t.id]: t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey') ? pre.params! : rest }));
+      }
     } catch { /* nothing to prefill */ }
   }, []);
 
@@ -84,9 +88,12 @@ function Studio() {
   const generate = useCallback(async (t: Tool, v: Record<string, unknown>, credits: number, src: string | null) => {
     setBusy(true);
     const p = coerceParams(t, v);
-    if (t.needsSource || src) { if (src) p.sourceKey = src; }
+    // A tool that brings its own file (a video to translate) keeps it; the canvas photo is for the rest.
+    const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+    if (!ownsSource && src) p.sourceKey = src;
     if (t.needsSource && !src) { setBusy(false); return; }
-    const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: src ?? undefined, costCode: t.costCodeFor?.(p) });
+    const cardSource = ownsSource ? (typeof p.sourceKey === 'string' ? p.sourceKey : undefined) : src ?? undefined;
+    const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
     setBusy(false);
     if (!r.ok) {
       if (r.status === 402) toast({ title: 'Not enough credits', body: 'Top up and this will be here waiting.', tone: 'warn', action: { label: 'Top up', onClick: () => router.push('/billing/plans') } });
@@ -98,9 +105,10 @@ function Studio() {
 
   const again = useCallback((card: GenerationCard) => {
     const t = toolById(card.toolId);
+    const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
     setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
-    setUrl({ tool: t.id, source: card.sourceKey ?? sourceKey });
-    void generate(t, card.params, card.credits, card.sourceKey ?? sourceKey);
+    setUrl({ tool: t.id, source: ownsSource ? sourceKey : card.sourceKey ?? sourceKey });
+    void generate(t, card.params, card.credits, ownsSource ? sourceKey : card.sourceKey ?? sourceKey);
   }, [generate, setUrl, sourceKey]);
 
   const useAsSource = useCallback((key: string) => {
@@ -130,7 +138,7 @@ function Studio() {
               <div className={styles.stageEmpty}>
                 <Icon.studio width={36} height={36} />
                 <strong>Start with a photo</strong>
-                <span>Add one on the left, or write a listing from a name and a few details with no photo at all.</span>
+                <span>Add one on the left — or make a song, record a voiceover, or translate a video without one.</span>
                 <Button variant="ghost" size="sm" onClick={() => setUrl({ tool: 'copy' })}>Write a listing instead</Button>
               </div>
             )}

@@ -36,6 +36,7 @@ const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
   'fal:clarity-upscaler': { capability: 'UPSCALE', endpoint: 'fal-ai/clarity-upscaler' },
   'fal:wan-2.5-i2v': { capability: 'IMAGE_TO_VIDEO', endpoint: 'fal-ai/wan-25-preview/image-to-video' },
   'fal:minimax-music-v2': { capability: 'MUSIC', endpoint: 'fal-ai/minimax-music/v2' },
+  'fal:sync-lipsync': { capability: 'LIPSYNC', endpoint: 'fal-ai/sync-lipsync/v2' },
 };
 
 export class FalProvider extends BaseProvider {
@@ -70,7 +71,7 @@ export class FalProvider extends BaseProvider {
         else if (s.json.queue_position !== undefined) opts.onProgress?.(`waiting in queue (position ${s.json.queue_position})`, 15);
         return null;
       },
-      { intervalMs: input.capability === 'IMAGE_TO_VIDEO' ? 5_000 : 1_500, timeoutMs: opts.timeoutMs, signal: opts.signal },
+      { intervalMs: input.capability === 'IMAGE_TO_VIDEO' || input.capability === 'LIPSYNC' ? 5_000 : 1_500, timeoutMs: opts.timeoutMs, signal: opts.signal },
     ).catch((err) => {
       throw err instanceof ProviderError ? err : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
@@ -120,6 +121,11 @@ export class FalProvider extends BaseProvider {
         // MiniMax wants lyrics even for instrumentals; an empty structure tag keeps it wordless.
         const lyrics = p.vocal === 'instrumental' ? '[Intro]\n[Instrumental]\n[Outro]' : (p.lyricsText ?? `[Verse]\n${p.brief.slice(0, 400)}`);
         return { prompt: desc.length >= 10 ? desc : `${desc}, upbeat song`, lyrics_prompt: lyrics.slice(0, 3000), audio_setting: { sample_rate: 44100, bitrate: 256000, format: 'mp3' } };
+      }
+      case 'LIPSYNC': {
+        const p = this.params(input, 'LIPSYNC');
+        // sync.so's lipsync-2 through fal. `cut_off` ends the video when the audio does — a Status clip should not loop its last word.
+        return { video_url: this.file(input, 'sourceKey'), audio_url: this.file(input, 'audioKey'), model: this.str(input.config, 'model', p.quality === 'precision' ? 'lipsync-2-pro' : 'lipsync-2'), sync_mode: this.str(input.config, 'syncMode', 'cut_off') };
       }
       default:
         return this.unsupported(input.capability);

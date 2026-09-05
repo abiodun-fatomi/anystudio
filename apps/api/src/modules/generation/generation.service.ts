@@ -32,7 +32,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
-import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, redactLocked, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
+import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, DUB_LIPSYNC_COST_CODE, dubLanguage, generationDebitKey, parseCapabilityParams, redactLocked, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
@@ -120,7 +120,8 @@ export class GenerationService {
     // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
     const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
     const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
-    const costCode = req.costCode ?? (shots === 4 ? 'video.ad_30s' : shots === 2 ? 'video.ad_15s' : DEFAULT_COST_CODE[req.capability]);
+    const costCode = req.costCode
+      ?? (shots === 4 ? 'video.ad_30s' : shots === 2 ? 'video.ad_15s' : req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]);
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
@@ -537,9 +538,16 @@ export function libraryFields(params: Record<string, unknown>): { title: string 
   const str = (k: string) => (typeof params[k] === 'string' ? (params[k] as string).trim() : '');
   const name = str('productName');
   const prompt = str('prompt');
-  const title = name || (prompt ? prompt.split(/\s+/).slice(0, 8).join(' ') : '') || null;
+  const target = str('targetLanguage');
+  const targetName = target ? (dubLanguage(target)?.name ?? target) : '';
+  const script = str('script');
+  const title = name
+    || (prompt ? prompt.split(/\s+/).slice(0, 8).join(' ') : '')
+    || (targetName ? `Dubbed into ${targetName}` : '')
+    || (script ? script.split(/\s+/).slice(0, 8).join(' ') : '')
+    || null;
   const productKey = str('productKey') || (name ? slug(name) : '') || null;
-  const parts = [name, prompt, str('details'), str('price'), str('caption'), str('scene'), str('instruction'), str('field'), str('format'), str('language')].filter(Boolean);
+  const parts = [name, prompt, str('details'), str('price'), str('caption'), str('scene'), str('instruction'), str('field'), str('format'), str('language'), targetName, script, str('brief'), str('title'), str('genre')].filter(Boolean);
   return { title, productKey, searchText: parts.length ? parts.join(' ').slice(0, 4000) : null };
 }
 

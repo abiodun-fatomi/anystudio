@@ -189,11 +189,13 @@ export interface Insights {
 
 export interface Genre { key: string; name: string; region: string; family: string; description: string; languages: string[]; bpm: [number, number] | null }
 export interface Voice { key: string; name: string; language: string; accent: string | null; gender: string | null; tags: string[]; sampleUrl: string | null; provider: string }
+export interface DubLanguages { languages: Array<{ code: string; name: string; region: string; lipsync: boolean }>; sources: Array<{ code: string; name: string }>; missing: string }
 
 export const api = {
   audio: {
     genres: () => request<Genre[]>('GET', '/audio/genres'),
     voices: () => request<Voice[]>('GET', '/audio/voices'),
+    dubLanguages: () => request<DubLanguages>('GET', '/audio/dub-languages'),
     unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
     unlock: (workspaceId: string, generationId: string) =>
       request<{ status: 'unlocked' | 'already_unlocked'; credits?: number; generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null } }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),

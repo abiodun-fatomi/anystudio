@@ -12,3 +12,4 @@ export * from './billing/credits';
 export * from './generation/capabilities';
 export * from './generation/providers';
 export * from './generation/copy';
+export * from './generation/languages';

@@ -27,8 +27,9 @@ function fakeDb(rows: ProviderModel[]) {
   const writes: Array<{ key: string; openedAt: Date | null }> = [];
   const db = {
     providerModel: {
-      findMany: async ({ where }: { where: { capability: Capability; OR: Array<{ workspaceType: string | null }> } }) =>
-        rows.filter((r) => r.capability === where.capability && r.enabled && where.OR.some((o) => o.workspaceType === r.workspaceType)),
+      findMany: async ({ where }: { where: { capability: Capability; OR: Array<{ workspaceType: string | null }>; key?: string | { notIn: string[] } } }) =>
+        rows.filter((r) => r.capability === where.capability && r.enabled && where.OR.some((o) => o.workspaceType === r.workspaceType)
+          && (where.key === undefined || (typeof where.key === 'string' ? r.key === where.key : !where.key.notIn.includes(r.key)))),
       updateMany: async ({ where, data }: { where: { key: string }; data: { breakerOpenedAt: Date | null } }) => {
         writes.push({ key: where.key, openedAt: data.breakerOpenedAt });
         for (const r of rows) if (r.key === where.key) r.breakerOpenedAt = data.breakerOpenedAt;
@@ -48,6 +49,15 @@ describe('ProviderRouter', () => {
     registry.register(new Fake('b:good', ['IMAGE_EDIT']));
     registry.register(new Fake('c:bria', ['BACKGROUND_REMOVE']));
     registry.register(new Fake('d:birefnet', ['BACKGROUND_REMOVE']));
+  });
+
+  it('narrows to one vendor with `only`, drops `exclude`d ones, and lets `prefer` outrank priority', async () => {
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT', { priority: 10 }), row('b:good', 'IMAGE_EDIT', { priority: 20 })]);
+    const router = new ProviderRouter(db, registry);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { only: 'b:good' })).candidates.map((c) => c.row.key)).toEqual(['b:good']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { exclude: ['a:cheap'] })).candidates.map((c) => c.row.key)).toEqual(['b:good']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { prefer: ['b:good'] })).candidates.map((c) => c.row.key)).toEqual(['b:good', 'a:cheap']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { prefer: ['z:none'] })).candidates.map((c) => c.row.key)).toEqual(['a:cheap', 'b:good']);
   });
 
   it('orders candidates by priority and excludes rows with no adapter, with a reason', async () => {

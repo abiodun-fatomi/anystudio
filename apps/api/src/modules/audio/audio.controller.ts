@@ -20,6 +20,10 @@ export class AudioController {
   @ApiOperation({ summary: 'Voices for voiceovers — only those a configured vendor can serve' })
   voices() { return this.audio.voices((k) => this.registry.get(k) !== undefined); }
 
+  @Get('/audio/dub-languages')
+  @ApiOperation({ summary: 'Languages a video can be dubbed into here — only those a configured vendor speaks' })
+  dubLanguages() { return this.audio.dubLanguages((k) => this.registry.get(k) !== undefined); }
+
   @Get('/audio/unlock-price')
   @ApiOperation({ summary: 'What unlocking a full song costs' })
   unlockPrice() { return this.audio.unlockPrice(); }

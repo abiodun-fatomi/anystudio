@@ -23,6 +23,9 @@ export const Icon = {
   swap: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M7 3v13m0 0-3-3m3 3 3-3M17 21V8m0 0 3 3m-3-3-3 3" /></svg>,
   music: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M9 18V6l11-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></svg>,
   mic: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3m-4 0h8" /></svg>,
+  translate: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z" /></svg>,
+  lips: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M3 12c2.5-3.5 5-5 7-5 .8 0 1.4.4 2 1 .6-.6 1.2-1 2-1 2 0 4.5 1.5 7 5-2.5 3.5-5.5 5.5-9 5.5S5.5 15.5 3 12Z" /><path d="M3 12h18" /></svg>,
+  film: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 5v14M17 5v14M3 9h4m10 0h4M3 15h4m10 0h4" /></svg>,
   lock: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>,
   today: (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4m8-4v4" /></svg>,
 };
