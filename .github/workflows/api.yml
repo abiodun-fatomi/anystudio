@@ -98,6 +98,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The stub provider renders its test audio and video with ffmpeg; the
+      # runner image lacks it and every worker spec would fail as "provider down".
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+
       # Generated per run rather than written above, so no key-shaped literal
       # ever exists in this file or in a build log.
       - name: Generate a throwaway APP_KEY

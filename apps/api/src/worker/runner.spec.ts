@@ -156,6 +156,11 @@ suite('GenerationRunner', () => {
     db.providerModel.update({ where: { key_capability: { key: 'stub:any', capability: 'TEXT_GENERATE' } }, data: { config: { behaviour } } });
   afterEach(async () => {
     await misbehave('ok');
+    // The breaker is process-wide: three deliberate RETRYABLE failures in one
+    // case would otherwise open it for TEXT_GENERATE and starve the cases
+    // after it (the ad's shot plan, the streaming test) of a provider.
+    router.forget('stub:any', 'TEXT_GENERATE');
+    await db.providerModel.updateMany({ where: { key: 'stub:any' }, data: { breakerOpenedAt: null } });
   });
 
   beforeEach(async () => {
