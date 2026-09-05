@@ -244,7 +244,6 @@ function Studio() {
           onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
         />
       </div>
-      <div className={styles.mobileSpacer} />
 
       <section id="outputs" className={styles.outputs} aria-label="Results">
         <div className={styles.outputsHead}>
@@ -278,6 +277,7 @@ function Studio() {
           </div>
         )}
       </section>
+      <div className={styles.mobileSpacer} />
     </div>
   );
 }

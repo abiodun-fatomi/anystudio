@@ -580,6 +580,7 @@ export function SupportWidget() {
         type="button"
         className={cx(styles.launcher)}
         data-open={open}
+        data-lifted={pathname.startsWith('/studio') || undefined}
         data-fresh={fresh && !open}
         onClick={toggle}
         aria-label={open ? 'Close help' : 'Help and support'}

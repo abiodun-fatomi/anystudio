@@ -223,7 +223,11 @@
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 320px;
+  /* A fixed stage: the photo fits inside it, whatever its shape. A tall
+     portrait shot and a wide banner take the same room, so the page never
+     reflows around the picture and the tool strip stays where the hand
+     expects it. */
+  height: clamp(320px, 54dvh, 640px);
   background:
     linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%),
     linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%);
@@ -237,12 +241,12 @@
 }
 @media (max-width: 767px) {
   .stage {
-    min-height: 220px;
+    height: clamp(240px, 44dvh, 440px);
   }
 }
 .stage img {
-  max-width: 100%;
-  max-height: min(62dvh, 720px);
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   display: block;
 }
@@ -492,9 +496,18 @@
 }
 .generate {
   position: sticky;
-  bottom: var(--s-3);
+  bottom: 0;
+  /* It rides over the form while the panel scrolls, so it needs its own
+     ground — a solid card that fades in from above — or the field it is
+     passing shows through around the button. */
+  margin: 0 calc(var(--s-4) * -1) calc(var(--s-4) * -1);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  background: linear-gradient(to bottom, transparent, var(--surface-2) 28%);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 @media (max-width: 767px) {
+  /* Sits on the tab bar's shoulder: solid, so the page never shows through
+     it, with its own shadow so it reads as a shelf rather than a smear. */
   .generateBar {
     position: fixed;
     left: 0;
@@ -502,23 +515,39 @@
     bottom: calc(56px + env(safe-area-inset-bottom));
     z-index: var(--z-bar);
     padding: var(--s-3) var(--s-4);
-    background: color-mix(in srgb, var(--paper) 94%, transparent);
-    backdrop-filter: blur(12px);
+    background: var(--surface-2);
     border-top: 1px solid var(--line-soft);
+    box-shadow: 0 -8px 24px -16px rgba(15, 15, 20, 0.35);
     display: flex;
     align-items: center;
     gap: var(--s-3);
   }
   .generateBar .quoteInline {
     flex: 1;
-    font-size: var(--t-2);
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    font-size: var(--t-1);
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
+  }
+  .generateBar .quoteInline strong {
+    font-size: var(--t-2);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .generateBar > :last-child {
+    flex: 0 0 auto;
+    min-width: 44%;
+    min-height: 46px;
+    font-size: var(--t-2);
   }
   .generate {
     display: none;
   }
+  /* The page ends under the bar; leave room so the last result clears it. */
   .mobileSpacer {
-    height: 72px;
+    height: calc(76px + env(safe-area-inset-bottom));
   }
 }
 @media (min-width: 768px) {

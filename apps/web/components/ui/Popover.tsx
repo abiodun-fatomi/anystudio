@@ -1,7 +1,18 @@
 /** Popover, Menu and Tooltip. Click-outside and Escape close; arrow keys walk a menu; the trigger gets aria-expanded. */
 'use client';
 import Link from 'next/link';
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { cx } from '@/lib/cx';
 import styles from './Popover.module.css';
 
@@ -17,8 +28,34 @@ export interface PopoverProps {
 export function Popover({ trigger, children, align = 'start', side = 'bottom', menu, className }: PopoverProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   const close = () => setOpen(false);
+
+  // The panel hangs off its trigger. On a phone a trigger near either edge
+  // would push the panel off screen — the bell at the top right did — so
+  // once it is drawn it is nudged back inside the viewport, with a margin.
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    if (!open) {
+      setShift(0);
+      return;
+    }
+    const fit = () => {
+      const el = panel.current;
+      if (!el) return;
+      el.style.translate = '';
+      const r = el.getBoundingClientRect();
+      const margin = 12;
+      let dx = 0;
+      if (r.left < margin) dx = margin - r.left;
+      else if (r.right > window.innerWidth - margin) dx = window.innerWidth - margin - r.right;
+      setShift(Math.round(dx));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +116,16 @@ export function Popover({ trigger, children, align = 'start', side = 'bottom', m
     <div ref={wrap} className={cx(styles.wrap, className)}>
       {t}
       {open && (
-        <div id={id} role={menu ? 'menu' : 'dialog'} className={styles.panel} data-align={align} data-side={side} onKeyDown={onMenuKey}>
+        <div
+          id={id}
+          ref={panel}
+          role={menu ? 'menu' : 'dialog'}
+          className={styles.panel}
+          data-align={align}
+          data-side={side}
+          style={shift ? { translate: `${shift}px 0` } : undefined}
+          onKeyDown={onMenuKey}
+        >
           {typeof children === 'function' ? children(close) : children}
         </div>
       )}
