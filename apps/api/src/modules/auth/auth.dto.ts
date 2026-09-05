@@ -61,9 +61,13 @@ export class RegisterDto {
   @IsEmail() @MaxLength(320)
   email: string;
 
-  @ApiProperty({ example: '+2348012345678', description: 'E.164, or a Nigerian local number (0801…) which is normalised' })
-  @IsString() @Length(7, 24)
+  @ApiProperty({ example: '+2348012345678', description: 'E.164 from any country; a local number is read in `country` (default NG)' })
+  @IsString() @Length(6, 24)
   phone: string;
+
+  @ApiPropertyOptional({ example: 'KE', description: 'ISO 3166-1 alpha-2, for a phone given without its country code' })
+  @IsOptional() @IsString() @Length(2, 2)
+  country?: string;
 
   @ApiProperty({ minLength: 8, maxLength: 400 })
   @IsString() @MinLength(8) @MaxLength(400)

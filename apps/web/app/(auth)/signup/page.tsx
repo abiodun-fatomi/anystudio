@@ -10,6 +10,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { PasswordControl } from '@/components/ui/Password';
+import { PhoneInput, emptyPhone, type PhoneValue } from '@/components/ui/PhoneInput';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
@@ -20,7 +21,8 @@ import styles from '../auth.module.css';
 const MARKETING_WORDING = 'Send me tips and offers from AnyStudio on WhatsApp. About twice a month. Reply STOP to end it.';
 
 export default function SignupPage() {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', whatsapp: true, marketing: false });
+  const [form, setForm] = useState({ name: '', email: '', password: '', whatsapp: true, marketing: false });
+  const [phone, setPhone] = useState<PhoneValue>(emptyPhone());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
@@ -31,10 +33,11 @@ export default function SignupPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!phone.valid || !phone.e164) { setError('Check the phone number — pick the country and enter the local number.'); return; }
     setBusy(true);
     try {
       const r = await api.auth.register({
-        name: form.name, email: form.email, phone: form.phone, password: form.password,
+        name: form.name, email: form.email, phone: phone.e164, password: form.password,
         phoneIsWhatsApp: form.whatsapp,
         marketing: { granted: form.marketing, wording: MARKETING_WORDING },
         sourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
@@ -64,10 +67,8 @@ export default function SignupPage() {
         <label htmlFor="name">Your name</label>
         <input id="name" className="inp" autoComplete="name" value={form.name} onChange={set('name')} required />
       </div>
-      <div className="field">
-        <label htmlFor="phone">Phone number</label>
-        <input id="phone" className="inp" type="tel" autoComplete="tel" inputMode="tel" placeholder="+234 801 234 5678"
-          value={form.phone} onChange={set('phone')} required />
+      <div>
+        <PhoneInput id="phone" value={phone} onChange={setPhone} required hint="Pick your country, then type the number the way you would give it to a customer." />
         <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 10, fontSize: 14, fontWeight: 500 }}>
           <input type="checkbox" checked={form.whatsapp} onChange={set('whatsapp')} style={{ marginTop: 3 }} />
           <span>This number is on WhatsApp <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— that's where your sheets come back</span></span>

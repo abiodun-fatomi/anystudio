@@ -13,6 +13,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { isValidPhoneNumber, parsePhoneNumber, type CountryCode } from 'libphonenumber-js/min';
 import { Prisma, PrismaClient, type User } from '@prisma/client';
 import type { Request } from 'express';
 import { SIGNUP_PROMO_CREDITS, signupGrantKey } from '@anystudio/shared';
@@ -143,12 +144,16 @@ export class RegistrationService {
    * send a WhatsApp message to, so accepting it would only move the failure
    * to a worse place.
    */
-  static normalisePhone(raw: string): string {
-    const digits = raw.replace(/[\s().-]/g, '');
-    if (/^\+[1-9]\d{7,14}$/.test(digits)) return digits;
-    // Nigerian local format (0801…) is by far the most common mistake on our
-    // forms; fix it rather than lecture about country codes.
-    if (/^0[789][01]\d{8}$/.test(digits)) return `+234${digits.slice(1)}`;
-    throw new ValidationError({ fields: [{ path: 'phone', message: 'Enter the number with its country code, like +234 801 234 5678.' }] });
+  static normalisePhone(raw: string, country?: string): string {
+    const text = raw.trim();
+    // A number with its country code is parsed as such, from anywhere; a local
+    // number is read in the country the form said (the sign-up form always
+    // sends E.164, so this is for the API and the bot). Nigeria remains the
+    // fallback for a bare local number, because that is where most arrive from.
+    try {
+      const parsed = text.startsWith('+') ? parsePhoneNumber(text) : parsePhoneNumber(text, (country?.toUpperCase() as CountryCode | undefined) ?? 'NG');
+      if (parsed && isValidPhoneNumber(parsed.number)) return parsed.number;
+    } catch { /* fall through to the message */ }
+    throw new ValidationError({ fields: [{ path: 'phone', message: 'Enter a real number with its country code, like +234 801 234 5678 or +254 712 345678.' }] });
   }
 }
