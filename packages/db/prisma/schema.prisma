@@ -83,6 +83,8 @@ model User {
   avatarKey         String?
   /// BCP 47 (en, fr, pt-BR, yo). Drives the copy pipeline's default language
   /// and the UI once it is translated; null means "whatever the browser says".
+  /// ISO 3166-1 alpha-2, upper-case. From the phone at sign-up, else the request's geolocation; editable in Settings.
+  country           String?    @db.VarChar(2)
   locale            String?
   /// IANA zone, for "sent at 9am your time" and the security screen's timestamps.
   timezone          String?

@@ -16,7 +16,7 @@ import { Injectable } from '@nestjs/common';
 import { isValidPhoneNumber, parsePhoneNumber, type CountryCode } from 'libphonenumber-js/min';
 import { Prisma, PrismaClient, type User } from '@prisma/client';
 import type { Request } from 'express';
-import { SIGNUP_PROMO_CREDITS, signupGrantKey } from '@anystudio/shared';
+import { SIGNUP_PROMO_CREDITS, currencyForCountry, regionForCountry, signupGrantKey } from '@anystudio/shared';
 import { hashPassword } from '../../utils/crypto/password';
 import { ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
@@ -27,6 +27,8 @@ export interface RegistrationInput {
   email: string;
   /** E.164, already validated by the controller. */
   phone: string;
+  /** ISO 3166-1 alpha-2, upper-case; null when nothing could tell us. Prices the first workspace. */
+  country: string | null;
   password: string;
   /** Functional: can we deliver over WhatsApp. Not consent to market. */
   phoneIsWhatsApp: boolean;
@@ -71,6 +73,7 @@ export class RegistrationService {
             name: input.name.trim(),
             email: input.email,
             phone: input.phone,
+            country: input.country,
             phoneIsWhatsApp: input.phoneIsWhatsApp,
             passwordHash,
             identities: { create: { provider: 'PASSWORD', providerUid: input.email } },
@@ -91,6 +94,8 @@ export class RegistrationService {
           data: {
             type: 'PERSONAL',
             name: workspaceName,
+            currency: currencyForCountry(input.country),
+            region: regionForCountry(input.country),
             members: { create: { userId: user.id, role: 'OWNER' } },
             wallet: { create: {} },
           },
@@ -144,6 +149,29 @@ export class RegistrationService {
    * send a WhatsApp message to, so accepting it would only move the failure
    * to a worse place.
    */
+  /**
+   * The country a phone number belongs to, from its country code — the most
+   * honest signal we have: a person who typed +254 is in Kenya whatever
+   * their IP says. Null when the number does not say (it always should).
+   */
+  static countryOfPhone(e164: string): string | null {
+    try {
+      return parsePhoneNumber(e164)?.country ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Where the request came from, as the edge saw it: the web app forwards
+   * Cloudflare's country header as x-anystudio-country. A fallback for
+   * accounts with no phone (Google sign-ups); "XX"/"T1" mean unknown.
+   */
+  static countryOfRequest(req: Request): string | null {
+    const raw = (req.get('x-anystudio-country') ?? req.get('cf-ipcountry') ?? '').toUpperCase();
+    return /^[A-Z]{2}$/.test(raw) && raw !== 'XX' && raw !== 'T1' ? raw : null;
+  }
+
   static normalisePhone(raw: string, country?: string): string {
     const text = raw.trim();
     // A number with its country code is parsed as such, from anywhere; a local

@@ -8,7 +8,23 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 export const LOCALES = ['en', 'en-NG', 'en-GH', 'en-KE', 'en-ZA', 'fr', 'pt', 'pt-BR', 'yo', 'ha', 'ig', 'sw'] as const;
 
@@ -37,6 +53,26 @@ export class ProfileDto {
   @Matches(/^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/)
   @MaxLength(64)
   timezone?: string | null;
+
+  @ApiPropertyOptional({
+    example: '+2348012345678',
+    description: 'A new number, with its country code. Resets the WhatsApp link until the number is verified again.',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(6, 24)
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'NG', description: 'ISO 3166-1 alpha-2. Also the country a local phone number is read in.' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z]{2}$/)
+  country?: string;
+
+  @ApiPropertyOptional({ description: 'Whether the number is on WhatsApp' })
+  @IsOptional()
+  @IsBoolean()
+  phoneIsWhatsApp?: boolean;
 }
 
 /** Proof of the current credential, for anything that changes one. */
@@ -171,3 +207,18 @@ export const NOTIFICATION_DEFAULTS: NotificationSwitches = {
   lowCreditsEmail: true,
   weeklyDigest: false,
 };
+
+export class ActivityQueryDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  take?: number;
+
+  @ApiPropertyOptional({ description: 'The id of the last row seen' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+}

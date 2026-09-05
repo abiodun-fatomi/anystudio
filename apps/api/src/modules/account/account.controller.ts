@@ -6,11 +6,12 @@
  * editing someone else's account goes through the staff console, with the
  * audit trail that implies.
  */
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Query, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Req } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AccountService } from './account.service';
 import {
+  ActivityQueryDto,
   ChangeEmailDto,
   ChangePasswordDto,
   ConfirmEmailChangeDto,
@@ -120,9 +121,9 @@ export class AccountController {
   }
 
   @Get('/security/activity')
-  @ApiOperation({ summary: 'The last fifty security events on this account' })
-  activity(@CurrentActor() actor: SessionActor) {
-    return this.account.activity(actor);
+  @ApiOperation({ summary: 'Security events on this account, newest first, paged by cursor' })
+  activity(@CurrentActor() actor: SessionActor, @Query() q: ActivityQueryDto) {
+    return this.account.activity(actor, q);
   }
 
   @Get('/notifications')

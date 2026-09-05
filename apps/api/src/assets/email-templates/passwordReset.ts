@@ -1,5 +1,5 @@
 import type { Mail } from '../../utils/mail-service';
-import { SIGNATURE, greet, html } from './_layout';
+import { SIGNATURE, esc, greet, render } from './_layout';
 
 /**
  * Password reset. The wording matters: someone who did NOT request this needs
@@ -19,13 +19,13 @@ export function passwordReset(to: string, name: string | null, link: string): Ma
       '',
       SIGNATURE,
     ].join('\n'),
-    html: html(
-      [
-        greet(name),
-        'Someone asked to reset the password on your AnyStudio account. If that was you, the link below works for 30 minutes.',
-        "If it wasn't you, ignore this email — your password has not changed, and nobody can use the link without access to your inbox.",
-      ],
-      { label: 'Choose a new password', url: link },
-    ),
+    html: render({
+      preheader: 'Choose a new password. The link works for 30 minutes.',
+      eyebrow: 'Security',
+      title: 'Reset your password',
+      paragraphs: [esc(greet(name)), 'Someone asked to reset the password on your AnyStudio account. If that was you, choose a new one below.'],
+      action: { label: 'Choose a new password', url: link },
+      note: "The link works for 30 minutes. If it wasn't you, ignore this email — your password has not changed, and nobody can use the link without access to your inbox.",
+    }),
   };
 }

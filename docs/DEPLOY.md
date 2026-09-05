@@ -239,7 +239,8 @@ copies a connection string by hand.
 | `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN`                                                                | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set                                                                                                                                                                                |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                                                                 | Section 9.1. With either missing the button degrades to a message, never to a half-working flow                                                                                                                                                                           |
 | `RESEND_API_KEY` / `MAIL_FROM`                                                                              | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain                                                                                                                                                                                    |
-| `R2_*`                                                                                                      | Separate keys per environment                                                                                                                                                                                                                                             |
+| `R2_*`                                                                                                      | Separate keys per environment. The bucket needs a CORS policy (below) or browser uploads fail as "interrupted"                                                                                                                                                            |
+| `MAIL_ASSET_BASE`                                                                                           | Optional. `https://<marketing host>/email` — where the email images live (apps/web/public/email). Unset, emails send without pictures                                                                                                                                     |
 | `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY`                                                                      | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle                                                                                                                                                      |
 | `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                                                      | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments                                                |
 | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV`                              | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
@@ -248,6 +249,28 @@ copies a connection string by hand.
 GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,
 plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for the web; and the
 three non-secret environment variables from section 3.1 on each environment.
+
+---
+
+### 5.1 The R2 bucket's CORS policy
+
+The browser PUTs uploads straight to R2 with a signed URL, so the bucket
+must allow the app's origin. R2 → bucket → **Settings → CORS Policy**:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://app.dev.anystudio.ai", "http://localhost:3000"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["content-type", "content-length"],
+    "ExposeHeaders": ["etag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Production's bucket gets the same with `https://app.anystudio.ai`. Without
+it every upload fails in the browser as "The upload was interrupted".
 
 ---
 

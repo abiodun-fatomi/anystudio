@@ -54,10 +54,16 @@ export default function SecurityPage() {
   const { profile, error, reload } = useProfile();
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [activity, setActivity] = useState<ActivityRow[] | null>(null);
+  const [activityCursor, setActivityCursor] = useState<string | null>(null);
+  const [moreBusy, setMoreBusy] = useState(false);
   const loadLists = useCallback(async () => {
-    const [s, a] = await Promise.all([api.account.sessions().catch(() => []), api.account.activity().catch(() => [])]);
+    const [s, a] = await Promise.all([
+      api.account.sessions().catch(() => []),
+      api.account.activity().catch(() => ({ rows: [] as ActivityRow[], nextCursor: null })),
+    ]);
     setSessions(s);
-    setActivity(a);
+    setActivity(a.rows);
+    setActivityCursor(a.nextCursor);
   }, []);
   useEffect(() => {
     void loadLists();
@@ -419,7 +425,7 @@ export default function SecurityPage() {
             <h2 id="s-act" className={styles.groupTitle}>
               Recent activity
             </h2>
-            <p className={styles.groupLede}>The last fifty things that touched your account.</p>
+            <p className={styles.groupLede}>Everything that touched your account, newest first.</p>
           </div>
         </div>
         <div className={styles.rows}>
@@ -450,6 +456,29 @@ export default function SecurityPage() {
             ))
           )}
         </div>
+        {activityCursor && (
+          <div style={{ paddingTop: 'var(--s-3)' }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={moreBusy}
+              onClick={async () => {
+                setMoreBusy(true);
+                try {
+                  const more = await api.account.activity(activityCursor);
+                  setActivity((cur) => [...(cur ?? []), ...more.rows]);
+                  setActivityCursor(more.nextCursor);
+                } catch {
+                  /* the button stays; try again */
+                } finally {
+                  setMoreBusy(false);
+                }
+              }}
+            >
+              Show older
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* ---- dialogs ---- */}

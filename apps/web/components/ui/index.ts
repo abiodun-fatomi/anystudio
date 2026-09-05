@@ -6,7 +6,7 @@
 export { Button, type ButtonProps } from './Button';
 export { Input, Textarea, Select } from './Field';
 export { PasswordInput, PasswordControl } from './Password';
-export { PhoneInput, emptyPhone, compose as composePhone, type PhoneValue } from './PhoneInput';
+export { PhoneInput, emptyPhone, compose as composePhone, fromE164 as phoneFromE164, countryOptions, type PhoneValue } from './PhoneInput';
 export { Checkbox, Radio, Switch, Slider } from './Choice';
 export { Tabs, SegmentedControl } from './Tabs';
 export { Dialog, ConfirmDialog } from './Dialog';

@@ -8,7 +8,20 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
-import { Button, Input, Select, Skeleton, useToast, LoadError } from '@/components/ui';
+import {
+  Button,
+  Input,
+  Select,
+  Skeleton,
+  Switch,
+  useToast,
+  LoadError,
+  PhoneInput,
+  countryOptions,
+  phoneFromE164,
+  emptyPhone,
+  type PhoneValue,
+} from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -49,7 +62,13 @@ export default function ProfilePage() {
   const { workspace, refreshMe } = useApp();
   const { toast } = useToast();
   const { profile, error, reload } = useProfile();
-  const [draft, setDraft] = useState<{ name?: string; locale?: string; timezone?: string }>({});
+  const [draft, setDraft] = useState<{ name?: string; locale?: string; timezone?: string; country?: string; phoneIsWhatsApp?: boolean }>({});
+  // The phone is edited as a country + local number; null until the person touches it.
+  const [phoneDraft, setPhoneDraft] = useState<PhoneValue | null>(null);
+  const [countries, setCountries] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    setCountries(countryOptions());
+  }, []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -79,15 +98,33 @@ export default function ProfilePage() {
       </div>
     );
 
-  const v = { name: profile.name ?? '', locale: profile.locale ?? '', timezone: profile.timezone ?? '', ...draft };
-  const dirty = Object.keys(draft).length > 0;
+  const v = {
+    name: profile.name ?? '',
+    locale: profile.locale ?? '',
+    timezone: profile.timezone ?? '',
+    country: profile.country ?? '',
+    phoneIsWhatsApp: profile.phoneIsWhatsApp,
+    ...draft,
+  };
+  const phone = phoneDraft ?? (profile.phone ? phoneFromE164(profile.phone, (v.country || 'NG') as never) : emptyPhone());
+  const phoneChanged = phoneDraft !== null && phoneDraft.e164 !== profile.phone;
+  const dirty = Object.keys(draft).length > 0 || phoneChanged;
   const zones = ZONES.includes(browserZone.current) || !browserZone.current ? ZONES : [browserZone.current, ...ZONES];
 
   const save = async () => {
     setSaving(true);
     try {
-      await api.account.updateProfile({ name: v.name.trim() || undefined, locale: v.locale || null, timezone: v.timezone || null });
+      if (phoneChanged && !phone.valid) throw new Error('That phone number does not look right for the country picked.');
+      await api.account.updateProfile({
+        name: v.name.trim() || undefined,
+        locale: v.locale || null,
+        timezone: v.timezone || null,
+        ...(draft.country !== undefined ? { country: draft.country } : {}),
+        ...(draft.phoneIsWhatsApp !== undefined ? { phoneIsWhatsApp: draft.phoneIsWhatsApp } : {}),
+        ...(phoneChanged && phone.e164 ? { phone: phone.e164, country: phone.country } : {}),
+      });
       setDraft({});
+      setPhoneDraft(null);
       await Promise.all([reload(), refreshMe()]);
       toast({ title: 'Profile saved', tone: 'ok' });
     } catch (e) {
@@ -178,11 +215,29 @@ export default function ProfilePage() {
         </div>
         <div className={styles.grid2}>
           <Input label="Name" value={v.name} maxLength={120} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-          <Input
-            label="Phone"
-            value={profile.phone ?? ''}
-            readOnly
-            hint={profile.phoneVerifiedAt ? 'Verified' : 'Changing your number is a support request for now.'}
+          <PhoneInput
+            id="phone"
+            value={phone}
+            onChange={setPhoneDraft}
+            hint={
+              phoneChanged
+                ? 'A new number is verified again the first time it messages the studio on WhatsApp.'
+                : profile.phoneVerifiedAt
+                  ? 'Verified — this is where your sheets come back on WhatsApp.'
+                  : 'Not verified yet. Send the studio a message on WhatsApp to prove it.'
+            }
+          />
+          <Select
+            label="Country"
+            options={countries.length ? countries : [{ value: v.country, label: v.country || '—' }]}
+            value={v.country}
+            onChange={(e) => setDraft((d) => ({ ...d, country: e.target.value }))}
+            hint="Sets how a local phone number is read and the currency of a new workspace."
+          />
+          <Switch
+            label="This number is on WhatsApp"
+            checked={v.phoneIsWhatsApp}
+            onChange={(e) => setDraft((d) => ({ ...d, phoneIsWhatsApp: e.target.checked }))}
           />
           <Select
             label="Language for captions and copy"

@@ -83,12 +83,14 @@ export class AuthService {
       return Helpers.successResponse<RegisterResult>(200, 'Sign-up is not available here', { status: 'not_available' });
     }
 
+    const phone = RegistrationService.normalisePhone(dto.phone, dto.country);
     const outcome = await this.registration.register(
       {
         name: dto.name,
         email: dto.email.toLowerCase(),
         password: dto.password,
-        phone: RegistrationService.normalisePhone(dto.phone, dto.country),
+        phone,
+        country: RegistrationService.countryOfPhone(phone) ?? RegistrationService.countryOfRequest(req),
         phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
         marketing: dto.marketing,
         sourceUrl: dto.sourceUrl,

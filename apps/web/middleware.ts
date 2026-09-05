@@ -55,7 +55,16 @@ const APP_PREFIXES = [
   '/api',
 ];
 
-export function middleware(req: NextRequest) {
+/**
+ * API routes whose answer is a redirect the BROWSER must follow. A rewrite
+ * follows redirects itself and serves whatever is at the far end under our
+ * URL — for the Google handshake that meant Google's sign-in page rendered
+ * on app.<base>, where nothing on it could work. These are proxied by hand
+ * with redirects left alone, so the Location and Set-Cookie reach the browser.
+ */
+const NAVIGATION_API_PATHS = ['/api/v1/auth/google/start', '/api/v1/auth/google/callback'];
+
+export async function middleware(req: NextRequest) {
   const host = req.headers.get('host') ?? '';
   const { pathname, search } = req.nextUrl;
 
@@ -73,6 +82,11 @@ export function middleware(req: NextRequest) {
     // decide which surface the request belongs to.
     const headers = new Headers(req.headers);
     headers.set('x-anystudio-origin', `${req.nextUrl.protocol}//${host}`);
+    // Where the browser is, as Cloudflare saw it — a fallback the API uses
+    // to price an account that has no phone number to go by.
+    const country = req.headers.get('cf-ipcountry');
+    if (country) headers.set('x-anystudio-country', country);
+    if (NAVIGATION_API_PATHS.includes(pathname)) return passThroughRedirect(target, headers, req.nextUrl);
     return NextResponse.rewrite(target, { request: { headers } });
   }
 
@@ -121,6 +135,33 @@ export function middleware(req: NextRequest) {
   }
 
   return NextResponse.next();
+}
+
+/**
+ * Fetch an API route on the browser's behalf without following redirects,
+ * and hand its answer back verbatim: status, Location, every Set-Cookie.
+ * The Location is a path on this host (the callback's landing page) or an
+ * absolute URL elsewhere (Google's consent screen); the browser resolves
+ * both correctly because the response carries our URL.
+ */
+async function passThroughRedirect(target: URL, headers: Headers, self: URL): Promise<NextResponse> {
+  headers.delete('host');
+  const upstream = await fetch(target, { method: 'GET', headers, redirect: 'manual' });
+  const out = new Headers();
+  for (const name of ['content-type', 'cache-control']) {
+    const v = upstream.headers.get(name);
+    if (v) out.set(name, v);
+  }
+  // A relative Location (the callback's "/welcome") is resolved against this
+  // host: the runtime insists on an absolute one, and absolute is what the
+  // browser would have computed anyway.
+  const location = upstream.headers.get('location');
+  if (location) out.set('location', new URL(location, self.origin).toString());
+  // Several Set-Cookie headers must stay several; joining them breaks every one.
+  const cookies = typeof upstream.headers.getSetCookie === 'function' ? upstream.headers.getSetCookie() : [];
+  for (const c of cookies) out.append('set-cookie', c);
+  const redirect = upstream.status >= 300 && upstream.status < 400;
+  return new NextResponse(redirect ? null : upstream.body, { status: upstream.status, headers: out });
 }
 
 export const config = {
