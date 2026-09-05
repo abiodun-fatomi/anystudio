@@ -67,9 +67,10 @@ export class ProviderRouter {
   ) {}
 
   /** Ordered candidates for a capability, or an empty list with the reasons. */
-  async route(capability: Capability, workspaceType: WorkspaceType, ctx: { generationId?: string } = {}): Promise<RouteDecision> {
+  async route(capability: Capability, workspaceType: WorkspaceType, ctx: { generationId?: string; only?: string } = {}): Promise<RouteDecision> {
+    // `only`: a voice belongs to one vendor, so the row for that vendor is the only candidate.
     const rows = await this.db.providerModel.findMany({
-      where: { capability, enabled: true, OR: [{ workspaceType: null }, { workspaceType }] },
+      where: { capability, enabled: true, OR: [{ workspaceType: null }, { workspaceType }], ...(ctx.only ? { key: ctx.only } : {}) },
       orderBy: [{ priority: 'asc' }, { key: 'asc' }],
     });
 

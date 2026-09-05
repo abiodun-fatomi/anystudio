@@ -115,7 +115,8 @@ export class GenerationRunner {
       const files = await this.resolveFiles(row);
 
       await this.events.stage(generationId, 'routing', 10);
-      const decision = await this.router.route(row.capability, workspace.type, { generationId });
+      const only = await this.routingConstraint(row);
+      const decision = await this.router.route(row.capability, workspace.type, { generationId, only });
       if (decision.candidates.length === 0) {
         throw new ProviderError('PROVIDER_DOWN', `no provider available for ${row.capability}: ${decision.excluded.map((e) => `${e.key} (${e.reason})`).join('; ')}`, 'router');
       }
@@ -153,8 +154,8 @@ export class GenerationRunner {
       }
 
       await this.events.stage(generationId, 'storing', 90);
-      const outputs = await storeArtifacts(this.media, row, produced.artifacts);
-      for (const output of outputs) await this.events.publish({ type: 'output', generationId, output, at: new Date().toISOString() });
+      const outputs = [...await storeArtifacts(this.media, row, produced.artifacts), ...(produced.extraOutputs ?? [])];
+      for (const output of outputs) await this.events.publish({ type: 'output', generationId, output: output.locked ? { ...output, key: '' } : output, at: new Date().toISOString() });
 
       const done = await this.generations.succeed(generationId, {
         providerKey: produced.providerKey,
@@ -193,6 +194,20 @@ export class GenerationRunner {
   }
 
   /** Try each candidate in order; stop early on errors that retrying cannot fix. */
+  /**
+   * A voice belongs to one vendor. When the row names a voice, only that
+   * vendor's row may serve it — a fallback to another vendor would read the
+   * script in a different person's voice, which is worse than failing.
+   */
+  private async routingConstraint(row: Generation): Promise<string | undefined> {
+    if (row.capability !== 'VOICEOVER') return undefined;
+    const voiceId = (row.input as { voiceId?: string }).voiceId;
+    if (!voiceId) return undefined;
+    const voice = await this.db.voiceProfile.findUnique({ where: { key: voiceId }, select: { providerKey: true, active: true } });
+    if (!voice?.active) throw new ProviderError('INVALID_INPUT', `unknown voice "${voiceId}"`, 'runner');
+    return voice.providerKey;
+  }
+
   private async callWithFallback(
     candidates: RouteCandidate[],
     input: Omit<ProviderInput, 'config'>,

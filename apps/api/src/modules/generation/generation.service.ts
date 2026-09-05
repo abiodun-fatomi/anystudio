@@ -32,7 +32,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
-import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
+import { COPY_FIELDS, CUSTOMER_MESSAGE, DEFAULT_COST_CODE, generationDebitKey, parseCapabilityParams, redactLocked, type Capability, type GenerationOutput, type ProviderErrorKind } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
@@ -284,7 +284,7 @@ export class GenerationService {
   async get(workspaceId: string, id: string): Promise<GenerationView> {
     const row = await this.db.generation.findUnique({ where: { id }, include: { children: { orderBy: { createdAt: 'asc' } } } });
     if (!row || row.workspaceId !== workspaceId) throw new NotFoundError('generation');
-    return { generation: row, message: customerMessage(row) };
+    return { generation: forCustomer(row), message: customerMessage(row) };
   }
 
   /**
@@ -481,12 +481,13 @@ export class GenerationService {
 
   /** The customer's history, newest first. Children ride inside their parent, not beside it. */
   async history(workspaceId: string, take = 50, cursor?: string): Promise<Generation[]> {
-    return this.db.generation.findMany({
-      where: { workspaceId, kind: { not: 'CHILD' } },
+    const rows = await this.db.generation.findMany({
+      where: { workspaceId, kind: { not: 'CHILD' }, deletedAt: null },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
+    return rows.map(forCustomer);
   }
 
   /**
@@ -552,4 +553,11 @@ function flattenText(v: unknown): string {
   if (Array.isArray(v)) return v.map(flattenText).join(' ');
   if (v && typeof v === 'object') return Object.values(v as Record<string, unknown>).map(flattenText).join(' ');
   return '';
+}
+
+/** A row as the customer may see it: a vaulted song's key is not theirs until they unlock it. */
+export function forCustomer<T extends Generation>(row: T): T {
+  const outputs = row.outputs as Array<{ key: string; locked?: boolean }> | null;
+  if (!outputs?.some((o) => o.locked)) return row;
+  return { ...row, outputs: redactLocked(outputs) as unknown as Prisma.JsonValue };
 }

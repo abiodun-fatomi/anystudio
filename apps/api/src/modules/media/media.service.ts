@@ -26,7 +26,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHash } from 'node:crypto';
 import sharp, { type Metadata } from 'sharp';
@@ -177,9 +177,26 @@ export class MediaService {
   async readUrls(workspaceId: string, keys: string[]): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     await Promise.all(
-      [...new Set(keys)].filter((k) => k.startsWith(`${workspaceId}/`)).map(async (k) => { out[k] = await this.signRead(k); }),
+      // The vault holds what has not been paid for. No customer-facing path signs it; unlocking copies out of it.
+      [...new Set(keys)].filter((k) => k.startsWith(`${workspaceId}/`) && !MediaService.isVault(k)).map(async (k) => { out[k] = await this.signRead(k); }),
     );
     return out;
+  }
+
+  /** Keys under `<workspace>/vault/` are never signed for a customer. */
+  static isVault(key: string): boolean {
+    return /^[^/]+\/vault\//.test(key);
+  }
+
+  static vaultKey(workspaceId: string, scope: string, name: string, at = new Date()): string {
+    const yyyy = at.getUTCFullYear();
+    const mm = String(at.getUTCMonth() + 1).padStart(2, '0');
+    return `${workspaceId}/vault/${yyyy}/${mm}/${scope}/${name}`;
+  }
+
+  /** Server-side copy, for taking a paid-for file out of the vault. */
+  async copy(fromKey: string, toKey: string): Promise<void> {
+    await this.s3.send(new CopyObjectCommand({ Bucket: this.bucket, CopySource: `${this.bucket}/${encodeURIComponent(fromKey).replace(/%2F/g, '/')}`, Key: toKey }));
   }
 
   /** Unchecked signing for the worker, which has already loaded the row. */

@@ -22,7 +22,7 @@ describe('capability params', () => {
 
   it('has a cost code and a queue for every capability', () => {
     for (const c of CAPABILITIES) {
-      expect(DEFAULT_COST_CODE[c]).toMatch(/^[a-z]+\.[a-z_0-9]+$/);
+      expect(DEFAULT_COST_CODE[c]).toMatch(/^[a-z]+(\.[a-z_0-9]+)+$/);
       expect(['media.fast', 'media.heavy']).toContain(queueFor(c));
     }
   });

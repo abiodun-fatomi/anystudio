@@ -22,6 +22,7 @@ import { AnthropicProvider } from './adapters/anthropic.adapter';
 import { BflProvider } from './adapters/bfl.adapter';
 import { LocalProvider } from './adapters/local.adapter';
 import { HiggsfieldProvider } from './adapters/higgsfield.adapter';
+import { ElevenLabsProvider } from './adapters/elevenlabs.adapter';
 import { HeyGenProvider } from './adapters/heygen.adapter';
 
 @Injectable()
@@ -47,6 +48,7 @@ export class ProviderRegistry {
       { present: Boolean(env.BFL_API_KEY), make: () => BflProvider.all(env.BFL_API_KEY!) },
       { present: Boolean(env.HIGGSFIELD_API_KEY && env.HIGGSFIELD_API_SECRET), make: () => HiggsfieldProvider.all(env.HIGGSFIELD_API_KEY!, env.HIGGSFIELD_API_SECRET!) },
       { present: Boolean(env.HEYGEN_API_KEY), make: () => HeyGenProvider.all(env.HEYGEN_API_KEY!) },
+      { present: Boolean(env.ELEVENLABS_API_KEY), make: () => ElevenLabsProvider.all(env.ELEVENLABS_API_KEY!) },
     ];
 
     for (const c of candidates) {

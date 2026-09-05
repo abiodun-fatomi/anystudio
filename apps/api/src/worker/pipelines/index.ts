@@ -10,10 +10,12 @@
 
 import { Injectable } from '@nestjs/common';
 import type { BrandKit, Generation, PrismaClient, Workspace } from '@prisma/client';
-import type { Capability, GenerationStage, ProviderArtifact, ProviderFile, ProviderInput, ProviderResult } from '@anystudio/shared';
+import type { Capability, GenerationOutput, GenerationStage, ProviderArtifact, ProviderFile, ProviderInput, ProviderResult } from '@anystudio/shared';
 import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
 import { copyPipeline } from './copy';
+import { musicPipeline } from './music';
+import { voiceoverPipeline } from './voiceover';
 import { brandedImagePipeline } from './image';
 import { adPipeline } from './ad';
 import type { GenerationService } from '../../modules/generation/generation.service';
@@ -48,6 +50,8 @@ export interface PipelineContext {
 
 export interface PipelineResult {
   artifacts: ProviderArtifact[];
+  /** Outputs the pipeline already stored itself (a vaulted song); described here, not uploaded again. */
+  extraOutputs?: GenerationOutput[];
   /** A parent that dispatched children and steps aside; the runner leaves it RUNNING at stage 'waiting'. */
   waiting?: boolean;
   providerKey?: string;
@@ -71,6 +75,8 @@ export class Pipelines {
   private readonly byCapability: Partial<Record<Capability, Pipeline>> = {
     TEXT_GENERATE: copyPipeline,
     IMAGE_EDIT: brandedImagePipeline,
+    MUSIC: musicPipeline,
+    VOICEOVER: voiceoverPipeline,
   };
 
   run(ctx: PipelineContext): Promise<PipelineResult> {

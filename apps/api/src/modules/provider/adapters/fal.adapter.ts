@@ -35,6 +35,7 @@ const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
   'fal:bria-rmbg-2': { capability: 'BACKGROUND_REMOVE', endpoint: 'fal-ai/bria/background/remove' },
   'fal:clarity-upscaler': { capability: 'UPSCALE', endpoint: 'fal-ai/clarity-upscaler' },
   'fal:wan-2.5-i2v': { capability: 'IMAGE_TO_VIDEO', endpoint: 'fal-ai/wan-25-preview/image-to-video' },
+  'fal:minimax-music-v2': { capability: 'MUSIC', endpoint: 'fal-ai/minimax-music/v2' },
 };
 
 export class FalProvider extends BaseProvider {
@@ -113,6 +114,13 @@ export class FalProvider extends BaseProvider {
           enable_prompt_expansion: true,
         };
       }
+      case 'MUSIC': {
+        const p = this.params(input, 'MUSIC');
+        const desc = [p.styleHints ?? p.genre, p.mood, p.tempo ? `${p.tempo} tempo` : '', p.vocal === 'instrumental' ? 'instrumental' : `${p.vocal} vocals`, p.brief].filter(Boolean).join(', ').slice(0, 300);
+        // MiniMax wants lyrics even for instrumentals; an empty structure tag keeps it wordless.
+        const lyrics = p.vocal === 'instrumental' ? '[Intro]\n[Instrumental]\n[Outro]' : (p.lyricsText ?? `[Verse]\n${p.brief.slice(0, 400)}`);
+        return { prompt: desc.length >= 10 ? desc : `${desc}, upbeat song`, lyrics_prompt: lyrics.slice(0, 3000), audio_setting: { sample_rate: 44100, bitrate: 256000, format: 'mp3' } };
+      }
       default:
         return this.unsupported(input.capability);
     }
@@ -123,8 +131,10 @@ export class FalProvider extends BaseProvider {
     const images = (pick<Array<{ url: string; width?: number; height?: number; content_type?: string }>>(out, 'images') ?? []);
     const image = pick<{ url: string; width?: number; height?: number; content_type?: string }>(out, 'image');
     const video = pick<{ url: string; content_type?: string }>(out, 'video');
+    const audio = pick<{ url: string; content_type?: string }>(out, 'audio');
 
     const list: ProviderArtifact[] = [];
+    if (audio) list.push({ url: audio.url, mime: audio.content_type ?? 'audio/mpeg', role: 'audio' });
     for (const im of images) list.push({ url: im.url, mime: im.content_type ?? 'image/png', role: 'image', width: im.width, height: im.height });
     if (image) list.push({ url: image.url, mime: image.content_type ?? 'image/png', role: 'image', width: image.width, height: image.height });
     if (video) list.push({ url: video.url, mime: video.content_type ?? 'video/mp4', role: 'video' });

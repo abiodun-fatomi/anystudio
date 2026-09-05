@@ -17,6 +17,7 @@
  * that is not part of a deploy drifts until it is wrong.
  */
 
+import { GENRES, VOICES } from './seed-audio';
 import { PrismaClient, type Prisma, type ProviderCapability, type WorkspaceType } from '@prisma/client';
 
 const db = new PrismaClient();
@@ -51,6 +52,8 @@ const CREDIT_COSTS = [
   { code: 'video.translate',    credits: 90,  label: 'Voiceover in another language' },
   { code: 'video.lipsync',      credits: 150, label: 'Lip sync' },
   { code: 'audio.voiceover',    credits: 8,   label: 'Voiceover' },
+  { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
+  { code: 'audio.music.unlock',  credits: 30, label: 'Unlock the full song' },
   { code: 'audio.music',        credits: 40,  label: 'Full song' },
 ];
 
@@ -183,11 +186,23 @@ const PROVIDERS: Array<{
     licenceNote: 'No third party involved.' },
 
   // ---- later phases: declared so the router knows they exist, disabled -------
-  { key: 'elevenlabs:flash', capability: 'VOICEOVER', priority: 10, costPerCall: 5, enabled: false,
-    config: { model: 'eleven_flash_v2_5' }, licenceNote: 'Commercial from Starter tier. Yoruba not listed — see spitch. Checked 2026-09-04.' },
-  { key: 'spitch:tts', capability: 'VOICEOVER', priority: 20, costPerCall: 5, enabled: false,
+  // ---- audio (Phase 10) --------------------------------------------------------
+  { key: 'elevenlabs:music', capability: 'MUSIC', priority: 10, costPerCall: 60, enabled: true,
+    config: { model: 'music_v2', outputFormat: 'mp3_44100_128' },
+    licenceNote: 'Eleven Music: cleared for commercial use incl. ads and social video on paid plans (elevenlabs.io/music-terms). ~$0.11–1.09/track by length. Refuses artist names. Checked 2026-09-05.' },
+  { key: 'fal:minimax-music-v2', capability: 'MUSIC', priority: 20, costPerCall: 30, enabled: true,
+    config: { endpoint: 'fal-ai/minimax-music/v2' },
+    licenceNote: 'MiniMax Music v2 via fal: fal lists "Commercial use" on the model page. Lyrics with [Verse]/[Chorus] tags. Checked 2026-09-05.' },
+  { key: 'elevenlabs:tts', capability: 'VOICEOVER', priority: 10, costPerCall: 5, enabled: true,
+    config: { model: 'eleven_multilingual_v2', outputFormat: 'mp3_44100_128' },
+    licenceNote: 'Commercial from Starter tier. 29+ languages; no Yoruba/Igbo/Hausa — see spitch. Checked 2026-09-05.' },
+  { key: 'google:tts', capability: 'VOICEOVER', priority: 20, costPerCall: 2, enabled: true,
+    licenceNote: 'Google Cloud Text-to-Speech; needs the Vertex service account with the TTS API enabled. en-NG, en-KE, en-ZA voices. Standard commercial terms. Checked 2026-09-05.' },
+  { key: 'openai:tts', capability: 'VOICEOVER', priority: 30, costPerCall: 2, enabled: true,
+    config: { model: 'gpt-4o-mini-tts' }, licenceNote: 'OpenAI TTS; output usable commercially under the API terms. Checked 2026-09-05.' },
+  { key: 'spitch:tts', capability: 'VOICEOVER', priority: 40, costPerCall: 5, enabled: false,
     licenceNote: 'Yoruba, Igbo, Hausa. Priced by direct quote; not yet on contract.' },
-  { key: 'mubert:track', capability: 'MUSIC', priority: 10, costPerCall: 15, enabled: false,
+  { key: 'mubert:track', capability: 'MUSIC', priority: 30, costPerCall: 15, enabled: false,
     licenceNote: 'Paid tiers include sub-licensing and monetized content. Not yet on contract.' },
   { key: 'elevenlabs:dubbing-v1', capability: 'DUB', priority: 10, costPerCall: 50, enabled: false,
     licenceNote: '$0.50/min clean, 29 languages. Not yet on contract.' },
@@ -218,7 +233,15 @@ async function reference() {
   for (const pr of PROVIDERS) {
     await db.providerModel.upsert({ where: { key_capability: { key: pr.key, capability: pr.capability } }, create: pr, update: pr });
   }
-  console.log(`reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${PROVIDERS.length} models`);
+  for (const gsd of GENRES) {
+    const data = { name: gsd.name, region: gsd.region, family: gsd.family, description: gsd.description, promptHints: gsd.promptHints, bpmMin: gsd.bpm?.[0], bpmMax: gsd.bpm?.[1], languages: gsd.languages, sort: gsd.sort };
+    await db.musicGenre.upsert({ where: { key: gsd.key }, create: { key: gsd.key, ...data }, update: data });
+  }
+  for (const vs of VOICES) {
+    const data = { providerKey: vs.providerKey, providerVoiceId: vs.providerVoiceId, name: vs.name, language: vs.language, accent: vs.accent, gender: vs.gender, tags: vs.tags, sort: vs.sort };
+    await db.voiceProfile.upsert({ where: { key: vs.key }, create: { key: vs.key, ...data }, update: data });
+  }
+  console.log(`reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${PROVIDERS.length} models, ${GENRES.length} genres, ${VOICES.length} voices`);
 }
 
 async function fixtures() {

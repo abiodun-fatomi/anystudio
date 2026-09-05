@@ -33,12 +33,13 @@ import { MemberModule } from './modules/member/member.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { LibraryModule } from './modules/library/library.module';
 import { InsightsModule } from './modules/insights/insights.module';
+import { AudioModule } from './modules/audio/audio.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule, MailModule, RateLimitModule, QueueModule, ProviderModule, MediaModule,
-    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule, LibraryModule, InsightsModule,
+    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule, LibraryModule, InsightsModule, AudioModule,
   ],
   controllers: [HealthController],
   providers: [

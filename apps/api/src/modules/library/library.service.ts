@@ -104,7 +104,8 @@ export class LibraryService {
   async download(workspaceId: string, id: string, res: Response): Promise<void> {
     const row = await this.db.generation.findFirst({ where: { id, workspaceId, deletedAt: null } });
     if (!row) throw new NotFoundError('library item');
-    const outputs = ((row.outputs as OutputRow[] | null) ?? []).filter((o) => o.role !== 'thumb' && o.role !== 'mask');
+    // Never the vault: a locked song is not theirs to download until it is unlocked.
+    const outputs = ((row.outputs as OutputRow[] | null) ?? []).filter((o) => o.role !== 'thumb' && o.role !== 'mask' && !(o as { locked?: boolean }).locked);
     const base = filenameBase(row);
     res.setHeader('content-type', 'application/zip');
     res.setHeader('content-disposition', `attachment; filename="${base}.zip"`);
@@ -170,10 +171,10 @@ export class LibraryService {
   private async hydrate(workspaceId: string, rows: Generation[], full = false) {
     const wanted = new Set<string>();
     const per = rows.map((g) => {
-      const outputs = ((g.outputs as OutputRow[] | null) ?? []);
+      const outputs = ((g.outputs as OutputRow[] | null) ?? []).map((o) => ((o as { locked?: boolean }).locked ? { ...o, key: '' } : o));
       const input = g.input as Record<string, unknown>;
       const thumb = thumbKeyOf(outputs, input);
-      const preview = outputs.find((o) => o.role === 'image' || o.role === 'video')?.key ?? null;
+      const preview = outputs.find((o) => o.role === 'image' || o.role === 'video' || o.role === 'preview' || (o.role === 'audio' && o.key))?.key ?? null;
       if (thumb) wanted.add(thumb);
       if (preview) wanted.add(preview);
       if (full) for (const o of outputs) if (o.key) wanted.add(o.key);
@@ -198,7 +199,7 @@ export class LibraryService {
       sourceKey: typeof input.sourceKey === 'string' ? input.sourceKey : null,
       sourceUrl: full && typeof input.sourceKey === 'string' ? (urls[input.sourceKey] ?? null) : null,
       text: outputs.find((o) => o.role === 'text')?.text ?? null,
-      outputs: outputs.filter((o) => o.role !== 'thumb' && o.role !== 'mask').map((o) => ({ key: o.key, role: o.role, mime: o.mime, size: o.size, width: o.width, height: o.height, durationMs: o.durationMs, bytes: o.bytes, url: full ? (urls[o.key] ?? null) : null })),
+      outputs: outputs.filter((o) => o.role !== 'thumb' && o.role !== 'mask').map((o) => ({ key: o.key, role: o.role, mime: o.mime, size: o.size, width: o.width, height: o.height, durationMs: o.durationMs, bytes: o.bytes, locked: Boolean((o as { locked?: boolean }).locked), url: full && o.key ? (urls[o.key] ?? null) : null })),
       params: full ? input : undefined,
     }));
   }
