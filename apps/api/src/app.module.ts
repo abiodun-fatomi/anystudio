@@ -42,6 +42,8 @@ import { SupportModule } from './modules/support/support.module';
 import { PublishingModule } from './modules/publishing/publishing.module';
 import { UsageBillingModule } from './modules/usage-billing/usage-billing.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
+import { CareersModule } from './modules/careers/careers.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -73,6 +75,8 @@ import { CatalogueModule } from './modules/catalogue/catalogue.module';
     PublishingModule,
     UsageBillingModule,
     CatalogueModule,
+    CareersModule,
+    WaitlistModule,
   ],
   controllers: [HealthController],
   providers: [

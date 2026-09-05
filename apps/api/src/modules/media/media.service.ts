@@ -279,6 +279,27 @@ export class MediaService {
     return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: ttlSec });
   }
 
+  /**
+   * A presigned PUT for an object that is not a media asset — a CV under
+   * careers/, say. The caller owns the key and the rules; this only signs.
+   */
+  async presignRaw(key: string, mime: string, bytes: number, ttlSec = UPLOAD_TTL_SEC): Promise<{ url: string; expiresInSec: number }> {
+    const url = await getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: mime, ContentLength: bytes }), {
+      expiresIn: ttlSec,
+    });
+    return { url, expiresInSec: ttlSec };
+  }
+
+  /** Size and type of an object, or null when it is not there. */
+  async head(key: string): Promise<{ bytes: number; mime: string | null } | null> {
+    try {
+      const h = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { bytes: h.ContentLength ?? 0, mime: h.ContentType ?? null };
+    } catch {
+      return null;
+    }
+  }
+
   async getBytes(key: string): Promise<Buffer> {
     const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     return Buffer.from(await res.Body!.transformToByteArray());

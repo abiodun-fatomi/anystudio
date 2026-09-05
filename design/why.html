@@ -1,0 +1,479 @@
+<style>
+/* ============================================================
+   WHY ANYSTUDIO — page-only styles. Everything else comes from
+   the landing chrome: tokens, type, buttons, .sec, .card, .rv.
+   ============================================================ */
+.why-hero{padding-top:clamp(36px,6vw,64px);padding-bottom:0;border-top:0;position:relative}
+.why-hero .wrap{display:grid;gap:clamp(28px,4vw,44px)}
+.why-hero-copy{max-width:60ch}
+.why-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+.why-eyebrow::before{content:"";width:18px;height:2px;background:var(--accent)}
+.why-hero h1{margin:0;font-family:var(--f-display);font-size:clamp(38px,6.4vw,72px);font-weight:800;letter-spacing:-.035em;line-height:1.02;text-wrap:balance}
+.why-hero h1 em{font-style:normal;color:var(--accent)}
+.why-hero p{margin-top:20px;font-size:clamp(16.5px,1.9vw,19.5px);color:var(--ink-soft);max-width:54ch;line-height:1.55}
+.why-film{position:relative;border-radius:10px;overflow:hidden;aspect-ratio:16/9;background:var(--ink);box-shadow:var(--frame-shadow-lg);border:1px solid var(--line-soft)}
+.why-film video,.why-film img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.why-film .cap{position:absolute;left:0;right:0;bottom:0;padding:18px 22px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
+  background:linear-gradient(to top,rgba(23,19,26,.72),transparent);color:#fff}
+.why-film .cap b{font-family:var(--f-display);font-size:15px;font-weight:700;display:block}
+.why-film .cap span{font-size:13px;opacity:.85}
+.why-film .cap .mono{color:#fff;opacity:.75}
+.why-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;margin-top:6px}
+@media(max-width:860px){.why-stats{grid-template-columns:repeat(2,1fr)}}
+.why-stats>div{background:var(--surface-2);padding:20px 22px}
+.why-stats b{display:block;font-family:var(--f-display);font-size:clamp(24px,3vw,32px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.why-stats span{display:block;margin-top:6px;color:var(--muted);font-size:13.5px}
+
+/* three people */
+.why-people{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:960px){.why-people{grid-template-columns:1fr}}
+.why-person{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;transition:transform .22s cubic-bezier(.2,.8,.3,1),box-shadow .22s,border-color .22s}
+.why-person:hover{transform:translateY(-4px);box-shadow:var(--frame-shadow-lg);border-color:var(--ink)}
+.why-person .pic{aspect-ratio:4/3;overflow:hidden;background:var(--surface)}
+.why-person .pic img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.2,.8,.3,1)}
+.why-person:hover .pic img{transform:scale(1.04)}
+.why-person .body{padding:22px 22px 24px;display:flex;flex-direction:column;gap:12px;flex:1}
+.why-person .who{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.why-person.org .who{color:var(--cyan)}
+.why-person h3{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}
+.why-person .story{color:var(--ink-soft);font-size:15px;line-height:1.55;margin:0}
+.why-person ul{margin:2px 0 0;padding:0;list-style:none;display:grid;gap:7px}
+.why-person li{font-size:14.5px;color:var(--ink-soft);display:flex;gap:9px;align-items:flex-start}
+.why-person li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none;margin-top:8px}
+.why-person.org li::before{background:var(--cyan)}
+.why-person .go{margin-top:auto;padding-top:10px}
+.why-person .go a{font-weight:600;text-decoration:none;color:var(--accent)}
+.why-person.org .go a{color:var(--cyan)}
+
+/* before / after */
+.why-ba{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:clamp(28px,4vw,56px);align-items:center}
+@media(max-width:900px){.why-ba{grid-template-columns:1fr}}
+.why-ba .pic{border-radius:8px;overflow:hidden;border:1px solid var(--line-soft);box-shadow:var(--frame-shadow);position:relative}
+.why-ba .pic img{width:100%;display:block}
+.why-ba .pic .tag{position:absolute;top:14px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:3px;background:rgba(23,19,26,.72);color:#fff}
+.why-ba .pic .tag.l{left:14px}.why-ba .pic .tag.r{right:14px;background:var(--accent)}
+.why-ba h2{font-size:clamp(28px,4vw,42px);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:0 0 16px}
+.why-ba p{color:var(--ink-soft);font-size:16px;line-height:1.6;margin:0 0 14px}
+.why-steps{display:grid;gap:12px;margin-top:20px}
+.why-steps>div{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+.why-steps i{font-style:normal;width:30px;height:30px;border-radius:50%;background:var(--accent-wash);color:var(--accent);display:grid;place-items:center;font-family:var(--f-mono);font-size:12px;font-weight:700}
+.why-steps b{display:block;font-size:15px}
+.why-steps span{color:var(--muted);font-size:14px}
+
+/* comparison */
+.why-cmp{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+.why-cmp table{width:100%;border-collapse:collapse;min-width:720px}
+.why-cmp th,.why-cmp td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line-soft);font-size:14.5px;vertical-align:top}
+.why-cmp th{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface)}
+.why-cmp th.us{color:var(--accent);background:var(--accent-wash)}
+.why-cmp td.us{background:color-mix(in srgb,var(--accent-wash) 45%,transparent);font-weight:600}
+.why-cmp tr:last-child td{border-bottom:0}
+.why-cmp td:first-child{font-weight:600;color:var(--ink)}
+.why-cmp .y{color:var(--accent)}.why-cmp .n{color:var(--muted)}
+.why-cmp .m{color:var(--ink-soft)}
+.why-cmp-note{margin-top:12px;color:var(--muted);font-size:13px}
+
+/* roi */
+.why-roi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:clamp(20px,3vw,32px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.82fr);gap:clamp(22px,4vw,44px);align-items:start}
+@media(max-width:860px){.why-roi{grid-template-columns:1fr}}
+.why-roi .cur{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.why-roi .cur button{border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--f-body)}
+.why-roi .cur button[aria-pressed=true]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.why-roi .field{margin-bottom:16px}
+.why-roi .field label{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;font-size:14.5px;font-weight:600}
+.why-roi .field label b{font-family:var(--f-mono);font-size:14px;color:var(--accent);font-variant-numeric:tabular-nums}
+.why-roi .field .hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+.why-roi input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;outline:none;display:block;touch-action:pan-y}
+.why-roi input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--line)}
+.why-roi input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--line)}
+.why-roi input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:grab;border:3px solid var(--surface);box-shadow:0 1px 6px rgba(0,0,0,.25);margin-top:-9.5px}
+.why-roi input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:grab;border:3px solid var(--surface);box-shadow:0 1px 6px rgba(0,0,0,.25)}
+.why-roi input[type=number]{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--line);border-radius:4px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:15px}
+.why-out{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:22px;display:grid;gap:16px;position:sticky;top:84px}
+.why-out .row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line-soft)}
+.why-out .row:last-of-type{border-bottom:0;padding-bottom:0}
+.why-out .lab{font-size:13.5px;color:var(--muted)}
+.why-out .val{font-family:var(--f-display);font-weight:800;font-size:clamp(20px,2.6vw,26px);letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.why-out .val.big{font-size:clamp(30px,4vw,40px);color:var(--accent)}
+.why-out .sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.why-out .assume{font-size:12px;color:var(--muted);line-height:1.5;padding-top:6px;border-top:1px dashed var(--line)}
+.why-out .bar{height:10px;border-radius:5px;background:var(--line-soft);overflow:hidden;display:flex}
+.why-out .bar i{display:block;height:100%;background:var(--accent)}
+.why-out .bar i.g{background:var(--line)}
+.why-out .legend{display:flex;gap:14px;font-size:12px;color:var(--muted)}
+.why-out .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.why-out .legend i.g{background:var(--line)}
+
+/* under the hood */
+.why-hood{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:8px;overflow:hidden}
+@media(max-width:860px){.why-hood{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.why-hood{grid-template-columns:1fr}}
+.why-hood>div{background:var(--surface-2);padding:24px 22px;display:flex;flex-direction:column;gap:8px}
+.why-hood>div:hover{background:var(--surface)}
+.why-hood .k{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.why-hood h4{font-size:16.5px;font-weight:700;margin:0}
+.why-hood p{font-size:14.5px;color:var(--muted);line-height:1.55;margin:0}
+.why-plat{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(28px,4vw,56px);align-items:center;margin-top:26px;background:var(--ink);color:var(--paper);border-radius:10px;overflow:hidden}
+@media(max-width:900px){.why-plat{grid-template-columns:1fr}}
+.why-plat .pic img{width:100%;height:100%;object-fit:cover;display:block;min-height:260px}
+.why-plat .body{padding:clamp(24px,4vw,44px)}
+.why-plat h3{font-size:clamp(24px,3.4vw,34px);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin:0 0 12px}
+.why-plat p{color:color-mix(in srgb,var(--paper) 75%,transparent);font-size:15.5px;line-height:1.6;margin:0 0 18px}
+.why-plat .btn-ghost{border-color:color-mix(in srgb,var(--paper) 34%,transparent);color:var(--paper)}
+
+/* mobile */
+.why-mobile{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.7fr);gap:clamp(28px,4vw,56px);align-items:center}
+@media(max-width:900px){.why-mobile{grid-template-columns:1fr}}
+.why-mobile .pic{border-radius:10px;overflow:hidden;box-shadow:var(--frame-shadow-lg);border:1px solid var(--line-soft);background:var(--surface)}
+.why-mobile .pic img{width:100%;display:block}
+.why-soon{display:inline-flex;align-items:center;gap:8px;background:var(--accent-wash);color:var(--accent);border-radius:999px;padding:6px 12px;font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:16px}
+.why-soon i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:whyPulse 1.6s ease-in-out infinite}
+@keyframes whyPulse{50%{transform:scale(1.6);opacity:.5}}
+.why-mobile h2{font-size:clamp(28px,4vw,42px);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:0 0 14px}
+.why-mobile p{color:var(--ink-soft);font-size:16px;line-height:1.6;margin:0 0 14px}
+.why-wait{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.why-wait input{flex:1 1 220px;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);color:var(--ink);font:inherit;font-size:15px}
+.why-wait .ok{color:var(--cyan);font-size:14px;font-weight:600;display:none}
+.why-wait[data-done] input,.why-wait[data-done] button{display:none}
+.why-wait[data-done] .ok{display:block}
+.why-stores{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.why-stores span{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--muted);background:var(--surface-2)}
+.why-stores svg{width:16px;height:16px;fill:currentColor}
+</style>
+
+<!-- ============================== HERO ============================== -->
+<section class="sec lead why-hero" id="top">
+  <div class="wrap">
+    <div class="why-hero-copy rv">
+      <div class="why-eyebrow">Why AnyStudio</div>
+      <h1>One photo in. <em>Everything you post,</em> out.</h1>
+      <p>Most tools give you a canvas and wish you luck. AnyStudio starts from the thing you already have — a phone photo of what you sell — and hands back the images, the words and the reel, sized for every place you post, with your price and your name already on them.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="auth.html#signup">Start free — three on us</a>
+        <a class="btn btn-ghost btn-lg" href="#roi">See what it saves you</a>
+      </div>
+    </div>
+    <div class="why-film rv">
+      <video class="vd" src="/why/hero.mp4" poster="/why/hero-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="A shop owner photographs a tote bag; her phone shows it already styled on a studio backdrop"></video>
+      <div class="cap">
+        <div><b>A fabric shop in Lagos, on a Tuesday.</b><span>Photograph it. Send it. Post it. The studio is the part in between.</span></div>
+        <span class="mono">00:05</span>
+      </div>
+    </div>
+    <div class="why-stats rv">
+      <div><b>&lt; 60 s</b><span>from a phone photo to a branded image, a caption and a description</span></div>
+      <div><b>5 sizes</b><span>feed, portrait, story, landscape and marketplace, from one source</span></div>
+      <div><b>3 doors</b><span>WhatsApp, the web studio, and an API for platforms</span></div>
+      <div><b>0 wasted</b><span>a failed generation refunds its credits, every time</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== THREE PEOPLE ============================== -->
+<section class="sec" id="who">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>Three people. One studio.</h2>
+        <p class="sec-lede">The same engine wears three shapes, because the person making a birthday flyer and the platform serving ten thousand merchants do not want the same door.</p>
+      </div>
+    </div>
+    <div class="why-people">
+      <article class="why-person rv">
+        <div class="pic"><img src="/why/person.webp" alt="A man at a kitchen table shows off a birthday flyer he made on his phone" loading="lazy"></div>
+        <div class="body">
+          <div class="who">For anyone</div>
+          <h3>The flyer that looks properly done</h3>
+          <p class="story">Kunle's daughter turns six on Saturday. He sends one photo and one line on WhatsApp, picks a look, changes the words himself, and it is on his Status before the jollof is served.</p>
+          <ul>
+            <li>Flyers, posters and portraits from a photo or a sentence</li>
+            <li>Restyle and enhance your own pictures</li>
+            <li>Edit the text, colours and crop yourself</li>
+            <li>No app, no account to start — just WhatsApp</li>
+          </ul>
+          <div class="go"><a href="#whatsapp">Try it on WhatsApp →</a></div>
+        </div>
+      </article>
+      <article class="why-person rv">
+        <div class="pic"><img src="/why/business.webp" alt="A phone showing a grid of matching branded product posts beside a printed flyer" loading="lazy"></div>
+        <div class="body">
+          <div class="who">For sellers</div>
+          <h3>Everything around the product</h3>
+          <p class="story">Bimbo sells bags and scarves. Every new piece used to cost her an evening: photos, a caption, a description for the listing, something for TikTok. Now it costs one photo.</p>
+          <ul>
+            <li>Branded images with your price and business name on them</li>
+            <li>Captions and storefront descriptions that never repeat</li>
+            <li>A reel ad from the same single photo</li>
+            <li>Posted to Instagram and TikTok, on a schedule</li>
+            <li>A brand kit so every post matches</li>
+          </ul>
+          <div class="go"><a href="auth.html#signup">Start free →</a></div>
+        </div>
+      </article>
+      <article class="why-person org rv">
+        <div class="pic"><img src="/why/platform.webp" alt="An isometric illustration of many storefront tiles connected to one central studio" loading="lazy"></div>
+        <div class="body">
+          <div class="who">For platforms</div>
+          <h3>Every merchant, one integration</h3>
+          <p class="story">A marketplace's listings are only as good as the photos merchants upload — which is the problem. One API call turns each merchant's phone photo into a listing that sells, priced per call and invoiced monthly.</p>
+          <ul>
+            <li>Projects, keys and webhooks per environment</li>
+            <li>Descriptions unique across your whole catalogue</li>
+            <li>Usage metered per merchant, invoiced on a credit line</li>
+            <li>Seats and roles for your team</li>
+          </ul>
+          <div class="go"><a href="/developers">Read the API →</a></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== BEFORE / AFTER ============================== -->
+<section class="sec">
+  <div class="wrap">
+    <div class="why-ba">
+      <div class="pic rv">
+        <span class="tag l">Phone photo</span><span class="tag r">AnyStudio</span>
+        <img src="/why/before-after.webp" alt="Left: a hair-oil bottle snapped on a cluttered kitchen table. Right: the same bottle as a studio product photo with a price tag">
+      </div>
+      <div class="rv">
+        <h2>The product stays exactly as photographed.</h2>
+        <p>That is the rule everything else follows. AnyStudio changes the scene, the light, the background and the words around your product — never the product. A customer who buys from the picture gets the thing in the picture.</p>
+        <div class="why-steps">
+          <div><i>1</i><div><b>Send a photo</b><span>Any phone, any light, any background. Or start from your Shopify or WooCommerce catalogue.</span></div></div>
+          <div><i>2</i><div><b>Choose what you need</b><span>A scene, a cut-out, a reel, a caption, a description — or all of it at once.</span></div></div>
+          <div><i>3</i><div><b>Post it</b><span>Every size, your price and name on it, straight to Status, Instagram or TikTok.</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== COMPARISON ============================== -->
+<section class="sec" id="compare">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>How it compares.</h2>
+        <p class="sec-lede">Not a better canvas. A different starting point: your product, your price, the places you actually post.</p>
+      </div>
+    </div>
+    <div class="why-cmp rv">
+      <table>
+        <thead>
+          <tr><th>What you need</th><th>A design app</th><th>An AI photo tool</th><th>A freelancer or agency</th><th class="us">AnyStudio</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Starts from your own product photo</td><td class="n">You build from templates</td><td class="y">Yes</td><td class="y">Yes</td><td class="us y">Yes — and it never alters the product</td></tr>
+          <tr><td>Price and business name on the image</td><td class="m">By hand, every time</td><td class="n">No</td><td class="y">Yes</td><td class="us y">Automatic, from your brand kit</td></tr>
+          <tr><td>Caption + product description in the same go</td><td class="n">No</td><td class="n">No</td><td class="m">Sometimes, extra</td><td class="us y">Yes, and never a duplicate</td></tr>
+          <tr><td>A reel ad from one still photo</td><td class="n">No</td><td class="m">Some, no branding</td><td class="y">Days and a budget</td><td class="us y">Minutes, from the same photo</td></tr>
+          <tr><td>Posts to Instagram, TikTok, WhatsApp Status</td><td class="m">Instagram only</td><td class="n">No</td><td class="m">If you pay for management</td><td class="us y">Built in, with a calendar</td></tr>
+          <tr><td>Works on WhatsApp with no app</td><td class="n">No</td><td class="n">No</td><td class="m">By chat, slowly</td><td class="us y">Yes — send a photo, get posts back</td></tr>
+          <tr><td>Priced in your currency, no card to start</td><td class="m">Dollar subscription</td><td class="m">Dollar subscription</td><td class="m">Negotiated</td><td class="us y">₦, GH₵, KSh, R, $, £ — three free, then credits</td></tr>
+          <tr><td>Fails safely</td><td class="m">—</td><td class="n">Credits spent either way</td><td class="m">Revisions</td><td class="us y">A failed generation refunds itself</td></tr>
+          <tr><td>An API for a platform's merchants</td><td class="n">No</td><td class="m">Images only</td><td class="n">No</td><td class="us y">Images, copy and video, per merchant, invoiced monthly</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="why-cmp-note">"A design app", "an AI photo tool" and "a freelancer or agency" describe typical products and arrangements, not any one company. Every claim about AnyStudio is a feature you can use today.</p>
+  </div>
+</section>
+
+<!-- ============================== ROI ============================== -->
+<section class="sec" id="roi">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>What you spend today, against what it returns.</h2>
+        <p class="sec-lede">Move the sliders to your own numbers. The AnyStudio figures are our real credit prices; the rest is yours. Nothing is a promise — it is arithmetic.</p>
+      </div>
+    </div>
+    <div class="why-roi rv" id="roiCalc">
+      <div>
+        <div class="cur" role="group" aria-label="Currency">
+          <button type="button" data-cur="NGN" aria-pressed="true">₦ NGN</button>
+          <button type="button" data-cur="USD" aria-pressed="false">$ USD</button>
+          <button type="button" data-cur="GBP" aria-pressed="false">£ GBP</button>
+        </div>
+        <div class="field">
+          <label for="roiPosts">Product posts a week <b id="roiPostsV">6</b></label>
+          <input id="roiPosts" type="range" min="1" max="40" value="6">
+          <div class="hint">A post is one branded image with its caption and description.</div>
+        </div>
+        <div class="field">
+          <label for="roiReels">Reels a week <b id="roiReelsV">1</b></label>
+          <input id="roiReels" type="range" min="0" max="14" value="1">
+          <div class="hint">A short reel ad made from the same product photo.</div>
+        </div>
+        <div class="field">
+          <label for="roiCost">What one post costs you today <b id="roiCostV"></b></label>
+          <input id="roiCost" type="number" min="0" step="1" value="3000" inputmode="numeric">
+          <div class="hint">A designer, a photographer, a template subscription split by posts — or zero if you do it yourself.</div>
+        </div>
+        <div class="field">
+          <label for="roiHours">Hours you spend per post <b id="roiHoursV">1.5 h</b></label>
+          <input id="roiHours" type="range" min="0" max="6" step="0.5" value="1.5">
+          <div class="hint">Shooting, editing, writing, resizing. AnyStudio takes about three minutes of your attention per post.</div>
+        </div>
+        <div class="field">
+          <label for="roiHourly">What an hour of yours is worth <b id="roiHourlyV"></b></label>
+          <input id="roiHourly" type="number" min="0" step="1" value="2500" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="roiAov">Average order value <b id="roiAovV"></b></label>
+          <input id="roiAov" type="number" min="0" step="1" value="12000" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="roiOrders">Orders a post brings in <b id="roiOrdersV">1.0</b></label>
+          <input id="roiOrders" type="range" min="0" max="10" step="0.5" value="1">
+          <div class="hint">Your own number. Sellers who post daily with consistent branding tend to see more than sellers who post when they get round to it.</div>
+        </div>
+      </div>
+      <div class="why-out" aria-live="polite">
+        <div class="row"><div><div class="lab">A month on AnyStudio</div><div class="sub" id="roiCredits"></div></div><div class="val" id="roiUs"></div></div>
+        <div class="row"><div><div class="lab">A month the way you do it now</div><div class="sub" id="roiNowSub"></div></div><div class="val" id="roiNow"></div></div>
+        <div class="bar" aria-hidden="true"><i id="roiBarUs" style="width:30%"></i><i class="g" id="roiBarNow" style="width:70%"></i></div>
+        <div class="legend"><span><i></i>AnyStudio</span><span><i class="g"></i>Today</span></div>
+        <div class="row"><div><div class="lab">You keep, every month</div><div class="sub" id="roiHoursBack"></div></div><div class="val big" id="roiSave"></div></div>
+        <div class="row"><div><div class="lab">What the month's posts are worth in orders</div><div class="sub">at your average order value</div></div><div class="val" id="roiRev"></div></div>
+        <div class="assume">Credits: a post is 13 credits (image 10, caption 1, description 2); a reel is 120. Priced at the 2,000-credit pack. Four and a third weeks to a month. Your inputs stay in your browser.</div>
+        <a class="btn btn-primary" href="auth.html#signup" style="justify-content:center">Start with three free</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== UNDER THE HOOD ============================== -->
+<section class="sec" id="hood">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>Built like infrastructure, not a demo.</h2>
+        <p class="sec-lede">The parts you do not see are the reason the parts you do see keep working.</p>
+      </div>
+    </div>
+    <div class="why-hood rv">
+      <div><div class="k">Money</div><h4>A real ledger</h4><p>Every credit in and out is a row that cannot be edited, with the balance after it. Holds, refunds and invoices all go through one function in the database.</p></div>
+      <div><div class="k">Models</div><h4>Never one vendor</h4><p>Each capability routes across several providers with fallback, circuit breakers and a cost ceiling — so a vendor's bad day is not yours.</p></div>
+      <div><div class="k">Channels</div><h4>WhatsApp, web, API</h4><p>Three doors on the same studio. A seller who has never installed an app and a platform integrating in an afternoon get the same pipeline.</p></div>
+      <div><div class="k">Copy</div><h4>No duplicate descriptions</h4><p>Every description is fingerprinted per product; a catalogue of a thousand listings does not repeat itself, which search engines notice.</p></div>
+      <div><div class="k">Sync</div><h4>Your catalogue, live</h4><p>Connect Shopify or WooCommerce with a read-only key and every product arrives with its pictures, price and words — and stays in step on its own.</p></div>
+      <div><div class="k">Trust</div><h4>Local pricing, safe failure</h4><p>Priced per market, not converted daily. A generation that fails refunds itself. A refund request is answered by a person and paid back at the gateway.</p></div>
+    </div>
+    <div class="why-plat rv">
+      <div class="pic"><img src="/why/hero.webp" alt="" loading="lazy"></div>
+      <div class="body">
+        <h3>Hosting merchants? Give every one of them a studio.</h3>
+        <p>Projects and keys per environment, webhooks when work is done, usage metered per merchant and invoiced monthly on a credit line. Test keys work in minutes on free credits.</p>
+        <a class="btn btn-ghost" href="/developers">For platforms →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== MOBILE ============================== -->
+<section class="sec" id="mobile">
+  <div class="wrap">
+    <div class="why-mobile">
+      <div class="rv">
+        <div class="why-soon"><i></i>Mobile app · coming soon</div>
+        <h2>The studio, in your pocket.</h2>
+        <p>The web studio already works on a phone, and WhatsApp needs no app at all. The AnyStudio app adds the things only an app can do: the camera straight into the studio, your library offline, a nudge when a scheduled post goes out, and one tap to share to Status.</p>
+        <p>iOS and Android, same account, same credits. Leave your email and you will hear the day it lands — nothing else.</p>
+        <form class="why-wait" id="waitForm" novalidate>
+          <input type="email" name="email" placeholder="you@example.com" aria-label="Email address" required>
+          <button class="btn btn-primary" type="submit">Tell me when it lands</button>
+          <span class="ok" id="waitOk">You are on the list. See you at launch.</span>
+        </form>
+        <div class="why-stores" aria-label="Where it will be available">
+          <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.1zM13.9 4.9c.7-.9 1.2-2 1-3.2-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1.1 3.1 1.2.1 2.3-.6 3-1.4z"/></svg>App Store</span>
+          <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 2.2 13.4 12l-9.8 9.8c-.3-.2-.5-.6-.5-1V3.2c0-.4.2-.8.5-1zm11.2 11.2 2.7 2.7-11 6.3c-.5.3-1 .3-1.4.1l9.7-9.1zm0-2.8L5.1 1.5c.4-.2.9-.2 1.4.1l11 6.3-2.7 2.7zm1.4 1.4 3.3-1.9c.9-.5.9-1.7 0-2.2l-3.3-1.9L13.4 12l2.8 2.8z"/></svg>Google Play</span>
+        </div>
+      </div>
+      <div class="pic rv"><img src="/why/mobile.webp" alt="Two phones showing the AnyStudio mobile app: a product on a studio backdrop with a Make it button, and a grid of finished posts" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CTA ============================== -->
+<section class="sec" style="border-top:0">
+  <div class="wrap">
+    <div class="cta rv">
+      <h2>Send one photo. See what comes back.</h2>
+      <p>Three generations on us, no card. Then credits in your own currency, and a plan when it earns one.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="auth.html#signup">Start free</a>
+        <a class="btn btn-ghost btn-lg" href="mailto:hello@anystudio.ai?subject=AnyStudio%20for%20our%20platform">Talk to us about your platform</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  /* ---------- ROI calculator ---------- */
+  var RATE = { NGN: 39000/2000, USD: 29/2000, GBP: 24/2000 };  /* per credit, from the 2,000-credit pack */
+  var DEFAULTS = { NGN:{cost:3000,hourly:2500,aov:12000}, USD:{cost:8,hourly:12,aov:45}, GBP:{cost:6,hourly:10,aov:35} };
+  var POST_CREDITS = 13, REEL_CREDITS = 120, WEEKS = 4.33, OUR_HOURS = 0.05;
+  var cur = 'NGN';
+  var $ = function(id){ return document.getElementById(id); };
+  var els = { posts:$('roiPosts'), reels:$('roiReels'), cost:$('roiCost'), hours:$('roiHours'), hourly:$('roiHourly'), aov:$('roiAov'), orders:$('roiOrders') };
+  if (!els.posts) return;
+  function money(n){
+    try { return new Intl.NumberFormat(undefined,{style:'currency',currency:cur,maximumFractionDigits:0}).format(n); }
+    catch(e){ return cur+' '+Math.round(n).toLocaleString(); }
+  }
+  function num(el){ var v = parseFloat(el.value); return isFinite(v) && v >= 0 ? v : 0; }
+  function calc(){
+    var posts = num(els.posts), reels = num(els.reels), cost = num(els.cost), hours = num(els.hours), hourly = num(els.hourly), aov = num(els.aov), orders = num(els.orders);
+    var credits = (posts*POST_CREDITS + reels*REEL_CREDITS) * WEEKS;
+    var us = credits * RATE[cur] + (posts+reels) * WEEKS * OUR_HOURS * hourly;
+    var nowHours = (posts+reels) * WEEKS * hours;
+    var now = (posts+reels) * WEEKS * cost + nowHours * hourly;
+    var save = Math.max(0, now - us);
+    var hoursBack = Math.max(0, nowHours - (posts+reels)*WEEKS*OUR_HOURS);
+    var rev = (posts+reels) * WEEKS * orders * aov;
+    $('roiPostsV').textContent = posts; $('roiReelsV').textContent = reels;
+    $('roiCostV').textContent = money(cost); $('roiHoursV').textContent = hours + ' h'; $('roiHourlyV').textContent = money(hourly) + '/h';
+    $('roiAovV').textContent = money(aov); $('roiOrdersV').textContent = orders.toFixed(1);
+    $('roiUs').textContent = money(us); $('roiCredits').textContent = Math.round(credits).toLocaleString() + ' credits · about ' + Math.round((posts+reels)*WEEKS*OUR_HOURS*60/((posts+reels)*WEEKS || 1)) + ' min of your time per post';
+    $('roiNow').textContent = money(now); $('roiNowSub').textContent = Math.round(nowHours) + ' h of your time · ' + money((posts+reels)*WEEKS*cost) + ' paid out';
+    $('roiSave').textContent = money(save); $('roiHoursBack').textContent = 'and ' + Math.round(hoursBack) + ' hours back';
+    $('roiRev').textContent = money(rev);
+    var total = us + now || 1; $('roiBarUs').style.width = Math.max(2, Math.round(us/total*100)) + '%'; $('roiBarNow').style.width = Math.max(2, Math.round(now/total*100)) + '%';
+    try { localStorage.setItem('anystudio:roi', JSON.stringify({cur:cur,posts:posts,reels:reels,cost:cost,hours:hours,hourly:hourly,aov:aov,orders:orders})); } catch(e){}
+  }
+  Object.keys(els).forEach(function(k){ els[k].addEventListener('input', calc); });
+  document.querySelectorAll('#roiCalc .cur button').forEach(function(b){
+    b.addEventListener('click', function(){
+      cur = b.getAttribute('data-cur');
+      document.querySelectorAll('#roiCalc .cur button').forEach(function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      var d = DEFAULTS[cur]; els.cost.value = d.cost; els.hourly.value = d.hourly; els.aov.value = d.aov;
+      calc();
+    });
+  });
+  try {
+    var saved = JSON.parse(localStorage.getItem('anystudio:roi') || 'null');
+    if (saved && RATE[saved.cur]) {
+      cur = saved.cur;
+      document.querySelectorAll('#roiCalc .cur button').forEach(function(x){ x.setAttribute('aria-pressed', x.getAttribute('data-cur') === cur ? 'true' : 'false'); });
+      ['posts','reels','cost','hours','hourly','aov','orders'].forEach(function(k){ if (saved[k] !== undefined) els[k].value = saved[k]; });
+    }
+  } catch(e){}
+  calc();
+
+  /* ---------- waitlist ---------- */
+  var form = $('waitForm');
+  if (form) form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var input = form.querySelector('input'); var email = (input.value || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { input.focus(); input.setAttribute('aria-invalid','true'); return; }
+    var btn = form.querySelector('button'); btn.disabled = true; btn.textContent = 'Adding you…';
+    fetch('/api/v1/waitlist', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ email: email, source: 'why-mobile' }) })
+      .then(function(r){ if (!r.ok && r.status !== 409) throw new Error('bad'); form.setAttribute('data-done',''); })
+      .catch(function(){ btn.disabled = false; btn.textContent = 'Try again'; });
+  });
+})();
+</script>

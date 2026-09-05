@@ -1104,9 +1104,9 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     </a>
     <nav class="nav-links">
       <a href="#how">How it works</a>
+      <a href="why.html">Why AnyStudio</a>
       <a href="#who">Who it's for</a>
       <a href="#whatsapp">WhatsApp</a>
-      <a href="#languages">Languages</a>
       <a href="#api">For platforms</a>
       <a href="#pricing">Pricing</a>
     </nav>
@@ -1955,7 +1955,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
       </div>
       <div>
         <span class="mono">Company</span>
-        <a href="#top">Privacy</a><a href="#top">Terms</a><a href="#top">Content policy</a><a href="mailto:hello@anystudio.ai">hello@anystudio.ai</a>
+        <a href="why.html">Why AnyStudio</a><a href="careers.html">Careers</a><a href="why.html#mobile">Mobile app</a><a href="#top">Privacy</a><a href="#top">Terms</a><a href="mailto:hello@anystudio.ai">hello@anystudio.ai</a>
       </div>
     </div>
   </div>
@@ -2147,8 +2147,12 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     });
     setTimeout(typeCaption, frames.length * 190 + 120);
   }
-  playSheet();
-  document.getElementById("replay").addEventListener("click", playSheet);
+  // Only the landing has the contact sheet; the shared script also runs on the other pages.
+  if (frames.length) {
+    playSheet();
+    var replayBtn = document.getElementById("replay");
+    if (replayBtn) replayBtn.addEventListener("click", playSheet);
+  }
 
   /* ---------- tabs ---------- */
   document.querySelectorAll(".tabs button").forEach(function(b){
@@ -2163,18 +2167,20 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
 
   /* ---------- whatsapp thread ---------- */
   var thread = document.getElementById("thread");
-  var bubs = thread.querySelectorAll(".bub");
+  var bubs = thread ? thread.querySelectorAll(".bub") : [];
   function playThread(){
+    if (!bubs.length) return;
     bubs.forEach(function(b){ b.classList.remove("show"); });
     void bubs[0].offsetWidth;
     if (reduce){ bubs.forEach(function(b){ b.classList.add("show"); }); return; }
     bubs.forEach(function(b, i){ setTimeout(function(){ b.classList.add("show"); }, i * 620); });
   }
-  if ("IntersectionObserver" in window){
+  var phoneEl = document.getElementById("phone");
+  if (phoneEl && "IntersectionObserver" in window){
     var to = new IntersectionObserver(function(es){
       es.forEach(function(e){ if(e.isIntersecting){ playThread(); to.unobserve(e.target); } });
     },{threshold:.4});
-    to.observe(document.getElementById("phone"));
+    to.observe(phoneEl);
   } else { playThread(); }
 
   /* ==========================================================
@@ -2437,10 +2443,12 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
       p.classList.toggle("match", p.dataset.plan === tier.key);
     });
   }
-  sImg.addEventListener("input", renderCalc);
-  sReel.addEventListener("input", renderCalc);
-
-  renderPrices();
+  // The plans and the calculator live on the pricing page; elsewhere the shared script has nothing to wire.
+  if (sImg && sReel) {
+    sImg.addEventListener("input", renderCalc);
+    sReel.addEventListener("input", renderCalc);
+    renderPrices();
+  }
 
   /* screen readers and search engines both need the document language */
   document.documentElement.lang = document.documentElement.lang || "en";

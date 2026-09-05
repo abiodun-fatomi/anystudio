@@ -753,6 +753,99 @@ model RefundRequest {
   @@map("refund_requests")
 }
 
+// ---------------------------------------------------------------------------
+// Careers: openings staff write in the console, shown on the marketing site,
+// and the applications that come back.
+// ---------------------------------------------------------------------------
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+model JobPosting {
+  id          String    @id @default(uuid()) @db.Uuid
+  slug        String    @unique
+  title       String
+  team        String
+  location    String
+  remote      Boolean   @default(true)
+  type        JobType   @default(FULL_TIME)
+  /// One or two sentences for the list.
+  summary     String
+  /// The posting itself: paragraphs and "- " lists, rendered as such.
+  description String
+  /// Shown on the posting when set; otherwise "Compensation discussed at offer".
+  salary      String?
+  status      JobStatus @default(DRAFT)
+  publishedAt DateTime?
+  closedAt    DateTime?
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  applications JobApplication[]
+
+  @@index([status, publishedAt])
+  @@map("job_postings")
+}
+
+enum ApplicationStatus {
+  NEW
+  REVIEWING
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+model JobApplication {
+  id        String            @id @default(uuid()) @db.Uuid
+  jobId     String            @db.Uuid
+  name      String
+  email     String
+  phone     String?
+  /// Portfolio, LinkedIn, GitHub — whatever they gave, one per line.
+  links     String?
+  coverNote String?
+  /// Storage key of the CV under careers/; null when they applied with links only.
+  cvKey     String?
+  cvName    String?
+  status    ApplicationStatus @default(NEW)
+  /// Staff-only.
+  notes     String?
+  /// Where they applied from, for the record.
+  ip        String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  job JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, status, createdAt])
+  @@index([email])
+  @@map("job_applications")
+}
+
+/// People who asked to hear when the mobile app (or whatever `source` names) lands.
+model WaitlistSignup {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  source    String   @default("mobile")
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@unique([email, source])
+  @@map("waitlist_signups")
+}
+
 enum SubscriptionStatus {
   ACTIVE
   PAST_DUE

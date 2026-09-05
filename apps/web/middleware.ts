@@ -29,7 +29,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { baseHost, isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 /** The marketing pages. On the app host these belong to the other hostname. */
-const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
+const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers', '/why', '/careers'];
 
 /**
  * The sign-in pages. They live on the marketing host — `app.` is for people
@@ -130,7 +130,7 @@ export async function middleware(req: NextRequest) {
     // A marketing page reached on the app host belongs on the marketing one —
     // otherwise the same content answers on two hostnames and splits its own
     // search ranking.
-    if (MARKETING_PATHS.includes(pathname) || AUTH_PATHS.includes(pathname)) {
+    if (MARKETING_PATHS.includes(pathname) || pathname.startsWith('/careers/') || AUTH_PATHS.includes(pathname)) {
       return NextResponse.redirect(`https://${baseHost(host)}${pathname}${search}`, 307);
     }
     return NextResponse.next();
