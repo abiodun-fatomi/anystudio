@@ -170,6 +170,12 @@ export class ProviderRouter {
     });
   }
 
+  /** Staff reset a breaker: drop this process's memory of the vendor's bad spell. */
+  forget(key: string, capability: Capability): void {
+    this.health.delete(`${key}|${capability}`);
+    logger.info({ providerKey: key, capability }, 'breaker state cleared by staff');
+  }
+
   private healthFor(key: string, capability: Capability): Health {
     const k = `${key}|${capability}`;
     let h = this.health.get(k);

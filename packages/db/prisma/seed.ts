@@ -326,8 +326,27 @@ async function fixtures() {
   console.log('          use it to check that the console refuses to action its own workspace');
 }
 
+/**
+ * The first staff member. Nobody can grant themselves staff access from the
+ * console, so the very first SUPERADMIN comes from the environment: set
+ * BOOTSTRAP_SUPERADMIN_EMAIL to an account that exists (and has a second
+ * factor), run the seed once, remove the variable. Re-running is a no-op
+ * while the grant stands.
+ */
+async function bootstrapStaff() {
+  const email = process.env.BOOTSTRAP_SUPERADMIN_EMAIL?.toLowerCase();
+  if (!email) return;
+  const user = await db.user.findUnique({ where: { email }, select: { id: true } });
+  if (!user) { console.log(`bootstrap staff: no account for ${email}; sign up first, then seed again`); return; }
+  const existing = await db.staffGrant.findFirst({ where: { userId: user.id, revokedAt: null } });
+  if (existing) { console.log(`bootstrap staff: ${email} already holds ${existing.role}`); return; }
+  await db.staffGrant.create({ data: { userId: user.id, role: 'SUPERADMIN', grantedById: user.id, reason: 'bootstrap from BOOTSTRAP_SUPERADMIN_EMAIL' } });
+  console.log(`bootstrap staff: ${email} is SUPERADMIN. Remove BOOTSTRAP_SUPERADMIN_EMAIL from the environment.`);
+}
+
 async function main() {
   await reference();
+  await bootstrapStaff();
 
   const env = process.env.SEED_ENV;
   if (env === 'dev') {

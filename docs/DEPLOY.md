@@ -394,3 +394,39 @@ nothing on Meta's side unless it messages first — which it never does.
 
 **Opt-out** is a word, "stop", honoured immediately and recorded on the
 contact; the next message from them opens things up again.
+
+---
+
+## 11. The staff console
+
+`admin.<base>` — its own hostname so its session cookie is its own; the
+same web build (`app/admin/*`, served only on that host by the middleware)
+and the same API (`/api/v1/admin/*`, ADMIN surface + staff rank on every
+route). The Worker's routes in `wrangler.jsonc` include the admin hostname
+per environment; add the DNS record beside `app.` and `api.`.
+
+**Signing in.** The API mints an ADMIN session only past a second factor:
+the person signs in at `https://admin.<base>/login` with their password
+and then their authenticator code. An account without a confirmed factor,
+or without a staff grant, is refused in words. Staff mutations (turning a
+provider off, adjusting credits, refunding, suspending, granting) also
+require the factor to have been confirmed within the last thirty minutes
+and refuse anything touching a workspace the staff member belongs to.
+
+**The first staff member.** Nobody can grant themselves. Set
+`BOOTSTRAP_SUPERADMIN_EMAIL` to an existing account, run the seed once
+(`pnpm db:seed`, which is also part of the deploy's pre-deploy step), then
+remove the variable. Everyone after that is granted from **Staff** in the
+console, with a reason, and revoked there.
+
+**What it does.** Overview (failures, breakers, rows with no key, queue
+health); customers (search, detail, suspend/reinstate); workspaces (ledger,
+credit adjustments with a reason, owner notified); generations (inputs,
+outputs, provider job id, the operator-facing failure reason; end a stuck
+row; goodwill refund); payments (mark refunded after refunding at the
+gateway; credits clawed back); providers (on/off, priority, close a
+breaker) and prices; platform messages (into every bell, by audience);
+staff; the audit log.
+
+**Locally**: `next dev -p 3003` beside the app on 3000 — the API maps
+`localhost:3003` to the ADMIN surface.

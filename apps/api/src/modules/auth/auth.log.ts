@@ -81,7 +81,15 @@ export type AuthEventName =
   | 'developer.webhook'
   | 'api.auth'
   | 'whatsapp.webhook'
-  | 'whatsapp.onboard';
+  | 'whatsapp.onboard'
+  | 'admin.customer'
+  | 'admin.credits'
+  | 'admin.provider'
+  | 'admin.payment'
+  | 'admin.generation'
+  | 'admin.staff'
+  | 'admin.message'
+  | 'admin.price';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 

@@ -18,7 +18,7 @@
  * this app deploys unchanged to development, staging and production.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { isLocalHost, siblingOrigin } from '@/lib/hosts';
+import { baseHost, isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 /** The marketing pages. On the app host these belong to the other hostname. */
 const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers'];
@@ -57,6 +57,20 @@ export function middleware(req: NextRequest) {
   }
 
   const onApp = host.startsWith('app.');
+  const onAdmin = host.startsWith('admin.');
+
+  // The staff console: its own hostname (so its session cookie is its own),
+  // the same build. Only the console's routes and the sign-in pages answer here.
+  if (onAdmin) {
+    if (pathname === '/') return NextResponse.redirect(new URL('/admin', req.url), 307);
+    if (pathname === '/login' && !req.nextUrl.searchParams.get('next')) return NextResponse.redirect(new URL('/login?next=/admin', req.url), 307);
+    if (pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/login' || pathname === '/forgot' || pathname === '/reset') return NextResponse.next();
+    return NextResponse.redirect(new URL('/admin', req.url), 307);
+  }
+  // The console reached on any other host belongs on its own.
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    return NextResponse.redirect(`https://admin.${baseHost(host)}${pathname}${search}`, 307);
+  }
 
   if (onApp) {
     // The portal has no landing: "/" goes to Today, and Today's own auth check

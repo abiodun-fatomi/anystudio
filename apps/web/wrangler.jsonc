@@ -33,6 +33,7 @@
       "name": "anystudio-app-development",
       "routes": [
         { "pattern": "app.dev.anystudio.ai", "custom_domain": true },
+        { "pattern": "admin.dev.anystudio.ai", "custom_domain": true },
         { "pattern": "dev.anystudio.ai", "custom_domain": true }
       ],
       "vars": { "NEXTJS_ENV": "development", "APP_ENV": "development" }
@@ -41,6 +42,7 @@
       "name": "anystudio-app-staging",
       "routes": [
         { "pattern": "app.staging.anystudio.ai", "custom_domain": true },
+        { "pattern": "admin.staging.anystudio.ai", "custom_domain": true },
         { "pattern": "staging.anystudio.ai", "custom_domain": true }
       ],
       "vars": { "NEXTJS_ENV": "production", "APP_ENV": "staging" }
@@ -49,6 +51,7 @@
       "name": "anystudio-app-production",
       "routes": [
         { "pattern": "app.anystudio.ai", "custom_domain": true },
+        { "pattern": "admin.anystudio.ai", "custom_domain": true },
         { "pattern": "anystudio.ai", "custom_domain": true },
         { "pattern": "www.anystudio.ai", "custom_domain": true }
       ],
