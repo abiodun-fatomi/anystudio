@@ -1,5 +1,5 @@
 import type { Mail } from '../../utils/mail-service';
-import { SIGNATURE, greet, html } from './_layout';
+import { SIGNATURE, esc, greet, render } from './_layout';
 
 const ROLE_WORDS: Record<string, string> = {
   ADMIN: 'an admin (they can change settings and invite people)',
@@ -7,6 +7,8 @@ const ROLE_WORDS: Record<string, string> = {
   BILLING: 'a billing contact (they can see and top up credits)',
   AUDITOR: 'a viewer (they can see everything, change nothing)',
 };
+
+const ROLE_SHORT: Record<string, string> = { ADMIN: 'Admin', MEMBER: 'Member', BILLING: 'Billing', AUDITOR: 'Viewer' };
 
 /** An invitation to join a workspace. Works for people with and without an account. */
 export function workspaceInvite(to: string, inviterName: string | null, workspaceName: string, role: string, link: string): Mail {
@@ -26,14 +28,30 @@ export function workspaceInvite(to: string, inviterName: string | null, workspac
       '',
       SIGNATURE,
     ].join('\n'),
-    html: html(
-      [
-        greet(null),
-        `<strong>${who}</strong> invited you to join <strong>${workspaceName}</strong> on AnyStudio as ${as}.`,
-        'The link works for 7 days.',
-        "If you don't know them, ignore this email — nothing happens unless the link is opened.",
+    html: render({
+      preheader: `${who} invited you to ${workspaceName}. The invitation works for 7 days.`,
+      eyebrow: 'Your team',
+      title: `${esc(who)} invited you to <span style="white-space:nowrap">${esc(workspaceName)}</span>`,
+      paragraphs: [
+        esc(greet(null)),
+        `You have been invited to join <strong>${esc(workspaceName)}</strong> on AnyStudio — the studio that turns one product photo into branded images, copy and reels.`,
       ],
-      { label: `Join ${workspaceName}`, url: link },
-    ),
+      panel: [
+        { label: 'Workspace', value: `<strong>${esc(workspaceName)}</strong>` },
+        {
+          label: 'Your role',
+          value: `${esc(ROLE_SHORT[role] ?? role)} <span style="color:#6E6575">— ${esc(
+            as
+              .replace(/^an? /, '')
+              .replace(/^[a-z ]+ \(/, '(')
+              .replace(/^\(|\)$/g, ''),
+          )}</span>`,
+        },
+        { label: 'Invited by', value: esc(who) },
+      ],
+      action: { label: `Join ${workspaceName}`, url: link },
+      note: "The invitation works for 7 days. If you don't know them, ignore this email — nothing happens unless the link is opened.",
+      reason: 'You are getting this because someone invited this address to a workspace on AnyStudio.',
+    }),
   };
 }

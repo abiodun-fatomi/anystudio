@@ -858,7 +858,7 @@ export const api = {
     updateProfile: (patch: { name?: string; avatarKey?: string | null; locale?: string | null; timezone?: string | null }) =>
       request<{ id: string; name: string | null; avatarKey: string | null; locale: string | null; timezone: string | null }>('PATCH', '/me/profile', patch),
     requestEmailChange: (email: string, reauth: Reauth) => request<{ status: 'sent' }>('POST', '/me/email', { email, ...reauth }),
-    confirmEmailChange: (token: string) => request<{ status: 'changed' | 'invalid_token' }>('POST', '/me/email/confirm', { token }),
+    confirmEmailChange: (token: string) => request<{ status: 'changed'; email: string } | { status: 'invalid_token' }>('POST', '/me/email/confirm', { token }),
     changePassword: (newPassword: string, reauth: Reauth) =>
       request<{ status: 'changed'; otherSessionsEnded: number }>('POST', '/me/password', { newPassword, ...reauth }),
     mfaEnrol: () => request<{ factorId: string; secret: string; uri: string }>('POST', '/me/mfa/enrol'),
@@ -869,7 +869,8 @@ export const api = {
     revokeSession: (id: string) => request<{ status: 'revoked' }>('DELETE', `/me/sessions/${id}`),
     revokeOtherSessions: () => request<{ status: 'revoked'; count: number }>('POST', '/me/sessions/revoke-others'),
     unlinkIdentity: (id: string) => request<{ status: 'unlinked' }>('DELETE', `/me/identities/${id}`),
-    activity: () => request<ActivityRow[]>('GET', '/me/security/activity'),
+    activity: (cursor?: string) =>
+      request<{ rows: ActivityRow[]; nextCursor: string | null }>('GET', `/me/security/activity?take=20${cursor ? `&cursor=${cursor}` : ''}`),
     notifications: () => request<Notifications>('GET', '/me/notifications'),
     updateNotifications: (body: {
       switches?: Partial<NotificationSwitches>;

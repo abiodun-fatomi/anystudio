@@ -186,7 +186,7 @@ export class AccountService {
   }
 
   /** The link in the new inbox was opened. Public: the person may be on a different device. */
-  async confirmEmailChange(token: string, req: Request): Promise<{ status: 'changed' | 'invalid_token' }> {
+  async confirmEmailChange(token: string, req: Request): Promise<{ status: 'changed'; email: string } | { status: 'invalid_token' }> {
     const row = await this.db.authToken.findUnique({ where: { tokenHash: sha256(token) } });
     if (!row || row.purpose !== 'EMAIL_CHANGE' || !row.userId || row.consumedAt || row.expiresAt < new Date()) {
       authLog('account.email_change', 'refused', { reason: 'invalid_token' }, req);
@@ -213,7 +213,7 @@ export class AccountService {
         'SECURITY_NOTICE',
       );
     authLog('account.email_change', 'succeeded', { userId: user.id, stage: 'confirmed' }, req);
-    return { status: 'changed' };
+    return { status: 'changed', email: newEmail };
   }
 
   // --------------------------------------------------------------- password
@@ -401,14 +401,21 @@ export class AccountService {
   // ---------------------------------------------------------------- activity
 
   /** The person's own security log: the last fifty things that touched their account. */
-  async activity(actor: Actor) {
+  /** Security events, newest first, twenty at a time; `cursor` is the last id seen. */
+  async activity(actor: Actor, q: { take?: number; cursor?: string } = {}) {
+    const take = Math.min(Math.max(q.take ?? 20, 1), 100);
     const rows = await this.db.authEvent.findMany({
       where: { userId: actor.userId },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: take + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       select: { id: true, type: true, surface: true, ip: true, userAgent: true, detail: true, createdAt: true },
     });
-    return rows.map((r) => ({ ...r, device: describeUserAgent(r.userAgent) }));
+    const page = rows.slice(0, take);
+    return {
+      rows: page.map((r) => ({ ...r, device: describeUserAgent(r.userAgent) })),
+      nextCursor: rows.length > take ? (page[page.length - 1]?.id ?? null) : null,
+    };
   }
 
   // ----------------------------------------------------------- notifications

@@ -8,7 +8,23 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 export const LOCALES = ['en', 'en-NG', 'en-GH', 'en-KE', 'en-ZA', 'fr', 'pt', 'pt-BR', 'yo', 'ha', 'ig', 'sw'] as const;
 
@@ -171,3 +187,18 @@ export const NOTIFICATION_DEFAULTS: NotificationSwitches = {
   lowCreditsEmail: true,
   weeklyDigest: false,
 };
+
+export class ActivityQueryDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  take?: number;
+
+  @ApiPropertyOptional({ description: 'The id of the last row seen' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+}

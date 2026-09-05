@@ -1,5 +1,5 @@
 import type { Mail } from '../../utils/mail-service';
-import { SIGNATURE, greet, html } from './_layout';
+import { SIGNATURE, esc, greet, render } from './_layout';
 
 /**
  * Sent to the NEW address. Nothing changes until this link is opened — so a
@@ -19,14 +19,15 @@ export function emailChangeConfirm(to: string, name: string | null, link: string
       '',
       SIGNATURE,
     ].join('\n'),
-    html: html(
-      [
-        greet(name),
-        `You asked to move your AnyStudio account to <strong>${to}</strong>. The link below works for 24 hours.`,
-        "If you didn't ask for this, ignore this email — nothing changes unless the link is opened.",
-      ],
-      { label: 'Use this email', url: link },
-    ),
+    html: render({
+      preheader: `Confirm ${to} as the email on your AnyStudio account.`,
+      eyebrow: 'Your account',
+      title: 'Use this address for AnyStudio?',
+      paragraphs: [esc(greet(name)), 'You asked to move your AnyStudio account to this address. Nothing changes until you confirm it here.'],
+      panel: [{ label: 'New email', value: `<strong>${esc(to)}</strong>` }],
+      action: { label: 'Yes, use this email', url: link },
+      note: "The link works for 24 hours. If you didn't ask for this, ignore this email — nothing changes unless the link is opened.",
+    }),
   };
 }
 
@@ -51,14 +52,21 @@ export function emailChangeNotice(to: string, name: string | null, newEmail: str
       '',
       SIGNATURE,
     ].join('\n'),
-    html: html(
-      [
-        greet(name),
-        `A request was made to change the email on your AnyStudio account from <strong>${to}</strong> to <strong>${newEmail}</strong>. It only takes effect once the new address confirms it.`,
-        "If that was you, there's nothing to do.",
-        "If it wasn't, change your password and sign out everywhere from the Security screen.",
+    html: render({
+      preheader: `A request to change your email to ${newEmail}. If that was you, nothing to do.`,
+      eyebrow: 'Security',
+      tone: 'warn',
+      title: 'Was this you?',
+      paragraphs: [
+        esc(greet(name)),
+        'A request was made to change the email on your AnyStudio account. It only takes effect once the new address confirms it.',
       ],
-      { label: 'Open Security', url: securityUrl },
-    ),
+      panel: [
+        { label: 'From', value: esc(to) },
+        { label: 'To', value: `<strong>${esc(newEmail)}</strong>` },
+      ],
+      action: { label: 'Open Security', url: securityUrl },
+      note: "If that was you, there's nothing to do. If it wasn't, change your password and sign out everywhere from the Security screen — straight away.",
+    }),
   };
 }
