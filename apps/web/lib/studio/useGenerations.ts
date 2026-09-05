@@ -204,7 +204,7 @@ export function useGenerations() {
   return { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField };
 }
 
-function toolFor(capability: string): string {
+export function toolFor(capability: string): string {
   return ({ IMAGE_EDIT: 'scene', BACKGROUND_REPLACE: 'background', BACKGROUND_REMOVE: 'cutout', UPSCALE: 'enhance', TEXT_GENERATE: 'copy', IMAGE_TO_VIDEO: 'video', IMAGE_GENERATE: 'flyer' } as Record<string, string>)[capability] ?? 'scene';
 }
 

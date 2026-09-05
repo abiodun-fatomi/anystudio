@@ -162,7 +162,48 @@ export interface PaymentView {
 }
 export interface CheckoutOut { paymentId: string; reference: string; provider: PaymentProvider; url: string; credits: number; amountMinor: number; currency: string }
 
+// ---------------------------------------------------------------- library
+
+export type LibraryType = 'all' | 'image' | 'video' | 'copy' | 'audio';
+export interface LibraryOutput { key: string; role: string; mime: string; size?: string; width?: number; height?: number; durationMs?: number; bytes?: number; url: string | null }
+export interface LibraryItem {
+  id: string; type: Exclude<LibraryType, 'all'>; capability: string; kind: string; title: string | null; productKey: string | null; favourite: boolean;
+  credits: number; createdAt: string; finishedAt: string | null; thumbUrl: string | null; previewUrl: string | null; previewMime: string | null;
+  sourceKey: string | null; sourceUrl: string | null; text: unknown; outputs: LibraryOutput[]; params?: Record<string, unknown>;
+}
+export interface LibraryProduct { productKey: string; title: string | null; count: number; lastAt: string; thumbUrl: string | null }
+export interface LibraryQuery { q?: string; type?: LibraryType; product?: string; favourite?: boolean; from?: string; to?: string; cursor?: string; take?: number }
+
+export interface Insights {
+  range: { days: number; from: string; to: string };
+  totals: { made: number; failed: number; credits: number; successRate: number | null; refunded: number; bought: number; previous: { made: number; credits: number } };
+  balance: { credits: number; dailySpend: number; runwayDays: number | null };
+  series: Array<{ date: string; made: number; failed: number; credits: number }>;
+  byType: Record<string, { count: number; credits: number; failed: number }>;
+  byCapability: Array<{ capability: string; type: string; count: number; credits: number; failed: number }>;
+  timing: Array<{ capability: string; p50Sec: number | null; p90Sec: number | null }>;
+  library: { total: number; added: number; images: number; videos: number; copy: number; sources: number };
+  topProducts: Array<{ productKey: string; title: string | null; count: number; credits: number }>;
+  engagement: null;
+}
+
 export const api = {
+  library: {
+    list: (workspaceId: string, q: LibraryQuery = {}) => {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '' && v !== false) p.set(k, String(v));
+      return request<{ items: LibraryItem[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/library${p.size ? `?${p}` : ''}`);
+    },
+    products: (workspaceId: string) => request<LibraryProduct[]>('GET', `/workspaces/${workspaceId}/library/products`),
+    get: (workspaceId: string, id: string) => request<LibraryItem>('GET', `/workspaces/${workspaceId}/library/${id}`),
+    patch: (workspaceId: string, id: string, patch: { title?: string | null; favourite?: boolean; productKey?: string | null }) => request<LibraryItem>('PATCH', `/workspaces/${workspaceId}/library/${id}`, patch),
+    remove: (workspaceId: string, id: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/library/${id}`),
+    /** Same-origin, cookie rides along; open it in a new tab or an <a download>. */
+    downloadUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/library/${id}/download`,
+  },
+  insights: {
+    overview: (workspaceId: string, days = 30) => request<Insights>('GET', `/workspaces/${workspaceId}/insights?days=${days}`),
+  },
   billing: {
     config: () => request<{ paddle: { clientToken: string; environment: 'sandbox' | 'production' } | null; gateways: PaymentProvider[] }>('GET', '/billing/config'),
     catalogue: (workspaceId: string) => request<Catalogue>('GET', `/workspaces/${workspaceId}/billing/catalogue`),

@@ -44,6 +44,17 @@ function Studio() {
 
   useEffect(() => { void hydrate(); }, [hydrate]);
 
+  // The library's "Make again" leaves the params here; pick them up once.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('anystudio:prefill');
+      if (!raw) return;
+      sessionStorage.removeItem('anystudio:prefill');
+      const pre = JSON.parse(raw) as { toolId?: string; params?: Record<string, unknown> };
+      if (pre.toolId && pre.params) { const { sourceKey: _s, ...rest } = pre.params; setValues((all) => ({ ...all, [pre.toolId!]: rest })); }
+    } catch { /* nothing to prefill */ }
+  }, []);
+
   const setUrl = useCallback((next: { source?: string | null; tool?: ToolId }) => {
     const q = new URLSearchParams(params.toString());
     if (next.source !== undefined) { if (next.source) q.set('source', next.source); else q.delete('source'); }
