@@ -108,10 +108,16 @@
 }
 .upload {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--s-3);
   align-items: center;
   font-size: var(--t-2);
+}
+/* A grid cell will not shrink below its content unless told to; a long
+   filename ("Screenshot 2026-08-18 at 2.58.27 AM.png") otherwise pushes
+   the row out of the pane. */
+.upload > div {
+  min-width: 0;
 }
 .uploadName {
   overflow: hidden;
