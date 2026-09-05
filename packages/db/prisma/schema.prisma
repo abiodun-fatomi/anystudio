@@ -117,6 +117,8 @@ model User {
   consents         Consent[]
   authEvents       AuthEvent[]
   generations      Generation[]
+  apiKeysCreated   ApiKey[]
+  whatsappContacts WhatsappContact[]
 
   @@index([status])
   @@map("users")
@@ -363,6 +365,10 @@ model Workspace {
   fingerprints CopyFingerprint[]
   payments      Payment[]
   subscriptions Subscription[]
+  projects      Project[]
+  apiKeys       ApiKey[]
+  webhooks      WebhookEndpoint[]
+  whatsappContacts WhatsappContact[]
 
   @@index([type])
   @@map("workspaces")
@@ -985,6 +991,19 @@ model Generation {
   /// Hidden from the library; the objects go with the lifecycle job later.
   deletedAt  DateTime?
 
+  // ---- channel
+  /// Where the request came from. The web studio, an organization's API key,
+  /// or the WhatsApp bot — each delivers the result differently.
+  channel    GenerationChannel @default(WEB)
+  /// For API requests: the key and project that made them, so usage can be
+  /// metered per project and a revoked key's history stays attributable.
+  apiKeyId   String?   @db.Uuid
+  projectId  String?   @db.Uuid
+  /// The organization's own reference for the merchant this was made for
+  /// (their customer id, a store slug). Opaque to us; fair-use limits and
+  /// usage rollups group by it.
+  merchantRef String?
+
   createdAt  DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
@@ -994,6 +1013,8 @@ model Generation {
   parent      Generation?  @relation("GenerationChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children    Generation[] @relation("GenerationChildren")
   assets      MediaAsset[]
+  apiKey      ApiKey?   @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   /// One row per client request, per workspace.
   @@unique([workspaceId, clientKey])
@@ -1007,7 +1028,16 @@ model Generation {
   @@index([parentId])
   /// The library grouping a catalogue by product.
   @@index([workspaceId, productKey])
+  /// Usage per project and per key, by day.
+  @@index([projectId, createdAt])
+  @@index([apiKeyId, createdAt])
   @@map("generations")
+}
+
+enum GenerationChannel {
+  WEB
+  API
+  WHATSAPP
 }
 
 // ---------------------------------------------------------------------------
@@ -1121,4 +1151,168 @@ model BrandKit {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("brand_kits")
+}
+
+// ---------------------------------------------------------------------------
+// DEVELOPER PLATFORM — organizations calling the same pipelines by API
+//
+// A project groups keys and usage (one per storefront, per environment, per
+// team). A key is shown once and stored hashed; the row carries a prefix so
+// a leaked key can be identified in a log without the secret ever being
+// stored. Usage is not a separate table: every generation an API key makes
+// carries the key and project, and rollups are queries over generations.
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  /// Unique within the workspace; what the API returns and the portal links by.
+  slug        String
+  description String?
+  /// Their default merchant reference for requests that do not name one.
+  createdAt   DateTime  @default(now())
+  archivedAt  DateTime?
+
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  apiKeys     ApiKey[]
+  generations Generation[]
+  webhooks    WebhookEndpoint[]
+
+  @@unique([workspaceId, slug])
+  @@map("projects")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  projectId   String    @db.Uuid
+  createdById String    @db.Uuid
+  name        String
+  /// "as_live_ab12cd34" — the first characters of the key, for recognising it in logs and the portal.
+  prefix      String
+  /// SHA-256 of the whole key. The key itself is never stored.
+  hash        String    @unique
+  /// What the key may do: "generations:write", "generations:read", "media:write", "catalogue:read".
+  scopes      String[]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  generations Generation[]
+
+  @@index([workspaceId, revokedAt])
+  @@index([projectId])
+  @@map("api_keys")
+}
+
+/// Where an organization wants to hear that a generation finished.
+model WebhookEndpoint {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  /// Null: every project in the workspace.
+  projectId   String?   @db.Uuid
+  url         String
+  /// HMAC-SHA256 signing secret, generated by us and shown once.
+  secret      String
+  /// "generation.succeeded", "generation.failed" — empty means all.
+  events      String[]
+  active      Boolean   @default(true)
+  /// Consecutive failed deliveries; the endpoint is paused past a threshold.
+  failures    Int       @default(0)
+  lastDeliveryAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project    Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model WebhookDelivery {
+  id          String                @id @default(uuid()) @db.Uuid
+  endpointId  String                @db.Uuid
+  event       String
+  /// The body as sent, so a replay sends exactly what was signed.
+  payload     Json
+  status      WebhookDeliveryStatus @default(PENDING)
+  attempts    Int                   @default(0)
+  nextAttemptAt DateTime            @default(now())
+  responseStatus Int?
+  lastError   String?
+  createdAt   DateTime              @default(now())
+  deliveredAt DateTime?
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  /// The deliverer: what is due, oldest first.
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// WHATSAPP — the bot's memory of a conversation
+//
+// A contact is a phone number on WhatsApp, linked to a user and the
+// workspace the bot works in for them. `state` is the conversation: which
+// step of which flow, and what has been collected so far. Messages are kept
+// for idempotency (Meta retries) and for support.
+// ---------------------------------------------------------------------------
+
+model WhatsappContact {
+  id          String    @id @default(uuid()) @db.Uuid
+  /// The WhatsApp id: the phone in E.164 without the plus.
+  waId        String    @unique
+  userId      String?   @db.Uuid
+  workspaceId String?   @db.Uuid
+  name        String?
+  /// The conversation: { flow, step, data }. Free-form; the bot owns its shape.
+  state       Json?
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  /// True once they asked the bot to stop. Nothing is sent until they write again.
+  optedOut    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  messages  WhatsappMessage[]
+
+  @@index([userId])
+  @@map("whatsapp_contacts")
+}
+
+enum WhatsappDirection {
+  IN
+  OUT
+}
+
+model WhatsappMessage {
+  id          String            @id @default(uuid()) @db.Uuid
+  contactId   String            @db.Uuid
+  /// Meta's message id (wamid.…). Unique so a redelivered webhook is a no-op.
+  waMessageId String?           @unique
+  direction   WhatsappDirection
+  type        String
+  body        Json
+  generationId String?          @db.Uuid
+  createdAt   DateTime          @default(now())
+
+  contact WhatsappContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt])
+  @@map("whatsapp_messages")
 }

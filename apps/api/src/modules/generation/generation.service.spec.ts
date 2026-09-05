@@ -15,6 +15,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { GenerationService } from './generation.service';
+import { GenerationHooks } from './generation.hooks';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { QueueService } from '../queue/queue.service';
@@ -27,7 +28,7 @@ suite('GenerationService', () => {
   const db = new PrismaClient();
   const ledger = new LedgerService(db);
   // No REDIS_URL in tests: the queue is a no-op and the row is the only truth — exactly the degraded mode.
-  const service = new GenerationService(db, ledger, new MediaService(db), new QueueService());
+  const service = new GenerationService(db, ledger, new MediaService(db), new QueueService(), new GenerationHooks());
 
   let workspaceId: string;
   let userId: string;

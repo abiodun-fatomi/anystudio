@@ -16,9 +16,10 @@ import { QueueModule } from '../modules/queue/queue.module';
 import { GenerationRunner } from './runner';
 import { Pipelines } from './pipelines';
 import { WorkerSupervisor } from './supervisor';
+import { DeveloperModule } from '../modules/developer/developer.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],
 })

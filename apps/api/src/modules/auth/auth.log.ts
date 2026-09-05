@@ -74,7 +74,13 @@ export type AuthEventName =
   | 'billing.checkout'
   | 'billing.verify'
   | 'billing.cancel'
-  | 'audio.unlock';
+  | 'audio.unlock'
+  | 'developer.project'
+  | 'developer.key'
+  | 'developer.webhook'
+  | 'api.auth'
+  | 'whatsapp.webhook'
+  | 'whatsapp.onboard';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 

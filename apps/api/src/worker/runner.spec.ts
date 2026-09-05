@@ -9,6 +9,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
 import { GenerationService } from '../modules/generation/generation.service';
+import { GenerationHooks } from '../modules/generation/generation.hooks';
 import { GenerationEvents } from '../modules/generation/generation.events';
 import { LedgerService } from '../modules/ledger/ledger.service';
 import { MediaService } from '../modules/media/media.service';
@@ -40,7 +41,7 @@ suite('GenerationRunner', () => {
   const ledger = new LedgerService(db);
   const media = new MemoryMedia(db);
   const queue = new QueueService();
-  const generations = new GenerationService(db, ledger, media, queue);
+  const generations = new GenerationService(db, ledger, media, queue, new GenerationHooks());
   const events = new GenerationEvents(db);
   process.env.APP_ENV = 'test';
   const registry = new ProviderRegistry();

@@ -45,7 +45,12 @@ export class RateLimitGuard implements CanActivate {
     // your own health check.
     if (req.path === '/health' || req.path === '/ready') return true;
 
-    const rules = RATE_LIMITS[`${req.method} ${req.path}`] ?? [DEFAULT_RATE_RULE];
+    // The table is keyed by the route as declared (":workspaceId"), which the
+    // router has resolved by the time a guard runs; a literal path still
+    // matches for routes without parameters.
+    const pattern = (req as Request & { route?: { path?: string } }).route?.path;
+    const route = pattern ? `${req.method} ${pattern}` : `${req.method} ${req.path}`;
+    const rules = RATE_LIMITS[route] ?? RATE_LIMITS[`${req.method} ${req.path}`] ?? [DEFAULT_RATE_RULE];
 
     for (const rule of rules) {
       const subject = this.subject(req, rule);
@@ -55,7 +60,7 @@ export class RateLimitGuard implements CanActivate {
       // limit no one, and both are worse than the rule not applying yet.
       if (!subject) continue;
 
-      const key = `rl:${rule.scope}:${req.method}:${req.path}:${subject}`;
+      const key = `rl:${rule.scope}:${route}:${subject}`;
       let verdict;
       try {
         verdict = await this.store.hit(key, rule.limit, rule.windowSec);
@@ -74,7 +79,7 @@ export class RateLimitGuard implements CanActivate {
         // logged because a burst of these on /auth/login is the first sign of
         // credential stuffing, and the shape of that burst is the story.
         logger.warn(
-          { scope: rule.scope, route: `${req.method} ${req.path}`, limit: rule.limit,
+          { scope: rule.scope, route, limit: rule.limit,
             windowSec: rule.windowSec, ip: req.ip, requestId: req.requestId },
           'rate limit exceeded',
         );
@@ -111,12 +116,19 @@ export class RateLimitGuard implements CanActivate {
         const claimed = body?.email ?? body?.identifier;
         return typeof claimed === 'string' && claimed ? claimed.toLowerCase().slice(0, 200) : null;
       }
-      // The organization API does not exist yet. Its rules sit in the table as
-      // the specification they will be built to; until then they resolve to no
-      // subject and are skipped.
+      // The organization API: the key is the subject before it is resolved
+      // (a hash of the bearer token is stable per key), and a merchant is the
+      // key plus the caller's own reference for who this is for.
       case 'apiKey':
-      case 'merchant':
-        return null;
+      case 'merchant': {
+        const header = req.get('authorization') ?? '';
+        if (!header.startsWith('Bearer ')) return null;
+        const keyHash = createHash('sha256').update(header.slice(7).trim()).digest('hex').slice(0, 32);
+        if (rule.scope === 'apiKey') return `k:${keyHash}`;
+        const body = req.body as { merchantRef?: unknown } | undefined;
+        const merchant = typeof body?.merchantRef === 'string' ? body.merchantRef : req.get('x-merchant-ref');
+        return merchant ? `m:${keyHash}:${String(merchant).slice(0, 120)}` : null;
+      }
       default:
         return null;
     }

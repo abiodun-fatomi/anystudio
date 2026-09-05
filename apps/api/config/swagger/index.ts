@@ -21,6 +21,7 @@ export default class SwaggerConfig {
       )
       .setVersion('1.0')
       .addCookieAuth('__Host-as_app', { type: 'apiKey', in: 'cookie', name: '__Host-as_app' }, 'session')
+      .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'An API key from the developer portal: as_live_… or as_test_…' }, 'apiKey')
       .build();
 
     const document = SwaggerModule.createDocument(app, options);

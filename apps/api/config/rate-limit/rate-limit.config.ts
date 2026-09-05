@@ -48,6 +48,14 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   'POST /api/v1/billing/webhooks/paddle':      [{ limit: 3000, windowSec: 60, scope: 'ip' }],
   // Organization API (issued keys), per key and per merchant behind the key.
   'POST /api/v1/generations':         [{ limit: 60, windowSec: 60, scope: 'apiKey' }, { limit: 10, windowSec: 60, scope: 'merchant' }],
+  'POST /api/v1/uploads/from-url':    [{ limit: 60, windowSec: 60, scope: 'apiKey' }],
+  'POST /api/v1/uploads':             [{ limit: 120, windowSec: 60, scope: 'apiKey' }],
+  'GET /api/v1/generations':          [{ limit: 300, windowSec: 60, scope: 'apiKey' }],
+  // Portal: minting keys and endpoints is rare by nature.
+  'POST /api/v1/workspaces/:workspaceId/developer/keys':     [{ limit: 10, windowSec: 3600, scope: 'account' }],
+  'POST /api/v1/workspaces/:workspaceId/developer/webhooks': [{ limit: 10, windowSec: 3600, scope: 'account' }],
+  // Meta retries aggressively and from many IPs.
+  'POST /api/v1/whatsapp/webhook':    [{ limit: 6000, windowSec: 60, scope: 'ip' }],
 };
 
 /** Default for anything not listed: a per-IP ceiling that only a script hits. */
