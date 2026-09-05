@@ -17,9 +17,10 @@ import { GenerationRunner } from './runner';
 import { Pipelines } from './pipelines';
 import { WorkerSupervisor } from './supervisor';
 import { DeveloperModule } from '../modules/developer/developer.module';
+import { WhatsappModule } from '../modules/whatsapp/whatsapp.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule, WhatsappModule],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],
 })
