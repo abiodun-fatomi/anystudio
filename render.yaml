@@ -71,6 +71,12 @@ services:
     region: frankfurt
     plan: free
     ipAllowList: []
+    # A queue is not a cache. Under the default allkeys-lru, a full instance
+    # quietly throws away whichever keys it likes — which can be a queued
+    # generation someone has already paid credits for. noeviction makes a
+    # full instance refuse writes instead, which the API logs loudly and
+    # the credits path treats as "not started, refunded".
+    maxmemoryPolicy: noeviction
 
   - type: web
     name: anystudio-api-dev
