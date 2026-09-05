@@ -10,8 +10,10 @@
  * paid for", negative. At the close of each calendar month the net debits
  * of the period are priced with the rate card and written as an invoice;
  * paying the invoice puts the invoiced credits back through the ledger, so
- * the balance climbs toward zero again. Prepaid credits an organization
- * already held stay as a buffer above the line and are never invoiced.
+ * the balance climbs toward zero again. Every credit used in the period is
+ * invoiced, whether the wallet was above or below zero at the time; paying
+ * the invoice returns those credits, so a prepaid buffer an organization
+ * held before going postpaid is restored rather than consumed.
  *
  * THE DATABASE IS THE QUEUE
  * -------------------------
@@ -496,7 +498,7 @@ export class UsageBillingService {
     return this.invoiceView(paid);
   }
 
-  /** Cancel an invoice. The credits it billed are put back so the line is square; a corrected invoice can be issued by closing the period again. */
+  /** Cancel an invoice. The credits it billed are put back so the line is square. Its period stays closed; anything owed for it is settled by hand or on the next invoice. */
   async voidInvoice(actor: Actor, invoiceId: string, reason: string, req: Request) {
     const inv = await this.db.invoice.findUnique({ where: { id: invoiceId } });
     if (!inv) throw new NotFoundError('invoice');
@@ -558,15 +560,16 @@ export class UsageBillingService {
 
   /** Where the next invoice starts: after the last one, or at the month the account opened. */
   private async openPeriodStart(account: BillingAccount, now: Date): Promise<Date> {
-    const last = await this.db.invoice.findFirst({
-      where: { accountId: account.id, status: { not: 'VOID' } },
-      orderBy: { periodEnd: 'desc' },
-      select: { periodEnd: true },
-    });
-    const start = last ? last.periodEnd : monthOf(account.startedAt).start;
+    // A voided invoice still closes its period — a corrected one is issued
+    // with "Invoice now" for the period after it, never by re-billing the
+    // same dates. The first period starts the moment the line opened (or
+    // reopened), not at the start of that month, so usage made while the
+    // workspace was prepaid is never billed.
+    const last = await this.db.invoice.findFirst({ where: { accountId: account.id }, orderBy: { periodEnd: 'desc' }, select: { periodEnd: true } });
+    const opened = account.startedAt;
+    const start = last && last.periodEnd > opened ? last.periodEnd : opened;
     return start > now ? monthOf(now).start : start;
   }
-
   /** The current period up to `now`, as an invoice. Null when there is nothing at all to bill. */
   private async closePeriod(account: BillingAccount, now: Date): Promise<Invoice | null> {
     const start = await this.openPeriodStart(account, now);

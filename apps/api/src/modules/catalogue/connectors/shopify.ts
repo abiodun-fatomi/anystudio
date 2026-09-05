@@ -7,6 +7,7 @@
  * review, nothing to host — the right size for a shop connecting one store.
  * Pages follow the `Link: <…page_info=…>; rel="next"` header.
  */
+import { safeFetch } from '../../../utils/safe-fetch';
 import { MAX_IMAGES_PER_PRODUCT, STORE_TIMEOUT_MS, StoreError, plainText, toMinor, type RemoteProduct, type StoreConnector, type StoreInfo } from './types';
 
 const API_VERSION = '2024-10';
@@ -70,7 +71,7 @@ export class ShopifyConnector implements StoreConnector {
   private async page<T>(domain: string, credentials: Record<string, string>, path: string): Promise<{ body: T; next: string | null }> {
     let res: Response;
     try {
-      res = await fetch(`https://${domain}/admin/api/${API_VERSION}${path}`, {
+      res = await safeFetch(`https://${domain}/admin/api/${API_VERSION}${path}`, {
         headers: { 'X-Shopify-Access-Token': credentials.accessToken ?? '', accept: 'application/json' },
         signal: AbortSignal.timeout(STORE_TIMEOUT_MS),
       });

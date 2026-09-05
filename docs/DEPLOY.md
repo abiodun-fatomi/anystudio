@@ -589,9 +589,11 @@ overdraft. Seed adds the rate card.
 
 ## 15. Refunds
 
-A customer can ask for a purchase back from Credits → Payments →
-**Request refund**, within 14 days of paying and only while none of its
-credits have been used (the button only shows when that holds). The
+A customer can ask for a credit-pack purchase back from Credits →
+Payments → **Request refund**, within 14 days of paying and only while
+none of its credits have been used (the button only shows when that
+holds; plans are cancelled instead and run to the end of the paid
+period). The
 request lands in the staff console → **Payments → Refund requests**, and
 in `REFUNDS_EMAIL` if set. **Approve** sends the money back at the gateway
 (Flutterwave transaction refund, Paddle adjustment) and then claws the

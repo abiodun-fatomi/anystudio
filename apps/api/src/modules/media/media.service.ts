@@ -28,6 +28,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { UnsafeUrlError, safeFetch } from '../../utils/safe-fetch';
 import { createHash } from 'node:crypto';
 import sharp, { type Metadata } from 'sharp';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../../config/globals/errors';
@@ -134,20 +135,11 @@ export class MediaService {
       throw new ValidationError({ url: 'That is not a valid URL.' });
     }
     if (target.protocol !== 'https:') throw new ValidationError({ url: 'Only https URLs are fetched.' });
-    const host = target.hostname.toLowerCase();
-    if (
-      host === 'localhost' ||
-      host.endsWith('.local') ||
-      host.endsWith('.internal') ||
-      /^(127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$)/.test(host) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-    ) {
-      throw new ValidationError({ url: 'That address cannot be fetched.' });
-    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30_000);
     try {
-      const res = await fetch(target, { signal: controller.signal, redirect: 'follow', headers: { accept: 'image/*,video/*,audio/*' } });
+      // Resolved and checked at every hop: no private addresses, no rebinding, no redirect into the network.
+      const res = await safeFetch(target, { signal: controller.signal, headers: { accept: 'image/*,video/*,audio/*' } });
       if (!res.ok) throw new ValidationError({ url: `The URL answered ${res.status}.` });
       const mime = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
       const family = familyOf(mime);
@@ -160,6 +152,7 @@ export class MediaService {
       return await this.ingest(workspaceId, userId, buf, mime, name);
     } catch (err) {
       if (err instanceof ValidationError) throw err;
+      if (err instanceof UnsafeUrlError) throw new ValidationError({ url: err.message });
       throw new ValidationError({ url: `Could not fetch that URL: ${err instanceof Error ? (err.name === 'AbortError' ? 'timed out' : err.message) : err}` });
     } finally {
       clearTimeout(timer);

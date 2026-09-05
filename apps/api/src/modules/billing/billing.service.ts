@@ -663,6 +663,7 @@ export class BillingService {
   async refundEligibility(payment: Payment, balance: number): Promise<{ ok: boolean; why?: string }> {
     if (payment.status !== 'SUCCEEDED') return { ok: false, why: 'Only a paid purchase can be refunded.' };
     if (payment.kind === 'INVOICE') return { ok: false, why: 'Invoices are settled with the studio directly.' };
+    if (payment.kind !== 'PACK') return { ok: false, why: 'A plan is cancelled from the Credits page; it runs to the end of the paid period.' };
     if (Date.now() - payment.createdAt.getTime() > REFUND_WINDOW_DAYS * 86_400_000)
       return { ok: false, why: `Refunds are possible within ${REFUND_WINDOW_DAYS} days of a purchase.` };
     if (balance < payment.credits) return { ok: false, why: 'Some of these credits have been used, so the purchase cannot be refunded.' };
@@ -757,6 +758,17 @@ export class BillingService {
     if (request.status !== 'REQUESTED') throw new ConflictError(`That request is ${request.status.toLowerCase()}.`);
     const payment = request.payment;
     const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: payment.workspaceId }, select: { id: true } });
+    const gateway = this.gateways.get(payment.provider);
+    if (approve && !gateway)
+      throw new ConflictError(`The ${payment.provider} gateway is not configured here, so the money cannot be sent back from this console.`);
+    // Claim the row before any money moves, so two approvals — or a retry
+    // after a fault — cannot ask the gateway twice. The claim is undone if
+    // the gateway refuses, and the request goes back to REQUESTED.
+    const claimed = await this.db.refundRequest.updateMany({
+      where: { id: requestId, status: 'REQUESTED' },
+      data: { status: approve ? 'APPROVED' : 'REFUSED', decidedById: actor.userId, decidedAt: new Date() },
+    });
+    if (claimed.count === 0) throw new ConflictError('That request was just decided by someone else.');
     let approved = approve;
     let decisionNote: string | null = note.trim() || null;
     if (approve) {
@@ -765,13 +777,12 @@ export class BillingService {
         approved = false;
         decisionNote = 'Some of the credits were used after the request was made, so the purchase can no longer be refunded.';
       } else {
-        const gateway = this.gateways.get(payment.provider);
-        if (!gateway) throw new ConflictError(`The ${payment.provider} gateway is not configured here, so the money cannot be sent back from this console.`);
         let ref: string;
         try {
-          ref = (await gateway.refund(payment, note.trim() || 'requested by customer')).providerRef;
+          ref = (await gateway!.refund(payment, note.trim() || 'requested by customer')).providerRef;
         } catch (e) {
-          logger.error({ err: e, requestId, paymentId: payment.id, provider: payment.provider }, 'gateway refund failed; nothing changed');
+          await this.db.refundRequest.update({ where: { id: requestId }, data: { status: 'REQUESTED', decidedById: null, decidedAt: null } });
+          logger.error({ err: e, requestId, paymentId: payment.id, provider: payment.provider }, 'gateway refund failed; request left open');
           throw new ConflictError(`The gateway did not accept the refund: ${e instanceof Error ? e.message : String(e)}`);
         }
         // Money has left. Take the credits back; if that fails now, say so loudly — it is the one thing to fix by hand.

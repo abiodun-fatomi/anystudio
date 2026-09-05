@@ -56,8 +56,6 @@ export class CatalogueService {
 
   /** Prove the credential against the store, then keep it. The first sync starts at once. */
   async connect(actor: Actor, workspaceId: string, dto: ConnectStoreDto, req: Request) {
-    const live = await this.db.storeConnection.count({ where: { workspaceId, disconnectedAt: null } });
-    if (live >= MAX_STORES) throw new ConflictError(`Up to ${MAX_STORES} stores per workspace. Disconnect one first.`);
     const { domain, credentials } = this.credentialsFor(dto);
     let info;
     try {
@@ -67,6 +65,10 @@ export class CatalogueService {
       throw e;
     }
     const existing = await this.db.storeConnection.findUnique({ where: { workspaceId_kind_domain: { workspaceId, kind: dto.kind, domain: info.domain } } });
+    if (!existing || existing.disconnectedAt) {
+      const live = await this.db.storeConnection.count({ where: { workspaceId, disconnectedAt: null } });
+      if (live >= MAX_STORES) throw new ConflictError(`Up to ${MAX_STORES} stores per workspace. Disconnect one first.`);
+    }
     const data = {
       label: info.name,
       credentialsEnc: encrypt(JSON.stringify(credentials)),

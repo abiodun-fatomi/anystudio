@@ -95,11 +95,8 @@ export class CareersService {
     logger.info({ applicationId: app.id, jobId: job.id, slug: job.slug }, 'application received');
     const raw = process.env.APP_ENV;
     const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
-    const origin = (
-      req.get('x-anystudio-origin') ||
-      req.get('origin') ||
-      (env === 'local' ? 'http://localhost:3000' : `https://${marketingHost(env)}`)
-    ).replace(/\/$/, '');
+    // Never from a request header: this mail goes to an address anyone can type in.
+    const origin = env === 'local' ? 'http://localhost:3000' : `https://${marketingHost(env)}`;
     await this.mailer
       .send(applicationReceived(email, app.name, { title: job.title, team: job.team, url: `${origin}/careers/${job.slug}` }))
       .catch((err: unknown) => logger.error({ err, applicationId: app.id }, 'application mail failed'));

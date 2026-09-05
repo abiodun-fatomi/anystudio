@@ -7,6 +7,7 @@
  * http sites, which are refused here. Pages are numbered; the total is in
  * `X-WP-TotalPages`.
  */
+import { safeFetch } from '../../../utils/safe-fetch';
 import { MAX_IMAGES_PER_PRODUCT, STORE_TIMEOUT_MS, StoreError, plainText, toMinor, type RemoteProduct, type StoreConnector, type StoreInfo } from './types';
 
 interface WooProduct {
@@ -48,7 +49,9 @@ export function wooOrigin(input: string): string {
 export class WooCommerceConnector implements StoreConnector {
   async probe(origin: string, credentials: Record<string, string>): Promise<StoreInfo> {
     const settings = await this.get<Array<{ id: string; value: string }>>(origin, credentials, `/wp-json/wc/v3/settings/general`);
-    const currency = settings.find?.((s) => s.id === 'woocommerce_currency')?.value ?? null;
+    const currency = Array.isArray(settings) ? (settings.find((s) => s.id === 'woocommerce_currency')?.value ?? null) : null;
+    if (!Array.isArray(settings))
+      throw new StoreError(`woocommerce ${origin}: settings not JSON`, true, 'The shop answered, but not with its REST API. Is the address right?');
     let name = new URL(origin).hostname;
     try {
       const site = await this.get<{ name?: string }>(origin, credentials, `/wp-json`);
@@ -94,7 +97,7 @@ export class WooCommerceConnector implements StoreConnector {
     const auth = Buffer.from(`${credentials.consumerKey ?? ''}:${credentials.consumerSecret ?? ''}`).toString('base64');
     let res: Response;
     try {
-      res = await fetch(`${origin}${path}`, {
+      res = await safeFetch(`${origin}${path}`, {
         headers: { authorization: `Basic ${auth}`, accept: 'application/json' },
         signal: AbortSignal.timeout(STORE_TIMEOUT_MS),
       });

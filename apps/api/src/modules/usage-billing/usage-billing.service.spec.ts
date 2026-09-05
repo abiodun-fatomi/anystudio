@@ -201,12 +201,12 @@ describe('closeDue', () => {
     process.env.APP_ENV = 'dev';
   });
 
-  it('issues one invoice per finished month, from the month the account opened, and none for the open month', async () => {
+  it('issues one invoice per finished period, from the day the account opened, and none for the open month', async () => {
     const h = harness();
     const n = await h.svc.closeDue(new Date('2026-09-05T10:00:00Z'));
     expect(n).toBe(2); // July (partial) and August
     expect(h.invoices.map((i) => [i.number, (i.periodStart as Date).toISOString().slice(0, 10), (i.periodEnd as Date).toISOString().slice(0, 10)])).toEqual([
-      ['INV-202607-0001', '2026-07-01', '2026-08-01'],
+      ['INV-202607-0001', '2026-07-20', '2026-08-01'],
       ['INV-202608-0001', '2026-08-01', '2026-09-01'],
     ]);
     const inv = h.invoices[0]!;
