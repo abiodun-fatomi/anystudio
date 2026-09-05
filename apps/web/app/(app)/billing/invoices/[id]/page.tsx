@@ -9,10 +9,9 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useApp } from '@/lib/app-context';
 import { api, type InvoiceView } from '@/lib/api';
-import { moneyMinor } from '@/lib/billing/money';
+import { INVOICE_STATUS, moneyMinor } from '@/lib/billing/money';
 import { Badge, Button, EmptyState, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
-import { INVOICE_STATUS } from '../../CreditLine';
 import styles from './invoice.module.css';
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -194,8 +193,9 @@ export default function InvoicePage() {
           ) : (
             <>
               <p>
-                Pay online with the button above, or by bank transfer quoting <strong>{inv.number}</strong>
+                {inv.payable && canBuy ? 'Pay online with the button above, or by bank transfer' : 'Pay by bank transfer'} quoting <strong>{inv.number}</strong>
                 {inv.bankDetails ? ':' : '.'}
+                {!canBuy && ' An owner, admin or the billing contact can pay it online from the Billing page.'}
               </p>
               {inv.bankDetails && <pre className={styles.bank}>{inv.bankDetails}</pre>}
               <p className={styles.quiet}>

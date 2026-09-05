@@ -35,7 +35,7 @@ export default function StudioPage() {
 }
 
 function Studio() {
-  const { workspace, balance } = useApp();
+  const { workspace, balance, postpaid, paused } = useApp();
   const { toast } = useToast();
   const router = useRouter();
   const params = useSearchParams();
@@ -102,6 +102,8 @@ function Studio() {
       if (next.source !== undefined) {
         if (next.source) q.set('source', next.source);
         else q.delete('source');
+        // A product handed over on the URL has done its job once its picture is the source.
+        q.delete('product');
       }
       if (next.tool) q.set('tool', next.tool);
       router.replace(`/studio?${q.toString()}`, { scroll: false });
@@ -140,7 +142,8 @@ function Studio() {
   const useProduct = useCallback(
     (p: CatalogueProductView) => {
       const first = p.images.find((i) => i.key);
-      if (first) setUrl({ source: first.key });
+      // Either way the URL is rewritten, which also drops ?product= so a refresh does not start over.
+      setUrl({ source: first?.key ?? sourceKey });
       setSourceMeta(null);
       const price = p.priceMinor !== null && p.currency ? moneyMinor(p.priceMinor, p.currency) : '';
       setValues((all) => {
@@ -158,7 +161,7 @@ function Studio() {
       });
       toast({ title: `Starting from ${p.title}`, body: 'Name, price and details are filled in for every tool.', tone: 'ok' });
     },
-    [setUrl, toast],
+    [setUrl, toast, sourceKey],
   );
   const useProductRef = useRef(useProduct);
   useProductRef.current = useProduct;
@@ -171,10 +174,6 @@ function Studio() {
       .then((p) => {
         if (!live) return;
         useProductRef.current(p);
-        const q = new URLSearchParams(window.location.search);
-        q.delete('product');
-        if (p.images[0]?.key) q.set('source', p.images[0].key);
-        window.history.replaceState(null, '', `/studio?${q.toString()}`);
       })
       .catch(() => undefined);
     return () => {
@@ -212,12 +211,23 @@ function Studio() {
       setBusy(false);
       if (!r.ok) {
         if (r.status === 402)
-          toast({
-            title: 'Not enough credits',
-            body: 'Top up and this will be here waiting.',
-            tone: 'warn',
-            action: { label: 'Top up', onClick: () => router.push('/billing/plans') },
-          });
+          toast(
+            postpaid
+              ? {
+                  title: paused ? 'Your organization is paused' : 'The credit line is used up',
+                  body: paused
+                    ? 'An invoice is overdue. Work resumes the moment it is paid.'
+                    : 'Pay the open invoice, or ask us to raise the limit. Your work is saved.',
+                  tone: 'warn',
+                  action: { label: 'Billing', onClick: () => router.push('/billing') },
+                }
+              : {
+                  title: 'Not enough credits',
+                  body: 'Top up and this will be here waiting.',
+                  tone: 'warn',
+                  action: { label: 'Top up', onClick: () => router.push('/billing/plans') },
+                },
+          );
         else toast({ title: 'That did not go through', body: r.message, tone: 'danger' });
       } else {
         document.getElementById('outputs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

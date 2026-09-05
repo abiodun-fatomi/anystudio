@@ -33,12 +33,41 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background: var(--line-soft);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
   overflow: hidden;
+}
+.row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.failed {
+  color: var(--danger);
+  font-size: var(--t-2);
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+}
+.viewLink {
+  font-size: var(--t-2);
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  text-decoration: none;
+}
+.viewLink:hover {
+  background: var(--sunk);
 }
 .weekday {
   background: var(--surface);
@@ -50,6 +79,7 @@
   text-align: center;
 }
 .cell {
+  position: relative;
   background: var(--surface-2);
   min-height: 96px;
   padding: var(--s-2);

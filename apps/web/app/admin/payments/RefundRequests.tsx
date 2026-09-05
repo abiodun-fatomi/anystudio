@@ -106,6 +106,11 @@ export function RefundRequests() {
                     <Badge tone={TONE[r.status]}>{r.status.toLowerCase()}</Badge>
                   </td>
                   <td className={tableCell.shrink}>
+                    {r.status === 'REQUESTED' && atLeast('OPERATOR') && (!r.stillRefundable || !r.gatewayConfigured) && (
+                      <div style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', marginBottom: 4 }}>
+                        {!r.stillRefundable ? 'Credits were spent since the request — refuse it.' : `${r.payment.provider} is not configured here.`}
+                      </div>
+                    )}
                     {r.status === 'REQUESTED' && atLeast('OPERATOR') && (
                       <span style={{ display: 'inline-flex', gap: 'var(--s-1)' }}>
                         <Button

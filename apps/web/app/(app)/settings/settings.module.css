@@ -208,7 +208,7 @@
   object-fit: contain;
   display: block;
   padding: 6px;
-  background: #fff;
+  background: var(--surface-2);
 }
 
 /* ---- two-step ---- */

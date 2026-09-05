@@ -230,3 +230,15 @@
     grid-template-columns: 1fr;
   }
 }
+.ext {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s-3);
+  min-height: var(--touch);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--r-md);
+}
+.ext:hover {
+  background: var(--sunk);
+}

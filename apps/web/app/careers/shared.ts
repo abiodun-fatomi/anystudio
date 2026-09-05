@@ -57,7 +57,7 @@ export const CAREERS_STYLE = `
 .cr-form .file .pick{border:1px dashed var(--line);border-radius:4px;padding:10px 14px;cursor:pointer;font-weight:600;font-size:14px;background:var(--surface-2)}
 .cr-form .file .name{font-size:13px;color:var(--muted)}
 .cr-form .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-.cr-form .err{color:#B3002D;font-size:13.5px;display:none}
+.cr-form .err{color:var(--accent);font-weight:600;font-size:13.5px;display:none}
 .cr-form[data-error] .err{display:block}
 .cr-form .done{display:none;text-align:center;padding:20px 0}
 .cr-form .done b{display:block;font-size:20px;margin-bottom:6px}

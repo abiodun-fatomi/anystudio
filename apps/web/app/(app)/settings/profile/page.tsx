@@ -76,6 +76,8 @@ export default function ProfilePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
   const browserZone = useRef<string>('');
   useEffect(() => {
     try {
@@ -136,8 +138,6 @@ export default function ProfilePage() {
 
   // The organization's logo: an owner or admin uploads it here; it shows in
   // the workspace switcher for everyone in the organization.
-  const logoInput = useRef<HTMLInputElement>(null);
-  const [logoBusy, setLogoBusy] = useState(false);
   const isOrg = workspace.type === 'ORGANIZATION';
   const canBrand = ['OWNER', 'ADMIN'].includes(workspace.role);
   const setLogo = async (file: File | null) => {

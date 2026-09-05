@@ -66,11 +66,16 @@ export default function CareersAdminPage() {
   const [open, setOpen] = useState<AdminApplication | null>(null);
   const [notes, setNotes] = useState('');
 
+  const [waitlist, setWaitlist] = useState<Array<{ source: string; count: number }> | null>(null);
   const load = useCallback(() => {
     api.admin
       .jobs()
       .then(setJobs)
       .catch(() => setJobs([]));
+    api.admin
+      .waitlist()
+      .then((w) => setWaitlist(w.bySource))
+      .catch(() => setWaitlist([]));
   }, []);
   useEffect(load, [load]);
 
@@ -163,6 +168,12 @@ export default function CareersAdminPage() {
         lede="Openings appear on /careers the minute they are opened. Applications arrive here with the CV; every applicant gets a confirmation email."
         actions={atLeast('ADMIN') ? <Button onClick={() => setEditing({ ...EMPTY })}>New opening</Button> : undefined}
       />
+
+      {waitlist && waitlist.length > 0 && (
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>
+          Mobile-app waitlist: {waitlist.map((w) => `${w.count.toLocaleString()} (${w.source})`).join(' · ')}.
+        </p>
+      )}
 
       <Section title="Openings">
         {jobs === null ? (
@@ -415,9 +426,9 @@ export default function CareersAdminPage() {
                 disabled={!atLeast('OPERATOR')}
               />
               {open.cvUrl ? (
-                <Button variant="subtle" href={open.cvUrl}>
-                  Open CV{open.cvName ? ` · ${open.cvName}` : ''}
-                </Button>
+                <a className={styles.pill} href={open.cvUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontWeight: 600 }}>
+                  Open CV{open.cvName ? ` · ${open.cvName}` : ''} ↗
+                </a>
               ) : open.hasCv ? (
                 <span style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>Fetching the CV link…</span>
               ) : (

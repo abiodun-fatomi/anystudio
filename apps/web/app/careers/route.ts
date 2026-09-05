@@ -5,7 +5,13 @@ import { CAREERS_STYLE, TYPE_WORDS, type Opening } from './shared';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request): Promise<Response> {
-  const jobs = (await apiGet<Opening[]>(req, '/careers/jobs')) ?? [];
+  const jobs = await apiGet<Opening[]>(req, '/careers/jobs');
+  // An unreachable API must not publish an empty careers page to the CDN.
+  if (jobs === null)
+    return new Response('The careers page is briefly unavailable. Try again in a minute.', {
+      status: 503,
+      headers: { 'cache-control': 'no-store', 'retry-after': '60' },
+    });
   const list = jobs.length
     ? `<div class="cr-list">${jobs
         .map(

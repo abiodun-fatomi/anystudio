@@ -65,12 +65,14 @@ export function Calendar({
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const [jobs, setJobs] = useState<PublishJob[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState<string>(() => ymd(new Date()));
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
 
   const days = useMemo(() => gridFor(month), [month]);
+  const weeks = useMemo(() => Array.from({ length: 6 }, (_, i) => days.slice(i * 7, i * 7 + 7)), [days]);
   const load = useCallback(async () => {
     const from = days[0]!;
     const to = new Date(days[41]!);
@@ -78,8 +80,10 @@ export function Calendar({
     try {
       const r = await api.publishing.window(workspaceId, from, to);
       setJobs(Array.isArray(r?.rows) ? r.rows : []);
+      setFailed(false);
     } catch {
       setJobs((cur) => cur ?? []);
+      setFailed(true);
     }
   }, [workspaceId, days]);
   useEffect(() => {
@@ -167,82 +171,103 @@ export function Calendar({
         </div>
       </div>
 
+      {failed && (
+        <div className={styles.failed} role="alert">
+          The month could not be loaded.{' '}
+          <Button size="sm" variant="link" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
+      )}
       <div className={styles.grid} role="grid" aria-label={monthLabel}>
-        {WEEKDAYS.map((w) => (
-          <div key={w} className={styles.weekday} role="columnheader">
-            {w}
+        <div role="row" className={styles.row}>
+          {WEEKDAYS.map((w) => (
+            <div key={w} className={styles.weekday} role="columnheader">
+              {w}
+            </div>
+          ))}
+        </div>
+        {weeks.map((week, wi) => (
+          <div key={wi} role="row" className={styles.row}>
+            {week.map((d) => {
+              const key = ymd(d);
+              const list = byDay.get(key) ?? [];
+              const outside = d.getMonth() !== month.getMonth();
+              const past = key < today;
+              return (
+                <div
+                  key={key}
+                  role="gridcell"
+                  tabIndex={0}
+                  className={styles.cell}
+                  data-outside={outside || undefined}
+                  data-today={key === today || undefined}
+                  data-selected={key === selected || undefined}
+                  data-over={over === key || undefined}
+                  data-past={past || undefined}
+                  onClick={() => setSelected(key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(key);
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    if (!dragging || past) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (over !== key) setOver(key);
+                  }}
+                  onDragLeave={() => {
+                    if (over === key) setOver(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData('text/plain') || dragging;
+                    setOver(null);
+                    setDragging(null);
+                    if (id) void moveTo(id, d);
+                  }}
+                >
+                  <span className={styles.srOnly}>
+                    {d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+                    {list.length ? `, ${list.length} post${list.length === 1 ? '' : 's'}` : ''}
+                  </span>
+                  <div className={styles.dayNum} aria-hidden="true">
+                    {d.getDate()}
+                  </div>
+                  {jobs === null ? (
+                    <Skeleton height={16} />
+                  ) : (
+                    <div className={styles.chips}>
+                      {list.slice(0, 3).map((j) => (
+                        <div
+                          key={j.id}
+                          className={styles.chip}
+                          data-status={j.status}
+                          data-moving={moving === j.id || undefined}
+                          draggable={j.status === 'SCHEDULED'}
+                          onDragStart={(e) => onDragStart(e, j)}
+                          onDragEnd={() => {
+                            setDragging(null);
+                            setOver(null);
+                          }}
+                          title={`${PLATFORM_WORDS[j.platform] ?? j.platform} · ${timeOf(j.scheduledFor)} · ${STATUS_WORDS[j.status]}${j.caption ? ` — ${j.caption.slice(0, 80)}` : ''}`}
+                        >
+                          <span className={styles.chipDot} />
+                          <span className={styles.chipPlat}>{PLATFORM_SHORT[j.platform] ?? j.platform.slice(0, 2)}</span>
+                          <span className={styles.chipTime}>{timeOf(j.scheduledFor)}</span>
+                          <span className={styles.srOnly}>{STATUS_WORDS[j.status]}</span>
+                        </div>
+                      ))}
+                      {list.length > 3 && <div className={styles.more}>+{list.length - 3} more</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
-        {days.map((d) => {
-          const key = ymd(d);
-          const list = byDay.get(key) ?? [];
-          const outside = d.getMonth() !== month.getMonth();
-          const past = key < today;
-          return (
-            <div
-              key={key}
-              role="gridcell"
-              tabIndex={0}
-              className={styles.cell}
-              data-outside={outside || undefined}
-              data-today={key === today || undefined}
-              data-selected={key === selected || undefined}
-              data-over={over === key || undefined}
-              data-past={past || undefined}
-              onClick={() => setSelected(key)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setSelected(key);
-                }
-              }}
-              onDragOver={(e) => {
-                if (!dragging || past) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                if (over !== key) setOver(key);
-              }}
-              onDragLeave={() => {
-                if (over === key) setOver(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const id = e.dataTransfer.getData('text/plain') || dragging;
-                setOver(null);
-                setDragging(null);
-                if (id) void moveTo(id, d);
-              }}
-            >
-              <div className={styles.dayNum}>{d.getDate()}</div>
-              {jobs === null ? (
-                <Skeleton height={16} />
-              ) : (
-                <div className={styles.chips}>
-                  {list.slice(0, 3).map((j) => (
-                    <div
-                      key={j.id}
-                      className={styles.chip}
-                      data-status={j.status}
-                      data-moving={moving === j.id || undefined}
-                      draggable={j.status === 'SCHEDULED'}
-                      onDragStart={(e) => onDragStart(e, j)}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setOver(null);
-                      }}
-                      title={`${PLATFORM_WORDS[j.platform] ?? j.platform} · ${timeOf(j.scheduledFor)} · ${STATUS_WORDS[j.status]}${j.caption ? ` — ${j.caption.slice(0, 80)}` : ''}`}
-                    >
-                      <span className={styles.chipDot} />
-                      <span className={styles.chipPlat}>{PLATFORM_SHORT[j.platform] ?? j.platform.slice(0, 2)}</span>
-                      <span className={styles.chipTime}>{timeOf(j.scheduledFor)}</span>
-                    </div>
-                  ))}
-                  {list.length > 3 && <div className={styles.more}>+{list.length - 3} more</div>}
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
 
       <div className={styles.dayPanel}>
@@ -294,9 +319,9 @@ export function Calendar({
                     </Button>
                   )}
                   {j.externalUrl && (
-                    <Button size="sm" variant="ghost" href={j.externalUrl}>
-                      View
-                    </Button>
+                    <a className={styles.viewLink} href={j.externalUrl} target="_blank" rel="noreferrer">
+                      View ↗
+                    </a>
                   )}
                 </div>
               </li>

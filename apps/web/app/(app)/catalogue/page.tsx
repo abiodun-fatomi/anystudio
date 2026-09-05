@@ -51,16 +51,23 @@ export default function CataloguePage() {
       setStores((cur) => cur ?? []);
     }
   }, [workspace.id]);
+  const [loadError, setLoadError] = useState(false);
+  const seq = useRef(0);
   const loadProducts = useCallback(
     async (after?: string) => {
+      const mine = ++seq.current;
       try {
         const r = await api.catalogue.products(workspace.id, { q: q.trim() || undefined, storeId: storeFilter || undefined, cursor: after, take: 40 });
+        if (mine !== seq.current) return; // a newer search has since gone out
         setProducts((cur) => (after && cur ? [...cur, ...r.rows] : r.rows));
         setCursor(r.nextCursor);
+        setLoadError(false);
       } catch {
+        if (mine !== seq.current) return;
         setProducts((cur) => cur ?? []);
+        setLoadError(true);
       } finally {
-        setMore(false);
+        if (mine === seq.current) setMore(false);
       }
     },
     [workspace.id, q, storeFilter],
@@ -196,7 +203,16 @@ export default function CataloguePage() {
             />
           </div>
         </div>
-        {products === null ? (
+        {loadError ? (
+          <EmptyState
+            title="Could not load your products just now."
+            actions={
+              <Button variant="ghost" onClick={() => void loadProducts()}>
+                Try again
+              </Button>
+            }
+          />
+        ) : products === null ? (
           <div className={styles.grid}>
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} height={220} />
@@ -294,9 +310,9 @@ export default function CataloguePage() {
                   Make something
                 </Button>
                 {detail.url && (
-                  <Button variant="ghost" href={detail.url}>
-                    Open in store
-                  </Button>
+                  <a className={styles.ext} href={detail.url} target="_blank" rel="noreferrer">
+                    Open in store ↗
+                  </a>
                 )}
               </div>
             </div>

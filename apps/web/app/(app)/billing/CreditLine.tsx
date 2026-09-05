@@ -9,17 +9,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, type AccountOverview, type BillTo, type InvoiceView } from '@/lib/api';
-import { moneyMinor } from '@/lib/billing/money';
+import { INVOICE_STATUS, moneyMinor } from '@/lib/billing/money';
 import { Section } from '@/components/shell/Page';
 import { Badge, Button, Card, Dialog, Input, Pager, Progress, Skeleton, Stat, Table, tableCell, Textarea, useCursorPages, useToast } from '@/components/ui';
 import styles from './credit-line.module.css';
-
-export const INVOICE_STATUS: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' | 'accent' }> = {
-  OPEN: { label: 'Open', tone: 'accent' },
-  PAID: { label: 'Paid', tone: 'ok' },
-  OVERDUE: { label: 'Overdue', tone: 'danger' },
-  VOID: { label: 'Void' },
-};
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -79,7 +72,7 @@ export function CreditLine({
         </Card>
         <Card>
           <Stat label="Credit line" value={period.available.toLocaleString()} sub={`of ${period.creditLimit.toLocaleString()} credits still available`} />
-          <Progress value={used} className={styles.lineBar} label={undefined} detail={`${Math.round(used)}% used`} />
+          <Progress value={used} className={styles.lineBar} label="Credit line used" detail={`${Math.round(used)}% used`} />
         </Card>
         <Card>
           <Stat

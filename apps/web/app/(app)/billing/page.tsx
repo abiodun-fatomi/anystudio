@@ -66,7 +66,7 @@ export default function BillingPage() {
       setPayCursor(p.nextCursor);
       if (p.refundWindowDays) setRefundWindow(p.refundWindowDays);
     } catch {
-      /* the table keeps what it has */
+      setPayments((cur) => cur ?? []);
     }
   }, [workspace.id]);
   const requestRefund = async () => {
@@ -96,19 +96,26 @@ export default function BillingPage() {
   const canBuy = ['OWNER', 'ADMIN', 'BILLING'].includes(workspace.role);
   // Organizations may be invoiced monthly instead of buying credits. The
   // account read says which; a prepaid workspace gets `account: null`.
+  const { postpaid: linePostpaid } = useApp();
   const [overview, setOverview] = useState<AccountOverview | null | undefined>(undefined);
+  const [overviewError, setOverviewError] = useState(false);
   const loadOverview = useCallback(async () => {
     try {
       setOverview(await api.billing.account(workspace.id));
+      setOverviewError(false);
     } catch {
       setOverview(null);
+      setOverviewError(true);
     }
   }, [workspace.id]);
   useEffect(() => {
     setOverview(undefined);
     void loadOverview();
   }, [loadOverview]);
-  const postpaid = Boolean(overview?.account && overview.account.status !== 'CLOSED');
+  // The account read says which screen this is; if it failed, the top bar's
+  // answer (from the wallet summary) keeps a postpaid organization from
+  // being shown a pack shop it cannot use.
+  const postpaid = overview ? Boolean(overview.account && overview.account.status !== 'CLOSED') : linePostpaid;
   const [cursor, setCursor] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,22 +151,11 @@ export default function BillingPage() {
       .catch(() => {
         if (live) setSub(null);
       });
-    api.billing
-      .payments(workspace.id)
-      .then((p) => {
-        if (live) {
-          setPayments(p.rows);
-          setPayCursor(p.nextCursor);
-          if (p.refundWindowDays) setRefundWindow(p.refundWindowDays);
-        }
-      })
-      .catch(() => {
-        if (live) setPayments([]);
-      });
+    void reloadPayments();
     return () => {
       live = false;
     };
-  }, [workspace.id]);
+  }, [workspace.id, reloadPayments]);
 
   const cancel = async () => {
     setCancelling(true);
@@ -192,8 +188,18 @@ export default function BillingPage() {
         }
       />
       {overview === undefined && <Skeleton height={96} />}
+      {overviewError && (
+        <EmptyState
+          title="Could not load your billing details just now."
+          actions={
+            <Button variant="ghost" onClick={() => void loadOverview()}>
+              Try again
+            </Button>
+          }
+        />
+      )}
       {overview?.account && postpaid && <CreditLine workspaceId={workspace.id} canBuy={canBuy} overview={overview} onChanged={() => void loadOverview()} />}
-      {overview !== undefined && !postpaid && (
+      {overview !== undefined && !overviewError && !postpaid && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 'var(--s-4)' }}>
           <Card>
             <Stat label="Balance" value={balance === null ? <Skeleton width={90} height={36} /> : balance.toLocaleString()} sub="credits available now" />
@@ -235,6 +241,13 @@ export default function BillingPage() {
             )}
           </Card>
         </div>
+      )}
+
+      {overview?.canRequest && !postpaid && (
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--t-2)', maxWidth: '64ch' }}>
+          Organizations that use the studio every day can be invoiced monthly on a credit line instead of buying credits up front. Write to{' '}
+          <a href="mailto:hello@anystudio.ai?subject=Credit%20line">hello@anystudio.ai</a> and say roughly how many credits a month you expect.
+        </p>
       )}
 
       <Section title="Payments">

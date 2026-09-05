@@ -33,7 +33,7 @@ export function ToolPanel({
   onGenerate: (quote: Quote) => void;
   busy: boolean;
 }) {
-  const { workspace, balance } = useApp();
+  const { workspace, balance, postpaid } = useApp();
   const [quote, setQuote] = useState<Quote | null>(null);
   const costCode = tool.costCodeFor?.(values);
   useEffect(() => {
@@ -86,7 +86,15 @@ export function ToolPanel({
             </div>
             {short && (
               <div className={styles.quoteNote}>
-                You need {(-after!).toLocaleString()} more. <a href="/billing/plans">Top up</a> or <a href="/billing">see your plan</a>.
+                {postpaid ? (
+                  <>
+                    That is {(-after!).toLocaleString()} past the credit line. <a href="/billing">See billing</a> to pay an open invoice or ask for more room.
+                  </>
+                ) : (
+                  <>
+                    You need {(-after!).toLocaleString()} more. <a href="/billing/plans">Top up</a> or <a href="/billing">see your plan</a>.
+                  </>
+                )}
               </div>
             )}
             {!short && <div className={styles.quoteNote}>If it fails, the credits come straight back.</div>}

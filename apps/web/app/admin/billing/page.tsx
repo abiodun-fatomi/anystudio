@@ -7,14 +7,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, type AdminBillingAccount, type InvoiceView } from '@/lib/api';
-import { moneyMinor } from '@/lib/billing/money';
+import { INVOICE_STATUS, moneyMinor } from '@/lib/billing/money';
 import { PageHeader, Section } from '@/components/shell/Page';
 import { Badge, Button, Dialog, Input, Pager, Select, Skeleton, Table, Textarea, tableCell, useCursorPages, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
 type Row = InvoiceView & { workspace: { id: string; name: string } };
-const STATUS_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'accent' | undefined> = { OPEN: 'accent', PAID: 'ok', OVERDUE: 'danger', VOID: undefined };
 const ACCOUNT_TONE: Record<string, 'ok' | 'danger' | undefined> = { ACTIVE: 'ok', SUSPENDED: 'danger' };
 const day = (iso: string) => new Date(iso).toLocaleDateString();
 
@@ -153,7 +152,7 @@ export default function InvoicingPage() {
                     </td>
                     <td className={tableCell.shrink}>{inv.period}</td>
                     <td className={tableCell.shrink}>
-                      <Badge tone={STATUS_TONE[inv.status]}>{inv.status.toLowerCase()}</Badge>
+                      <Badge tone={INVOICE_STATUS[inv.status]?.tone}>{inv.status.toLowerCase()}</Badge>
                     </td>
                     <td className={tableCell.shrink}>
                       {inv.status === 'PAID'

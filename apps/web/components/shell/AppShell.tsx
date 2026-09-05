@@ -174,7 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className={styles.body}>
-        <header className={styles.bar}>
+        <header className={styles.bar} data-print-hide>
           <WorkspaceSwitcher />
           <div className={styles.spacer} />
           <CreditPill balance={balance} postpaid={postpaid} />
