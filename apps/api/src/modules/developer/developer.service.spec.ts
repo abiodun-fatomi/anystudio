@@ -25,6 +25,7 @@ suite('DeveloperService + PublicApiService', () => {
   const hooks = new GenerationHooks();
   const generations = new GenerationService(db, ledger, media, new QueueService(), hooks);
   const dispatcher = new WebhookDispatcher(db, hooks, media);
+  dispatcher.onModuleInit(); // subscribe to finished generations, as Nest would
   const dev = new DeveloperService(db, ledger, dispatcher);
   const api = new PublicApiService(db, generations, ledger, media, dispatcher);
   const req = { ip: '127.0.0.1', requestId: 'r', get: () => 'test' } as never;
