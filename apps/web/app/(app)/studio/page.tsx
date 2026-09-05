@@ -21,6 +21,7 @@ import { Button, EmptyState, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { SourcePane } from './SourcePane';
 import { ToolPanel } from './ToolPanel';
+import { Lightbox } from './Lightbox';
 import { ResultCard } from './ResultCard';
 import styles from './studio.module.css';
 
@@ -44,6 +45,26 @@ function Studio() {
   const [values, setValues] = useState<Record<string, Record<string, unknown>>>({});
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // How the photo sits in the fixed stage: the whole picture (fit) or the box
+  // filled edge to edge (fill). Remembered per browser.
+  const [stageFit, setStageFit] = useState<'fit' | 'fill'>('fit');
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('anystudio:stage-fit') === 'fill') setStageFit('fill');
+    } catch {
+      /* fine */
+    }
+  }, []);
+  const toggleStageFit = () => {
+    const next = stageFit === 'fit' ? 'fill' : 'fit';
+    setStageFit(next);
+    try {
+      localStorage.setItem('anystudio:stage-fit', next);
+    } catch {
+      /* fine */
+    }
+  };
+  const [viewer, setViewer] = useState(false);
   const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
   const [unlockPrice, setUnlockPrice] = useState<number | null>(null);
   useEffect(() => {
@@ -195,7 +216,9 @@ function Studio() {
           <div className={styles.stage}>
             {sourceKey ? (
               sourceUrl ? (
-                <img src={sourceUrl} alt="Your product photo" />
+                <button type="button" className={styles.stageImg} onClick={() => setViewer(true)} title="See it at full size">
+                  <img src={sourceUrl} alt="Your product photo" data-fit={stageFit} />
+                </button>
               ) : (
                 <div style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>Loading your photo…</div>
               )
@@ -216,7 +239,30 @@ function Studio() {
                 </span>
               </div>
             )}
+            {sourceKey && sourceUrl && (
+              <div className={styles.stageTools}>
+                <button
+                  type="button"
+                  onClick={toggleStageFit}
+                  aria-pressed={stageFit === 'fill'}
+                  title={stageFit === 'fit' ? 'Fill the box' : 'Show the whole photo'}
+                >
+                  {stageFit === 'fit' ? 'Fit' : 'Fill'}
+                </button>
+                <button type="button" onClick={() => setViewer(true)} aria-label="See the photo at full size" title="Full size">
+                  <Icon.expand width={14} height={14} />
+                </button>
+              </div>
+            )}
           </div>
+          {viewer && sourceUrl && (
+            <Lightbox
+              src={sourceUrl}
+              alt="Your product photo"
+              meta={sourceMeta?.width ? `${sourceMeta.width}×${sourceMeta.height}` : undefined}
+              onClose={() => setViewer(false)}
+            />
+          )}
           <div className={styles.strip} role="toolbar" aria-label="Tools">
             {TOOLS.map((t) => (
               <button

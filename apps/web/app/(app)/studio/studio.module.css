@@ -234,6 +234,11 @@
      reflows around the picture and the tool strip stays where the hand
      expects it. */
   height: clamp(320px, 54dvh, 640px);
+  /* Definite tracks, so the photo's 100% height has something to resolve
+     against; with auto tracks it silently becomes "auto" and the picture
+     overflows the box at its natural aspect. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   background:
     linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%),
     linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%);
@@ -250,11 +255,70 @@
     height: clamp(240px, 44dvh, 440px);
   }
 }
+.stageImg {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  display: block;
+}
+.stageImg:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -3px;
+}
 .stage img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+}
+.stage img[data-fit='fill'] {
+  object-fit: cover;
+}
+/* Fit/Fill and the full-size button, bottom right, over the picture. */
+.stageTools {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--elev-1);
+}
+.stageTools button {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.stageTools button:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.stageTools button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.stageTools button:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
 }
 .stageEmpty {
   display: grid;
