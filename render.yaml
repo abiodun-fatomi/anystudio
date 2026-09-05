@@ -231,6 +231,8 @@ envVarGroups:
         sync: false
       - key: BANK_TRANSFER_DETAILS
         sync: false
+      - key: REFUNDS_EMAIL
+        sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
       - key: WHATSAPP_ACCESS_TOKEN

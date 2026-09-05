@@ -16,7 +16,7 @@ import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Input, SegmentedContr
 import { Icon } from '@/components/shell/icons';
 import styles from './catalogue.module.css';
 
-export const STORE_WORDS: Record<StoreKind, string> = { SHOPIFY: 'Shopify', WOOCOMMERCE: 'WooCommerce' };
+const STORE_WORDS: Record<StoreKind, string> = { SHOPIFY: 'Shopify', WOOCOMMERCE: 'WooCommerce' };
 const ago = (iso: string | null) => {
   if (!iso) return 'not yet';
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);

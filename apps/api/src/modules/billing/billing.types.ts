@@ -107,6 +107,14 @@ export interface Gateway {
   parseWebhook(rawBody: Buffer, headers: Record<string, string | string[] | undefined>): ParsedWebhook;
   interpret(parsed: ParsedWebhook): WebhookIntent;
   cancelSubscription(subscriptionRef: string, atPeriodEnd: boolean): Promise<void>;
+  /**
+   * Send the money back, in full. Returns the gateway's reference for the
+   * refund. Idempotent where the gateway allows (Paddle refuses a second
+   * adjustment on a fully refunded transaction; Flutterwave returns the
+   * existing refund). The caller marks the row and claws the credits back
+   * only after this resolves.
+   */
+  refund(payment: Payment, reason: string): Promise<{ providerRef: string }>;
 }
 
 /** Which gateway takes which currency. Anything not listed goes to Paddle. */

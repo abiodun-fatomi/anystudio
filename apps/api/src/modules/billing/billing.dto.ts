@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 /**
  * A checkout names WHAT, never how much. The price comes from the plan or
@@ -44,4 +44,30 @@ export class PaymentsQueryDto {
   @Min(1)
   @Max(100)
   take?: number;
+}
+
+export class RefundRequestDto {
+  @ApiProperty({ description: 'Why — in the person’s own words', minLength: 4, maxLength: 500 })
+  @IsString()
+  @MinLength(4)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class RefundDecisionDto {
+  @ApiPropertyOptional({ description: 'On refusal, the sentence the customer reads; on approval, a note for the gateway', maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string;
+}
+
+export class RefundsQueryDto {
+  @ApiPropertyOptional({ enum: ['REQUESTED', 'APPROVED', 'REFUSED', 'CANCELLED'] })
+  @IsOptional()
+  @IsIn(['REQUESTED', 'APPROVED', 'REFUSED', 'CANCELLED'])
+  status?: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() cursor?: string;
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 25 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) take?: number;
 }

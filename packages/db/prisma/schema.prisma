@@ -385,6 +385,7 @@ model Workspace {
   invoices         Invoice[]
   stores           StoreConnection[]
   products         CatalogueProduct[]
+  refundRequests   RefundRequest[]
 
   @@index([type])
   @@map("workspaces")
@@ -709,13 +710,47 @@ model Payment {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  refundRequest RefundRequest?
 
   @@index([workspaceId, createdAt])
   @@index([provider, providerRef])
   @@index([status, createdAt])
   @@map("payments")
+}
+
+enum RefundRequestStatus {
+  REQUESTED
+  APPROVED
+  REFUSED
+  CANCELLED
+}
+
+/// A customer asking for a purchase back. One per payment; staff decide.
+/// Approval refunds at the gateway and claws the credits back in one go.
+model RefundRequest {
+  id               String              @id @default(uuid()) @db.Uuid
+  paymentId        String              @unique @db.Uuid
+  workspaceId      String              @db.Uuid
+  requestedById    String              @db.Uuid
+  reason           String
+  status           RefundRequestStatus @default(REQUESTED)
+  /// The wallet balance when asked — the credits had to be unspent to ask.
+  balanceAtRequest Int
+  decidedById      String?             @db.Uuid
+  decidedAt        DateTime?
+  /// Staff's words to the customer on refusal, or the gateway reference on approval.
+  decisionNote     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([workspaceId])
+  @@map("refund_requests")
 }
 
 enum SubscriptionStatus {

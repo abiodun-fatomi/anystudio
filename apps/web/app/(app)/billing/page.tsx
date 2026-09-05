@@ -10,7 +10,7 @@ import { api, type AccountOverview, type LedgerRow, type PaymentView, type Subsc
 import { CreditLine } from './CreditLine';
 import { moneyMinor, PLAN_WORDS } from '@/lib/billing/money';
 import { PageHeader, Section } from '@/components/shell/Page';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Pagination, Skeleton, Stat, Table, tableCell, useToast } from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Pagination, Skeleton, Stat, Table, tableCell, Textarea, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 
 const KIND: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' | 'accent' }> = {
@@ -54,6 +54,45 @@ export default function BillingPage() {
   };
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Refunds: a purchase can be asked back within the window if the credits are untouched.
+  const [refundWindow, setRefundWindow] = useState(14);
+  const [refunding, setRefunding] = useState<PaymentView | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
+  const reloadPayments = useCallback(async () => {
+    try {
+      const p = await api.billing.payments(workspace.id);
+      setPayments(p.rows);
+      setPayCursor(p.nextCursor);
+      if (p.refundWindowDays) setRefundWindow(p.refundWindowDays);
+    } catch {
+      /* the table keeps what it has */
+    }
+  }, [workspace.id]);
+  const requestRefund = async () => {
+    if (!refunding) return;
+    setRefundBusy(true);
+    try {
+      await api.billing.requestRefund(workspace.id, refunding.id, refundReason.trim());
+      toast({ title: 'Refund requested', body: 'A person looks at it within two working days. The credits stay on hold until then.', tone: 'ok' });
+      setRefunding(null);
+      setRefundReason('');
+      await reloadPayments();
+    } catch (e) {
+      toast({ title: 'Could not request that', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+  const withdrawRefund = async (p: PaymentView) => {
+    try {
+      await api.billing.cancelRefund(workspace.id, p.id);
+      toast({ title: 'Request withdrawn', tone: 'ok' });
+      await reloadPayments();
+    } catch (e) {
+      toast({ title: 'Could not withdraw it', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    }
+  };
   const canBuy = ['OWNER', 'ADMIN', 'BILLING'].includes(workspace.role);
   // Organizations may be invoiced monthly instead of buying credits. The
   // account read says which; a prepaid workspace gets `account: null`.
@@ -111,6 +150,7 @@ export default function BillingPage() {
         if (live) {
           setPayments(p.rows);
           setPayCursor(p.nextCursor);
+          if (p.refundWindowDays) setRefundWindow(p.refundWindowDays);
         }
       })
       .catch(() => {
@@ -214,6 +254,7 @@ export default function BillingPage() {
                 <th>Reference</th>
                 <th className={tableCell.num}>Credits</th>
                 <th className={tableCell.num}>Charged</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -238,10 +279,36 @@ export default function BillingPage() {
                     {p.status === 'SUCCEEDED' ? `+${p.credits.toLocaleString()}` : p.status === 'REFUNDED' ? `−${p.credits.toLocaleString()}` : '—'}
                   </td>
                   <td className={tableCell.num}>{moneyMinor(p.amountMinor, p.currency)}</td>
+                  <td className={tableCell.shrink}>
+                    {p.refund?.status === 'REQUESTED' ? (
+                      <span style={{ display: 'inline-flex', gap: 'var(--s-2)', alignItems: 'center' }}>
+                        <Badge tone="accent">Refund requested</Badge>
+                        {canBuy && (
+                          <Button size="sm" variant="link" onClick={() => void withdrawRefund(p)}>
+                            Withdraw
+                          </Button>
+                        )}
+                      </span>
+                    ) : p.refund?.status === 'REFUSED' ? (
+                      <span title={p.refund.decisionNote ?? undefined} style={{ color: 'var(--muted)', fontSize: 'var(--t-1)' }}>
+                        Refund refused{p.refund.decisionNote ? ` — ${p.refund.decisionNote}` : ''}
+                      </span>
+                    ) : p.canRequestRefund && canBuy ? (
+                      <Button size="sm" variant="ghost" onClick={() => setRefunding(p)}>
+                        Request refund
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </Table>
+        )}
+        {!postpaid && (
+          <p style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', marginTop: 'var(--s-2)' }}>
+            Changed your mind? A purchase can be refunded within {refundWindow} days, as long as none of its credits have been used. The money goes back the way
+            it came.
+          </p>
         )}
         {payments && payments.length > 0 && (
           <Pagination>
@@ -256,6 +323,36 @@ export default function BillingPage() {
           </Pagination>
         )}
       </Section>
+
+      <Dialog
+        open={refunding !== null}
+        onClose={() => setRefunding(null)}
+        title="Request a refund"
+        description={
+          refunding
+            ? `${moneyMinor(refunding.amountMinor, refunding.currency)} for ${refunding.credits.toLocaleString()} credits. The credits stay on hold while a person looks, and the money goes back the way it came.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRefunding(null)} disabled={refundBusy}>
+              Keep it
+            </Button>
+            <Button onClick={() => void requestRefund()} loading={refundBusy} disabled={refundReason.trim().length < 4}>
+              Request refund
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          label="Why?"
+          value={refundReason}
+          onChange={(e) => setRefundReason(e.target.value)}
+          rows={3}
+          maxLength={500}
+          placeholder="Bought the wrong pack, changed my mind, …"
+        />
+      </Dialog>
 
       <ConfirmDialog
         open={cancelOpen}

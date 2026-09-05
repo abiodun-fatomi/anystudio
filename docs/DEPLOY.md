@@ -586,3 +586,19 @@ payment only. Both on the API service (the `anystudio-dev` group).
 `billing_accounts`, `invoices`, `wallets.overdraftLimit`, the `INVOICE`
 payment kind, and replaces `ledger_apply` with a version that honours the
 overdraft. Seed adds the rate card.
+
+## 15. Refunds
+
+A customer can ask for a purchase back from Credits → Payments →
+**Request refund**, within 14 days of paying and only while none of its
+credits have been used (the button only shows when that holds). The
+request lands in the staff console → **Payments → Refund requests**, and
+in `REFUNDS_EMAIL` if set. **Approve** sends the money back at the gateway
+(Flutterwave transaction refund, Paddle adjustment) and then claws the
+credits back through the ledger; if the credits were spent in between, the
+request is refused automatically. **Refuse** needs a sentence, which the
+customer reads in the email. Both decisions are audit-logged
+(`billing.refund`). The older "mark refunded" on a payment stays for money
+sent back outside a request.
+
+**Migration.** `20260918000001_refund_requests`.

@@ -250,4 +250,29 @@ export class PaddleGateway implements Gateway {
       timeoutMs: TIMEOUT,
     });
   }
+
+  /** A full refund is an adjustment naming every line item of the transaction. */
+  async refund(payment: Payment, reason: string): Promise<{ providerRef: string }> {
+    if (!payment.providerRef) throw new Error('payment has no Paddle transaction id');
+    const txn = await http<{ data?: PaddleTxn & { details?: { line_items?: Array<{ id: string }> } } }>(
+      'paddle',
+      `${this.base}/transactions/${encodeURIComponent(payment.providerRef)}`,
+      { headers: this.headers(), timeoutMs: TIMEOUT },
+    );
+    const items = txn.json?.data?.details?.line_items ?? [];
+    if (items.length === 0) throw new Error('paddle transaction has no line items to refund');
+    const res = await http<{ data?: { id?: string; status?: string } }>('paddle', `${this.base}/adjustments`, {
+      body: {
+        action: 'refund',
+        transaction_id: payment.providerRef,
+        reason: reason.slice(0, 200) || 'requested by customer',
+        items: items.map((i) => ({ item_id: i.id, type: 'full' })),
+      },
+      headers: this.headers(),
+      timeoutMs: TIMEOUT,
+    });
+    const id = res.json?.data?.id;
+    if (!id) throw new Error(`paddle refund: ${res.text.slice(0, 200)}`);
+    return { providerRef: id };
+  }
 }

@@ -520,6 +520,24 @@ export interface SubscriptionView {
   cancelAtPeriodEnd: boolean;
   cancelledAt: string | null;
 }
+export interface RefundRequestView {
+  id: string;
+  paymentId: string;
+  status: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  reason: string;
+  createdAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
+}
+export interface AdminRefundRequest extends RefundRequestView {
+  balanceAtRequest: number;
+  balanceNow: number;
+  stillRefundable: boolean;
+  gatewayConfigured: boolean;
+  requester: { name: string | null; email: string | null } | null;
+  workspace: { id: string; name: string };
+  payment: PaymentView;
+}
 export interface PaymentView {
   id: string;
   reference: string;
@@ -536,6 +554,10 @@ export interface PaymentView {
   refundedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Present on the workspace payments list. */
+  refund?: RefundRequestView | null;
+  canRequestRefund?: boolean;
+  refundWhy?: string | null;
 }
 export interface CheckoutOut {
   paymentId: string;
@@ -962,6 +984,19 @@ export const api = {
         `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
       ),
     refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
+    refunds: (q: { status?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: AdminRefundRequest[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/refunds?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    approveRefund: (id: string, note?: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/approve`, { note }),
+    refuseRefund: (id: string, note: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/refuse`, { note }),
     billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
     billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
     billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
@@ -1077,7 +1112,14 @@ export const api = {
       request<PaymentView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/verify`, providerRef ? { providerRef } : {}),
     payment: (workspaceId: string, paymentId: string) => request<PaymentView>('GET', `/workspaces/${workspaceId}/billing/payments/${paymentId}`),
     payments: (workspaceId: string, cursor?: string) =>
-      request<{ rows: PaymentView[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`),
+      request<{ rows: PaymentView[]; nextCursor: string | null; refundWindowDays?: number }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`,
+      ),
+    requestRefund: (workspaceId: string, paymentId: string, reason: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request`, { reason }),
+    cancelRefund: (workspaceId: string, paymentId: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request/cancel`, {}),
     subscription: (workspaceId: string) => request<SubscriptionView | null>('GET', `/workspaces/${workspaceId}/billing/subscription`),
     cancel: (workspaceId: string) => request<SubscriptionView>('POST', `/workspaces/${workspaceId}/billing/subscription/cancel`),
     /** Usage-based billing: the credit line, this period, invoices. */

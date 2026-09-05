@@ -26,17 +26,22 @@ import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
-import type { Actor } from '../auth/policy';
+import { Mailer } from '../../utils/mail-service';
+import { refundDecided, refundRequested } from '../../assets/email-templates';
+import { money } from '../usage-billing/usage-billing.service';
+import { assertStaffMutation, type Actor } from '../auth/policy';
 import { LedgerService } from '../ledger/ledger.service';
 import { UsageBillingService } from '../usage-billing/usage-billing.service';
 import { GatewayRegistry } from './gateways/gateway.registry';
 import { FlutterwaveGateway } from './gateways/flutterwave.gateway';
 import { toMinor, type CheckoutItem, type Gateway, type Interval, type Verification, type WebhookIntent } from './billing.types';
-import type { CheckoutDto, PaymentsQueryDto } from './billing.dto';
+import type { CheckoutDto, PaymentsQueryDto, RefundRequestDto, RefundsQueryDto } from './billing.dto';
 
 type Refs = Record<string, Record<string, string | number> | undefined>;
 
 const BUYERS = new Set(['OWNER', 'ADMIN', 'BILLING']);
+/** A purchase can be asked back this long after it was made, if the credits are untouched. */
+export const REFUND_WINDOW_DAYS = 14;
 
 @Injectable()
 export class BillingService {
@@ -47,6 +52,7 @@ export class BillingService {
     private readonly auth: AuthService,
     private readonly notifications: NotificationService,
     private readonly usageBilling: UsageBillingService,
+    private readonly mailer: Mailer,
   ) {}
 
   // ----------------------------------------------------------------- config
@@ -647,6 +653,243 @@ export class BillingService {
     return this.subscriptionView(updated);
   }
 
+  // ---------------------------------------------------------------- refunds
+
+  /**
+   * Whether a purchase can be asked back: paid, recent, and the credits
+   * still there. The same test the request endpoint applies, exposed so
+   * the payments table can show the button only when it would work.
+   */
+  async refundEligibility(payment: Payment, balance: number): Promise<{ ok: boolean; why?: string }> {
+    if (payment.status !== 'SUCCEEDED') return { ok: false, why: 'Only a paid purchase can be refunded.' };
+    if (payment.kind === 'INVOICE') return { ok: false, why: 'Invoices are settled with the studio directly.' };
+    if (Date.now() - payment.createdAt.getTime() > REFUND_WINDOW_DAYS * 86_400_000)
+      return { ok: false, why: `Refunds are possible within ${REFUND_WINDOW_DAYS} days of a purchase.` };
+    if (balance < payment.credits) return { ok: false, why: 'Some of these credits have been used, so the purchase cannot be refunded.' };
+    return { ok: true };
+  }
+
+  /** The customer asks. Nothing moves yet; staff decide, and the credits are checked again then. */
+  async requestRefund(actor: Actor, workspaceId: string, paymentId: string, dto: RefundRequestDto, req: Request) {
+    this.assertBuyer(actor, workspaceId);
+    const payment = await this.db.payment.findFirst({ where: { id: paymentId, workspaceId }, include: { refundRequest: true } });
+    if (!payment) throw new NotFoundError('payment');
+    if (payment.refundRequest && payment.refundRequest.status === 'REQUESTED')
+      throw new ConflictError('A refund is already being looked at for this purchase.');
+    if (payment.refundRequest && payment.refundRequest.status === 'APPROVED') throw new ConflictError('This purchase was already refunded.');
+    const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId }, select: { id: true } });
+    const balance = await this.ledger.balance(wallet.id);
+    const e = await this.refundEligibility(payment, balance);
+    if (!e.ok) throw new ConflictError(e.why!);
+    const data = {
+      workspaceId,
+      requestedById: actor.userId,
+      reason: dto.reason.trim(),
+      status: 'REQUESTED' as const,
+      balanceAtRequest: balance,
+      decidedAt: null,
+      decidedById: null,
+      decisionNote: null,
+    };
+    const request = payment.refundRequest
+      ? await this.db.refundRequest.update({ where: { id: payment.refundRequest.id }, data })
+      : await this.db.refundRequest.create({ data: { paymentId: payment.id, ...data } });
+    authLog(
+      'billing.refund',
+      'succeeded',
+      {
+        userId: actor.userId,
+        workspaceId,
+        paymentId,
+        requestId: request.id,
+        credits: payment.credits,
+        amountMinor: payment.amountMinor,
+        currency: payment.currency,
+      },
+      req,
+    );
+    logger.info({ requestId: request.id, paymentId, workspaceId, credits: payment.credits, balance }, 'refund requested');
+    const user = await this.db.user.findUnique({ where: { id: actor.userId }, select: { email: true, name: true } });
+    if (user?.email) {
+      const origin = this.auth.publicOrigin(req);
+      await this.mailer
+        .send(
+          refundRequested(user.email, user.name, {
+            item: itemWords(payment),
+            amount: money(payment.amountMinor, payment.currency),
+            reference: payment.reference,
+            url: `${origin}/billing`,
+          }),
+        )
+        .catch((err: unknown) => logger.error({ err, requestId: request.id }, 'refund request mail failed'));
+    }
+    const alert = process.env.REFUNDS_EMAIL?.trim();
+    if (alert)
+      await this.mailer
+        .send({
+          to: alert,
+          subject: `Refund request: ${money(payment.amountMinor, payment.currency)} · ${payment.reference}`,
+          text: `Workspace ${workspaceId}\nPayment ${payment.id} (${payment.reference}) ${itemWords(payment)} ${money(payment.amountMinor, payment.currency)}\nCredits ${payment.credits}, balance now ${balance}\nReason: ${dto.reason.trim()}\n\nDecide in the staff console → Payments.`,
+        })
+        .catch((err: unknown) => logger.error({ err, requestId: request.id }, 'refund alert mail failed'));
+    return this.refundView(request);
+  }
+
+  async cancelRefundRequest(actor: Actor, workspaceId: string, paymentId: string, req: Request) {
+    this.assertBuyer(actor, workspaceId);
+    const request = await this.db.refundRequest.findFirst({ where: { paymentId, workspaceId } });
+    if (!request) throw new NotFoundError('refund request');
+    if (request.status !== 'REQUESTED') throw new ConflictError('That request has already been decided.');
+    const updated = await this.db.refundRequest.update({ where: { id: request.id }, data: { status: 'CANCELLED', decidedAt: new Date() } });
+    authLog('billing.refund', 'succeeded', { userId: actor.userId, workspaceId, paymentId, requestId: request.id, cancelled: true }, req);
+    return this.refundView(updated);
+  }
+
+  /**
+   * Staff approve: the gateway sends the money back, then the credits are
+   * clawed back and the row marked. If the credits were spent between the
+   * request and now, the refund is refused instead — money must not leave
+   * while the credits stay.
+   */
+  async decideRefund(actor: Actor, requestId: string, approve: boolean, note: string, req: Request) {
+    const request = await this.db.refundRequest.findUnique({ where: { id: requestId }, include: { payment: true } });
+    if (!request) throw new NotFoundError('refund request');
+    if (request.status !== 'REQUESTED') throw new ConflictError(`That request is ${request.status.toLowerCase()}.`);
+    const payment = request.payment;
+    const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: payment.workspaceId }, select: { id: true } });
+    let approved = approve;
+    let decisionNote: string | null = note.trim() || null;
+    if (approve) {
+      const balance = await this.ledger.balance(wallet.id);
+      if (balance < payment.credits) {
+        approved = false;
+        decisionNote = 'Some of the credits were used after the request was made, so the purchase can no longer be refunded.';
+      } else {
+        const gateway = this.gateways.get(payment.provider);
+        if (!gateway) throw new ConflictError(`The ${payment.provider} gateway is not configured here, so the money cannot be sent back from this console.`);
+        let ref: string;
+        try {
+          ref = (await gateway.refund(payment, note.trim() || 'requested by customer')).providerRef;
+        } catch (e) {
+          logger.error({ err: e, requestId, paymentId: payment.id, provider: payment.provider }, 'gateway refund failed; nothing changed');
+          throw new ConflictError(`The gateway did not accept the refund: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        // Money has left. Take the credits back; if that fails now, say so loudly — it is the one thing to fix by hand.
+        try {
+          await this.ledger.clawback({
+            walletId: wallet.id,
+            amount: payment.credits,
+            idempotencyKey: `payment:${payment.id}`,
+            referenceId: payment.id,
+            reason: `Refund of ${payment.itemCode}`,
+          });
+        } catch (e) {
+          logger.error({ err: e, requestId, paymentId: payment.id, credits: payment.credits }, 'REFUND SENT BUT CREDITS NOT CLAWED BACK — needs a person');
+        }
+        await this.db.payment.update({
+          where: { id: payment.id },
+          data: { status: 'REFUNDED', refundedAt: new Date(), failureReason: `refunded on request: ${note.trim() || '-'}` },
+        });
+        decisionNote = ref;
+      }
+    }
+    const updated = await this.db.refundRequest.update({
+      where: { id: request.id },
+      data: { status: approved ? 'APPROVED' : 'REFUSED', decidedAt: new Date(), decidedById: actor.userId, decisionNote },
+    });
+    authLog(
+      'billing.refund',
+      approved ? 'succeeded' : 'refused',
+      { userId: actor.userId, workspaceId: payment.workspaceId, paymentId: payment.id, requestId, approved, note: decisionNote },
+      req,
+    );
+    logger.info(
+      { requestId, paymentId: payment.id, approved, by: actor.userId },
+      approved ? 'refund approved; money sent back, credits clawed back' : 'refund refused',
+    );
+    const user = await this.db.user.findUnique({ where: { id: request.requestedById }, select: { email: true, name: true } });
+    if (user?.email)
+      await this.mailer
+        .send(
+          refundDecided(user.email, user.name, {
+            approved,
+            item: itemWords(payment),
+            amount: money(payment.amountMinor, payment.currency),
+            reference: payment.reference,
+            note: approved ? null : decisionNote,
+            url: `${this.auth.publicOrigin(req)}/billing`,
+          }),
+        )
+        .catch((err: unknown) => logger.error({ err, requestId }, 'refund decision mail failed'));
+    void this.notifications.notify(request.requestedById, {
+      workspaceId: payment.workspaceId,
+      kind: 'CREDITS',
+      title: approved ? `${money(payment.amountMinor, payment.currency)} refunded` : 'Your refund request',
+      body: approved ? 'The money is on its way back. The credits have been removed.' : (decisionNote ?? 'It could not be refunded this time.'),
+      href: '/billing',
+      refId: `refund:${request.id}`,
+    });
+    return this.refundView(updated);
+  }
+
+  async refundRequests(q: RefundsQueryDto) {
+    const take = q.take ?? 25;
+    const rows = await this.db.refundRequest.findMany({
+      where: { status: q.status ?? 'REQUESTED' },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      include: { payment: true, workspace: { select: { id: true, name: true, wallet: { select: { id: true } } } } },
+    });
+    const page = rows.slice(0, take);
+    const out = [];
+    for (const r of page) {
+      const balance = r.workspace.wallet ? await this.ledger.balance(r.workspace.wallet.id) : 0;
+      const requester = await this.db.user.findUnique({ where: { id: r.requestedById }, select: { name: true, email: true } });
+      out.push({
+        ...this.refundView(r),
+        decisionNote: r.decisionNote,
+        balanceAtRequest: r.balanceAtRequest,
+        balanceNow: balance,
+        stillRefundable: balance >= r.payment.credits,
+        gatewayConfigured: this.gateways.has(r.payment.provider),
+        requester,
+        workspace: { id: r.workspace.id, name: r.workspace.name },
+        payment: this.paymentView(r.payment),
+      });
+    }
+    return { rows: out, nextCursor: rows.length > take ? (page[page.length - 1]?.id ?? null) : null };
+  }
+
+  /** The staff gate in front of decideRefund: rank, no self-dealing, a recent second factor. */
+  async decideRefundAsStaff(actor: Actor, requestId: string, approve: boolean, note: string, req: Request) {
+    const request = await this.db.refundRequest.findUnique({ where: { id: requestId }, select: { workspaceId: true } });
+    if (!request) throw new NotFoundError('refund request');
+    assertStaffMutation(actor, { min: 'OPERATOR', workspaceId: request.workspaceId, stepUpMinutes: 30 });
+    if (!approve && note.trim().length < 4) throw new ValidationError({ note: 'Say why, in a sentence the customer will read.' });
+    return this.decideRefund(actor, requestId, approve, note, req);
+  }
+
+  private refundView(r: {
+    id: string;
+    paymentId: string;
+    status: string;
+    reason: string;
+    createdAt: Date;
+    decidedAt: Date | null;
+    decisionNote: string | null;
+  }) {
+    return {
+      id: r.id,
+      paymentId: r.paymentId,
+      status: r.status,
+      reason: r.reason,
+      createdAt: r.createdAt,
+      decidedAt: r.decidedAt,
+      decisionNote: r.status === 'REFUSED' ? r.decisionNote : null,
+    };
+  }
+
   // --------------------------------------------------------------- history
 
   async payments(workspaceId: string, q: PaymentsQueryDto) {
@@ -656,8 +899,21 @@ export class BillingService {
       orderBy: { createdAt: 'desc' },
       take,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      include: { refundRequest: true },
     });
-    return { rows: rows.map((p) => this.paymentView(p)), nextCursor: rows.length === take ? (rows[rows.length - 1]?.id ?? null) : null };
+    const wallet = await this.db.wallet.findUnique({ where: { workspaceId }, select: { id: true } });
+    const balance = wallet ? await this.ledger.balance(wallet.id) : 0;
+    const out = [];
+    for (const p of rows) {
+      const e = await this.refundEligibility(p, balance);
+      out.push({
+        ...this.paymentView(p),
+        refund: p.refundRequest ? this.refundView(p.refundRequest) : null,
+        canRequestRefund: e.ok && (!p.refundRequest || p.refundRequest.status === 'CANCELLED' || p.refundRequest.status === 'REFUSED'),
+        refundWhy: e.ok ? null : e.why,
+      });
+    }
+    return { rows: out, nextCursor: rows.length === take ? (rows[rows.length - 1]?.id ?? null) : null, refundWindowDays: REFUND_WINDOW_DAYS };
   }
 
   async payment(workspaceId: string, id: string) {
@@ -751,6 +1007,14 @@ export class BillingService {
       updatedAt: p.updatedAt,
     };
   }
+}
+
+function itemWords(p: Payment): string {
+  return p.kind === 'PACK'
+    ? `credit pack ${p.itemCode}`
+    : p.kind === 'INVOICE'
+      ? `invoice ${p.itemCode}`
+      : `${p.itemCode} plan${p.kind === 'RENEWAL' ? ' renewal' : ''}`;
 }
 
 /** A price in `currency`, or null when the row has no tier for it. Never converted. */
