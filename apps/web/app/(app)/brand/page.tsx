@@ -262,7 +262,7 @@ export default function BrandPage() {
             />
             <Switch
               label="Watermark"
-              hint="A small “made on studo” in the corner"
+              hint="A small “made on AnyStudio” in the corner"
               checked={Boolean(v.watermark?.enabled)}
               onChange={(e) => set('watermark', { ...(v.watermark ?? {}), enabled: e.target.checked })}
             />
@@ -312,7 +312,11 @@ export default function BrandPage() {
             ) : v.businessName ? (
               <div className={styles.previewName}>{v.businessName}</div>
             ) : null}
-            {v.watermark?.enabled && <div className={styles.previewMark}>made on studo</div>}
+            {v.watermark?.enabled && (
+              <div className={styles.previewMark}>
+                made on <em>AnyStudio</em>
+              </div>
+            )}
           </div>
           <span className={styles.groupLede}>
             Price pill in your first colour, logo or name bottom right, watermark top right. The product is never touched.

@@ -34,6 +34,20 @@ export class BillingController {
     return this.billing.checkout(actor, workspaceId, body, req);
   }
 
+  @Post('/workspaces/:workspaceId/billing/invoices/:invoiceId/pay')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiCookieAuth('session')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Open a hosted checkout for an invoice (owner, admin or billing contact)' })
+  payInvoice(
+    @CurrentActor() actor: Actor,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Req() req: Request,
+  ) {
+    return this.billing.payInvoice(actor, workspaceId, invoiceId, req);
+  }
+
   @Post('/workspaces/:workspaceId/billing/payments/:paymentId/verify')
   @RequireWorkspaceRole('AUDITOR')
   @ApiCookieAuth('session')

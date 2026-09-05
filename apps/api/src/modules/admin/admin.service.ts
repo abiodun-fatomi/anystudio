@@ -221,6 +221,7 @@ export class AdminService {
         wallet: { select: { id: true } },
         members: { include: { user: { select: { id: true, name: true, email: true } } } },
         subscriptions: { orderBy: { createdAt: 'desc' }, take: 3 },
+        billingAccount: true,
       },
     });
     if (!ws) throw new NotFoundError('workspace');
@@ -248,6 +249,7 @@ export class AdminService {
       balance,
       members: ws.members.map((m) => ({ role: m.role, ...m.user })),
       subscriptions: ws.subscriptions,
+      billingAccount: ws.billingAccount,
       ledger,
       generations,
     };

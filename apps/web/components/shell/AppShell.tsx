@@ -41,7 +41,7 @@ const NAV: Array<{ href: string; label: string; icon: IconName; tour: string; mo
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { me, workspace, balance, signOut } = useApp();
+  const { me, workspace, balance, postpaid, signOut } = useApp();
   const path = usePathname();
   const [rail, setRail] = useState<'full' | 'icons'>('full');
   const [railWidth, setRailWidth] = useState<number | null>(null);
@@ -125,9 +125,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <nav className={styles.nav}>
           {NAV.filter((n) => n.href !== '/developer' || workspace.type === 'ORGANIZATION').map((n) => (
-            <Link key={n.href} href={n.href} className={styles.item} data-tour={n.tour} aria-current={isActive(n.href) ? 'page' : undefined} title={n.label}>
+            <Link
+              key={n.href}
+              href={n.href}
+              className={styles.item}
+              data-tour={n.tour}
+              aria-current={isActive(n.href) ? 'page' : undefined}
+              title={navLabel(n, postpaid)}
+            >
               {Icon[n.icon]({})}
-              <span className={styles.label}>{n.label}</span>
+              <span className={styles.label}>{navLabel(n, postpaid)}</span>
             </Link>
           ))}
         </nav>
@@ -169,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className={styles.bar}>
           <WorkspaceSwitcher />
           <div className={styles.spacer} />
-          <CreditPill balance={balance} />
+          <CreditPill balance={balance} postpaid={postpaid} />
           <Bell />
           <Popover
             align="end"
@@ -225,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {NAV.filter((n) => n.mobile).map((n) => (
           <Link key={n.href} href={n.href} className={styles.tab} aria-current={isActive(n.href) ? 'page' : undefined}>
             {Icon[n.icon]({ width: 22, height: 22 })}
-            <span>{n.label}</span>
+            <span>{navLabel(n, postpaid)}</span>
           </Link>
         ))}
       </nav>
@@ -237,8 +244,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** An invoiced organization has no credits to top up; its money page is Billing. */
+function navLabel(n: { href: string; label: string }, postpaid: boolean): string {
+  return postpaid && n.href === '/billing' ? 'Billing' : n.label;
+}
+
 /** The balance, tweened between values so a spend reads as a spend. */
-function CreditPill({ balance }: { balance: number | null }) {
+function CreditPill({ balance, postpaid }: { balance: number | null; postpaid: boolean }) {
   const [shown, setShown] = useState<number | null>(balance);
   const [moving, setMoving] = useState(false);
   const prev = useRef<number | null>(balance);
@@ -267,7 +279,7 @@ function CreditPill({ balance }: { balance: number | null }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [balance]);
-  const low = shown !== null && shown > 0 && shown < 20;
+  const low = !postpaid && shown !== null && shown > 0 && shown < 20;
   return (
     <Link
       href="/billing"
@@ -276,11 +288,12 @@ function CreditPill({ balance }: { balance: number | null }) {
       data-low={low || undefined}
       data-empty={shown === 0 || undefined}
       data-moving={moving || undefined}
-      aria-label={shown === null ? 'Credits' : `${shown} credits`}
+      aria-label={shown === null ? 'Credits' : postpaid ? `${shown} credits left on the line this period` : `${shown} credits`}
+      title={postpaid ? 'Invoiced monthly — what is left on your credit line this period' : undefined}
     >
       <Icon.credits width={16} height={16} />
       <span className={styles.num}>{shown === null ? '—' : shown.toLocaleString()}</span>
-      <span className={styles.creditsWord}>credits</span>
+      <span className={styles.creditsWord}>{postpaid ? 'on the line' : 'credits'}</span>
     </Link>
   );
 }

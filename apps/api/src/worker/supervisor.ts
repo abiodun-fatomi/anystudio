@@ -41,6 +41,7 @@ import { GenerationRunner } from './runner';
 import { WebhookDispatcher } from '../modules/developer/webhook.dispatcher';
 import { SupportService } from '../modules/support/support.service';
 import { PublishingService } from '../modules/publishing/publishing.service';
+import { UsageBillingService } from '../modules/usage-billing/usage-billing.service';
 
 const HEARTBEAT_KEY = 'worker:heartbeat';
 const SWEEP_EVERY_MS = 60_000;
@@ -52,6 +53,8 @@ const SUPPORT_SWEEP_EVERY_MS = 15 * 60_000;
 const PUBLISH_EVERY_MS = 15_000;
 /** Social tokens about to expire are exchanged for fresh ones. */
 const TOKEN_REFRESH_EVERY_MS = 6 * 60 * 60_000;
+/** Invoicing: close finished months, chase overdue invoices, warn near the credit line. Hourly is plenty; the first run happens at start so a restart never delays a close. */
+const BILLING_EVERY_MS = 60 * 60_000;
 
 @Injectable()
 export class WorkerSupervisor {
@@ -70,6 +73,7 @@ export class WorkerSupervisor {
     private readonly webhooks: WebhookDispatcher,
     private readonly support: SupportService,
     private readonly publishing: PublishingService,
+    private readonly usageBilling: UsageBillingService,
   ) {
     this.redis = createRedis('queue', 'worker-consumer');
   }
@@ -103,8 +107,19 @@ export class WorkerSupervisor {
         TOKEN_REFRESH_EVERY_MS,
       ),
     );
+    this.timers.push(setInterval(() => void this.billingTick(), BILLING_EVERY_MS));
     await this.heartbeat();
     await this.dispatch();
+    void this.billingTick();
+  }
+
+  private async billingTick(): Promise<void> {
+    try {
+      const r = await this.usageBilling.tick();
+      if (r.closed || r.overdue || r.suspended || r.warned) logger.info(r, 'billing tick');
+    } catch (err) {
+      logger.error({ err }, 'billing tick failed');
+    }
   }
 
   async stop(): Promise<void> {

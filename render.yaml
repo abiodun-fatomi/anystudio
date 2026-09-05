@@ -227,6 +227,10 @@ envVarGroups:
         sync: false
       - key: PADDLE_ENV
         value: sandbox
+      - key: PADDLE_USAGE_PRODUCT_ID
+        sync: false
+      - key: BANK_TRANSFER_DETAILS
+        sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
       - key: WHATSAPP_ACCESS_TOKEN

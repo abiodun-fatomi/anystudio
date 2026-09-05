@@ -28,6 +28,7 @@ import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
 import type { Actor } from '../auth/policy';
 import { LedgerService } from '../ledger/ledger.service';
+import { UsageBillingService } from '../usage-billing/usage-billing.service';
 import { GatewayRegistry } from './gateways/gateway.registry';
 import { FlutterwaveGateway } from './gateways/flutterwave.gateway';
 import { toMinor, type CheckoutItem, type Gateway, type Interval, type Verification, type WebhookIntent } from './billing.types';
@@ -45,6 +46,7 @@ export class BillingService {
     private readonly gateways: GatewayRegistry,
     private readonly auth: AuthService,
     private readonly notifications: NotificationService,
+    private readonly usageBilling: UsageBillingService,
   ) {}
 
   // ----------------------------------------------------------------- config
@@ -169,6 +171,90 @@ export class BillingService {
     return { paymentId: payment.id, reference, provider: gateway.provider, url: session.url, credits: item.credits, amountMinor: item.amountMinor, currency };
   }
 
+  /**
+   * An invoice paid online. The row is priced from the invoice, never the
+   * client; the gateway sees a one-off charge; settle() marks the invoice
+   * paid and returns its credits to the line. A pending checkout for the
+   * same invoice is reused so a person who closed the tab does not pay twice.
+   */
+  async payInvoice(actor: Actor, workspaceId: string, invoiceId: string, req: Request) {
+    this.assertBuyer(actor, workspaceId);
+    const invoice = await this.db.invoice.findFirst({ where: { id: invoiceId, workspaceId } });
+    if (!invoice) throw new NotFoundError('invoice');
+    if (invoice.status === 'PAID') throw new ConflictError(`Invoice ${invoice.number} is already paid.`);
+    if (invoice.status === 'VOID') throw new ConflictError(`Invoice ${invoice.number} was voided.`);
+    if (invoice.totalMinor <= 0) throw new ConflictError('There is nothing to pay on this invoice.');
+    const currency = invoice.currency.toUpperCase();
+    const gateway = this.gateways.forCurrency(currency);
+
+    const pending = await this.db.payment.findFirst({
+      where: { workspaceId, kind: 'INVOICE', itemCode: invoice.number, status: 'PENDING', provider: gateway.provider, checkoutUrl: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (pending && pending.createdAt.getTime() > Date.now() - 6 * 3600_000 && pending.checkoutUrl)
+      return {
+        paymentId: pending.id,
+        reference: pending.reference,
+        provider: pending.provider,
+        url: pending.checkoutUrl,
+        credits: pending.credits,
+        amountMinor: pending.amountMinor,
+        currency: pending.currency,
+      };
+
+    const item: CheckoutItem = {
+      kind: 'invoice',
+      code: invoice.number,
+      credits: invoice.credits,
+      amountMinor: invoice.totalMinor,
+      currency,
+      label: `AnyStudio invoice ${invoice.number}`,
+    };
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: actor.userId }, select: { email: true, name: true, phone: true } });
+    const reference = `as_inv_${randomBytes(9).toString('base64url').replace(/[-_]/g, 'x')}`;
+    const payment = await this.db.payment.create({
+      data: {
+        workspaceId,
+        userId: actor.userId,
+        provider: gateway.provider,
+        kind: 'INVOICE',
+        reference,
+        itemCode: invoice.number,
+        credits: invoice.credits,
+        amountMinor: invoice.totalMinor,
+        currency,
+      },
+    });
+    const origin = this.auth.publicOrigin(req);
+    let session;
+    try {
+      session = await gateway.createCheckout({ payment, item, customer: user, returnUrl: `${origin}/billing/return?ref=${reference}`, appOrigin: origin });
+    } catch (e) {
+      await this.db.payment.update({
+        where: { id: payment.id },
+        data: { status: 'FAILED', failureReason: `checkout: ${e instanceof Error ? e.message : String(e)}` },
+      });
+      logger.error({ err: e, paymentId: payment.id, provider: gateway.provider, invoice: invoice.number }, 'invoice checkout creation failed');
+      throw new ConflictError('The payment page could not be opened. Nothing was charged — try again in a moment.');
+    }
+    await this.db.payment.update({ where: { id: payment.id }, data: { checkoutUrl: session.url, providerRef: session.providerRef } });
+    authLog(
+      'billing.checkout',
+      'succeeded',
+      { userId: actor.userId, workspaceId, paymentId: payment.id, provider: gateway.provider, item: invoice.number, amountMinor: invoice.totalMinor, currency },
+      req,
+    );
+    return {
+      paymentId: payment.id,
+      reference,
+      provider: gateway.provider,
+      url: session.url,
+      credits: invoice.credits,
+      amountMinor: invoice.totalMinor,
+      currency,
+    };
+  }
+
   // ------------------------------------------------------------- settlement
 
   /** The return page asking "did it go through?". Verifies with the gateway and settles. */
@@ -232,6 +318,46 @@ export class BillingService {
           data: { status: 'FAILED', failureReason: `mismatch: ${mismatch}`, providerRef: v.providerRef, providerPayload: v.raw as Prisma.InputJsonValue },
         });
       }
+    }
+
+    // An invoice's credits go back through the invoice, whose own ledger
+    // key makes a bank transfer recorded by staff and a webhook arriving
+    // for the same invoice grant once between them.
+    if (fresh.kind === 'INVOICE') {
+      const invoice = await this.db.invoice.findUnique({ where: { number: fresh.itemCode }, select: { id: true } });
+      if (!invoice) {
+        logger.error({ paymentId: fresh.id, invoice: fresh.itemCode }, 'PAYMENT FOR UNKNOWN INVOICE: money received, invoice row missing');
+        return this.db.payment.update({
+          where: { id: fresh.id },
+          data: { status: 'FAILED', failureReason: `invoice ${fresh.itemCode} not found`, providerRef: v.providerRef },
+        });
+      }
+      const paid = await this.usageBilling.settleInvoice(invoice.id, fresh.provider, v.providerRef, fresh.id);
+      const updated = await this.db.payment.update({
+        where: { id: fresh.id },
+        data: {
+          status: 'SUCCEEDED',
+          providerRef: v.providerRef,
+          amountMinor: fresh.provider === 'PADDLE' && v.amountMinor > 0 ? v.amountMinor : fresh.amountMinor,
+          currency: fresh.provider === 'PADDLE' ? v.currency : fresh.currency,
+          providerPayload: v.raw as Prisma.InputJsonValue,
+          ledgerEntryId: paid.ledgerEntryId,
+          failureReason: null,
+        },
+      });
+      logger.info(
+        {
+          paymentId: fresh.id,
+          workspaceId: fresh.workspaceId,
+          provider: fresh.provider,
+          invoice: fresh.itemCode,
+          amountMinor: updated.amountMinor,
+          currency: updated.currency,
+          via,
+        },
+        'invoice payment settled',
+      );
+      return updated;
     }
 
     const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: fresh.workspaceId }, select: { id: true } });

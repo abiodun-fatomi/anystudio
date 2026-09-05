@@ -22,6 +22,7 @@ import { SupportModule } from '../modules/support/support.module';
 import { MailModule } from '../utils/mail.module';
 import { NotificationModule } from '../modules/notification/notification.module';
 import { PublishingModule } from '../modules/publishing/publishing.module';
+import { UsageBillingModule } from '../modules/usage-billing/usage-billing.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PublishingModule } from '../modules/publishing/publishing.module';
     NotificationModule,
     SupportModule,
     PublishingModule,
+    UsageBillingModule,
   ],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],

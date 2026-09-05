@@ -378,6 +378,8 @@ model Workspace {
   whatsappContacts WhatsappContact[]
   socialAccounts   SocialAccount[]
   publishJobs      PublishJob[]
+  billingAccount   BillingAccount?
+  invoices         Invoice[]
 
   @@index([type])
   @@map("workspaces")
@@ -662,6 +664,7 @@ enum PaymentKind {
   PACK // one-time credits
   SUBSCRIPTION // the first charge of a plan
   RENEWAL // a later charge of a plan, raised by the gateway
+  INVOICE // a usage invoice, paid online
 }
 
 enum PaymentStatus {
@@ -769,6 +772,127 @@ model WebhookReceipt {
   @@map("webhook_receipts")
 }
 
+// ---------------------------------------------------------------------------
+// Usage-based billing: organizations that are invoiced monthly for what they
+// used, instead of buying credits up front.
+//
+// The ledger stays the unit of account. A postpaid workspace's wallet is
+// allowed to go negative down to its credit limit; every debit is metered
+// exactly as before. At the close of each calendar month the net credits
+// consumed are priced with the rate card and written as an Invoice; paying
+// the invoice adds the invoiced credits back through the ledger, so the
+// balance reads as "what has not been paid for yet".
+// ---------------------------------------------------------------------------
+
+/// Minor units of `currency` per 100 credits — the list price organizations
+/// pay when their account has no negotiated rate.
+model UsageRate {
+  currency    String   @id
+  per100Minor Int
+  updatedAt   DateTime @updatedAt
+
+  @@map("usage_rates")
+}
+
+enum BillingAccountStatus {
+  ACTIVE
+  SUSPENDED // invoices overdue past the grace period; the credit line is closed until paid
+  CLOSED // back to prepaid, or the organization left
+}
+
+/// A postpaid arrangement for one organization workspace. Created by staff —
+/// it is a credit decision, not a self-service toggle.
+model BillingAccount {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @unique @db.Uuid
+  status          BillingAccountStatus @default(ACTIVE)
+  currency        String
+  /// Negotiated rate, minor units per 100 credits. Null means the UsageRate list price.
+  per100Minor     Int?
+  /// Monthly minimum, minor units. An invoice below it is topped up to it.
+  minimumMinor    Int                  @default(0)
+  /// Credits of exposure allowed between invoices — the wallet's overdraft.
+  creditLimit     Int
+  /// Days from issue to due.
+  netDays         Int                  @default(14)
+  /// Days past due before the account is suspended.
+  graceDays       Int                  @default(7)
+  billingEmail    String?
+  /// { company, address, taxId, contact } — printed on the invoice, edited by the organization.
+  billTo          Json?
+  /// Staff-only: why the terms are what they are.
+  notes           String?
+  /// Set once per period when usage crosses 80% of the limit, so the warning goes out once.
+  limitWarnedFor  DateTime?
+  startedAt       DateTime             @default(now())
+  suspendedAt     DateTime?
+  suspendedReason String?
+  closedAt        DateTime?
+  createdById     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoices  Invoice[]
+
+  @@index([status])
+  @@map("billing_accounts")
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id            String        @id @default(uuid()) @db.Uuid
+  /// INV-202609-0001 — human, unique, printed on everything.
+  number        String        @unique
+  workspaceId   String        @db.Uuid
+  accountId     String        @db.Uuid
+  periodStart   DateTime
+  periodEnd     DateTime
+  currency      String
+  /// Net credits consumed in the period (debits less refunds).
+  credits       Int
+  /// The rate applied, minor units per 100 credits, frozen at issue.
+  per100Minor   Int
+  usageMinor    Int
+  /// Top-up to the monthly minimum, when usage fell short of it.
+  minimumMinor  Int           @default(0)
+  totalMinor    Int
+  status        InvoiceStatus @default(OPEN)
+  /// [{ costCode, label, requests, credits, amountMinor }]
+  lines         Json
+  /// Who it was addressed to, frozen at issue — the account's billTo can change later.
+  billTo        Json?
+  issuedAt      DateTime      @default(now())
+  dueAt         DateTime
+  paidAt        DateTime?
+  /// FLUTTERWAVE | PADDLE | STUB | MANUAL (bank transfer recorded by staff) | ZERO (nothing to pay)
+  paidVia       String?
+  /// The gateway's or the bank's reference for the payment.
+  paidReference String?
+  paymentId     String?       @db.Uuid
+  /// The ledger row that put the invoiced credits back, once paid.
+  ledgerEntryId String?       @db.Uuid
+  remindedAt    DateTime?
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   BillingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, periodStart])
+  @@index([workspaceId, issuedAt])
+  @@index([status, dueAt])
+  @@map("invoices")
+}
+
 /// One value per thing the product can make. Mirrors CAPABILITIES in
 /// packages/shared — the API imports both, so drift fails typecheck.
 enum ProviderCapability {
@@ -835,10 +959,14 @@ model ProviderModel {
 /// One wallet per workspace. Holds nothing but identity and currency; the
 /// money is in the entries.
 model Wallet {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @unique @db.Uuid
-  currency    String   @default("NGN")
-  createdAt   DateTime @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @unique @db.Uuid
+  currency       String   @default("NGN")
+  /// How far below zero the balance may go. Zero for everyone prepaid; a
+  /// postpaid organization's credit limit. Read by ledger_apply under the
+  /// wallet lock, so it is enforced in the same place as the overdraft rule.
+  overdraftLimit Int      @default(0)
+  createdAt      DateTime @default(now())
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   entries   LedgerEntry[]

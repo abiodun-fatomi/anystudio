@@ -89,6 +89,21 @@ const PACKS = [
 ];
 
 /**
+ * The organization rate card: minor units per 100 credits for postpaid
+ * accounts without a negotiated rate. Sits just under the biggest pack
+ * (pack.video works out at 1.3¢ / ₦17.5 per credit), because an invoiced
+ * organization is committing to volume, not buying a bundle.
+ */
+const USAGE_RATES = [
+  { currency: 'USD', per100Minor: 125 }, // $1.25 per 100 credits
+  { currency: 'GBP', per100Minor: 100 }, // £1.00
+  { currency: 'NGN', per100Minor: 160000 }, // ₦1,600
+  { currency: 'GHS', per100Minor: 1600 }, // GH₵16
+  { currency: 'KES', per100Minor: 16000 }, // KSh160
+  { currency: 'ZAR', per100Minor: 2300 }, // R23
+];
+
+/**
  * Provider routing. `priority` picks the default and the fallback order, so a
  * failing provider is demoted from the admin console without a release.
  *
@@ -439,6 +454,9 @@ async function reference() {
       update: { credits: k.credits, priceByMarket: { USD: k.usd, NGN: k.ngn, GBP: k.gbp }, sort: k.sort },
     });
   }
+  for (const r of USAGE_RATES) {
+    await db.usageRate.upsert({ where: { currency: r.currency }, create: r, update: { per100Minor: r.per100Minor } });
+  }
   for (const pr of PROVIDERS) {
     await db.providerModel.upsert({ where: { key_capability: { key: pr.key, capability: pr.capability } }, create: pr, update: pr });
   }
@@ -470,7 +488,7 @@ async function reference() {
     await db.voiceProfile.upsert({ where: { key: vs.key }, create: { key: vs.key, ...data }, update: data });
   }
   console.log(
-    `reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${PROVIDERS.length} models, ${GENRES.length} genres, ${VOICES.length} voices`,
+    `reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${USAGE_RATES.length} rates, ${PROVIDERS.length} models, ${GENRES.length} genres, ${VOICES.length} voices`,
   );
 }
 

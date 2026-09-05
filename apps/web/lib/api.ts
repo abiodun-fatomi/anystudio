@@ -172,6 +172,104 @@ export interface WalletSummary {
   walletId: string;
   currency: string;
   balance: number;
+  overdraftLimit: number;
+  /** balance + overdraft, floored at zero — what may still be spent. */
+  available: number;
+  /** An organization invoiced monthly for what it uses. */
+  postpaid: boolean;
+  /** Postpaid and paused for an overdue invoice. */
+  paused: boolean;
+}
+
+export type BillingAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface BillTo {
+  company?: string;
+  address?: string;
+  taxId?: string;
+  contact?: string;
+}
+
+export interface UsageLine {
+  costCode: string;
+  label: string;
+  requests: number;
+  credits: number;
+  amountMinor: number;
+}
+
+export interface BillingAccountView {
+  id: string;
+  workspaceId: string;
+  status: BillingAccountStatus;
+  currency: string;
+  per100Minor: number;
+  per1000Minor: number;
+  negotiated: boolean;
+  minimumMinor: number;
+  creditLimit: number;
+  netDays: number;
+  graceDays: number;
+  billingEmail: string | null;
+  billTo: BillTo | null;
+  startedAt: string;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  closedAt: string | null;
+}
+
+export interface InvoiceView {
+  id: string;
+  number: string;
+  workspaceId: string;
+  periodStart: string;
+  periodEnd: string;
+  period: string;
+  currency: string;
+  credits: number;
+  per100Minor: number;
+  usageMinor: number;
+  minimumMinor: number;
+  totalMinor: number;
+  status: InvoiceStatus;
+  lines: UsageLine[];
+  billTo: BillTo | null;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  paidVia: string | null;
+  paidReference: string | null;
+  paymentId: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  payable: boolean;
+  bankDetails?: string | null;
+}
+
+export interface AccountOverview {
+  account: BillingAccountView | null;
+  period: {
+    start: string;
+    end: string;
+    credits: number;
+    lines: UsageLine[];
+    estimateMinor: number;
+    balance: number;
+    creditLimit: number;
+    available: number;
+  } | null;
+  open: { count: number; totalMinor: number } | null;
+  bankDetails: string | null;
+  canRequest: boolean;
+}
+
+export interface AdminBillingAccount extends BillingAccountView {
+  workspace: { id: string; name: string };
+  balance: number;
+  overdraftLimit: number;
+  open: { count: number; totalMinor: number };
+  notes: string | null;
 }
 
 export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
@@ -395,7 +493,7 @@ export interface PaymentView {
   id: string;
   reference: string;
   provider: PaymentProvider;
-  kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL';
+  kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL' | 'INVOICE';
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
   itemCode: string;
   interval: string | null;
@@ -603,6 +701,30 @@ export interface AdminWorkspace {
   subscriptions: Array<{ id: string; planCode: string; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean }>;
   ledger: Array<{ id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string }>;
   generations: AdminGeneration[];
+  billingAccount: {
+    id: string;
+    status: BillingAccountStatus;
+    currency: string;
+    per100Minor: number | null;
+    minimumMinor: number;
+    creditLimit: number;
+    netDays: number;
+    graceDays: number;
+    billingEmail: string | null;
+    notes: string | null;
+    suspendedReason: string | null;
+    startedAt: string;
+  } | null;
+}
+export interface BillingTerms {
+  reason: string;
+  creditLimit?: number;
+  per100Minor?: number | null;
+  minimumMinor?: number;
+  netDays?: number;
+  graceDays?: number;
+  billingEmail?: string | null;
+  notes?: string | null;
 }
 export interface AdminGeneration {
   id: string;
@@ -809,6 +931,29 @@ export const api = {
         `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
       ),
     refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
+    billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
+    billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
+    billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: Array<InvoiceView & { workspace: { id: string; name: string } }>; nextCursor: string | null }>(
+        'GET',
+        `/admin/billing/invoices?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setBillingTerms: (workspaceId: string, body: BillingTerms) => request<BillingAccountView>('PUT', `/admin/billing/accounts/${workspaceId}`, body),
+    closeBillingAccount: (workspaceId: string, reason: string) =>
+      request<{ closed: boolean; finalInvoice: InvoiceView | null }>('POST', `/admin/billing/accounts/${workspaceId}/close`, { reason }),
+    reactivateBillingAccount: (workspaceId: string, reason: string) =>
+      request<BillingAccountView>('POST', `/admin/billing/accounts/${workspaceId}/reactivate`, { reason }),
+    closeBillingPeriod: (workspaceId: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/accounts/${workspaceId}/close-period`, { reason }),
+    markInvoicePaid: (invoiceId: string, reference: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/mark-paid`, { reference, reason }),
+    voidInvoice: (invoiceId: string, reason: string) => request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/void`, { reason }),
     audit: (q: Record<string, string | undefined>) =>
       request<{ events: AdminEvent[]; nextCursor: string | null }>(
         'GET',
@@ -904,6 +1049,17 @@ export const api = {
       request<{ rows: PaymentView[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`),
     subscription: (workspaceId: string) => request<SubscriptionView | null>('GET', `/workspaces/${workspaceId}/billing/subscription`),
     cancel: (workspaceId: string) => request<SubscriptionView>('POST', `/workspaces/${workspaceId}/billing/subscription/cancel`),
+    /** Usage-based billing: the credit line, this period, invoices. */
+    account: (workspaceId: string) => request<AccountOverview>('GET', `/workspaces/${workspaceId}/billing/account`),
+    patchAccount: (workspaceId: string, body: { billingEmail?: string | null; billTo?: BillTo }) =>
+      request<BillingAccountView>('PATCH', `/workspaces/${workspaceId}/billing/account`, body),
+    invoices: (workspaceId: string, cursor?: string | null, take = 25) =>
+      request<{ rows: InvoiceView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/invoices?take=${take}${cursor ? `&cursor=${cursor}` : ''}`,
+      ),
+    invoice: (workspaceId: string, invoiceId: string) => request<InvoiceView>('GET', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}`),
+    payInvoice: (workspaceId: string, invoiceId: string) => request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}/pay`, {}),
   },
   account: {
     profile: () => request<Profile>('GET', '/me/profile'),

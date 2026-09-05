@@ -63,10 +63,32 @@ export class PaddleGateway implements Gateway {
   }
 
   async createCheckout(req: CheckoutRequest): Promise<CheckoutSession> {
-    if (!req.item.providerRef)
-      throw new Error(`${req.item.kind} ${req.item.code} has no Paddle price id${req.item.interval ? ` for ${req.item.interval}` : ''}`);
+    // Packs and plans are catalogue prices. An invoice is a one-off amount,
+    // so it goes as a non-catalogue price under the "usage" product — one
+    // product in the Paddle catalogue, PADDLE_USAGE_PRODUCT_ID, priced per
+    // transaction.
+    let item: Record<string, unknown>;
+    if (req.item.kind === 'invoice') {
+      const product = process.env.PADDLE_USAGE_PRODUCT_ID;
+      if (!product) throw new Error('invoice payments through Paddle need PADDLE_USAGE_PRODUCT_ID');
+      item = {
+        quantity: 1,
+        price: {
+          description: req.item.label,
+          name: req.item.code,
+          product_id: product,
+          tax_mode: 'account_setting',
+          unit_price: { amount: String(req.item.amountMinor), currency_code: req.item.currency },
+          quantity: { minimum: 1, maximum: 1 },
+        },
+      };
+    } else {
+      if (!req.item.providerRef)
+        throw new Error(`${req.item.kind} ${req.item.code} has no Paddle price id${req.item.interval ? ` for ${req.item.interval}` : ''}`);
+      item = { price_id: String(req.item.providerRef), quantity: 1 };
+    }
     const body = {
-      items: [{ price_id: String(req.item.providerRef), quantity: 1 }],
+      items: [item],
       custom_data: { paymentId: req.payment.id, reference: req.payment.reference, workspaceId: req.payment.workspaceId, itemCode: req.item.code },
       currency_code: req.item.currency,
     };

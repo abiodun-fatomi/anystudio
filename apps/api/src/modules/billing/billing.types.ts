@@ -14,7 +14,7 @@ export type Interval = 'month' | 'year';
 
 /** What the customer is buying, priced by the server. */
 export interface CheckoutItem {
-  kind: 'pack' | 'plan';
+  kind: 'pack' | 'plan' | 'invoice';
   code: string;
   credits: number;
   interval?: Interval;

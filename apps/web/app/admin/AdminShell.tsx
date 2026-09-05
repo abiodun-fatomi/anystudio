@@ -34,6 +34,7 @@ const NAV: Array<{ href: string; label: string; icon: IconName; min?: StaffRole 
   { href: '/admin/support', label: 'Help chats', icon: 'bell' },
   { href: '/admin/generations', label: 'Generations', icon: 'studio' },
   { href: '/admin/payments', label: 'Payments', icon: 'credits' },
+  { href: '/admin/billing', label: 'Invoicing', icon: 'credits' },
   { href: '/admin/providers', label: 'Providers & prices', icon: 'settings', min: 'OPERATOR' },
   { href: '/admin/messages', label: 'Messages', icon: 'bell', min: 'ADMIN' },
   { href: '/admin/staff', label: 'Staff', icon: 'lock', min: 'ADMIN' },

@@ -220,7 +220,7 @@ function svgBadge(o: { W: number; H: number; accent: string; price: string | nul
   if (o.watermark) {
     const fs = u * 1.1;
     items.push(
-      `<text x="${o.W - u * 1.2}" y="${u * 2.2}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="${fs}" fill="#FFFFFF" fill-opacity="0.55">made on studo</text>`,
+      `<text x="${o.W - u * 1.2}" y="${u * 2.2}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="${fs}" fill="#FFFFFF" fill-opacity="0.55">made on <tspan font-style="italic" font-weight="600" fill-opacity="0.85">AnyStudio</tspan></text>`,
     );
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${o.W}" height="${o.H}">${items.join('')}</svg>`;

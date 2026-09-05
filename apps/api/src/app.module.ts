@@ -40,6 +40,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SupportModule } from './modules/support/support.module';
 import { PublishingModule } from './modules/publishing/publishing.module';
+import { UsageBillingModule } from './modules/usage-billing/usage-billing.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { PublishingModule } from './modules/publishing/publishing.module';
     AdminModule,
     SupportModule,
     PublishingModule,
+    UsageBillingModule,
   ],
   controllers: [HealthController],
   providers: [

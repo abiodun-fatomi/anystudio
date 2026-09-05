@@ -6,7 +6,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/lib/app-context';
-import { api, type LedgerRow, type PaymentView, type SubscriptionView } from '@/lib/api';
+import { api, type AccountOverview, type LedgerRow, type PaymentView, type SubscriptionView } from '@/lib/api';
+import { CreditLine } from './CreditLine';
 import { moneyMinor, PLAN_WORDS } from '@/lib/billing/money';
 import { PageHeader, Section } from '@/components/shell/Page';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Pagination, Skeleton, Stat, Table, tableCell, useToast } from '@/components/ui';
@@ -54,6 +55,21 @@ export default function BillingPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const canBuy = ['OWNER', 'ADMIN', 'BILLING'].includes(workspace.role);
+  // Organizations may be invoiced monthly instead of buying credits. The
+  // account read says which; a prepaid workspace gets `account: null`.
+  const [overview, setOverview] = useState<AccountOverview | null | undefined>(undefined);
+  const loadOverview = useCallback(async () => {
+    try {
+      setOverview(await api.billing.account(workspace.id));
+    } catch {
+      setOverview(null);
+    }
+  }, [workspace.id]);
+  useEffect(() => {
+    setOverview(undefined);
+    void loadOverview();
+  }, [loadOverview]);
+  const postpaid = Boolean(overview?.account && overview.account.status !== 'CLOSED');
   const [cursor, setCursor] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +78,7 @@ export default function BillingPage() {
     async (after?: string) => {
       try {
         const [w, h] = await Promise.all([api.wallet.summary(workspace.id), api.wallet.history(workspace.id, after)]);
-        setBalance(w.balance);
+        setBalance(w.postpaid ? w.available : w.balance);
         setRows((r) => (after && r ? [...r, ...h.rows] : h.rows));
         setCursor(h.nextCursor);
         setError(null);
@@ -121,55 +137,65 @@ export default function BillingPage() {
   return (
     <div className="rise">
       <PageHeader
-        title="Credits"
-        lede="Every credit in and out, newest first. A failed generation always comes back as a refund row."
+        title={postpaid ? 'Billing' : 'Credits'}
+        lede={
+          postpaid
+            ? 'Invoiced monthly for what you use. The line below is how much can be drawn before the next invoice; the statement is every credit in and out.'
+            : 'Every credit in and out, newest first. A failed generation always comes back as a refund row.'
+        }
         actions={
-          <Button href="/billing/plans" leading={<Icon.plus />}>
-            Add credits
-          </Button>
+          postpaid ? undefined : (
+            <Button href="/billing/plans" leading={<Icon.plus />}>
+              Add credits
+            </Button>
+          )
         }
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 'var(--s-4)' }}>
-        <Card>
-          <Stat label="Balance" value={balance === null ? <Skeleton width={90} height={36} /> : balance.toLocaleString()} sub="credits available now" />
-        </Card>
-        <Card>
-          <Stat label="Currency" value={workspace.currency} sub="fixed for this workspace" />
-        </Card>
-        <Card>
-          {sub === undefined ? (
-            <Skeleton height={56} />
-          ) : sub ? (
-            <Stat
-              label="Plan"
-              value={PLAN_WORDS[sub.planCode]?.name ?? sub.planCode}
-              sub={
-                sub.cancelAtPeriodEnd
-                  ? `ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
-                  : sub.status === 'PAST_DUE'
-                    ? 'payment overdue — update your card'
-                    : `renews ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'monthly'} · ${sub.interval === 'year' ? 'yearly' : 'monthly'}`
-              }
-            />
-          ) : (
-            <Stat label="Plan" value="Free" sub="pay as you go with packs" />
-          )}
-          {sub && !sub.cancelAtPeriodEnd && canBuy && (
-            <div style={{ marginTop: 'var(--s-2)' }}>
-              <Button variant="link" size="sm" onClick={() => setCancelOpen(true)}>
-                Cancel plan
-              </Button>
-            </div>
-          )}
-          {(!sub || sub.cancelAtPeriodEnd) && canBuy && (
-            <div style={{ marginTop: 'var(--s-2)' }}>
-              <Button variant="link" size="sm" href="/billing/plans">
-                {sub ? 'Choose another plan' : 'See plans'}
-              </Button>
-            </div>
-          )}
-        </Card>
-      </div>
+      {overview === undefined && <Skeleton height={96} />}
+      {overview?.account && postpaid && <CreditLine workspaceId={workspace.id} canBuy={canBuy} overview={overview} onChanged={() => void loadOverview()} />}
+      {overview !== undefined && !postpaid && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 'var(--s-4)' }}>
+          <Card>
+            <Stat label="Balance" value={balance === null ? <Skeleton width={90} height={36} /> : balance.toLocaleString()} sub="credits available now" />
+          </Card>
+          <Card>
+            <Stat label="Currency" value={workspace.currency} sub="fixed for this workspace" />
+          </Card>
+          <Card>
+            {sub === undefined ? (
+              <Skeleton height={56} />
+            ) : sub ? (
+              <Stat
+                label="Plan"
+                value={PLAN_WORDS[sub.planCode]?.name ?? sub.planCode}
+                sub={
+                  sub.cancelAtPeriodEnd
+                    ? `ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
+                    : sub.status === 'PAST_DUE'
+                      ? 'payment overdue — update your card'
+                      : `renews ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'monthly'} · ${sub.interval === 'year' ? 'yearly' : 'monthly'}`
+                }
+              />
+            ) : (
+              <Stat label="Plan" value="Free" sub="pay as you go with packs" />
+            )}
+            {sub && !sub.cancelAtPeriodEnd && canBuy && (
+              <div style={{ marginTop: 'var(--s-2)' }}>
+                <Button variant="link" size="sm" onClick={() => setCancelOpen(true)}>
+                  Cancel plan
+                </Button>
+              </div>
+            )}
+            {(!sub || sub.cancelAtPeriodEnd) && canBuy && (
+              <div style={{ marginTop: 'var(--s-2)' }}>
+                <Button variant="link" size="sm" href="/billing/plans">
+                  {sub ? 'Choose another plan' : 'See plans'}
+                </Button>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
 
       <Section title="Payments">
         {payments === null ? (
@@ -197,9 +223,11 @@ export default function BillingPage() {
                   <td>
                     {p.kind === 'PACK'
                       ? 'Credit pack'
-                      : p.kind === 'RENEWAL'
-                        ? `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} renewal`
-                        : `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} plan${p.interval === 'year' ? ', yearly' : ''}`}
+                      : p.kind === 'INVOICE'
+                        ? `Invoice ${p.itemCode}`
+                        : p.kind === 'RENEWAL'
+                          ? `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} renewal`
+                          : `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} plan${p.interval === 'year' ? ', yearly' : ''}`}
                     <span style={{ color: 'var(--muted)' }}> · {PROVIDER[p.provider] ?? p.provider}</span>
                   </td>
                   <td className={tableCell.shrink}>
