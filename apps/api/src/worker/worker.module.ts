@@ -21,6 +21,7 @@ import { WhatsappModule } from '../modules/whatsapp/whatsapp.module';
 import { SupportModule } from '../modules/support/support.module';
 import { MailModule } from '../utils/mail.module';
 import { NotificationModule } from '../modules/notification/notification.module';
+import { PublishingModule } from '../modules/publishing/publishing.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { NotificationModule } from '../modules/notification/notification.module'
     WhatsappModule,
     NotificationModule,
     SupportModule,
+    PublishingModule,
   ],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],
