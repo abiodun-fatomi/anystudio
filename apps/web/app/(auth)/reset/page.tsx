@@ -9,29 +9,23 @@
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { PasswordControl } from '@/components/ui/Password';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useLinkToken } from '@/lib/link-token';
 
 function ResetForm() {
   const router = useRouter();
-  const params = useSearchParams();
-  const [token, setToken] = useState<string | null>(null);
+  /** Captured once and scrubbed from the address bar; null means the link had none. */
+  const token = useLinkToken('/reset');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [state, setState] = useState<'form' | 'done' | 'invalid'>('form');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Capture the token, then scrub it from the address bar. */
   useEffect(() => {
-    const t = params.get('token');
-    if (!t) {
-      setState('invalid');
-      return;
-    }
-    setToken(t);
-    window.history.replaceState(null, '', '/reset');
-  }, [params]);
+    if (token === null) setState('invalid');
+  }, [token]);
 
   /** Submit the new password; a bad or stale token shows the "ask again" state. */
   async function submit(e: FormEvent) {

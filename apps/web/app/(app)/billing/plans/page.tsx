@@ -119,54 +119,58 @@ export default function PlansPage() {
           )}
         </div>
         <div className={styles.grid}>
-          {cat === null
-            ? [0, 1, 2].map((i) => <Skeleton key={i} height={280} />)
-            : cat.plans.map((p) => {
-                const offer = interval === 'year' && p.year ? p.year : p.month;
-                const words = PLAN_WORDS[p.code] ?? { name: p.code, who: '' };
-                const perMonth = interval === 'year' && p.year?.price ? p.year.price / 12 : offer.price;
-                return (
-                  <article key={p.code} className={styles.card} data-current={p.current || undefined} data-featured={p.code === 'business' || undefined}>
-                    <div className={styles.cardHead}>
-                      <h3>{words.name}</h3>
-                      {p.current && <Badge tone="accent">Your plan</Badge>}
-                      {p.code === 'business' && !p.current && <Badge tone="ok">Most chosen</Badge>}
-                    </div>
-                    <p className={styles.who}>{words.who}</p>
-                    <div className={styles.price}>
-                      {offer.price === null ? (
-                        <span className={styles.na}>Not priced in {cat.currency}</span>
-                      ) : (
-                        <>
-                          <strong>{money(perMonth ?? 0, cat.currency)}</strong>
-                          <span>/month{interval === 'year' ? `, billed ${money(offer.price, cat.currency)} a year` : ''}</span>
-                        </>
-                      )}
-                    </div>
-                    <ul className={styles.facts}>
-                      <li>
-                        <Icon.check width={16} height={16} /> {p.credits.toLocaleString()} credits {interval === 'year' ? 'a month' : 'every month'}
-                      </li>
-                      <li>
-                        <Icon.check width={16} height={16} /> about {Math.floor(p.credits / 10)} branded photos, or {Math.floor(p.credits / 120)} reels
-                      </li>
-                      <li>
-                        <Icon.check width={16} height={16} /> cancel any time; the month you paid for stays yours
-                      </li>
-                    </ul>
-                    <Button
-                      full
-                      variant={p.code === 'business' ? 'primary' : 'subtle'}
-                      disabled={!canBuy || !offer.canBuy || p.current || (cat.subscription !== null && !cat.subscription.cancelAtPeriodEnd)}
-                      loading={busy === `plan:${p.code}`}
-                      onClick={() => void buy('plan', p.code)}
-                      title={!offer.canBuy && cat.available ? 'Not available through this payment provider yet' : undefined}
-                    >
-                      {p.current ? 'Current plan' : cat.subscription && !cat.subscription.cancelAtPeriodEnd ? 'Cancel your plan first' : `Choose ${words.name}`}
-                    </Button>
-                  </article>
-                );
-              })}
+          {cat === null ? (
+            [0, 1, 2].map((i) => <Skeleton key={i} height={280} />)
+          ) : cat.plans.length === 0 ? (
+            <Unpriced what="plans" currency={cat.currency} />
+          ) : (
+            cat.plans.map((p) => {
+              const offer = interval === 'year' && p.year ? p.year : p.month;
+              const words = PLAN_WORDS[p.code] ?? { name: p.code, who: '' };
+              const perMonth = interval === 'year' && p.year?.price ? p.year.price / 12 : offer.price;
+              return (
+                <article key={p.code} className={styles.card} data-current={p.current || undefined} data-featured={p.code === 'business' || undefined}>
+                  <div className={styles.cardHead}>
+                    <h3>{words.name}</h3>
+                    {p.current && <Badge tone="accent">Your plan</Badge>}
+                    {p.code === 'business' && !p.current && <Badge tone="ok">Most chosen</Badge>}
+                  </div>
+                  <p className={styles.who}>{words.who}</p>
+                  <div className={styles.price}>
+                    {offer.price === null ? (
+                      <span className={styles.na}>Not priced in {cat.currency}</span>
+                    ) : (
+                      <>
+                        <strong>{money(perMonth ?? 0, cat.currency)}</strong>
+                        <span>/month{interval === 'year' ? `, billed ${money(offer.price, cat.currency)} a year` : ''}</span>
+                      </>
+                    )}
+                  </div>
+                  <ul className={styles.facts}>
+                    <li>
+                      <Icon.check width={16} height={16} /> {p.credits.toLocaleString()} credits {interval === 'year' ? 'a month' : 'every month'}
+                    </li>
+                    <li>
+                      <Icon.check width={16} height={16} /> about {Math.floor(p.credits / 10)} branded photos, or {Math.floor(p.credits / 120)} reels
+                    </li>
+                    <li>
+                      <Icon.check width={16} height={16} /> cancel any time; the month you paid for stays yours
+                    </li>
+                  </ul>
+                  <Button
+                    full
+                    variant={p.code === 'business' ? 'primary' : 'subtle'}
+                    disabled={!canBuy || !offer.canBuy || p.current || (cat.subscription !== null && !cat.subscription.cancelAtPeriodEnd)}
+                    loading={busy === `plan:${p.code}`}
+                    onClick={() => void buy('plan', p.code)}
+                    title={!offer.canBuy && cat.available ? 'Not available through this payment provider yet' : undefined}
+                  >
+                    {p.current ? 'Current plan' : cat.subscription && !cat.subscription.cancelAtPeriodEnd ? 'Cancel your plan first' : `Choose ${words.name}`}
+                  </Button>
+                </article>
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -178,22 +182,26 @@ export default function PlansPage() {
           </div>
         </div>
         <div className={styles.grid}>
-          {cat === null
-            ? [0, 1, 2, 3].map((i) => <Skeleton key={i} height={180} />)
-            : cat.packs.map((k) => (
-                <article key={k.code} className={styles.pack}>
-                  <div className={styles.cardHead}>
-                    <h3>{k.credits.toLocaleString()} credits</h3>
-                  </div>
-                  <p className={styles.who}>{PACK_WORDS[k.code] ?? ''}</p>
-                  <div className={styles.price}>
-                    {k.price === null ? <span className={styles.na}>Not priced in {cat.currency}</span> : <strong>{money(k.price, cat.currency)}</strong>}
-                  </div>
-                  <Button full variant="subtle" disabled={!canBuy || !k.canBuy} loading={busy === `pack:${k.code}`} onClick={() => void buy('pack', k.code)}>
-                    Buy
-                  </Button>
-                </article>
-              ))}
+          {cat === null ? (
+            [0, 1, 2, 3].map((i) => <Skeleton key={i} height={180} />)
+          ) : cat.packs.length === 0 ? (
+            <Unpriced what="packs" currency={cat.currency} />
+          ) : (
+            cat.packs.map((k) => (
+              <article key={k.code} className={styles.pack}>
+                <div className={styles.cardHead}>
+                  <h3>{k.credits.toLocaleString()} credits</h3>
+                </div>
+                <p className={styles.who}>{PACK_WORDS[k.code] ?? ''}</p>
+                <div className={styles.price}>
+                  {k.price === null ? <span className={styles.na}>Not priced in {cat.currency}</span> : <strong>{money(k.price, cat.currency)}</strong>}
+                </div>
+                <Button full variant="subtle" disabled={!canBuy || !k.canBuy} loading={busy === `pack:${k.code}`} onClick={() => void buy('pack', k.code)}>
+                  Buy
+                </Button>
+              </article>
+            ))
+          )}
         </div>
       </section>
 
@@ -207,6 +215,22 @@ export default function PlansPage() {
         . We never see your card. Credits arrive the moment the payment is confirmed; if that ever takes more than a few minutes, the Credits page has the
         receipt and support has the reference.
       </p>
+    </div>
+  );
+}
+
+/**
+ * The catalogue is rows in the database, written by the seed. An empty
+ * list means the seed has not run against this database — say so, rather
+ * than leave a heading over nothing.
+ */
+function Unpriced({ what, currency }: { what: 'plans' | 'packs'; currency: string }) {
+  return (
+    <div className={styles.notice} style={{ gridColumn: '1 / -1' }}>
+      <strong>
+        No {what} are on sale in {currency} yet.
+      </strong>
+      <span>The price list is still being set up. Message support and we will add credits by hand in the meantime.</span>
     </div>
   );
 }

@@ -21,6 +21,11 @@ import styles from './SupportWidget.module.css';
 const SEEN_KEY = 'anystudio:help-seen';
 const POLL_MS = 6000;
 
+/** A conversation the widget can draw: an id, a status and a list of messages. */
+function isConversation(c: unknown): c is SupportConversation {
+  return Boolean(c) && typeof c === 'object' && typeof (c as SupportConversation).id === 'string' && Array.isArray((c as SupportConversation).messages);
+}
+
 const TOPICS: Array<{ id: string; title: string; hint: string; prompt: string; icon: 'credits' | 'whatsapp' | 'brand' | 'publish' | 'bug' }> = [
   {
     id: 'credits',
@@ -171,7 +176,9 @@ export function SupportWidget() {
       .current()
       .then((c) => {
         if (!live) return;
-        if (c) {
+        // An API without the help chat yet answers with something else
+        // entirely; only a real conversation opens the panel.
+        if (isConversation(c)) {
           setConvo(c);
           setMode('chat');
           lastSeenCount.current = c.messages.length;
@@ -192,6 +199,7 @@ export function SupportWidget() {
     api.support
       .one(wanted)
       .then((c) => {
+        if (!isConversation(c)) return setOpen(true);
         setConvo(c);
         setMode(c.status === 'OPEN' ? 'chat' : 'ended');
         setOpen(true);
@@ -207,6 +215,7 @@ export function SupportWidget() {
       if (document.visibilityState !== 'visible') return;
       try {
         const c = await api.support.one(id);
+        if (!isConversation(c)) return;
         setConvo((cur) => (cur && cur.id === c.id && c.messages.length !== cur.messages.length ? c : cur?.status !== c.status ? c : cur));
         if (!open && c.messages.length > lastSeenCount.current && c.messages.some((m, i) => i >= lastSeenCount.current && m.role === 'STAFF'))
           setUnseenStaff(true);

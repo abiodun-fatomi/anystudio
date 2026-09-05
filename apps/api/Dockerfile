@@ -44,6 +44,15 @@ RUN pnpm --filter @anystudio/api --prod deploy /out
 # instance starts — can apply them.
 RUN cp -r packages/db/prisma /out/prisma
 
+# The seed, compiled to plain JavaScript so `npm run db:seed` can run it in
+# the runtime image, which has no tsx. It carries the reference data the app
+# reads at runtime — plans, packs, credit costs, provider routing, genres,
+# voices — and is an upsert throughout, so it runs after every migration.
+# Without it a fresh database has a working schema and nothing to sell.
+RUN cd apps/api && ./node_modules/.bin/tsc ../../packages/db/prisma/seed.ts \
+      --outDir /out/prisma/seed-dist --module commonjs --target es2022 \
+      --moduleResolution node --esModuleInterop --skipLibCheck --types node
+
 # Generate the Prisma client AGAIN, here, into the tree that actually ships.
 #
 # `prisma generate` writes the client into node_modules (as `.prisma/client`),

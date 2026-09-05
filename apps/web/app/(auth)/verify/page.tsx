@@ -9,37 +9,27 @@
  * The token is read once and scrubbed from the address bar so it does not sit
  * in browser history or leak as a Referer.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useLinkToken, useRedeemOnce } from '@/lib/link-token';
 
 type State = 'working' | 'done' | 'invalid';
 
 function Verify() {
-  const params = useSearchParams();
+  const token = useLinkToken('/verify');
   const [state, setState] = useState<State>('working');
 
-  useEffect(() => {
-    const token = params.get('token');
-    if (!token) {
-      setState('invalid');
-      return;
-    }
-    window.history.replaceState(null, '', '/verify');
-    let live = true;
-    api.auth
-      .verify(token)
-      .then((r) => {
-        if (live) setState(r.status === 'verified' ? 'done' : 'invalid');
-      })
-      .catch(() => {
-        if (live) setState('invalid');
-      });
-    return () => {
-      live = false;
-    };
-  }, [params]);
+  useRedeemOnce(
+    token,
+    (t) => {
+      api.auth
+        .verify(t)
+        .then((r) => setState(r.status === 'verified' ? 'done' : 'invalid'))
+        .catch(() => setState('invalid'));
+    },
+    () => setState('invalid'),
+  );
 
   if (state === 'working') {
     return (

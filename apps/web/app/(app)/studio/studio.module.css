@@ -164,6 +164,55 @@
   outline: 2.5px solid var(--accent);
   outline-offset: 2px;
 }
+.thumbWrap {
+  position: relative;
+}
+/* The × sits in the corner and shows itself on hover or focus; on a touch
+   screen there is no hover, so it is always there. */
+.thumbRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(15, 15, 20, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.thumbWrap:hover .thumbRemove,
+.thumbWrap:focus-within .thumbRemove {
+  opacity: 1;
+  transform: scale(1);
+}
+.thumbRemove:hover {
+  background: var(--danger);
+}
+.thumbRemove:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (hover: none) {
+  .thumbRemove {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 /* ---- canvas ---- */
 .canvas {

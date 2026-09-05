@@ -111,6 +111,17 @@ function Studio() {
     [setUrl],
   );
 
+  // The photo on the canvas was removed from the strip: clear the canvas too.
+  const sourceRemoved = useCallback(
+    (asset: MediaAssetRow) => {
+      if (asset.key === sourceKey) {
+        setSourceMeta(null);
+        setUrl({ source: null });
+      }
+    },
+    [sourceKey, setUrl],
+  );
+
   const toolValues = useMemo(() => ({ ...tool.defaults, ...(values[tool.id] ?? {}) }), [tool, values]);
   const setValue = (key: string, v: unknown) => setValues((all) => ({ ...all, [tool.id]: { ...(all[tool.id] ?? {}), [key]: v } }));
 
@@ -178,7 +189,7 @@ function Studio() {
   return (
     <div className="rise">
       <div className={styles.studio}>
-        <SourcePane selected={sourceKey} onSelect={selectSource} refreshKey={refreshKey} />
+        <SourcePane selected={sourceKey} onSelect={selectSource} onRemoved={sourceRemoved} refreshKey={refreshKey} />
 
         <section className={`${styles.pane} ${styles.canvas}`} aria-label="Canvas">
           <div className={styles.stage}>
