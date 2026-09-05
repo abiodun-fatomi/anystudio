@@ -922,6 +922,20 @@ model Generation {
   /// minus the sum of this.
   providerCostMinor Int?
 
+  // ---- library
+  /// What the library calls it: the product name, or the first words of the
+  /// prompt. Editable by the customer.
+  title      String?
+  /// The product this belongs to (SKU or listing id from the params, or a
+  /// slug of the product name), so the library can group a catalogue.
+  productKey String?
+  /// Everything worth searching, flattened: title, prompt, details, the copy
+  /// that came back. A GIN index over to_tsvector(this) lives in the migration.
+  searchText String?
+  favourite  Boolean   @default(false)
+  /// Hidden from the library; the objects go with the lifecycle job later.
+  deletedAt  DateTime?
+
   createdAt  DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
@@ -942,6 +956,8 @@ model Generation {
   @@index([providerJobId])
   /// A parent collecting its shots.
   @@index([parentId])
+  /// The library grouping a catalogue by product.
+  @@index([workspaceId, productKey])
   @@map("generations")
 }
 

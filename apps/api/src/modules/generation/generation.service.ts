@@ -145,6 +145,7 @@ export class GenerationService {
             credits: cost.credits,
             stage: 'queued',
             input: params as Prisma.InputJsonObject,
+            ...libraryFields(params),
           },
         });
 
@@ -338,6 +339,9 @@ export class GenerationService {
   /** Outputs are stored. The debit stands; there is nothing to refund. */
   async succeed(id: string, outcome: GenerationOutcome): Promise<Generation> {
     const row = await this.claimTerminal(id);
+    // The copy that came back is the most searchable thing about a text generation.
+    const copyText = (outcome.outputs ?? []).filter((o) => o.role === 'text' && o.text !== undefined).map((o) => flattenText(o.text)).join(' ').trim();
+    const searchText = [row.searchText, copyText].filter(Boolean).join(' ').slice(0, 8000) || undefined;
     return this.db.generation.update({
       where: { id: row.id },
       data: {
@@ -345,6 +349,7 @@ export class GenerationService {
         finishedAt: new Date(),
         stage: 'done',
         progress: 100,
+        ...(searchText ? { searchText } : {}),
         outputs: (outcome.outputs ?? []) as unknown as Prisma.InputJsonArray,
         ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
         ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
@@ -522,4 +527,29 @@ export function customerMessage(row: Generation): string | undefined {
   if (kind && kind in CUSTOMER_MESSAGE) return CUSTOMER_MESSAGE[kind as ProviderErrorKind];
   if (kind === 'TIMEOUT') return 'That took too long and was stopped. Your credits are back — try again.';
   return 'Something went wrong on our side. Your credits are back and we have been notified.';
+}
+
+// ---------------------------------------------------------------- library
+
+/** Title, product key and searchable text, derived from the params at request time. */
+export function libraryFields(params: Record<string, unknown>): { title: string | null; productKey: string | null; searchText: string | null } {
+  const str = (k: string) => (typeof params[k] === 'string' ? (params[k] as string).trim() : '');
+  const name = str('productName');
+  const prompt = str('prompt');
+  const title = name || (prompt ? prompt.split(/\s+/).slice(0, 8).join(' ') : '') || null;
+  const productKey = str('productKey') || (name ? slug(name) : '') || null;
+  const parts = [name, prompt, str('details'), str('price'), str('caption'), str('scene'), str('instruction'), str('field'), str('format'), str('language')].filter(Boolean);
+  return { title, productKey, searchText: parts.length ? parts.join(' ').slice(0, 4000) : null };
+}
+
+function slug(v: string): string {
+  return v.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+}
+
+/** Copy outputs are nested objects; the words are what matter. */
+function flattenText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map(flattenText).join(' ');
+  if (v && typeof v === 'object') return Object.values(v as Record<string, unknown>).map(flattenText).join(' ');
+  return '';
 }
