@@ -35,12 +35,13 @@ import { LibraryModule } from './modules/library/library.module';
 import { InsightsModule } from './modules/insights/insights.module';
 import { AudioModule } from './modules/audio/audio.module';
 import { DeveloperModule } from './modules/developer/developer.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule, MailModule, RateLimitModule, QueueModule, ProviderModule, MediaModule,
-    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule, LibraryModule, InsightsModule, AudioModule, DeveloperModule,
+    AuthModule, OnboardingModule, LedgerModule, WalletModule, WorkspaceModule, GenerationModule, BrandModule, AccountModule, MemberModule, BillingModule, LibraryModule, InsightsModule, AudioModule, DeveloperModule, WhatsappModule,
   ],
   controllers: [HealthController],
   providers: [
