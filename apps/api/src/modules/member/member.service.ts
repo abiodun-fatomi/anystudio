@@ -25,6 +25,7 @@ import { Mailer } from '../../utils/mail-service';
 import { workspaceInvite } from '../../assets/email-templates';
 import { authLog } from '../auth/auth.log';
 import { AuthService } from '../auth/auth.service';
+import { NotificationService } from '../notification/notification.service';
 import type { Actor } from '../auth/policy';
 import { GRANTABLE_ROLES, type GrantableRole, type InviteDto } from './member.dto';
 
@@ -34,7 +35,7 @@ const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex
 
 @Injectable()
 export class MemberService {
-  constructor(private readonly db: PrismaClient, private readonly mailer: Mailer, private readonly auth: AuthService) {}
+  constructor(private readonly db: PrismaClient, private readonly mailer: Mailer, private readonly auth: AuthService, private readonly notifications: NotificationService) {}
 
   /** Members and open invitations, in one read. */
   async list(workspaceId: string) {
@@ -115,6 +116,8 @@ export class MemberService {
       }),
     ]);
     authLog('member.accept', 'succeeded', { userId: actor.userId, workspaceId, role }, req);
+    void this.db.user.findUnique({ where: { id: actor.userId }, select: { name: true, email: true } }).then((u) =>
+      this.notifications.notifyWorkspace(workspaceId, actor.userId, { kind: 'MEMBER', title: `${u?.name ?? u?.email ?? 'Someone'} joined the workspace`, body: `As ${role.toLowerCase()}. Manage members in Settings → Workspace.`, href: '/settings/workspace', refId: `joined:${actor.userId}:${workspaceId}` }));
     return { status: 'joined' as const, workspace: ws, role };
   }
 

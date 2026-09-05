@@ -189,6 +189,7 @@ export interface Insights {
 
 export interface Genre { key: string; name: string; region: string; family: string; description: string; languages: string[]; bpm: [number, number] | null }
 export interface Voice { key: string; name: string; language: string; accent: string | null; gender: string | null; tags: string[]; sampleUrl: string | null; provider: string }
+export interface NotificationItem { id: string; kind: 'GENERATION_DONE' | 'GENERATION_FAILED' | 'CREDITS' | 'MEMBER' | 'PUBLISH' | 'SYSTEM' | 'PLATFORM'; title: string; body: string | null; href: string | null; refId: string | null; read: boolean; createdAt: string }
 export interface DevProject { id: string; name: string; slug: string; description: string | null; createdAt: string; archivedAt: string | null; activeKeys?: number }
 export interface DevKey { id: string; name: string; prefix: string; scopes: string[]; project: { id: string; name: string; slug: string }; createdBy: string | null; createdAt: string; lastUsedAt: string | null; expiresAt: string | null; revokedAt: string | null; key?: string }
 export interface DevWebhook { id: string; url: string; events: string[]; active: boolean; failures: number; lastDeliveryAt: string | null; project: { id: string; name: string; slug: string } | null; createdAt: string; secret?: string }
@@ -211,6 +212,11 @@ export const api = {
     unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
     unlock: (workspaceId: string, generationId: string) =>
       request<{ status: 'unlocked' | 'already_unlocked'; credits?: number; generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null } }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
+  notifications: {
+    list: (opts: { take?: number; cursor?: string; unread?: boolean } = {}) => request<{ items: NotificationItem[]; nextCursor: string | null; unread: number }>('GET', `/me/notifications?${new URLSearchParams({ ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.unread ? { unread: 'true' } : {}) })}`),
+    unread: () => request<{ unread: number }>('GET', '/me/notifications/unread'),
+    read: (body: { ids?: string[]; all?: boolean }) => request<{ unread: number }>('POST', '/me/notifications/read', body),
   },
   developer: {
     usage: (workspaceId: string, days = 30, projectId?: string) => request<DevUsage>('GET', `/workspaces/${workspaceId}/developer/usage?days=${days}${projectId ? `&projectId=${projectId}` : ''}`),

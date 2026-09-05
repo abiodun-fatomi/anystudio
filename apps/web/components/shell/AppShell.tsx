@@ -15,9 +15,10 @@ import { useApp } from '@/lib/app-context';
 import { applyTheme, readTheme, type Theme } from '@/lib/theme';
 import { siblingOrigin } from '@/lib/hosts';
 import { cx } from '@/lib/cx';
-import { Avatar, MenuHeading, MenuItem, MenuSeparator, Popover, Tooltip } from '@/components/ui';
+import { Avatar, MenuHeading, MenuItem, MenuSeparator, Popover } from '@/components/ui';
 import { GuidedTour } from '@/components/GuidedTour';
 import { Icon, type IconName } from './icons';
+import { Bell } from './Bell';
 import styles from './AppShell.module.css';
 
 /** The rail. `tour` keys are what the onboarding tour spotlights; keep them. */
@@ -106,9 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <WorkspaceSwitcher current={workspace} all={workspaces} onPick={switchWorkspace} />
           <div className={styles.spacer} />
           <CreditPill balance={balance} />
-          <Tooltip label="Notifications">
-            <Link href="/settings/notifications" className={styles.avatarBtn} aria-label="Notifications" style={{ width: 36, justifyContent: 'center' }}><Icon.bell /></Link>
-          </Tooltip>
+          <Bell />
           <Popover align="end" menu trigger={
             <button type="button" className={styles.avatarBtn} aria-label="Account menu"><Avatar name={me.user.name ?? me.user.email ?? 'You'} /></button>
           }>

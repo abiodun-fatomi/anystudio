@@ -6,6 +6,8 @@
  * than edited.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { NotificationService } from '../notification/notification.service';
+import { GenerationHooks } from '../generation/generation.hooks';
 import { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { authenticator } from 'otplib';
@@ -208,7 +210,7 @@ suite('MemberService', () => {
   const db = new PrismaClient();
   const mailer = new CapturingMailer();
   const auth = { publicOrigin: () => 'https://app.test' } as unknown as AuthService;
-  const service = new MemberService(db, mailer, auth);
+  const service = new MemberService(db, mailer, auth, new NotificationService(db, new GenerationHooks()));
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'test' } as unknown as Request;
 
   let ownerId: string; let workspaceId: string;

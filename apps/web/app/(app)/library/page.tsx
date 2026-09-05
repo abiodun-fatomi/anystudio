@@ -87,6 +87,14 @@ function Library() {
     catch (e) { toast({ title: 'Could not remove', body: e instanceof Error ? e.message : undefined, tone: 'danger' }); }
     finally { setBusy(false); }
   };
+  // A link from the bell (`?open=<id>`) opens that item straight away.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('open');
+    if (!id) return;
+    api.library.get(workspace.id, id).then(setOpen).catch(() => undefined);
+    window.history.replaceState(null, '', '/library');
+  }, [workspace.id]);
+
   const openItem = async (item: LibraryItem) => {
     setOpen(item);
     try { setOpen(await api.library.get(workspace.id, item.id)); } catch { /* the list's copy still shows */ }
