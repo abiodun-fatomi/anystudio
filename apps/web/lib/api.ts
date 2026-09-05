@@ -295,6 +295,44 @@ export interface CatalogueProductView {
   syncedAt: string;
 }
 
+export type JobStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+export type JobType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERNSHIP';
+export interface AdminJob {
+  id: string;
+  slug: string;
+  title: string;
+  team: string;
+  location: string;
+  remote: boolean;
+  type: JobType;
+  summary: string;
+  description: string;
+  salary: string | null;
+  status: JobStatus;
+  publishedAt: string | null;
+  closedAt: string | null;
+  updatedAt: string;
+  applications: number;
+  newApplications: number;
+}
+export type ApplicationStatus = 'NEW' | 'REVIEWING' | 'INTERVIEW' | 'OFFER' | 'HIRED' | 'REJECTED';
+export interface AdminApplication {
+  id: string;
+  job: { id: string; title: string; slug: string; team: string };
+  name: string;
+  email: string;
+  phone: string | null;
+  links: string | null;
+  coverNote: string | null;
+  cvName: string | null;
+  hasCv: boolean;
+  cvUrl?: string | null;
+  status: ApplicationStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminBillingAccount extends BillingAccountView {
   workspace: { id: string; name: string };
   balance: number;
@@ -997,6 +1035,30 @@ export const api = {
       ),
     approveRefund: (id: string, note?: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/approve`, { note }),
     refuseRefund: (id: string, note: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/refuse`, { note }),
+    jobs: () => request<AdminJob[]>('GET', '/admin/careers/jobs'),
+    createJob: (body: Partial<AdminJob> & { title: string; team: string; location: string; summary: string; description: string }) =>
+      request<AdminJob>('POST', '/admin/careers/jobs', body),
+    updateJob: (id: string, body: Partial<AdminJob>) => request<AdminJob>('PATCH', `/admin/careers/jobs/${id}`, body),
+    deleteJob: (id: string) => request<{ id: string }>('DELETE', `/admin/careers/jobs/${id}`),
+    applications: (q: { jobId?: string; status?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminApplication[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/careers/applications?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    application: (id: string) => request<AdminApplication>('GET', `/admin/careers/applications/${id}`),
+    updateApplication: (id: string, body: { status?: ApplicationStatus; notes?: string | null }) =>
+      request<AdminApplication>('PATCH', `/admin/careers/applications/${id}`, body),
+    waitlist: () =>
+      request<{ bySource: Array<{ source: string; count: number }>; latest: Array<{ email: string; source: string; createdAt: string }> }>(
+        'GET',
+        '/admin/waitlist',
+      ),
     billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
     billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
     billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>

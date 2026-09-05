@@ -602,3 +602,19 @@ customer reads in the email. Both decisions are audit-logged
 sent back outside a request.
 
 **Migration.** `20260918000001_refund_requests`.
+
+## 16. Marketing pages, careers and the waitlist
+
+`/why` is a static page like the landing (edit `design/why.html`, run
+`node scripts/sync-prototypes.mjs`); its pictures and hero film are in
+`apps/web/public/why/`. `/careers` and `/careers/<slug>` are built at
+request time from the API, wearing the same chrome (`content/chrome.ts`,
+also generated). Staff write openings in the console → **Careers**; an
+opening set to _Open_ is on the site the same minute. Applications come
+back with a CV (PDF or Word, up to 8 MB, presigned straight to storage
+under `careers/`), a confirmation email to the applicant, and an alert to
+`CAREERS_EMAIL` if set. The mobile-app waitlist on `/why#mobile` posts to
+`POST /api/v1/waitlist`; counts and the latest signups are at
+`GET /api/v1/admin/waitlist`.
+
+**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.
