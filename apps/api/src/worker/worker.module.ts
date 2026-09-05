@@ -23,6 +23,7 @@ import { MailModule } from '../utils/mail.module';
 import { NotificationModule } from '../modules/notification/notification.module';
 import { PublishingModule } from '../modules/publishing/publishing.module';
 import { UsageBillingModule } from '../modules/usage-billing/usage-billing.module';
+import { CatalogueModule } from '../modules/catalogue/catalogue.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { UsageBillingModule } from '../modules/usage-billing/usage-billing.modul
     SupportModule,
     PublishingModule,
     UsageBillingModule,
+    CatalogueModule,
   ],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],

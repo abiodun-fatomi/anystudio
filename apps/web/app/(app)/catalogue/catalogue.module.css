@@ -1,0 +1,232 @@
+.section {
+  display: grid;
+  gap: var(--s-4);
+  margin-bottom: var(--s-7);
+}
+.section h2 {
+  font-size: var(--t-4);
+  font-weight: 700;
+  margin: 0;
+}
+.connectEmpty {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding: var(--s-4) var(--s-5);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+  font-size: var(--t-2);
+  max-width: 80ch;
+}
+.stores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.store {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+}
+.store[data-status='NEEDS_ATTENTION'] {
+  border-color: color-mix(in oklab, var(--danger) 45%, var(--line-soft));
+}
+.storeMark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: var(--t-4);
+}
+.storeBody {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.storeName {
+  font-weight: 700;
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.storeKind {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: var(--t-2);
+}
+.storeMeta {
+  color: var(--muted);
+  font-size: var(--t-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.storeError {
+  color: var(--danger);
+  font-size: var(--t-1);
+}
+.storeActions {
+  display: flex;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.filters {
+  display: flex;
+  gap: var(--s-3);
+  align-items: end;
+  flex-wrap: wrap;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--s-3);
+}
+.tile {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--s-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  padding: var(--s-2);
+  min-width: 0;
+}
+.thumb {
+  all: unset;
+  display: block;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+  cursor: pointer;
+}
+.thumb:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.noPic {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.tileBody {
+  min-width: 0;
+  padding: 0 var(--s-1);
+}
+.tileTitle {
+  font-weight: 600;
+  font-size: var(--t-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tileMeta {
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.make {
+  width: 100%;
+}
+.moreRow {
+  display: flex;
+  justify-content: center;
+}
+.form {
+  display: grid;
+  gap: var(--s-4);
+}
+.formError {
+  color: var(--danger);
+  font-size: var(--t-2);
+}
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-5);
+}
+.detailPics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-2);
+}
+.detailPic {
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+}
+.detailPic:first-child {
+  grid-column: 1 / -1;
+}
+.detailPic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.detailBody {
+  display: grid;
+  gap: var(--s-3);
+  align-content: start;
+}
+.detailPrice {
+  font-size: var(--t-5);
+  font-weight: 800;
+}
+.detailDesc {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--t-2);
+  line-height: 1.6;
+  white-space: pre-line;
+  max-height: 40vh;
+  overflow: auto;
+}
+.detailActions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .store {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .storeActions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .detail {
+    grid-template-columns: 1fr;
+  }
+}

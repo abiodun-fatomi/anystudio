@@ -41,6 +41,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SupportModule } from './modules/support/support.module';
 import { PublishingModule } from './modules/publishing/publishing.module';
 import { UsageBillingModule } from './modules/usage-billing/usage-billing.module';
+import { CatalogueModule } from './modules/catalogue/catalogue.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { UsageBillingModule } from './modules/usage-billing/usage-billing.module
     SupportModule,
     PublishingModule,
     UsageBillingModule,
+    CatalogueModule,
   ],
   controllers: [HealthController],
   providers: [

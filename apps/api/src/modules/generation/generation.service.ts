@@ -641,7 +641,7 @@ export function libraryFields(params: Record<string, unknown>): { title: string 
   return { title, productKey, searchText: parts.length ? parts.join(' ').slice(0, 4000) : null };
 }
 
-function slug(v: string): string {
+export function slug(v: string): string {
   return v
     .toLowerCase()
     .normalize('NFKD')

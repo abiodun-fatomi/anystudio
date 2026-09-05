@@ -383,6 +383,8 @@ model Workspace {
   publishJobs      PublishJob[]
   billingAccount   BillingAccount?
   invoices         Invoice[]
+  stores           StoreConnection[]
+  products         CatalogueProduct[]
 
   @@index([type])
   @@map("workspaces")
@@ -894,6 +896,83 @@ model Invoice {
   @@index([workspaceId, issuedAt])
   @@index([status, dueAt])
   @@map("invoices")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue sync: a seller's store (Shopify, WooCommerce) read into the
+// workspace so the studio can start from a product instead of an upload.
+// ---------------------------------------------------------------------------
+
+enum StoreKind {
+  SHOPIFY
+  WOOCOMMERCE
+}
+
+enum StoreStatus {
+  CONNECTED
+  NEEDS_ATTENTION // the last sync was refused (revoked token, moved shop)
+  DISCONNECTED
+}
+
+model StoreConnection {
+  id             String      @id @default(uuid()) @db.Uuid
+  workspaceId    String      @db.Uuid
+  kind           StoreKind
+  /// What the person calls it; defaults to the shop's own name.
+  label          String
+  /// acme.myshopify.com, or the WooCommerce site origin.
+  domain         String
+  /// Encrypted JSON: { accessToken } for Shopify, { consumerKey, consumerSecret } for WooCommerce.
+  credentialsEnc String
+  status         StoreStatus @default(CONNECTED)
+  lastError      String?
+  lastSyncAt     DateTime?
+  nextSyncAt     DateTime?
+  /// Set while a sync runs, with the time, so a crashed worker's claim expires.
+  syncingSince   DateTime?
+  productCount   Int         @default(0)
+  connectedById  String      @db.Uuid
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  disconnectedAt DateTime?
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  products  CatalogueProduct[]
+
+  @@unique([workspaceId, kind, domain])
+  @@index([status, nextSyncAt])
+  @@map("store_connections")
+}
+
+model CatalogueProduct {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  storeId           String    @db.Uuid
+  externalId        String
+  handle            String?
+  title             String
+  /// Plain text, tags stripped, capped — what the copywriter is given.
+  description       String?
+  priceMinor        Int?
+  currency          String?
+  url               String?
+  /// The library's grouping key for this product: slug of the handle or title.
+  productKey        String
+  /// [{ src, key }] — the store's image URL and the media asset it became. Unchanged URLs are not fetched again.
+  images            Json
+  active            Boolean   @default(true)
+  externalUpdatedAt DateTime?
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  store     StoreConnection @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, externalId])
+  @@index([workspaceId, active, title])
+  @@index([workspaceId, productKey])
+  @@map("catalogue_products")
 }
 
 /// One value per thing the product can make. Mirrors CAPABILITIES in

@@ -80,6 +80,7 @@ export type AuthEventName =
   | 'billing.account'
   | 'billing.terms'
   | 'billing.invoice'
+  | 'catalogue.store'
   | 'audio.unlock'
   | 'developer.project'
   | 'developer.key'

@@ -32,6 +32,7 @@ const NAV: Array<{ href: string; label: string; icon: IconName; tour: string; mo
   { href: '/today', label: 'Today', icon: 'today', tour: 'today', mobile: true },
   { href: '/studio', label: 'Studio', icon: 'studio', tour: 'create', mobile: true },
   { href: '/library', label: 'Library', icon: 'library', tour: 'library', mobile: true },
+  { href: '/catalogue', label: 'Catalogue', icon: 'store', tour: 'catalogue' },
   { href: '/brand', label: 'Brand', icon: 'brand', tour: 'brand-kit' },
   { href: '/publishing', label: 'Publishing', icon: 'publish', tour: 'publishing' },
   { href: '/insights', label: 'Insights', icon: 'insights', tour: 'insights' },

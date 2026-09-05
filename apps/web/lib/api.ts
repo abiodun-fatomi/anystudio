@@ -264,6 +264,37 @@ export interface AccountOverview {
   canRequest: boolean;
 }
 
+export type StoreKind = 'SHOPIFY' | 'WOOCOMMERCE';
+export interface StoreView {
+  id: string;
+  kind: StoreKind;
+  label: string;
+  domain: string;
+  status: 'CONNECTED' | 'NEEDS_ATTENTION' | 'DISCONNECTED';
+  lastError: string | null;
+  lastSyncAt: string | null;
+  nextSyncAt: string | null;
+  syncing: boolean;
+  productCount: number;
+  connectedAt: string;
+}
+export interface CatalogueProductView {
+  id: string;
+  storeId: string;
+  store: { id: string; kind: StoreKind; label: string };
+  externalId: string;
+  handle: string | null;
+  title: string;
+  description: string | null;
+  priceMinor: number | null;
+  currency: string | null;
+  url: string | null;
+  productKey: string;
+  images: Array<{ key: string; url: string | null }>;
+  thumbUrl: string | null;
+  syncedAt: string;
+}
+
 export interface AdminBillingAccount extends BillingAccountView {
   workspace: { id: string; name: string };
   balance: number;
@@ -1148,6 +1179,26 @@ export const api = {
     /** An uploaded image (media asset key) as the organization's logo; null removes it. */
     setLogo: (id: string, logoKey: string | null) => request<{ id: string; logoKey: string | null }>('PATCH', `/workspaces/${id}`, { logoKey }),
     remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
+  },
+  catalogue: {
+    stores: (workspaceId: string) => request<StoreView[]>('GET', `/workspaces/${workspaceId}/catalogue/stores`),
+    connect: (workspaceId: string, body: { kind: StoreKind; domain: string; accessToken?: string; consumerKey?: string; consumerSecret?: string }) =>
+      request<StoreView>('POST', `/workspaces/${workspaceId}/catalogue/stores`, body),
+    sync: (workspaceId: string, storeId: string) =>
+      request<{ started: boolean; reason?: string }>('POST', `/workspaces/${workspaceId}/catalogue/stores/${storeId}/sync`, {}),
+    disconnect: (workspaceId: string, storeId: string) => request<{ id: string }>('DELETE', `/workspaces/${workspaceId}/catalogue/stores/${storeId}`),
+    products: (workspaceId: string, q: { q?: string; storeId?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: CatalogueProductView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/catalogue/products?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    product: (workspaceId: string, id: string) => request<CatalogueProductView>('GET', `/workspaces/${workspaceId}/catalogue/products/${id}`),
   },
   publishing: {
     platforms: (workspaceId: string) => request<PublishPlatform[]>('GET', `/workspaces/${workspaceId}/publishing/platforms`),
