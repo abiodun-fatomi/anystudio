@@ -134,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const seq = ++balanceReq.current;
     try {
       const w = await api.wallet.summary(workspaceId);
-      if (seq === balanceReq.current) setBalanceState(w.balance);
+      if (seq === balanceReq.current) setBalanceState(typeof w?.balance === 'number' ? w.balance : null);
     } catch {
       /* the last known figure stays; a refresh failing is not news */
     }
