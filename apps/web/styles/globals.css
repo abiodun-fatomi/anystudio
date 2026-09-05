@@ -247,8 +247,20 @@ button {
 .rise {
   animation: rise var(--dur) var(--ease) both;
 }
+/*
+ * Anything that stands in for content while it loads: invisible for the
+ * first 220 ms, then fades in. A fast load never shows it. The Skeleton
+ * primitive does the same; this is for the text placeholders.
+ */
+.waiting {
+  opacity: 0;
+  animation: fade var(--dur) var(--ease) 220ms forwards;
+}
 /* honoured everywhere: no motion, no timing, instant state */
 @media (prefers-reduced-motion: reduce) {
+  .waiting {
+    opacity: 1;
+  }
   :root {
     --dur-fast: 0ms;
     --dur: 0ms;

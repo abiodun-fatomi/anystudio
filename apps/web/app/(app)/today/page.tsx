@@ -101,7 +101,7 @@ export default function TodayPage() {
         <h2>
           Recent credit activity <Link href="/billing">Full statement</Link>
         </h2>
-        {rows === null && !error && <div className={styles.empty}>Loading…</div>}
+        {rows === null && !error && <div className={`${styles.empty} waiting`}>Loading…</div>}
         {rows && rows.length === 0 && <div className={styles.empty}>Nothing yet. Your first sheet will show here.</div>}
         {rows && rows.length > 0 && (
           <table className={styles.table}>
