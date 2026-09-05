@@ -166,6 +166,14 @@ envVarGroups:
         sync: false
       - key: ORIGIN_ADMIN # https://admin.dev.anystudio.ai
         sync: false
+      - key: META_APP_ID # publishing: Instagram (docs/DEPLOY.md §13); leave unset to keep it off
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: TIKTOK_CLIENT_KEY # publishing: TikTok
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

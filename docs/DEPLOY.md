@@ -494,3 +494,44 @@ failed, or no email on file).
 
 Nothing else to configure. The migration `20260914000000_support_chat`
 adds the tables.
+
+## 13. Publishing (Instagram and TikTok)
+
+Finished pictures and reels leave through **Post…** on a library item or a
+studio result. Two roads: a connected account (Instagram, TikTok), now or at
+a chosen time; or the share sheet, which needs no account — a one-hour link
+to the file, the caption on the clipboard, and on a phone the native share
+sheet with the file attached, which is how a WhatsApp Status is posted
+(WhatsApp offers no API for Status).
+
+**How it runs.** A post is a row in `publish_jobs` with a time. The worker
+polls the database every fifteen seconds, claims what is due with a
+conditional update, posts it and records the outcome — no Redis in the
+path, so a Redis outage cannot lose a scheduled post. A platform that says
+"not now" is retried in two minutes, then ten; one that says "never" (bad
+file, dead token) is not retried, and a dead token marks the account as
+needing re-authorisation. Tokens are encrypted under `APP_KEY` at rest and
+refreshed a week before expiry. Posted and failed both reach the bell.
+
+**Variables.** Without them a platform reports itself "not switched on"
+and the connect button does not appear.
+
+| Variable                                    | Where it comes from                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `META_APP_ID`, `META_APP_SECRET`            | developers.facebook.com → your app → App settings → Basic. Add the product **Facebook Login for Business** and, under its Settings, the Valid OAuth Redirect URI `https://app.<base>/api/v1/publishing/callback/instagram` (and the `org.` one). Permissions used: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`. |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | developers.tiktok.com → your app → Credentials. Add **Login Kit** and **Content Posting API**; scopes `user.info.basic`, `video.publish`, `video.upload`; redirect URI `https://app.<base>/api/v1/publishing/callback/tiktok` (and `org.`).                                                                                                                                           |
+
+**Before app review.** Meta only grants `instagram_content_publish` to
+accounts with a role on the app (developers and testers) until the app
+passes review — enough for dev and staging. TikTok, until its review, lets
+an app post only as private to the account (`SELF_ONLY`); the connector
+reads what the account allows and uses the most open level, so the same
+code posts publicly once the review is through. Instagram can only be
+posted to as a **Professional** account (Business or Creator) linked to a
+Facebook Page; personal accounts are refused by Meta, and the page says so.
+TikTok photo posts need the pull domain verified in the TikTok app
+settings, which a signed R2 host cannot be; videos are pushed and need no
+such thing, so TikTok takes videos only for now.
+
+**Migration.** `20260916000000_publishing` adds `social_accounts` and
+`publish_jobs`.

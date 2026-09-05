@@ -433,6 +433,48 @@ export interface LibraryOutput {
   locked?: boolean;
   url: string | null;
 }
+// Publishing
+export type SocialPlatform = 'INSTAGRAM' | 'TIKTOK';
+export type PublishFormat = 'IMAGE' | 'VIDEO' | 'REEL' | 'STORY';
+export type PublishStatus = 'SCHEDULED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED' | 'CANCELLED';
+export interface PublishPlatform {
+  platform: SocialPlatform;
+  available: boolean;
+  formats: PublishFormat[];
+}
+export interface SocialAccount {
+  id: string;
+  platform: SocialPlatform;
+  handle: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  status: 'CONNECTED' | 'NEEDS_REAUTH' | 'DISCONNECTED';
+  tokenExpiresAt: string | null;
+  connectedAt: string;
+  formats: PublishFormat[];
+}
+export interface PublishJob {
+  id: string;
+  accountId: string;
+  generationId: string | null;
+  platform: SocialPlatform;
+  format: PublishFormat;
+  mediaKey: string;
+  mediaMime: string | null;
+  mediaUrl: string | null;
+  caption: string;
+  scheduledFor: string;
+  status: PublishStatus;
+  attempts: number;
+  failureReason: string | null;
+  externalPostId: string | null;
+  externalUrl: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  account: SocialAccount;
+}
+
 export interface LibraryItem {
   id: string;
   type: Exclude<LibraryType, 'all'>;
@@ -948,6 +990,30 @@ export const api = {
     /** The currency prices are shown and charged in. Credits already held are unaffected. */
     setCurrency: (id: string, currency: string) => request<{ id: string; currency: string }>('PATCH', `/workspaces/${id}`, { currency }),
     remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
+  },
+  publishing: {
+    platforms: (workspaceId: string) => request<PublishPlatform[]>('GET', `/workspaces/${workspaceId}/publishing/platforms`),
+    accounts: (workspaceId: string) => request<SocialAccount[]>('GET', `/workspaces/${workspaceId}/publishing/accounts`),
+    /** A navigation, not a fetch: the API answers with a redirect to the platform. */
+    connectUrl: (workspaceId: string, platform: SocialPlatform, next = '/publishing') =>
+      `/api/v1/workspaces/${workspaceId}/publishing/connect/${platform.toLowerCase()}/start?next=${encodeURIComponent(next)}`,
+    disconnect: (workspaceId: string, accountId: string) =>
+      request<{ status: 'disconnected' }>('DELETE', `/workspaces/${workspaceId}/publishing/accounts/${accountId}`),
+    create: (
+      workspaceId: string,
+      body: { accountIds: string[]; generationId?: string; mediaKey: string; format: PublishFormat; caption: string; scheduledFor?: string },
+    ) => request<PublishJob[]>('POST', `/workspaces/${workspaceId}/publishing/jobs`, body),
+    list: (workspaceId: string, opts: { view?: 'upcoming' | 'history'; take?: number; cursor?: string } = {}) =>
+      request<{ rows: PublishJob[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ view: opts.view ?? 'upcoming', ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`,
+      ),
+    patch: (workspaceId: string, id: string, body: { caption?: string; scheduledFor?: string }) =>
+      request<PublishJob>('PATCH', `/workspaces/${workspaceId}/publishing/jobs/${id}`, body),
+    cancel: (workspaceId: string, id: string) => request<PublishJob>('POST', `/workspaces/${workspaceId}/publishing/jobs/${id}/cancel`),
+    retry: (workspaceId: string, id: string) => request<PublishJob>('POST', `/workspaces/${workspaceId}/publishing/jobs/${id}/retry`),
+    share: (workspaceId: string, mediaKey: string) =>
+      request<{ url: string; mime: string | null; expiresInSec: number }>('POST', `/workspaces/${workspaceId}/publishing/share`, { mediaKey }),
   },
   media: {
     presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
