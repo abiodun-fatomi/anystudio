@@ -27,10 +27,11 @@ route to the stub adapter without any key at all.
 | `ANTHROPIC_API_KEY` | Anthropic | console.anthropic.com → API keys | Claude Haiku 4.5 for brand-voice copy | $1/$5 per 1M tokens |
 | `BFL_API_KEY` | Black Forest Labs | api.bfl.ai → sign up | Flux Kontext Pro — budget edit tier | $0.04/image |
 | `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET` | Higgsfield | platform.higgsfield.ai → API keys | Their own DoP image-to-video models (`higgsfield:dop-turbo`, row disabled until resale terms are on file). The Kling row through them stays disabled: Kling's ToS §4.6 forbids commercial use without written permission and §4.5 requires attribution. | ~$0.60/clip (verify) |
-| `HEYGEN_API_KEY` | HeyGen | already held | Dubbing and avatars (Phase 11) | per-minute; not public, sales call |
-| `ELEVENLABS_API_KEY` | ElevenLabs | elevenlabs.io → Profile → API keys (paid plan for commercial music) | Eleven Music v2 for songs (`elevenlabs:music`, primary), multilingual TTS for voiceovers (`elevenlabs:tts`, primary) | ~$0.11–1.09 per song by length; TTS by character |
+| `HEYGEN_API_KEY` | HeyGen | already held (app.heygen.com → Settings → API) | Video Translate v3 (`heygen:translate`) and Lipsync v3 (`heygen:lipsync`) — 175+ languages including English (Nigeria/Kenya/SA), Swahili, Zulu, Amharic | credits per minute on the API plan; confirm the rate for your tier |
+| `ELEVENLABS_API_KEY` | ElevenLabs | elevenlabs.io → Profile → API keys (paid plan for commercial music) | Eleven Music v2 for songs (`elevenlabs:music`, primary), multilingual TTS for voiceovers (`elevenlabs:tts`, primary), Dubbing for video translation (`elevenlabs:dubbing-v1`, primary for ~30 languages) | ~$0.11–1.09 per song by length; TTS by character; dubbing ~$0.50–1.00/min |
+| `SYNC_API_KEY` | sync.so | sync.so → Dashboard → API keys (optional: the same model is reachable through fal) | `sync:lipsync-2` direct; the row is seeded disabled — enable it when on contract | per second of output |
 
-Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract), sync.so (lip sync).
+Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mubert (music with sub-licensing; direct contract).
 
 ## Infrastructure keys (already in the env group; listed for completeness)
 
@@ -60,7 +61,10 @@ Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mube
 | IMAGE_TO_VIDEO | fal:wan-2.5-i2v → openai:sora-2 → vertex:veo-3.1-fast | budget first: at 120 credits a reel sells for ~$1.80 and Veo costs more than that |
 | TEXT_GENERATE | google:gemini-2.5-flash-lite → anthropic:claude-haiku-4.5 | |
 | VIDEO_STITCH | local:ffmpeg | ours |
-| VOICEOVER / MUSIC / DUB / LIPSYNC | declared, disabled | Phases 10–11 |
+| VOICEOVER | the voice's own vendor only | see Audio |
+| MUSIC | elevenlabs:music → fal:minimax-music-v2 | see Audio |
+| DUB | elevenlabs:dubbing-v1 → heygen:translate, narrowed to who speaks the language; HeyGen first when lips must move | see Dubbing |
+| LIPSYNC | fal:sync-lipsync → heygen:lipsync (→ sync:lipsync-2, disabled) | see Dubbing |
 
 ## Licensing landmines
 
@@ -155,3 +159,25 @@ Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per m
 | `spitch:tts` | Spitch | Disabled: Yoruba, Igbo, Hausa by quote. |
 
 **Verify in the sandbox before launch:** Eleven Music's composition-plan field names against the live docs (the `chunks` shape used here is the documented v2 one); that the stub's 30-second preview cut matches the real track's loudness; MiniMax's `audio_setting` acceptance.
+
+## Dubbing and lip-sync (Phase 11)
+
+**Translate a video** (`DUB`) keeps the speaker's own voice and says it again in another language. Voice only costs `video.translate` (90); with the mouth re-animated to match, `video.translate_lipsync` (240). The runner reads the target language off the row and narrows the router to the vendors that speak it (`DUB_LANGUAGES` in `packages/shared` carries each code's ElevenLabs code and HeyGen name), putting HeyGen first when lips are wanted because it does both in one pass. When ElevenLabs dubs the sound, the pipeline stores the dubbed video under `gen/<id>/work/`, pulls the new soundtrack with ffmpeg and finishes with a `LIPSYNC` vendor. The text output records the language, whether the lips were moved and which vendor spoke.
+
+**Lip-sync new words** (`LIPSYNC`, `video.lipsync`, 150) takes an uploaded audio file, or a script that is recorded first in a catalogue voice (routed to that voice's vendor exactly as the voice tool is) and stored beside the row.
+
+| Row | Vendor | Notes |
+|---|---|---|
+| `elevenlabs:dubbing-v1` (p10) | ElevenLabs Dubbing | `POST /v1/dubbing` multipart by `source_url` (the signed R2 URL; the file never passes through the worker twice), poll `GET /v1/dubbing/{id}` for `dubbed`/`failed`, download `GET /v1/dubbing/{id}/audio/{lang}` (an MP4 for a video source). ~30 languages, no accent choice, no African languages beyond Arabic, French and Portuguese. |
+| `heygen:translate` (p20) | HeyGen Video Translate v3 | `POST /v3/video-translations` with a language *name*, `translate_audio_only` unless lips are wanted, `mode` speed/precision from the request's `quality`; poll `GET /v3/video-translations/{id}`. |
+| `fal:sync-lipsync` (p10) | sync.so lipsync-2 through fal | `video_url` + `audio_url`, `sync_mode: cut_off` so the clip ends with the words; `lipsync-2-pro` for `quality: precision`. |
+| `heygen:lipsync` (p20) | HeyGen Lipsync v3 | `POST /v3/lipsyncs`, same polling. |
+| `sync:lipsync-2` (p30, disabled) | sync.so direct | `POST /v2/generate`; `REJECTED` is their moderation and is treated as the content's fault, not a reason to fall back. Enable when `SYNC_API_KEY` is set. |
+
+**Languages.** `GET /audio/dub-languages` returns only what this environment's vendors can serve (all of them in a stub-only environment), grouped by region, each marked with whether lips can be matched. Yoruba, Igbo, Hausa and Pidgin are not offered by any dubbing vendor as of September 2026; the studio says so rather than failing after the upload.
+
+**Consent.** Both capabilities require `consent: true` in the params — the studio's box "I have permission to use this person's face and voice" — because a dub clones a voice and a lip-sync re-animates a face. The pipeline logs the flag with the request. HeyGen's and sync's own moderation (`failure_message`, `REJECTED`) surfaces as `CONTENT_REJECTED`, which refunds and does not retry.
+
+**Length.** Vendors bill by the minute; one credit price covers up to 5 minutes for a dub and 3 for a lip-sync (`DUB_MAX_SEC`, `LIPSYNC_MAX_SEC`). The pipeline measures the source with ffprobe over HTTP before any vendor is paid and refuses longer ones with the credits returned.
+
+**Verify in the sandbox before launch:** ElevenLabs' dubbing `status` vocabulary (`dubbing`/`dubbed`/`failed` is what the docs show) and that a video source really comes back as MP4 from the `/audio/` endpoint; HeyGen v3's status wrapper (`data.status` vs top-level — both are read) and the exact language names (`GET /v3/video-translations/languages`); fal's `sync_mode` values; whether HeyGen `translate_audio_only: false` output should be trusted as lip-synced (it is, per their docs) so the second pass is skipped.

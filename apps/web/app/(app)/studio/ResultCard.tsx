@@ -87,7 +87,7 @@ export function ResultCard({ card, onUseAsSource, onSendToVideo, onAgain, onCanc
       {audioText && (audioText.lyrics || audioText.script) && <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />}
       {spoken && card.status === 'SUCCEEDED' && (
         <div className={styles.videoNote}>
-          {spoken.language && <span>Now in <strong>{spoken.language}</strong></span>}
+          {card.capability === 'DUB' && spoken.language && <span>Now in <strong>{spoken.language}</strong></span>}
           <span>{spoken.lipsync ? 'Lips matched to the new voice' : card.capability === 'DUB' ? 'Voice only — the picture is untouched' : 'Mouth re-animated'}</span>
         </div>
       )}
