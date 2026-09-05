@@ -81,6 +81,25 @@ export type LoginResult =
   | { status: 'mfa_required'; challengeId: string; factors: string[] }
   | { status: 'invalid_credentials' };
 
+// Help & support
+export interface SupportMessage { id: string; role: 'USER' | 'ASSISTANT' | 'STAFF' | 'SYSTEM'; text: string; who: string | null; createdAt: string }
+export interface SupportConversation {
+  id: string; status: 'OPEN' | 'CLOSED'; topic: string | null; needsHuman: boolean; staffJoined: boolean;
+  createdAt: string; closedAt: string | null; transcriptSentAt: string | null; messages: SupportMessage[];
+}
+export interface SupportHistoryRow { id: string; topic: string | null; createdAt: string; closedAt: string | null; messageCount: number }
+export interface AdminSupportRow {
+  id: string; status: 'OPEN' | 'CLOSED'; topic: string | null; needsHuman: boolean; staffJoined: boolean; page: string | null;
+  user: { id: string; name: string | null; email: string | null }; workspaceId: string | null; messageCount: number; lastMessageAt: string; createdAt: string;
+  last: { role: SupportMessage['role']; text: string } | null;
+}
+export interface AdminSupportDetail extends SupportConversation {
+  page: string | null;
+  user: { id: string; name: string | null; email: string | null; phone: string | null; status: string; createdAt: string };
+  workspace: { id: string; name: string; type: string } | null;
+  messagesMeta: Array<{ id: string; meta: unknown }>;
+}
+
 export interface WorkspaceProfile {
   sells?: string;
   channels?: Array<'whatsapp' | 'instagram' | 'tiktok' | 'facebook' | 'jiji' | 'shop' | 'market'>;
@@ -275,6 +294,11 @@ export const api = {
     grantStaff: (body: { email: string; role: string; reason: string; expiresAt?: string }) => request<unknown>('POST', '/admin/staff', body),
     revokeStaff: (id: string) => request<{ revoked: boolean }>('DELETE', `/admin/staff/${id}`),
     messages: () => request<AdminMessage[]>('GET', '/admin/messages'),
+    support: (opts: { filter?: string; q?: string; cursor?: string } = {}) => request<{ counts: { open: number; needsHuman: number }; rows: AdminSupportRow[]; nextCursor: string | null }>('GET', `/admin/support?${new URLSearchParams({ ...(opts.filter ? { filter: opts.filter } : {}), ...(opts.q ? { q: opts.q } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`),
+    supportOne: (id: string) => request<AdminSupportDetail>('GET', `/admin/support/${id}`),
+    supportReply: (id: string, text: string) => request<SupportMessage>('POST', `/admin/support/${id}/reply`, { text }),
+    supportResolve: (id: string) => request<SupportConversation>('POST', `/admin/support/${id}/resolve`, {}),
+    supportClose: (id: string) => request<SupportConversation>('POST', `/admin/support/${id}/close`, {}),
     createMessage: (body: { title: string; body: string; href?: string; audience?: string; publish?: boolean; expiresAt?: string }) => request<AdminMessage>('POST', '/admin/messages', body),
     updateMessage: (id: string, body: { title?: string; body?: string; href?: string; audience?: string; published?: boolean; expiresAt?: string }) => request<AdminMessage>('PATCH', `/admin/messages/${id}`, body),
     deleteMessage: (id: string) => request<{ deleted: boolean }>('DELETE', `/admin/messages/${id}`),
@@ -283,6 +307,14 @@ export const api = {
     list: (opts: { take?: number; cursor?: string; unread?: boolean } = {}) => request<{ items: NotificationItem[]; nextCursor: string | null; unread: number }>('GET', `/me/notifications?${new URLSearchParams({ ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.unread ? { unread: 'true' } : {}) })}`),
     unread: () => request<{ unread: number }>('GET', '/me/notifications/unread'),
     read: (body: { ids?: string[]; all?: boolean }) => request<{ unread: number }>('POST', '/me/notifications/read', body),
+  },
+  support: {
+    current: () => request<SupportConversation | null>('GET', '/support/conversations/current'),
+    history: () => request<SupportHistoryRow[]>('GET', '/support/conversations/history'),
+    open: (body: { workspaceId?: string; page?: string }) => request<SupportConversation>('POST', '/support/conversations', body),
+    one: (id: string) => request<SupportConversation>('GET', `/support/conversations/${id}`),
+    send: (id: string, text: string, page?: string) => request<{ messages: SupportMessage[]; needsHuman: boolean }>('POST', `/support/conversations/${id}/messages`, { text, page }),
+    close: (id: string, email = true) => request<SupportConversation>('POST', `/support/conversations/${id}/close`, { email }),
   },
   developer: {
     usage: (workspaceId: string, days = 30, projectId?: string) => request<DevUsage>('GET', `/workspaces/${workspaceId}/developer/usage?days=${days}${projectId ? `&projectId=${projectId}` : ''}`),

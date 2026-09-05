@@ -1,0 +1,11 @@
+.thread{display:flex;flex-direction:column;gap:12px;padding:var(--s-4) var(--s-5);max-height:62vh;overflow-y:auto;background:var(--surface)}
+.msg{display:grid;gap:4px;max-width:78%}
+.msg[data-role="USER"]{align-self:flex-end;justify-items:end}
+.who{display:flex;gap:8px;align-items:center;font-size:var(--t-1);color:var(--muted);padding:0 4px}
+.who span{opacity:.8}
+.who em{font-style:normal;font-size:10.5px}
+.bubble{padding:9px 13px;border-radius:14px;font-size:var(--t-2);line-height:1.5;white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--line-soft)}
+.msg[data-role="USER"] .bubble{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.msg[data-role="STAFF"] .bubble{background:var(--cyan-wash);border-color:color-mix(in srgb,var(--cyan) 30%,transparent)}
+.msg[data-role="SYSTEM"] .bubble{color:var(--muted);font-style:italic}
+.reply{display:grid;gap:var(--s-3);padding:var(--s-4) var(--s-5);border-top:1px solid var(--line-soft);background:var(--surface-2)}

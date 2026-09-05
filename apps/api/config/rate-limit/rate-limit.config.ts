@@ -54,6 +54,9 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   // Portal: minting keys and endpoints is rare by nature.
   'POST /api/v1/workspaces/:workspaceId/developer/keys':     [{ limit: 10, windowSec: 3600, scope: 'account' }],
   'POST /api/v1/workspaces/:workspaceId/developer/webhooks': [{ limit: 10, windowSec: 3600, scope: 'account' }],
+  // The help chat: each message costs a model call.
+  'POST /api/v1/support/conversations':              [{ limit: 10, windowSec: 3600, scope: 'account' }],
+  'POST /api/v1/support/conversations/:id/messages': [{ limit: 20, windowSec: 60, scope: 'account' }, { limit: 200, windowSec: 86400, scope: 'account' }],
   // Meta retries aggressively and from many IPs.
   'POST /api/v1/whatsapp/webhook':    [{ limit: 6000, windowSec: 60, scope: 'ip' }],
 };

@@ -90,7 +90,8 @@ export type AuthEventName =
   | 'admin.generation'
   | 'admin.staff'
   | 'admin.message'
-  | 'admin.price';
+  | 'admin.price'
+  | 'admin.support';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
 

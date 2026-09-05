@@ -23,6 +23,7 @@ export const useAdmin = (): AdminState => { const v = useContext(Ctx); if (!v) t
 const NAV: Array<{ href: string; label: string; icon: IconName; min?: StaffRole }> = [
   { href: '/admin', label: 'Overview', icon: 'today' },
   { href: '/admin/customers', label: 'Customers', icon: 'user' },
+  { href: '/admin/support', label: 'Help chats', icon: 'bell' },
   { href: '/admin/generations', label: 'Generations', icon: 'studio' },
   { href: '/admin/payments', label: 'Payments', icon: 'credits' },
   { href: '/admin/providers', label: 'Providers & prices', icon: 'settings', min: 'OPERATOR' },

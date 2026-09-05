@@ -440,3 +440,27 @@ staff; the audit log.
 
 **Locally**: `next dev -p 3003` beside the app on 3000 — the API maps
 `localhost:3003` to the ADMIN surface.
+
+## 12. Help & support (the chat floater)
+
+Every signed-in page has a help floater. It opens a chat with an assistant
+(Claude, through `ANTHROPIC_API_KEY`; `SUPPORT_MODEL` overrides the model)
+that knows the product and its prices, points people at the right screen,
+and sets a **needs-a-person** flag when money, a locked account, a repeated
+failure or anything it cannot answer comes up. Staff see every chat — the
+person's words and the assistant's answers — under **Help chats** in the
+console, can reply into it (the reply lands in the floater and rings the
+person's bell) and can close it. Closing a chat, by the person or by staff,
+emails them the transcript; chats quiet for a day are closed by the worker
+and mailed the same way.
+
+Fail-safes: with no `ANTHROPIC_API_KEY`, or when the vendor is down or slow
+(20 s), the person gets an honest holding line and the chat is flagged for
+staff — the chat never errors. Each message costs one model call and is
+rate-limited per account (20/min, 200/day). Logs tell the story as
+`support.opened` → `support.message` (needsHuman, fallback) →
+`support.staff_reply` → `support.closed` (by whom; transcript sent, skipped,
+failed, or no email on file).
+
+Nothing else to configure. The migration `20260914000000_support_chat`
+adds the tables.

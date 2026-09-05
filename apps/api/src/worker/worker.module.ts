@@ -18,10 +18,12 @@ import { Pipelines } from './pipelines';
 import { WorkerSupervisor } from './supervisor';
 import { DeveloperModule } from '../modules/developer/developer.module';
 import { WhatsappModule } from '../modules/whatsapp/whatsapp.module';
+import { SupportModule } from '../modules/support/support.module';
+import { MailModule } from '../utils/mail.module';
 import { NotificationModule } from '../modules/notification/notification.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule, WhatsappModule, NotificationModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, MailModule, QueueModule, ProviderModule, MediaModule, LedgerModule, GenerationModule, DeveloperModule, WhatsappModule, NotificationModule, SupportModule],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],
 })

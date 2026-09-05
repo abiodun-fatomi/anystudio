@@ -10,7 +10,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/lib/app-context';
 import { applyTheme, readTheme, type Theme } from '@/lib/theme';
 import { siblingOrigin } from '@/lib/hosts';
@@ -20,6 +20,7 @@ import { GuidedTour } from '@/components/GuidedTour';
 import { Icon, type IconName } from './icons';
 import { Bell } from './Bell';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { SupportWidget } from '@/components/support/SupportWidget';
 import styles from './AppShell.module.css';
 
 /** The rail. `tour` keys are what the onboarding tour spotlights; keep them. */
@@ -143,6 +144,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <GuidedTour />
+      <Suspense fallback={null}><SupportWidget /></Suspense>
     </div>
   );
 }
