@@ -24,6 +24,17 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
   const [over, setOver] = useState(false);
   const [pending, setPending] = useState<Pending[]>([]);
   const [recent, setRecent] = useState<MediaAssetRow[] | null>(null);
+  // A placeholder only where something will replace it: a new account has no
+  // recent photos, and three shimmering squares that vanish read as a glitch.
+  // How many there were last time is remembered per workspace.
+  const [expected, setExpected] = useState(0);
+  useEffect(() => {
+    try {
+      setExpected(Math.min(3, Number(sessionStorage.getItem(`anystudio:recent-sources:${workspace.id}`) ?? 0)));
+    } catch {
+      /* fine */
+    }
+  }, [workspace.id]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const input = useRef<HTMLInputElement>(null);
 
@@ -31,6 +42,11 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
     try {
       const rows = await api.media.list(workspace.id, { kind: 'SOURCE', take: 18 });
       setRecent(rows);
+      try {
+        sessionStorage.setItem(`anystudio:recent-sources:${workspace.id}`, String(rows.length));
+      } catch {
+        /* fine */
+      }
       if (rows.length) {
         const { urls: u } = await api.media.urls(
           workspace.id,
@@ -142,9 +158,9 @@ export function SourcePane({ selected, onSelect, refreshKey }: { selected: strin
           </div>
         )}
 
-        {recent === null && (
+        {recent === null && expected > 0 && (
           <div className={styles.recent}>
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: expected }, (_, i) => (
               <Skeleton key={i} style={{ aspectRatio: '1' }} />
             ))}
           </div>
