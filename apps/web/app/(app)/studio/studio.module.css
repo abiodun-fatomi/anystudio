@@ -127,6 +127,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: var(--s-2);
   margin-top: var(--s-3);
+  animation: fade var(--dur) var(--ease) both;
 }
 @media (max-width: 1024px) {
   .recent {
