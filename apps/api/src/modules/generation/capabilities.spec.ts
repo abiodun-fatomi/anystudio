@@ -1,6 +1,6 @@
 /** The shared schemas, exercised from the API side where they gate money. */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COST_CODE, CAPABILITIES, parseCapabilityParams, queueFor } from '@anystudio/shared';
+import { DEFAULT_COST_CODE, CAPABILITIES, QUEUES, parseCapabilityParams, queueFor } from '@anystudio/shared';
 
 describe('capability params', () => {
   it('fills defaults so the worker never sees a missing field', () => {
@@ -21,9 +21,19 @@ describe('capability params', () => {
   });
 
   it('has a cost code and a queue for every capability', () => {
+    const queues = Object.values(QUEUES);
     for (const c of CAPABILITIES) {
       expect(DEFAULT_COST_CODE[c]).toMatch(/^[a-z]+(\.[a-z_0-9]+)+$/);
-      expect(['media.fast', 'media.heavy']).toContain(queueFor(c));
+      expect(queues).toContain(queueFor(c));
     }
+  });
+
+  // The split that keeps a video moving: waiting on a vendor is cheap and runs
+  // wide, ffmpeg on our own box is not and stays capped.
+  it('sends our own ffmpeg work to the local queue and vendor work to the heavy one', () => {
+    expect(queueFor('VIDEO_STITCH')).toBe(QUEUES.local);
+    expect(queueFor('IMAGE_TO_VIDEO')).toBe(QUEUES.heavy);
+    expect(queueFor('MUSIC')).toBe(QUEUES.heavy);
+    expect(queueFor('TEXT_GENERATE')).toBe(QUEUES.fast);
   });
 });
