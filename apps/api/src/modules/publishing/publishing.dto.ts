@@ -64,6 +64,17 @@ export class PublishListQueryDto {
   @IsIn(['upcoming', 'history'])
   view?: 'upcoming' | 'history';
 
+  /** A window instead of a view: every post scheduled in [from, to), whatever its status — what a calendar shows. */
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
+
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
   @IsOptional()
   @Type(() => Number)

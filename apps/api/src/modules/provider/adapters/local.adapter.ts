@@ -145,7 +145,7 @@ function buildArgs(
   }
   if (p.watermark) {
     layers.push(
-      `drawtext=text='made on studo':fontsize=${Math.round(h * 0.018)}:fontcolor=white@0.7:x=w-text_w-${Math.round(w * 0.04)}:y=h-text_h-${Math.round(h * 0.025)}`,
+      `drawtext=text='made on AnyStudio':fontsize=${Math.round(h * 0.018)}:fontcolor=white@0.7:x=w-text_w-${Math.round(w * 0.04)}:y=h-text_h-${Math.round(h * 0.025)}`,
     );
   }
   f.push(`[vcat]${layers.length ? layers.join(',') : 'null'}[vout]`);

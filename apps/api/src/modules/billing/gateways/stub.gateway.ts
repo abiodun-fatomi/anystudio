@@ -74,4 +74,8 @@ export class StubGateway implements Gateway {
   async cancelSubscription(): Promise<void> {
     /* nothing to cancel */
   }
+
+  async refund(payment: Payment): Promise<{ providerRef: string }> {
+    return { providerRef: `stubrefund_${payment.id.slice(0, 8)}` };
+  }
 }

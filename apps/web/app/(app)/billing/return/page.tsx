@@ -80,8 +80,10 @@ function Return() {
     return (
       <EmptyState
         icon={<Icon.check />}
-        title={`${payment.credits.toLocaleString()} credits added`}
-        body={`${moneyMinor(payment.amountMinor, payment.currency)} · reference ${payment.reference}. The receipt is on your Credits page.`}
+        title={payment.kind === 'INVOICE' ? `Invoice ${payment.itemCode} paid` : `${payment.credits.toLocaleString()} credits added`}
+        body={`${moneyMinor(payment.amountMinor, payment.currency)} · reference ${payment.reference}. ${
+          payment.kind === 'INVOICE' ? 'Thank you — the receipt is on your Billing page.' : 'The receipt is on your Credits page.'
+        }`}
         actions={
           <>
             <Button href="/studio">Back to the studio</Button>

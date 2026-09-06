@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/shell/Page';
 import { Button, Dialog, Input, Pager, useCursorPages, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
+import { RefundRequests } from './RefundRequests';
 
 export default function PaymentsPage() {
   const { atLeast } = useAdmin();
@@ -43,8 +44,9 @@ export default function PaymentsPage() {
     <div className="rise">
       <PageHeader
         title="Payments"
-        lede="What was charged, by which gateway, and whether the credits landed. Refund the money at the gateway first, then mark it here."
+        lede="What was charged, by which gateway, and whether the credits landed. Customer refund requests are decided at the top; a payment refunded outside a request is marked below after the money went back."
       />
+      <RefundRequests />
       <form
         className={styles.toolbar}
         onSubmit={(e) => {

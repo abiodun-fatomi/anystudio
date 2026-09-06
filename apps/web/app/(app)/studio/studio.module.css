@@ -866,3 +866,93 @@
   font-size: var(--t-2);
   color: var(--ink-soft);
 }
+
+/* ---- catalogue picker ---- */
+.fromCatalogue {
+  all: unset;
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: var(--t-2);
+  color: var(--ink);
+  box-sizing: border-box;
+  width: 100%;
+}
+.fromCatalogue:hover {
+  border-color: var(--accent);
+}
+.fromCatalogue:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.fromCatalogue > span {
+  display: grid;
+  gap: 2px;
+}
+.fromCatalogue > span > span {
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.picker {
+  display: grid;
+  gap: var(--s-3);
+}
+.pickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--s-2);
+  max-height: 60vh;
+  overflow: auto;
+}
+.pickerTile {
+  all: unset;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: var(--r-md);
+  padding: 4px;
+}
+.pickerTile:hover:not(:disabled) {
+  background: var(--sunk);
+}
+.pickerTile:focus-visible {
+  outline: 2.5px solid var(--accent);
+}
+.pickerTile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pickerThumb {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+}
+.pickerThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pickerTitle {
+  font-size: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pickerEmpty {
+  color: var(--muted);
+  font-size: var(--t-2);
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+}
+.pickerEmpty p {
+  margin: 0;
+}

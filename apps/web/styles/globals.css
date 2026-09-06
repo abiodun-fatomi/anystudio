@@ -291,3 +291,28 @@ button {
   white-space: nowrap;
   border: 0;
 }
+
+/* Printing: the page's own content only, on white, whatever theme is on. */
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: light;
+    --paper: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --ink: #17131a;
+    --ink-soft: #3b3341;
+    --muted: #6e6575;
+    --line: #d9d3de;
+    --line-soft: #e7e2eb;
+  }
+  body {
+    background: #fff;
+  }
+  [data-print-hide],
+  nav,
+  aside,
+  header[role='banner'] {
+    display: none !important;
+  }
+}

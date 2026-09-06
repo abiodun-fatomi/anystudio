@@ -47,7 +47,7 @@ export function WorkspaceSwitcher() {
 
   const trigger = (
     <button type="button" className={styles.wsBtn} data-tour="workspace" aria-label={`Workspace: ${workspace.name}. Switch or create a workspace`}>
-      <Avatar name={workspace.name} size="sm" square />
+      <Avatar name={workspace.name} src={workspace.logoUrl} size="sm" square />
       <span className={styles.wsText}>
         <span className={styles.wsName}>{workspace.name}</span>
         <span className={styles.wsType}>{WS_TYPE[workspace.type] ?? workspace.type}</span>
@@ -71,6 +71,7 @@ export function WorkspaceSwitcher() {
                 }}
                 leading={w.id === workspace.id ? <Icon.check width={16} height={16} /> : <span style={{ width: 16, display: 'inline-block' }} />}
               >
+                <Avatar name={w.name} src={w.logoUrl} size="sm" square />
                 <span style={{ display: 'grid', lineHeight: 1.2 }}>
                   <span>{w.name}</span>
                   <span className={styles.wsType}>{WS_TYPE[w.type] ?? w.type}</span>

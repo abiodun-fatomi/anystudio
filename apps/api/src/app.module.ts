@@ -40,6 +40,10 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SupportModule } from './modules/support/support.module';
 import { PublishingModule } from './modules/publishing/publishing.module';
+import { UsageBillingModule } from './modules/usage-billing/usage-billing.module';
+import { CatalogueModule } from './modules/catalogue/catalogue.module';
+import { CareersModule } from './modules/careers/careers.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -69,6 +73,10 @@ import { PublishingModule } from './modules/publishing/publishing.module';
     AdminModule,
     SupportModule,
     PublishingModule,
+    UsageBillingModule,
+    CatalogueModule,
+    CareersModule,
+    WaitlistModule,
   ],
   controllers: [HealthController],
   providers: [

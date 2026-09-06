@@ -49,6 +49,8 @@ export interface WorkspaceRef {
   name: string;
   currency: string;
   role: string;
+  logoKey?: string | null;
+  logoUrl?: string | null;
 }
 
 interface AppState {
@@ -57,7 +59,12 @@ interface AppState {
   workspaces: WorkspaceRef[];
   /** `type` lets a just-created workspace be opened before /auth/me has been re-read. */
   switchWorkspace: (id: string, type?: string) => void;
+  /** What may be spent now. For a postpaid organization this is the room left on its credit line, never the raw (negative) balance. */
   balance: number | null;
+  /** The organization is invoiced monthly for what it uses. */
+  postpaid: boolean;
+  /** Postpaid and paused for an overdue invoice. */
+  paused: boolean;
   /** Optimistic: the number moves now; the ledger corrects it shortly. */
   spend: (credits: number) => void;
   refund: (credits: number) => void;
@@ -78,6 +85,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [failed, setFailed] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [balance, setBalanceState] = useState<number | null>(null);
+  const [line, setLine] = useState<{ postpaid: boolean; paused: boolean }>({ postpaid: false, paused: false });
   const balanceReq = useRef(0);
 
   useEffect(() => {
@@ -134,7 +142,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const seq = ++balanceReq.current;
     try {
       const w = await api.wallet.summary(workspaceId);
-      if (seq === balanceReq.current) setBalanceState(typeof w?.balance === 'number' ? w.balance : null);
+      if (seq === balanceReq.current) {
+        const postpaid = w?.postpaid === true;
+        setLine({ postpaid, paused: w?.paused === true });
+        setBalanceState(typeof w?.balance === 'number' ? (postpaid ? w.available : w.balance) : null);
+      }
     } catch {
       /* the last known figure stays; a refresh failing is not news */
     }
@@ -206,6 +218,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       },
       balance,
+      postpaid: line.postpaid,
+      paused: line.paused,
       spend: (c) => setBalanceState((b) => (b === null ? b : b - c)),
       refund: (c) => setBalanceState((b) => (b === null ? b : b + c)),
       setBalance: setBalanceState,
@@ -213,7 +227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshMe,
       signOut,
     };
-  }, [me, workspaceId, balance, refreshBalance, refreshMe, signOut]);
+  }, [me, workspaceId, balance, line, refreshBalance, refreshMe, signOut]);
 
   if (failed) {
     return (

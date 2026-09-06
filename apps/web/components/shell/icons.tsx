@@ -27,6 +27,13 @@ export const Icon = {
       <path d="M4 5h5l2 2h9v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5Z" />
     </svg>
   ),
+  store: (p: SVGProps<SVGSVGElement>) => (
+    <svg {...base(p)}>
+      <path d="M4 10 5 4h14l1 6" />
+      <path d="M3 10h18v1a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0v-1Z" />
+      <path d="M5 13v7h14v-7M10 20v-4h4v4" />
+    </svg>
+  ),
   brand: (p: SVGProps<SVGSVGElement>) => (
     <svg {...base(p)}>
       <path d="M12 3 4 7v6c0 4.4 3.4 7.6 8 8 4.6-.4 8-3.6 8-8V7l-8-4Z" />

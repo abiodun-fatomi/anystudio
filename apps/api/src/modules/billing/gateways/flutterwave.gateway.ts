@@ -195,6 +195,17 @@ export class FlutterwaveGateway implements Gateway {
     });
   }
 
+  async refund(payment: Payment, reason: string): Promise<{ providerRef: string }> {
+    if (!payment.providerRef) throw new Error('payment has no Flutterwave transaction id');
+    const res = await http<{ status?: string; message?: string; data?: { id?: number; status?: string } }>(
+      'flutterwave',
+      `${BASE}/transactions/${encodeURIComponent(payment.providerRef)}/refund`,
+      { body: { comments: reason.slice(0, 200) }, headers: this.headers(), timeoutMs: TIMEOUT },
+    );
+    if (res.json?.status !== 'success') throw new Error(`flutterwave refund: ${res.json?.message ?? res.text.slice(0, 200)}`);
+    return { providerRef: String(res.json.data?.id ?? payment.providerRef) };
+  }
+
   /** Find the Flutterwave subscription id for a customer on a plan — needed to cancel, since the plan id is shared. */
   async findSubscriptionId(customerEmail: string, planId: string): Promise<string | null> {
     const res = await http<{ data?: Array<{ id: number; plan: number; status: string; customer?: { customer_email?: string } }> }>(

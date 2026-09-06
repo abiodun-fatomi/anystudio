@@ -50,7 +50,7 @@ import { GenerationHooks } from './generation.hooks';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { QueueService } from '../queue/queue.service';
-import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
+import { ConflictError, CreditLineError, InsufficientCreditsError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import {
   STALE_AFTER_MS,
@@ -198,6 +198,15 @@ export class GenerationService {
       if (req.clientKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
         if (winner) return { generation: winner, balance: await this.ledger.balance(wallet.id) };
+      }
+      // A postpaid organization refused by the ledger is at its credit line,
+      // not out of credits — say so. Only looked up on the refusal path.
+      if (err instanceof InsufficientCreditsError) {
+        const account = await this.db.billingAccount.findUnique({ where: { workspaceId: req.workspaceId }, select: { status: true } });
+        if (account?.status === 'SUSPENDED')
+          throw new CreditLineError('account_suspended', 'This organization has an overdue invoice. Work resumes as soon as it is paid.');
+        if (account?.status === 'ACTIVE')
+          throw new CreditLineError('credit_limit', 'The credit limit for this period is reached. Pay the open invoice, or ask us to raise the limit.');
       }
       throw err;
     }
@@ -632,7 +641,7 @@ export function libraryFields(params: Record<string, unknown>): { title: string 
   return { title, productKey, searchText: parts.length ? parts.join(' ').slice(0, 4000) : null };
 }
 
-function slug(v: string): string {
+export function slug(v: string): string {
   return v
     .toLowerCase()
     .normalize('NFKD')

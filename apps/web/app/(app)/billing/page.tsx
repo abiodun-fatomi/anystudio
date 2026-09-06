@@ -6,10 +6,11 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/lib/app-context';
-import { api, type LedgerRow, type PaymentView, type SubscriptionView } from '@/lib/api';
+import { api, type AccountOverview, type LedgerRow, type PaymentView, type SubscriptionView } from '@/lib/api';
+import { CreditLine } from './CreditLine';
 import { moneyMinor, PLAN_WORDS } from '@/lib/billing/money';
 import { PageHeader, Section } from '@/components/shell/Page';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Pagination, Skeleton, Stat, Table, tableCell, useToast } from '@/components/ui';
+import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Pagination, Skeleton, Stat, Table, tableCell, Textarea, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 
 const KIND: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' | 'accent' }> = {
@@ -53,7 +54,68 @@ export default function BillingPage() {
   };
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Refunds: a purchase can be asked back within the window if the credits are untouched.
+  const [refundWindow, setRefundWindow] = useState(14);
+  const [refunding, setRefunding] = useState<PaymentView | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
+  const reloadPayments = useCallback(async () => {
+    try {
+      const p = await api.billing.payments(workspace.id);
+      setPayments(p.rows);
+      setPayCursor(p.nextCursor);
+      if (p.refundWindowDays) setRefundWindow(p.refundWindowDays);
+    } catch {
+      setPayments((cur) => cur ?? []);
+    }
+  }, [workspace.id]);
+  const requestRefund = async () => {
+    if (!refunding) return;
+    setRefundBusy(true);
+    try {
+      await api.billing.requestRefund(workspace.id, refunding.id, refundReason.trim());
+      toast({ title: 'Refund requested', body: 'A person looks at it within two working days. The credits stay on hold until then.', tone: 'ok' });
+      setRefunding(null);
+      setRefundReason('');
+      await reloadPayments();
+    } catch (e) {
+      toast({ title: 'Could not request that', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+  const withdrawRefund = async (p: PaymentView) => {
+    try {
+      await api.billing.cancelRefund(workspace.id, p.id);
+      toast({ title: 'Request withdrawn', tone: 'ok' });
+      await reloadPayments();
+    } catch (e) {
+      toast({ title: 'Could not withdraw it', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    }
+  };
   const canBuy = ['OWNER', 'ADMIN', 'BILLING'].includes(workspace.role);
+  // Organizations may be invoiced monthly instead of buying credits. The
+  // account read says which; a prepaid workspace gets `account: null`.
+  const { postpaid: linePostpaid } = useApp();
+  const [overview, setOverview] = useState<AccountOverview | null | undefined>(undefined);
+  const [overviewError, setOverviewError] = useState(false);
+  const loadOverview = useCallback(async () => {
+    try {
+      setOverview(await api.billing.account(workspace.id));
+      setOverviewError(false);
+    } catch {
+      setOverview(null);
+      setOverviewError(true);
+    }
+  }, [workspace.id]);
+  useEffect(() => {
+    setOverview(undefined);
+    void loadOverview();
+  }, [loadOverview]);
+  // The account read says which screen this is; if it failed, the top bar's
+  // answer (from the wallet summary) keeps a postpaid organization from
+  // being shown a pack shop it cannot use.
+  const postpaid = overview ? Boolean(overview.account && overview.account.status !== 'CLOSED') : linePostpaid;
   const [cursor, setCursor] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +124,7 @@ export default function BillingPage() {
     async (after?: string) => {
       try {
         const [w, h] = await Promise.all([api.wallet.summary(workspace.id), api.wallet.history(workspace.id, after)]);
-        setBalance(w.balance);
+        setBalance(w.postpaid ? w.available : w.balance);
         setRows((r) => (after && r ? [...r, ...h.rows] : h.rows));
         setCursor(h.nextCursor);
         setError(null);
@@ -89,21 +151,11 @@ export default function BillingPage() {
       .catch(() => {
         if (live) setSub(null);
       });
-    api.billing
-      .payments(workspace.id)
-      .then((p) => {
-        if (live) {
-          setPayments(p.rows);
-          setPayCursor(p.nextCursor);
-        }
-      })
-      .catch(() => {
-        if (live) setPayments([]);
-      });
+    void reloadPayments();
     return () => {
       live = false;
     };
-  }, [workspace.id]);
+  }, [workspace.id, reloadPayments]);
 
   const cancel = async () => {
     setCancelling(true);
@@ -121,55 +173,82 @@ export default function BillingPage() {
   return (
     <div className="rise">
       <PageHeader
-        title="Credits"
-        lede="Every credit in and out, newest first. A failed generation always comes back as a refund row."
+        title={postpaid ? 'Billing' : 'Credits'}
+        lede={
+          postpaid
+            ? 'Invoiced monthly for what you use. The line below is how much can be drawn before the next invoice; the statement is every credit in and out.'
+            : 'Every credit in and out, newest first. A failed generation always comes back as a refund row.'
+        }
         actions={
-          <Button href="/billing/plans" leading={<Icon.plus />}>
-            Add credits
-          </Button>
+          postpaid ? undefined : (
+            <Button href="/billing/plans" leading={<Icon.plus />}>
+              Add credits
+            </Button>
+          )
         }
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 'var(--s-4)' }}>
-        <Card>
-          <Stat label="Balance" value={balance === null ? <Skeleton width={90} height={36} /> : balance.toLocaleString()} sub="credits available now" />
-        </Card>
-        <Card>
-          <Stat label="Currency" value={workspace.currency} sub="fixed for this workspace" />
-        </Card>
-        <Card>
-          {sub === undefined ? (
-            <Skeleton height={56} />
-          ) : sub ? (
-            <Stat
-              label="Plan"
-              value={PLAN_WORDS[sub.planCode]?.name ?? sub.planCode}
-              sub={
-                sub.cancelAtPeriodEnd
-                  ? `ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
-                  : sub.status === 'PAST_DUE'
-                    ? 'payment overdue — update your card'
-                    : `renews ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'monthly'} · ${sub.interval === 'year' ? 'yearly' : 'monthly'}`
-              }
-            />
-          ) : (
-            <Stat label="Plan" value="Free" sub="pay as you go with packs" />
-          )}
-          {sub && !sub.cancelAtPeriodEnd && canBuy && (
-            <div style={{ marginTop: 'var(--s-2)' }}>
-              <Button variant="link" size="sm" onClick={() => setCancelOpen(true)}>
-                Cancel plan
-              </Button>
-            </div>
-          )}
-          {(!sub || sub.cancelAtPeriodEnd) && canBuy && (
-            <div style={{ marginTop: 'var(--s-2)' }}>
-              <Button variant="link" size="sm" href="/billing/plans">
-                {sub ? 'Choose another plan' : 'See plans'}
-              </Button>
-            </div>
-          )}
-        </Card>
-      </div>
+      {overview === undefined && <Skeleton height={96} />}
+      {overviewError && (
+        <EmptyState
+          title="Could not load your billing details just now."
+          actions={
+            <Button variant="ghost" onClick={() => void loadOverview()}>
+              Try again
+            </Button>
+          }
+        />
+      )}
+      {overview?.account && postpaid && <CreditLine workspaceId={workspace.id} canBuy={canBuy} overview={overview} onChanged={() => void loadOverview()} />}
+      {overview !== undefined && !overviewError && !postpaid && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 'var(--s-4)' }}>
+          <Card>
+            <Stat label="Balance" value={balance === null ? <Skeleton width={90} height={36} /> : balance.toLocaleString()} sub="credits available now" />
+          </Card>
+          <Card>
+            <Stat label="Currency" value={workspace.currency} sub="fixed for this workspace" />
+          </Card>
+          <Card>
+            {sub === undefined ? (
+              <Skeleton height={56} />
+            ) : sub ? (
+              <Stat
+                label="Plan"
+                value={PLAN_WORDS[sub.planCode]?.name ?? sub.planCode}
+                sub={
+                  sub.cancelAtPeriodEnd
+                    ? `ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
+                    : sub.status === 'PAST_DUE'
+                      ? 'payment overdue — update your card'
+                      : `renews ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'monthly'} · ${sub.interval === 'year' ? 'yearly' : 'monthly'}`
+                }
+              />
+            ) : (
+              <Stat label="Plan" value="Free" sub="pay as you go with packs" />
+            )}
+            {sub && !sub.cancelAtPeriodEnd && canBuy && (
+              <div style={{ marginTop: 'var(--s-2)' }}>
+                <Button variant="link" size="sm" onClick={() => setCancelOpen(true)}>
+                  Cancel plan
+                </Button>
+              </div>
+            )}
+            {(!sub || sub.cancelAtPeriodEnd) && canBuy && (
+              <div style={{ marginTop: 'var(--s-2)' }}>
+                <Button variant="link" size="sm" href="/billing/plans">
+                  {sub ? 'Choose another plan' : 'See plans'}
+                </Button>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {overview?.canRequest && !postpaid && (
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--t-2)', maxWidth: '64ch' }}>
+          Organizations that use the studio every day can be invoiced monthly on a credit line instead of buying credits up front. Write to{' '}
+          <a href="mailto:hello@anystudio.ai?subject=Credit%20line">hello@anystudio.ai</a> and say roughly how many credits a month you expect.
+        </p>
+      )}
 
       <Section title="Payments">
         {payments === null ? (
@@ -188,6 +267,7 @@ export default function BillingPage() {
                 <th>Reference</th>
                 <th className={tableCell.num}>Credits</th>
                 <th className={tableCell.num}>Charged</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -197,9 +277,11 @@ export default function BillingPage() {
                   <td>
                     {p.kind === 'PACK'
                       ? 'Credit pack'
-                      : p.kind === 'RENEWAL'
-                        ? `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} renewal`
-                        : `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} plan${p.interval === 'year' ? ', yearly' : ''}`}
+                      : p.kind === 'INVOICE'
+                        ? `Invoice ${p.itemCode}`
+                        : p.kind === 'RENEWAL'
+                          ? `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} renewal`
+                          : `${PLAN_WORDS[p.itemCode]?.name ?? p.itemCode} plan${p.interval === 'year' ? ', yearly' : ''}`}
                     <span style={{ color: 'var(--muted)' }}> · {PROVIDER[p.provider] ?? p.provider}</span>
                   </td>
                   <td className={tableCell.shrink}>
@@ -210,10 +292,36 @@ export default function BillingPage() {
                     {p.status === 'SUCCEEDED' ? `+${p.credits.toLocaleString()}` : p.status === 'REFUNDED' ? `−${p.credits.toLocaleString()}` : '—'}
                   </td>
                   <td className={tableCell.num}>{moneyMinor(p.amountMinor, p.currency)}</td>
+                  <td className={tableCell.shrink}>
+                    {p.refund?.status === 'REQUESTED' ? (
+                      <span style={{ display: 'inline-flex', gap: 'var(--s-2)', alignItems: 'center' }}>
+                        <Badge tone="accent">Refund requested</Badge>
+                        {canBuy && (
+                          <Button size="sm" variant="link" onClick={() => void withdrawRefund(p)}>
+                            Withdraw
+                          </Button>
+                        )}
+                      </span>
+                    ) : p.refund?.status === 'REFUSED' ? (
+                      <span title={p.refund.decisionNote ?? undefined} style={{ color: 'var(--muted)', fontSize: 'var(--t-1)' }}>
+                        Refund refused{p.refund.decisionNote ? ` — ${p.refund.decisionNote}` : ''}
+                      </span>
+                    ) : p.canRequestRefund && canBuy ? (
+                      <Button size="sm" variant="ghost" onClick={() => setRefunding(p)}>
+                        Request refund
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </Table>
+        )}
+        {!postpaid && (
+          <p style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', marginTop: 'var(--s-2)' }}>
+            Changed your mind? A purchase can be refunded within {refundWindow} days, as long as none of its credits have been used. The money goes back the way
+            it came.
+          </p>
         )}
         {payments && payments.length > 0 && (
           <Pagination>
@@ -228,6 +336,36 @@ export default function BillingPage() {
           </Pagination>
         )}
       </Section>
+
+      <Dialog
+        open={refunding !== null}
+        onClose={() => setRefunding(null)}
+        title="Request a refund"
+        description={
+          refunding
+            ? `${moneyMinor(refunding.amountMinor, refunding.currency)} for ${refunding.credits.toLocaleString()} credits. The credits stay on hold while a person looks, and the money goes back the way it came.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRefunding(null)} disabled={refundBusy}>
+              Keep it
+            </Button>
+            <Button onClick={() => void requestRefund()} loading={refundBusy} disabled={refundReason.trim().length < 4}>
+              Request refund
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          label="Why?"
+          value={refundReason}
+          onChange={(e) => setRefundReason(e.target.value)}
+          rows={3}
+          maxLength={500}
+          placeholder="Bought the wrong pack, changed my mind, …"
+        />
+      </Dialog>
 
       <ConfirmDialog
         open={cancelOpen}

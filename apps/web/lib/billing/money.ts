@@ -30,3 +30,10 @@ export const PACK_WORDS: Record<string, string> = {
   'pack.large': 'Photos, captions and a few reels',
   'pack.video': 'Built for video ads',
 };
+
+export const INVOICE_STATUS: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' | 'accent' }> = {
+  OPEN: { label: 'Open', tone: 'accent' },
+  PAID: { label: 'Paid', tone: 'ok' },
+  OVERDUE: { label: 'Overdue', tone: 'danger' },
+  VOID: { label: 'Void' },
+};

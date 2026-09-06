@@ -360,6 +360,9 @@ model Workspace {
   /// want. Free-form JSON because it feeds prompts, not queries, and the
   /// questions will change more often than we want to migrate.
   profile   Json?
+  /// Storage key of the organization's logo — a MediaAsset it uploaded. Shown
+  /// in the workspace switcher in place of initials.
+  logoKey   String?
   createdAt DateTime      @default(now())
   deletedAt DateTime?
 
@@ -378,6 +381,11 @@ model Workspace {
   whatsappContacts WhatsappContact[]
   socialAccounts   SocialAccount[]
   publishJobs      PublishJob[]
+  billingAccount   BillingAccount?
+  invoices         Invoice[]
+  stores           StoreConnection[]
+  products         CatalogueProduct[]
+  refundRequests   RefundRequest[]
 
   @@index([type])
   @@map("workspaces")
@@ -662,6 +670,7 @@ enum PaymentKind {
   PACK // one-time credits
   SUBSCRIPTION // the first charge of a plan
   RENEWAL // a later charge of a plan, raised by the gateway
+  INVOICE // a usage invoice, paid online
 }
 
 enum PaymentStatus {
@@ -701,13 +710,140 @@ model Payment {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  refundRequest RefundRequest?
 
   @@index([workspaceId, createdAt])
   @@index([provider, providerRef])
   @@index([status, createdAt])
   @@map("payments")
+}
+
+enum RefundRequestStatus {
+  REQUESTED
+  APPROVED
+  REFUSED
+  CANCELLED
+}
+
+/// A customer asking for a purchase back. One per payment; staff decide.
+/// Approval refunds at the gateway and claws the credits back in one go.
+model RefundRequest {
+  id               String              @id @default(uuid()) @db.Uuid
+  paymentId        String              @unique @db.Uuid
+  workspaceId      String              @db.Uuid
+  requestedById    String              @db.Uuid
+  reason           String
+  status           RefundRequestStatus @default(REQUESTED)
+  /// The wallet balance when asked — the credits had to be unspent to ask.
+  balanceAtRequest Int
+  decidedById      String?             @db.Uuid
+  decidedAt        DateTime?
+  /// Staff's words to the customer on refusal, or the gateway reference on approval.
+  decisionNote     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([workspaceId])
+  @@map("refund_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Careers: openings staff write in the console, shown on the marketing site,
+// and the applications that come back.
+// ---------------------------------------------------------------------------
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+model JobPosting {
+  id          String    @id @default(uuid()) @db.Uuid
+  slug        String    @unique
+  title       String
+  team        String
+  location    String
+  remote      Boolean   @default(true)
+  type        JobType   @default(FULL_TIME)
+  /// One or two sentences for the list.
+  summary     String
+  /// The posting itself: paragraphs and "- " lists, rendered as such.
+  description String
+  /// Shown on the posting when set; otherwise "Compensation discussed at offer".
+  salary      String?
+  status      JobStatus @default(DRAFT)
+  publishedAt DateTime?
+  closedAt    DateTime?
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  applications JobApplication[]
+
+  @@index([status, publishedAt])
+  @@map("job_postings")
+}
+
+enum ApplicationStatus {
+  NEW
+  REVIEWING
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+model JobApplication {
+  id        String            @id @default(uuid()) @db.Uuid
+  jobId     String            @db.Uuid
+  name      String
+  email     String
+  phone     String?
+  /// Portfolio, LinkedIn, GitHub — whatever they gave, one per line.
+  links     String?
+  coverNote String?
+  /// Storage key of the CV under careers/; null when they applied with links only.
+  cvKey     String?
+  cvName    String?
+  status    ApplicationStatus @default(NEW)
+  /// Staff-only.
+  notes     String?
+  /// Where they applied from, for the record.
+  ip        String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  job JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, status, createdAt])
+  @@index([email])
+  @@map("job_applications")
+}
+
+/// People who asked to hear when the mobile app (or whatever `source` names) lands.
+model WaitlistSignup {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  source    String   @default("mobile")
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@unique([email, source])
+  @@map("waitlist_signups")
 }
 
 enum SubscriptionStatus {
@@ -767,6 +903,204 @@ model WebhookReceipt {
   @@unique([provider, eventId])
   @@index([receivedAt])
   @@map("webhook_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Usage-based billing: organizations that are invoiced monthly for what they
+// used, instead of buying credits up front.
+//
+// The ledger stays the unit of account. A postpaid workspace's wallet is
+// allowed to go negative down to its credit limit; every debit is metered
+// exactly as before. At the close of each calendar month the net credits
+// consumed are priced with the rate card and written as an Invoice; paying
+// the invoice adds the invoiced credits back through the ledger, so the
+// balance reads as "what has not been paid for yet".
+// ---------------------------------------------------------------------------
+
+/// Minor units of `currency` per 100 credits — the list price organizations
+/// pay when their account has no negotiated rate.
+model UsageRate {
+  currency    String   @id
+  per100Minor Int
+  updatedAt   DateTime @updatedAt
+
+  @@map("usage_rates")
+}
+
+enum BillingAccountStatus {
+  ACTIVE
+  SUSPENDED // invoices overdue past the grace period; the credit line is closed until paid
+  CLOSED // back to prepaid, or the organization left
+}
+
+/// A postpaid arrangement for one organization workspace. Created by staff —
+/// it is a credit decision, not a self-service toggle.
+model BillingAccount {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @unique @db.Uuid
+  status          BillingAccountStatus @default(ACTIVE)
+  currency        String
+  /// Negotiated rate, minor units per 100 credits. Null means the UsageRate list price.
+  per100Minor     Int?
+  /// Monthly minimum, minor units. An invoice below it is topped up to it.
+  minimumMinor    Int                  @default(0)
+  /// Credits of exposure allowed between invoices — the wallet's overdraft.
+  creditLimit     Int
+  /// Days from issue to due.
+  netDays         Int                  @default(14)
+  /// Days past due before the account is suspended.
+  graceDays       Int                  @default(7)
+  billingEmail    String?
+  /// { company, address, taxId, contact } — printed on the invoice, edited by the organization.
+  billTo          Json?
+  /// Staff-only: why the terms are what they are.
+  notes           String?
+  /// Set once per period when usage crosses 80% of the limit, so the warning goes out once.
+  limitWarnedFor  DateTime?
+  startedAt       DateTime             @default(now())
+  suspendedAt     DateTime?
+  suspendedReason String?
+  closedAt        DateTime?
+  createdById     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoices  Invoice[]
+
+  @@index([status])
+  @@map("billing_accounts")
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id            String        @id @default(uuid()) @db.Uuid
+  /// INV-202609-0001 — human, unique, printed on everything.
+  number        String        @unique
+  workspaceId   String        @db.Uuid
+  accountId     String        @db.Uuid
+  periodStart   DateTime
+  periodEnd     DateTime
+  currency      String
+  /// Net credits consumed in the period (debits less refunds).
+  credits       Int
+  /// The rate applied, minor units per 100 credits, frozen at issue.
+  per100Minor   Int
+  usageMinor    Int
+  /// Top-up to the monthly minimum, when usage fell short of it.
+  minimumMinor  Int           @default(0)
+  totalMinor    Int
+  status        InvoiceStatus @default(OPEN)
+  /// [{ costCode, label, requests, credits, amountMinor }]
+  lines         Json
+  /// Who it was addressed to, frozen at issue — the account's billTo can change later.
+  billTo        Json?
+  issuedAt      DateTime      @default(now())
+  dueAt         DateTime
+  paidAt        DateTime?
+  /// FLUTTERWAVE | PADDLE | STUB | MANUAL (bank transfer recorded by staff) | ZERO (nothing to pay)
+  paidVia       String?
+  /// The gateway's or the bank's reference for the payment.
+  paidReference String?
+  paymentId     String?       @db.Uuid
+  /// The ledger row that put the invoiced credits back, once paid.
+  ledgerEntryId String?       @db.Uuid
+  remindedAt    DateTime?
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   BillingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, periodStart])
+  @@index([workspaceId, issuedAt])
+  @@index([status, dueAt])
+  @@map("invoices")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue sync: a seller's store (Shopify, WooCommerce) read into the
+// workspace so the studio can start from a product instead of an upload.
+// ---------------------------------------------------------------------------
+
+enum StoreKind {
+  SHOPIFY
+  WOOCOMMERCE
+}
+
+enum StoreStatus {
+  CONNECTED
+  NEEDS_ATTENTION // the last sync was refused (revoked token, moved shop)
+  DISCONNECTED
+}
+
+model StoreConnection {
+  id             String      @id @default(uuid()) @db.Uuid
+  workspaceId    String      @db.Uuid
+  kind           StoreKind
+  /// What the person calls it; defaults to the shop's own name.
+  label          String
+  /// acme.myshopify.com, or the WooCommerce site origin.
+  domain         String
+  /// Encrypted JSON: { accessToken } for Shopify, { consumerKey, consumerSecret } for WooCommerce.
+  credentialsEnc String
+  status         StoreStatus @default(CONNECTED)
+  lastError      String?
+  lastSyncAt     DateTime?
+  nextSyncAt     DateTime?
+  /// Set while a sync runs, with the time, so a crashed worker's claim expires.
+  syncingSince   DateTime?
+  productCount   Int         @default(0)
+  connectedById  String      @db.Uuid
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  disconnectedAt DateTime?
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  products  CatalogueProduct[]
+
+  @@unique([workspaceId, kind, domain])
+  @@index([status, nextSyncAt])
+  @@map("store_connections")
+}
+
+model CatalogueProduct {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  storeId           String    @db.Uuid
+  externalId        String
+  handle            String?
+  title             String
+  /// Plain text, tags stripped, capped — what the copywriter is given.
+  description       String?
+  priceMinor        Int?
+  currency          String?
+  url               String?
+  /// The library's grouping key for this product: slug of the handle or title.
+  productKey        String
+  /// [{ src, key }] — the store's image URL and the media asset it became. Unchanged URLs are not fetched again.
+  images            Json
+  active            Boolean   @default(true)
+  externalUpdatedAt DateTime?
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  store     StoreConnection @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, externalId])
+  @@index([workspaceId, active, title])
+  @@index([workspaceId, productKey])
+  @@map("catalogue_products")
 }
 
 /// One value per thing the product can make. Mirrors CAPABILITIES in
@@ -835,10 +1169,14 @@ model ProviderModel {
 /// One wallet per workspace. Holds nothing but identity and currency; the
 /// money is in the entries.
 model Wallet {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @unique @db.Uuid
-  currency    String   @default("NGN")
-  createdAt   DateTime @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @unique @db.Uuid
+  currency       String   @default("NGN")
+  /// How far below zero the balance may go. Zero for everyone prepaid; a
+  /// postpaid organization's credit limit. Read by ledger_apply under the
+  /// wallet lock, so it is enforced in the same place as the overdraft rule.
+  overdraftLimit Int      @default(0)
+  createdAt      DateTime @default(now())
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   entries   LedgerEntry[]

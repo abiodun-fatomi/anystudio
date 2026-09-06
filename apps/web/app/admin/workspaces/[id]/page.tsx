@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/shell/Page';
 import { Button, Dialog, Input, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../../AdminShell';
 import styles from '../../admin.module.css';
+import { CreditLineCard } from './CreditLineCard';
 
 export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
@@ -84,6 +85,7 @@ export default function WorkspacePage() {
             ))}
           </div>
         </div>
+        <CreditLineCard workspaceId={w.id} type={w.type} currency={w.currency} account={d.billingAccount} onChanged={load} />
         <div className={styles.card}>
           <div style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Profile</div>
           <div className={styles.mono} style={{ fontSize: '11px', color: 'var(--muted)' }}>

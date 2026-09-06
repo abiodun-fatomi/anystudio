@@ -7,8 +7,8 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDP
 import { ApiCookieAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { BillingService } from './billing.service';
-import { CheckoutDto, PaymentsQueryDto, VerifyPaymentDto } from './billing.dto';
-import { CurrentActor, Public, RequireWorkspaceRole } from '../auth/decorators';
+import { CheckoutDto, PaymentsQueryDto, RefundDecisionDto, RefundRequestDto, RefundsQueryDto, VerifyPaymentDto } from './billing.dto';
+import { CurrentActor, Public, RequireStaff, RequireSurface, RequireWorkspaceRole } from '../auth/decorators';
 import type { Actor } from '../auth/policy';
 
 @ApiTags('billing')
@@ -32,6 +32,49 @@ export class BillingController {
   @ApiOperation({ summary: 'Price an item server-side and open a hosted checkout (owner, admin or billing contact)' })
   checkout(@CurrentActor() actor: Actor, @Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Body() body: CheckoutDto, @Req() req: Request) {
     return this.billing.checkout(actor, workspaceId, body, req);
+  }
+
+  @Post('/workspaces/:workspaceId/billing/payments/:paymentId/refund-request')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiCookieAuth('session')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Ask for a purchase back (within the window, credits unspent). Staff decide.' })
+  requestRefund(
+    @CurrentActor() actor: Actor,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Body() body: RefundRequestDto,
+    @Req() req: Request,
+  ) {
+    return this.billing.requestRefund(actor, workspaceId, paymentId, body, req);
+  }
+
+  @Post('/workspaces/:workspaceId/billing/payments/:paymentId/refund-request/cancel')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiCookieAuth('session')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Withdraw a refund request that has not been decided' })
+  cancelRefund(
+    @CurrentActor() actor: Actor,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Req() req: Request,
+  ) {
+    return this.billing.cancelRefundRequest(actor, workspaceId, paymentId, req);
+  }
+
+  @Post('/workspaces/:workspaceId/billing/invoices/:invoiceId/pay')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiCookieAuth('session')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Open a hosted checkout for an invoice (owner, admin or billing contact)' })
+  payInvoice(
+    @CurrentActor() actor: Actor,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Req() req: Request,
+  ) {
+    return this.billing.payInvoice(actor, workspaceId, invoiceId, req);
   }
 
   @Post('/workspaces/:workspaceId/billing/payments/:paymentId/verify')
@@ -120,4 +163,32 @@ export class BillingController {
 function rawOf(req: Request): Buffer {
   const raw = (req as Request & { rawBody?: Buffer }).rawBody;
   return raw ?? Buffer.from(JSON.stringify(req.body ?? {}));
+}
+
+@ApiTags('admin')
+@RequireSurface('ADMIN')
+@RequireStaff('SUPPORT')
+@Controller({ path: 'admin/refunds', version: '1' })
+export class AdminRefundsController {
+  constructor(private readonly billing: BillingService) {}
+
+  @Get('/')
+  @ApiOperation({ summary: 'Refund requests, newest first; open ones by default' })
+  list(@Query() q: RefundsQueryDto) {
+    return this.billing.refundRequests(q);
+  }
+
+  @Post('/:requestId/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send the money back at the gateway and claw the credits back (staff OPERATOR, recent second factor)' })
+  approve(@CurrentActor() a: Actor, @Param('requestId', ParseUUIDPipe) requestId: string, @Body() b: RefundDecisionDto, @Req() req: Request) {
+    return this.billing.decideRefundAsStaff(a, requestId, true, b.note ?? '', req);
+  }
+
+  @Post('/:requestId/refuse')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refuse with a sentence the customer reads' })
+  refuse(@CurrentActor() a: Actor, @Param('requestId', ParseUUIDPipe) requestId: string, @Body() b: RefundDecisionDto, @Req() req: Request) {
+    return this.billing.decideRefundAsStaff(a, requestId, false, b.note ?? '', req);
+  }
 }

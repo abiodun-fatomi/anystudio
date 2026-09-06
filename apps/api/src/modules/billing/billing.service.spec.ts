@@ -7,7 +7,7 @@
  * many times we are told, credits withheld on a mismatch, a refund taking
  * them back — are ledger properties.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from '../notification/notification.service';
 import { GenerationHooks } from '../generation/generation.hooks';
 import { PrismaClient } from '@prisma/client';
@@ -105,7 +105,15 @@ suite('BillingService (stub gateway, real ledger)', () => {
   const ledger = new LedgerService(db);
   const registry = new GatewayRegistry();
   const auth = { publicOrigin: () => 'https://app.test' } as unknown as AuthService;
-  const service = new BillingService(db, ledger, registry, auth, new NotificationService(db, new GenerationHooks()));
+  const service = new BillingService(
+    db,
+    ledger,
+    registry,
+    auth,
+    new NotificationService(db, new GenerationHooks()),
+    { settleInvoice: vi.fn() } as never,
+    { send: vi.fn(async () => ({})) } as never,
+  );
   const req = { ip: '127.0.0.1', requestId: 'req_test', get: () => 'test' } as unknown as Request;
 
   let workspaceId: string;

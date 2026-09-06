@@ -23,8 +23,22 @@ export class WalletService {
   async balance(workspaceId: string) {
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
-    const balance = await this.ledger.balance(wallet.id);
-    return Helpers.successResponse(200, 'OK', { walletId: wallet.id, currency: wallet.currency, balance });
+    const [balance, account] = await Promise.all([
+      this.ledger.balance(wallet.id),
+      this.db.billingAccount.findUnique({ where: { workspaceId }, select: { status: true } }),
+    ]);
+    // A postpaid organization reads its line, not its balance: what it may
+    // still spend before the next invoice, never a negative number.
+    const postpaid = account?.status === 'ACTIVE' || account?.status === 'SUSPENDED';
+    return Helpers.successResponse(200, 'OK', {
+      walletId: wallet.id,
+      currency: wallet.currency,
+      balance,
+      overdraftLimit: wallet.overdraftLimit,
+      available: Math.max(0, balance + wallet.overdraftLimit),
+      postpaid,
+      paused: account?.status === 'SUSPENDED',
+    });
   }
 
   /** Every row that ever touched this wallet, newest first. This IS the statement. */

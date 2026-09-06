@@ -7,10 +7,10 @@
  * strip forever — which removes it from the library too.
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
-import { api, type MediaAssetRow } from '@/lib/api';
+import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
-import { ConfirmDialog, Progress, Skeleton, useToast } from '@/components/ui';
+import { Button, ConfirmDialog, Dialog, Input, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
@@ -24,11 +24,14 @@ interface Pending {
 export function SourcePane({
   selected,
   onSelect,
+  onProduct,
   onRemoved,
   refreshKey,
 }: {
   selected: string | null;
   onSelect: (asset: MediaAssetRow) => void;
+  /** A product picked from the catalogue: the page takes its picture and its words. */
+  onProduct?: (product: CatalogueProductView) => void;
   /** A photo is gone; the page drops it from the canvas if it was showing. */
   onRemoved?: (asset: MediaAssetRow) => void;
   refreshKey: number;
@@ -52,6 +55,7 @@ export function SourcePane({
     }
   }, [workspace.id]);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [picker, setPicker] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -173,6 +177,26 @@ export function SourcePane({
           <strong>Add a product photo</strong>
           <span>Drop it here, paste it, or tap to choose. JPG, PNG, WebP or HEIC up to 25 MB.</span>
         </div>
+        {onProduct && (
+          <button type="button" className={styles.fromCatalogue} onClick={() => setPicker(true)}>
+            <Icon.store width={16} height={16} />
+            <span>
+              <strong>Or start from your catalogue</strong>
+              <span>A product from your store, with its name, price and details filled in.</span>
+            </span>
+          </button>
+        )}
+        {onProduct && (
+          <CataloguePicker
+            open={picker}
+            onClose={() => setPicker(false)}
+            workspaceId={workspace.id}
+            onPick={(p) => {
+              setPicker(false);
+              onProduct(p);
+            }}
+          />
+        )}
         <input
           ref={input}
           type="file"
@@ -256,5 +280,98 @@ export function SourcePane({
         danger
       />
     </section>
+  );
+}
+
+/** Search the catalogue and pick one product. Only products with a picture can be started from. */
+function CataloguePicker({
+  open,
+  onClose,
+  workspaceId,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  workspaceId: string;
+  onPick: (p: CatalogueProductView) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState<CatalogueProductView[] | null>(null);
+  const [stores, setStores] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    api.catalogue
+      .stores(workspaceId)
+      .then((s) => live && setStores(Array.isArray(s) ? s.length : 0))
+      .catch(() => live && setStores(0));
+    return () => {
+      live = false;
+    };
+  }, [open, workspaceId]);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setRows(null);
+    const t = setTimeout(
+      () => {
+        api.catalogue
+          .products(workspaceId, { q: q.trim() || undefined, take: 60 })
+          .then((r) => live && setRows(r.rows))
+          .catch(() => live && setRows([]));
+      },
+      q ? 250 : 0,
+    );
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [open, workspaceId, q]);
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Start from a product"
+      description="Its first picture goes on the canvas; its name, price and details go into every tool."
+      wide
+    >
+      {stores === 0 ? (
+        <div className={styles.pickerEmpty}>
+          <p>No store is connected yet. Connect Shopify or WooCommerce and your products appear here.</p>
+          <Button href="/catalogue" variant="subtle">
+            Open Catalogue
+          </Button>
+        </div>
+      ) : (
+        <div className={styles.picker}>
+          <Input aria-label="Search products" placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          {rows === null ? (
+            <div className={styles.pickerGrid}>
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} style={{ aspectRatio: '1' }} />
+              ))}
+            </div>
+          ) : rows.length === 0 ? (
+            <p className={styles.pickerEmpty}>{q ? 'Nothing matches.' : 'No products yet — the store may still be syncing.'}</p>
+          ) : (
+            <div className={styles.pickerGrid}>
+              {rows.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={styles.pickerTile}
+                  onClick={() => onPick(p)}
+                  disabled={!p.images.some((i) => i.key)}
+                  title={p.title}
+                >
+                  <span className={styles.pickerThumb}>{p.thumbUrl ? <img src={p.thumbUrl} alt="" loading="lazy" /> : null}</span>
+                  <span className={styles.pickerTitle}>{p.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Dialog>
   );
 }

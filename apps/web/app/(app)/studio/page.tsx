@@ -11,10 +11,11 @@
  * session survives a refresh and can be handed to someone else. Everything
  * the cards know comes from useGenerations; this file only arranges it.
  */
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, type MediaAssetRow } from '@/lib/api';
+import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
+import { moneyMinor } from '@/lib/billing/money';
 import { TOOLS, coerceParams, toolById, type Tool, type ToolId } from '@/lib/studio/tools';
 import { useGenerations, type GenerationCard } from '@/lib/studio/useGenerations';
 import { Button, EmptyState, useToast } from '@/components/ui';
@@ -34,7 +35,7 @@ export default function StudioPage() {
 }
 
 function Studio() {
-  const { workspace, balance } = useApp();
+  const { workspace, balance, postpaid, paused } = useApp();
   const { toast } = useToast();
   const router = useRouter();
   const params = useSearchParams();
@@ -101,6 +102,8 @@ function Studio() {
       if (next.source !== undefined) {
         if (next.source) q.set('source', next.source);
         else q.delete('source');
+        // A product handed over on the URL has done its job once its picture is the source.
+        q.delete('product');
       }
       if (next.tool) q.set('tool', next.tool);
       router.replace(`/studio?${q.toString()}`, { scroll: false });
@@ -132,6 +135,52 @@ function Studio() {
     [setUrl],
   );
 
+  // A product from the catalogue: its first picture is the source, and
+  // every tool that asks for a name, price, details or product key already
+  // knows them. Arrives as ?product= from the Catalogue page, or from the
+  // picker in the source pane.
+  const useProduct = useCallback(
+    (p: CatalogueProductView) => {
+      const first = p.images.find((i) => i.key);
+      // Either way the URL is rewritten, which also drops ?product= so a refresh does not start over.
+      setUrl({ source: first?.key ?? sourceKey });
+      setSourceMeta(null);
+      const price = p.priceMinor !== null && p.currency ? moneyMinor(p.priceMinor, p.currency) : '';
+      setValues((all) => {
+        const next = { ...all };
+        for (const t of TOOLS) {
+          const keys = new Set(t.fields.map((f) => f.key));
+          const patch: Record<string, unknown> = {};
+          if (keys.has('productName')) patch.productName = p.title;
+          if (keys.has('price') && price) patch.price = price;
+          if (keys.has('details') && p.description) patch.details = p.description.slice(0, 2000);
+          if (keys.has('productKey')) patch.productKey = p.productKey;
+          if (Object.keys(patch).length) next[t.id] = { ...(next[t.id] ?? {}), ...patch };
+        }
+        return next;
+      });
+      toast({ title: `Starting from ${p.title}`, body: 'Name, price and details are filled in for every tool.', tone: 'ok' });
+    },
+    [setUrl, toast, sourceKey],
+  );
+  const useProductRef = useRef(useProduct);
+  useProductRef.current = useProduct;
+  const productParam = params.get('product');
+  useEffect(() => {
+    if (!productParam) return;
+    let live = true;
+    api.catalogue
+      .product(workspace.id, productParam)
+      .then((p) => {
+        if (!live) return;
+        useProductRef.current(p);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [productParam, workspace.id]);
+
   // The photo on the canvas was removed from the strip: clear the canvas too.
   const sourceRemoved = useCallback(
     (asset: MediaAssetRow) => {
@@ -162,12 +211,23 @@ function Studio() {
       setBusy(false);
       if (!r.ok) {
         if (r.status === 402)
-          toast({
-            title: 'Not enough credits',
-            body: 'Top up and this will be here waiting.',
-            tone: 'warn',
-            action: { label: 'Top up', onClick: () => router.push('/billing/plans') },
-          });
+          toast(
+            postpaid
+              ? {
+                  title: paused ? 'Your organization is paused' : 'The credit line is used up',
+                  body: paused
+                    ? 'An invoice is overdue. Work resumes the moment it is paid.'
+                    : 'Pay the open invoice, or ask us to raise the limit. Your work is saved.',
+                  tone: 'warn',
+                  action: { label: 'Billing', onClick: () => router.push('/billing') },
+                }
+              : {
+                  title: 'Not enough credits',
+                  body: 'Top up and this will be here waiting.',
+                  tone: 'warn',
+                  action: { label: 'Top up', onClick: () => router.push('/billing/plans') },
+                },
+          );
         else toast({ title: 'That did not go through', body: r.message, tone: 'danger' });
       } else {
         document.getElementById('outputs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -210,7 +270,7 @@ function Studio() {
   return (
     <div className="rise">
       <div className={styles.studio}>
-        <SourcePane selected={sourceKey} onSelect={selectSource} onRemoved={sourceRemoved} refreshKey={refreshKey} />
+        <SourcePane selected={sourceKey} onSelect={selectSource} onProduct={useProduct} onRemoved={sourceRemoved} refreshKey={refreshKey} />
 
         <section className={`${styles.pane} ${styles.canvas}`} aria-label="Canvas">
           <div className={styles.stage}>

@@ -50,6 +50,18 @@ export class InsufficientCreditsError extends AppError {
   }
 }
 
+/**
+ * The postpaid flavour of 402: the organization has a credit line and has
+ * either used it up for the period or lost it to an overdue invoice. Same
+ * status so the UI's out-of-credits handling still fires; a different code
+ * so it can say the right thing.
+ */
+export class CreditLineError extends AppError {
+  constructor(code: 'credit_limit' | 'account_suspended', message: string) {
+    super(code, 402, message);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(details: Record<string, unknown>) {
     super('invalid_input', 400, 'Some of that did not look right.', details);

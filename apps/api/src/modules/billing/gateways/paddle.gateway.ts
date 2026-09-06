@@ -63,10 +63,32 @@ export class PaddleGateway implements Gateway {
   }
 
   async createCheckout(req: CheckoutRequest): Promise<CheckoutSession> {
-    if (!req.item.providerRef)
-      throw new Error(`${req.item.kind} ${req.item.code} has no Paddle price id${req.item.interval ? ` for ${req.item.interval}` : ''}`);
+    // Packs and plans are catalogue prices. An invoice is a one-off amount,
+    // so it goes as a non-catalogue price under the "usage" product — one
+    // product in the Paddle catalogue, PADDLE_USAGE_PRODUCT_ID, priced per
+    // transaction.
+    let item: Record<string, unknown>;
+    if (req.item.kind === 'invoice') {
+      const product = process.env.PADDLE_USAGE_PRODUCT_ID;
+      if (!product) throw new Error('invoice payments through Paddle need PADDLE_USAGE_PRODUCT_ID');
+      item = {
+        quantity: 1,
+        price: {
+          description: req.item.label,
+          name: req.item.code,
+          product_id: product,
+          tax_mode: 'account_setting',
+          unit_price: { amount: String(req.item.amountMinor), currency_code: req.item.currency },
+          quantity: { minimum: 1, maximum: 1 },
+        },
+      };
+    } else {
+      if (!req.item.providerRef)
+        throw new Error(`${req.item.kind} ${req.item.code} has no Paddle price id${req.item.interval ? ` for ${req.item.interval}` : ''}`);
+      item = { price_id: String(req.item.providerRef), quantity: 1 };
+    }
     const body = {
-      items: [{ price_id: String(req.item.providerRef), quantity: 1 }],
+      items: [item],
       custom_data: { paymentId: req.payment.id, reference: req.payment.reference, workspaceId: req.payment.workspaceId, itemCode: req.item.code },
       currency_code: req.item.currency,
     };
@@ -227,5 +249,30 @@ export class PaddleGateway implements Gateway {
       headers: this.headers(),
       timeoutMs: TIMEOUT,
     });
+  }
+
+  /** A full refund is an adjustment naming every line item of the transaction. */
+  async refund(payment: Payment, reason: string): Promise<{ providerRef: string }> {
+    if (!payment.providerRef) throw new Error('payment has no Paddle transaction id');
+    const txn = await http<{ data?: PaddleTxn & { details?: { line_items?: Array<{ id: string }> } } }>(
+      'paddle',
+      `${this.base}/transactions/${encodeURIComponent(payment.providerRef)}`,
+      { headers: this.headers(), timeoutMs: TIMEOUT },
+    );
+    const items = txn.json?.data?.details?.line_items ?? [];
+    if (items.length === 0) throw new Error('paddle transaction has no line items to refund');
+    const res = await http<{ data?: { id?: string; status?: string } }>('paddle', `${this.base}/adjustments`, {
+      body: {
+        action: 'refund',
+        transaction_id: payment.providerRef,
+        reason: reason.slice(0, 200) || 'requested by customer',
+        items: items.map((i) => ({ item_id: i.id, type: 'full' })),
+      },
+      headers: this.headers(),
+      timeoutMs: TIMEOUT,
+    });
+    const id = res.json?.data?.id;
+    if (!id) throw new Error(`paddle refund: ${res.text.slice(0, 200)}`);
+    return { providerRef: id };
   }
 }

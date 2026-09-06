@@ -535,3 +535,88 @@ such thing, so TikTok takes videos only for now.
 
 **Migration.** `20260916000000_publishing` adds `social_accounts` and
 `publish_jobs`.
+
+## 14. Usage-based billing (organizations on a credit line)
+
+An organization can be invoiced monthly for what it uses instead of buying
+credits up front. Nothing about metering changes — every generation still
+debits credits through the ledger the moment it is asked for. What changes
+is the floor: the organization's wallet may go below zero as far as its
+**credit limit**, so its balance reads as "credits used and not yet paid
+for". On the 1st of each month the worker prices the previous month's net
+debits with the rate card and writes an invoice; paying the invoice puts
+those credits back through the ledger, and the balance climbs toward zero.
+
+**Opening a line.** Staff console → the organization's workspace →
+**Credit line → Open a credit line** (staff `ADMIN`, recent second factor,
+a reason). Set the limit in credits, optionally a negotiated rate per 100
+credits, a monthly minimum, net days (default 14) and grace days (default
+7). The list rate comes from `usage_rates` (seeded per currency; edit the
+seed to change it). Closing the line invoices the partial period at once
+and the organization is prepaid again.
+
+**What the organization sees.** Its Credits page becomes **Billing**: this
+period's usage and estimate, how much of the line is left, open invoices,
+and the invoice list. An invoice opens as a printable page with a **Pay**
+button (Flutterwave for African currencies, Paddle elsewhere) and the bank
+transfer details from `BANK_TRANSFER_DETAILS`. Owners, admins and the
+billing contact can pay and edit the billing address; the top-bar pill
+shows what is left on the line rather than a negative balance.
+
+**Dunning.** Past due → `OVERDUE`, one reminder email. Past due plus grace
+→ the account is **paused**: the wallet's overdraft goes to 0, so the next
+generation is refused by the database with a 402 that says "overdue
+invoice", and the owners get a "paused" email. Any payment that clears the
+overdue invoices reopens the line automatically; staff can also lift the
+pause by hand. At 80% of the limit the owners get one heads-up per period.
+
+**Bank transfers.** Staff console → **Invoicing** → _Mark paid_ with the
+bank reference. Same effect as an online payment: credits back, receipt
+emailed, line reopened. _Void_ cancels an unpaid invoice and returns its
+credits so a corrected one can be issued with _Invoice now_ on the
+workspace.
+
+**Variables.** `PADDLE_USAGE_PRODUCT_ID` — one Paddle product ("AnyStudio
+usage") that invoice payments are priced under at checkout; without it,
+Paddle-currency organizations can only pay by bank transfer.
+`BANK_TRANSFER_DETAILS` — printed on invoices; leave empty to offer online
+payment only. Both on the API service (the `anystudio-dev` group).
+
+**Migration.** `20260917000000_usage_billing` adds `usage_rates`,
+`billing_accounts`, `invoices`, `wallets.overdraftLimit`, the `INVOICE`
+payment kind, and replaces `ledger_apply` with a version that honours the
+overdraft. Seed adds the rate card.
+
+## 15. Refunds
+
+A customer can ask for a credit-pack purchase back from Credits →
+Payments → **Request refund**, within 14 days of paying and only while
+none of its credits have been used (the button only shows when that
+holds; plans are cancelled instead and run to the end of the paid
+period). The
+request lands in the staff console → **Payments → Refund requests**, and
+in `REFUNDS_EMAIL` if set. **Approve** sends the money back at the gateway
+(Flutterwave transaction refund, Paddle adjustment) and then claws the
+credits back through the ledger; if the credits were spent in between, the
+request is refused automatically. **Refuse** needs a sentence, which the
+customer reads in the email. Both decisions are audit-logged
+(`billing.refund`). The older "mark refunded" on a payment stays for money
+sent back outside a request.
+
+**Migration.** `20260918000001_refund_requests`.
+
+## 16. Marketing pages, careers and the waitlist
+
+`/why` is a static page like the landing (edit `design/why.html`, run
+`node scripts/sync-prototypes.mjs`); its pictures and hero film are in
+`apps/web/public/why/`. `/careers` and `/careers/<slug>` are built at
+request time from the API, wearing the same chrome (`content/chrome.ts`,
+also generated). Staff write openings in the console → **Careers**; an
+opening set to _Open_ is on the site the same minute. Applications come
+back with a CV (PDF or Word, up to 8 MB, presigned straight to storage
+under `careers/`), a confirmation email to the applicant, and an alert to
+`CAREERS_EMAIL` if set. The mobile-app waitlist on `/why#mobile` posts to
+`POST /api/v1/waitlist`; counts and the latest signups are at
+`GET /api/v1/admin/waitlist`.
+
+**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.

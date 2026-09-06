@@ -69,7 +69,7 @@ export interface Me {
     deleteRequestedAt?: string | null;
   };
   surface: 'APP' | 'ORG' | 'ADMIN';
-  workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string }>;
+  workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string; logoKey?: string | null; logoUrl?: string | null }>;
   canSwitchToStaff: boolean;
   /** Only on the ADMIN surface. */
   staffRole?: 'SUPPORT' | 'OPERATOR' | 'ADMIN' | 'SUPERADMIN' | null;
@@ -172,6 +172,173 @@ export interface WalletSummary {
   walletId: string;
   currency: string;
   balance: number;
+  overdraftLimit: number;
+  /** balance + overdraft, floored at zero — what may still be spent. */
+  available: number;
+  /** An organization invoiced monthly for what it uses. */
+  postpaid: boolean;
+  /** Postpaid and paused for an overdue invoice. */
+  paused: boolean;
+}
+
+export type BillingAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface BillTo {
+  company?: string;
+  address?: string;
+  taxId?: string;
+  contact?: string;
+}
+
+export interface UsageLine {
+  costCode: string;
+  label: string;
+  requests: number;
+  credits: number;
+  amountMinor: number;
+}
+
+export interface BillingAccountView {
+  id: string;
+  workspaceId: string;
+  status: BillingAccountStatus;
+  currency: string;
+  per100Minor: number;
+  per1000Minor: number;
+  negotiated: boolean;
+  minimumMinor: number;
+  creditLimit: number;
+  netDays: number;
+  graceDays: number;
+  billingEmail: string | null;
+  billTo: BillTo | null;
+  startedAt: string;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  closedAt: string | null;
+}
+
+export interface InvoiceView {
+  id: string;
+  number: string;
+  workspaceId: string;
+  periodStart: string;
+  periodEnd: string;
+  period: string;
+  currency: string;
+  credits: number;
+  per100Minor: number;
+  usageMinor: number;
+  minimumMinor: number;
+  totalMinor: number;
+  status: InvoiceStatus;
+  lines: UsageLine[];
+  billTo: BillTo | null;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  paidVia: string | null;
+  paidReference: string | null;
+  paymentId: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  payable: boolean;
+  bankDetails?: string | null;
+}
+
+export interface AccountOverview {
+  account: BillingAccountView | null;
+  period: {
+    start: string;
+    end: string;
+    credits: number;
+    lines: UsageLine[];
+    estimateMinor: number;
+    balance: number;
+    creditLimit: number;
+    available: number;
+  } | null;
+  open: { count: number; totalMinor: number } | null;
+  bankDetails: string | null;
+  canRequest: boolean;
+}
+
+export type StoreKind = 'SHOPIFY' | 'WOOCOMMERCE';
+export interface StoreView {
+  id: string;
+  kind: StoreKind;
+  label: string;
+  domain: string;
+  status: 'CONNECTED' | 'NEEDS_ATTENTION' | 'DISCONNECTED';
+  lastError: string | null;
+  lastSyncAt: string | null;
+  nextSyncAt: string | null;
+  syncing: boolean;
+  productCount: number;
+  connectedAt: string;
+}
+export interface CatalogueProductView {
+  id: string;
+  storeId: string;
+  store: { id: string; kind: StoreKind; label: string };
+  externalId: string;
+  handle: string | null;
+  title: string;
+  description: string | null;
+  priceMinor: number | null;
+  currency: string | null;
+  url: string | null;
+  productKey: string;
+  images: Array<{ key: string; url: string | null }>;
+  thumbUrl: string | null;
+  syncedAt: string;
+}
+
+export type JobStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+export type JobType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERNSHIP';
+export interface AdminJob {
+  id: string;
+  slug: string;
+  title: string;
+  team: string;
+  location: string;
+  remote: boolean;
+  type: JobType;
+  summary: string;
+  description: string;
+  salary: string | null;
+  status: JobStatus;
+  publishedAt: string | null;
+  closedAt: string | null;
+  updatedAt: string;
+  applications: number;
+  newApplications: number;
+}
+export type ApplicationStatus = 'NEW' | 'REVIEWING' | 'INTERVIEW' | 'OFFER' | 'HIRED' | 'REJECTED';
+export interface AdminApplication {
+  id: string;
+  job: { id: string; title: string; slug: string; team: string };
+  name: string;
+  email: string;
+  phone: string | null;
+  links: string | null;
+  coverNote: string | null;
+  cvName: string | null;
+  hasCv: boolean;
+  cvUrl?: string | null;
+  status: ApplicationStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminBillingAccount extends BillingAccountView {
+  workspace: { id: string; name: string };
+  balance: number;
+  overdraftLimit: number;
+  open: { count: number; totalMinor: number };
+  notes: string | null;
 }
 
 export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
@@ -391,11 +558,29 @@ export interface SubscriptionView {
   cancelAtPeriodEnd: boolean;
   cancelledAt: string | null;
 }
+export interface RefundRequestView {
+  id: string;
+  paymentId: string;
+  status: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  reason: string;
+  createdAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
+}
+export interface AdminRefundRequest extends RefundRequestView {
+  balanceAtRequest: number;
+  balanceNow: number;
+  stillRefundable: boolean;
+  gatewayConfigured: boolean;
+  requester: { name: string | null; email: string | null } | null;
+  workspace: { id: string; name: string };
+  payment: PaymentView;
+}
 export interface PaymentView {
   id: string;
   reference: string;
   provider: PaymentProvider;
-  kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL';
+  kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL' | 'INVOICE';
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
   itemCode: string;
   interval: string | null;
@@ -407,6 +592,10 @@ export interface PaymentView {
   refundedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Present on the workspace payments list. */
+  refund?: RefundRequestView | null;
+  canRequestRefund?: boolean;
+  refundWhy?: string | null;
 }
 export interface CheckoutOut {
   paymentId: string;
@@ -603,6 +792,30 @@ export interface AdminWorkspace {
   subscriptions: Array<{ id: string; planCode: string; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean }>;
   ledger: Array<{ id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string }>;
   generations: AdminGeneration[];
+  billingAccount: {
+    id: string;
+    status: BillingAccountStatus;
+    currency: string;
+    per100Minor: number | null;
+    minimumMinor: number;
+    creditLimit: number;
+    netDays: number;
+    graceDays: number;
+    billingEmail: string | null;
+    notes: string | null;
+    suspendedReason: string | null;
+    startedAt: string;
+  } | null;
+}
+export interface BillingTerms {
+  reason: string;
+  creditLimit?: number;
+  per100Minor?: number | null;
+  minimumMinor?: number;
+  netDays?: number;
+  graceDays?: number;
+  billingEmail?: string | null;
+  notes?: string | null;
 }
 export interface AdminGeneration {
   id: string;
@@ -809,6 +1022,66 @@ export const api = {
         `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
       ),
     refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
+    refunds: (q: { status?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: AdminRefundRequest[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/refunds?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    approveRefund: (id: string, note?: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/approve`, { note }),
+    refuseRefund: (id: string, note: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/refuse`, { note }),
+    jobs: () => request<AdminJob[]>('GET', '/admin/careers/jobs'),
+    createJob: (body: Partial<AdminJob> & { title: string; team: string; location: string; summary: string; description: string }) =>
+      request<AdminJob>('POST', '/admin/careers/jobs', body),
+    updateJob: (id: string, body: Partial<AdminJob>) => request<AdminJob>('PATCH', `/admin/careers/jobs/${id}`, body),
+    deleteJob: (id: string) => request<{ id: string }>('DELETE', `/admin/careers/jobs/${id}`),
+    applications: (q: { jobId?: string; status?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminApplication[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/careers/applications?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    application: (id: string) => request<AdminApplication>('GET', `/admin/careers/applications/${id}`),
+    updateApplication: (id: string, body: { status?: ApplicationStatus; notes?: string | null }) =>
+      request<AdminApplication>('PATCH', `/admin/careers/applications/${id}`, body),
+    waitlist: () =>
+      request<{ bySource: Array<{ source: string; count: number }>; latest: Array<{ email: string; source: string; createdAt: string }> }>(
+        'GET',
+        '/admin/waitlist',
+      ),
+    billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
+    billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
+    billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: Array<InvoiceView & { workspace: { id: string; name: string } }>; nextCursor: string | null }>(
+        'GET',
+        `/admin/billing/invoices?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setBillingTerms: (workspaceId: string, body: BillingTerms) => request<BillingAccountView>('PUT', `/admin/billing/accounts/${workspaceId}`, body),
+    closeBillingAccount: (workspaceId: string, reason: string) =>
+      request<{ closed: boolean; finalInvoice: InvoiceView | null }>('POST', `/admin/billing/accounts/${workspaceId}/close`, { reason }),
+    reactivateBillingAccount: (workspaceId: string, reason: string) =>
+      request<BillingAccountView>('POST', `/admin/billing/accounts/${workspaceId}/reactivate`, { reason }),
+    closeBillingPeriod: (workspaceId: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/accounts/${workspaceId}/close-period`, { reason }),
+    markInvoicePaid: (invoiceId: string, reference: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/mark-paid`, { reference, reason }),
+    voidInvoice: (invoiceId: string, reason: string) => request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/void`, { reason }),
     audit: (q: Record<string, string | undefined>) =>
       request<{ events: AdminEvent[]; nextCursor: string | null }>(
         'GET',
@@ -901,9 +1174,27 @@ export const api = {
       request<PaymentView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/verify`, providerRef ? { providerRef } : {}),
     payment: (workspaceId: string, paymentId: string) => request<PaymentView>('GET', `/workspaces/${workspaceId}/billing/payments/${paymentId}`),
     payments: (workspaceId: string, cursor?: string) =>
-      request<{ rows: PaymentView[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`),
+      request<{ rows: PaymentView[]; nextCursor: string | null; refundWindowDays?: number }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`,
+      ),
+    requestRefund: (workspaceId: string, paymentId: string, reason: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request`, { reason }),
+    cancelRefund: (workspaceId: string, paymentId: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request/cancel`, {}),
     subscription: (workspaceId: string) => request<SubscriptionView | null>('GET', `/workspaces/${workspaceId}/billing/subscription`),
     cancel: (workspaceId: string) => request<SubscriptionView>('POST', `/workspaces/${workspaceId}/billing/subscription/cancel`),
+    /** Usage-based billing: the credit line, this period, invoices. */
+    account: (workspaceId: string) => request<AccountOverview>('GET', `/workspaces/${workspaceId}/billing/account`),
+    patchAccount: (workspaceId: string, body: { billingEmail?: string | null; billTo?: BillTo }) =>
+      request<BillingAccountView>('PATCH', `/workspaces/${workspaceId}/billing/account`, body),
+    invoices: (workspaceId: string, cursor?: string | null, take = 25) =>
+      request<{ rows: InvoiceView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/invoices?take=${take}${cursor ? `&cursor=${cursor}` : ''}`,
+      ),
+    invoice: (workspaceId: string, invoiceId: string) => request<InvoiceView>('GET', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}`),
+    payInvoice: (workspaceId: string, invoiceId: string) => request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}/pay`, {}),
   },
   account: {
     profile: () => request<Profile>('GET', '/me/profile'),
@@ -989,7 +1280,29 @@ export const api = {
     rename: (id: string, name: string) => request<{ id: string; name: string }>('PATCH', `/workspaces/${id}`, { name }),
     /** The currency prices are shown and charged in. Credits already held are unaffected. */
     setCurrency: (id: string, currency: string) => request<{ id: string; currency: string }>('PATCH', `/workspaces/${id}`, { currency }),
+    /** An uploaded image (media asset key) as the organization's logo; null removes it. */
+    setLogo: (id: string, logoKey: string | null) => request<{ id: string; logoKey: string | null }>('PATCH', `/workspaces/${id}`, { logoKey }),
     remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
+  },
+  catalogue: {
+    stores: (workspaceId: string) => request<StoreView[]>('GET', `/workspaces/${workspaceId}/catalogue/stores`),
+    connect: (workspaceId: string, body: { kind: StoreKind; domain: string; accessToken?: string; consumerKey?: string; consumerSecret?: string }) =>
+      request<StoreView>('POST', `/workspaces/${workspaceId}/catalogue/stores`, body),
+    sync: (workspaceId: string, storeId: string) =>
+      request<{ started: boolean; reason?: string }>('POST', `/workspaces/${workspaceId}/catalogue/stores/${storeId}/sync`, {}),
+    disconnect: (workspaceId: string, storeId: string) => request<{ id: string }>('DELETE', `/workspaces/${workspaceId}/catalogue/stores/${storeId}`),
+    products: (workspaceId: string, q: { q?: string; storeId?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: CatalogueProductView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/catalogue/products?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    product: (workspaceId: string, id: string) => request<CatalogueProductView>('GET', `/workspaces/${workspaceId}/catalogue/products/${id}`),
   },
   publishing: {
     platforms: (workspaceId: string) => request<PublishPlatform[]>('GET', `/workspaces/${workspaceId}/publishing/platforms`),
@@ -1007,6 +1320,12 @@ export const api = {
       request<{ rows: PublishJob[]; nextCursor: string | null }>(
         'GET',
         `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ view: opts.view ?? 'upcoming', ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`,
+      ),
+    /** Everything scheduled in [from, to), whatever its status — the calendar. */
+    window: (workspaceId: string, from: Date, to: Date) =>
+      request<{ rows: PublishJob[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ from: from.toISOString(), to: to.toISOString() })}`,
       ),
     patch: (workspaceId: string, id: string, body: { caption?: string; scheduledFor?: string }) =>
       request<PublishJob>('PATCH', `/workspaces/${workspaceId}/publishing/jobs/${id}`, body),
