@@ -994,8 +994,36 @@ export interface IdeasOut {
   source: 'model' | 'stock';
 }
 
+export interface CaptionIdea {
+  angle: string;
+  text: string;
+  hashtags: string[];
+  why: string;
+}
+export interface CaptionsOut {
+  product: string | null;
+  captions: CaptionIdea[];
+  source: 'model' | 'stock';
+}
+export type CaptionGoal = 'sell' | 'message' | 'launch' | 'restock' | 'promo' | 'brand';
+
 export const api = {
   studio: {
+    /** Three captions with hashtags for a post, aimed at a platform and a goal. */
+    captions: (
+      workspaceId: string,
+      body: {
+        sourceKey?: string;
+        platform?: 'instagram' | 'tiktok' | 'whatsapp' | 'facebook';
+        kind?: 'feed' | 'story' | 'reel';
+        goal?: CaptionGoal;
+        productName?: string;
+        price?: string;
+        notes?: string;
+        language?: string;
+        round?: number;
+      },
+    ) => request<CaptionsOut>('POST', `/workspaces/${workspaceId}/studio/captions`, body),
     /** Three creative directions for this product and tool, from the copy model. */
     ideas: (
       workspaceId: string,

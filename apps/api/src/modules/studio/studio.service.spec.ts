@@ -87,3 +87,40 @@ describe('StudioService.ideas', () => {
     expect(provider.generate).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('StudioService.captions', () => {
+  const answer = {
+    product: 'Ankara tote bag',
+    captions: [
+      {
+        angle: 'Straight offer',
+        text: 'New ankara totes, ₦12,000. Send a message to order — Lagos delivery today.',
+        hashtags: ['#ankara', 'lagosvendor', 'tote bag'],
+        why: 'Price and how to buy, first line.',
+      },
+      { angle: 'The question', text: 'Which print is yours?', hashtags: ['ankara'], why: 'Earns replies.' },
+      { angle: 'The detail', text: 'Lined, zipped, made to carry a laptop.', hashtags: ['handmade'], why: 'Answers the doubt.' },
+    ],
+  };
+
+  it('aims the model at the platform and the goal, and cleans the hashtags', async () => {
+    const { svc, provider } = make(answer);
+    const out = await svc.captions('ws', { sourceKey: 'ws/photo.jpg', platform: 'instagram', kind: 'feed', goal: 'sell', price: '₦12,000' });
+    expect(out.source).toBe('model');
+    expect(out.captions[0]!.hashtags).toEqual(['ankara', 'lagosvendor', 'totebag']);
+    const input = provider.generate.mock.calls[0]![0] as { prompt: { system: string } };
+    expect(input.prompt.system).toMatch(/Instagram/);
+    expect(input.prompt.system).toMatch(/sell now/);
+    expect(input.prompt.system).toMatch(/Ankara bags/);
+  });
+
+  it('drops hashtags for WhatsApp and falls back to stock captions when the model fails', async () => {
+    const { svc } = make(answer);
+    const out = await svc.captions('ws', { platform: 'whatsapp', goal: 'message' });
+    expect(out.captions.every((c) => c.hashtags.length === 0)).toBe(true);
+    const failing = make(() => {
+      throw new Error('down');
+    });
+    expect((await failing.svc.captions('ws', { platform: 'instagram' })).source).toBe('stock');
+  });
+});

@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api, type LibraryOutput, type PublishFormat, type SocialAccount, type SocialPlatform } from '@/lib/api';
+import { api, type CaptionGoal, type CaptionsOut, type LibraryOutput, type PublishFormat, type SocialAccount, type SocialPlatform } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { Badge, Button, Dialog, SegmentedControl, Select, Skeleton, Textarea, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -69,6 +69,11 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
   const [at, setAt] = useState(defaultWhen());
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<{ url: string; mime: string | null } | null>(null);
+  // Suggested captions: the copy model looks at the file and the seller, aimed at where it is going and what it is for.
+  const [goal, setGoal] = useState<CaptionGoal>('sell');
+  const [suggested, setSuggested] = useState<CaptionsOut | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [round, setRound] = useState(0);
 
   const files = useMemo(
     () => (target?.outputs ?? []).filter((o) => o.key && !o.locked && (o.mime.startsWith('image/') || o.mime.startsWith('video/'))),
@@ -83,6 +88,8 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
     setTab('post');
     setMediaKey(files[0]?.key ?? '');
     setCaption(captionFrom(target.text, target.title));
+    setSuggested(null);
+    setRound(0);
     setWhen('now');
     setAt(defaultWhen());
     setShare(null);
@@ -161,6 +168,83 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
   useEffect(() => {
     if (tab === 'share') void loadShare();
   }, [tab, loadShare]);
+
+  const suggest = async (next = false) => {
+    if (!target) return;
+    const r = next ? round + 1 : round;
+    setRound(r);
+    setSuggesting(true);
+    try {
+      const platform: 'instagram' | 'tiktok' | 'whatsapp' =
+        tab === 'share' ? 'whatsapp' : chosenPlatforms.has('TIKTOK') && !chosenPlatforms.has('INSTAGRAM') ? 'tiktok' : 'instagram';
+      const kind = format === 'STORY' ? 'story' : format === 'REEL' ? 'reel' : 'feed';
+      const text = (target.text ?? null) as { productName?: string; price?: string } | null;
+      const out = await api.studio.captions(workspace.id, {
+        sourceKey: file?.key,
+        platform,
+        kind,
+        goal,
+        productName: typeof text?.productName === 'string' ? text.productName : (target.title ?? undefined),
+        price: typeof text?.price === 'string' ? text.price : undefined,
+        round: r,
+      });
+      setSuggested(out);
+    } catch (e) {
+      toast({ title: 'Could not suggest a caption', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+  const useCaption = (c: { text: string; hashtags: string[] }) => {
+    setCaption(c.hashtags.length ? `${c.text.trim()}\n\n${c.hashtags.map((h) => `#${h}`).join(' ')}` : c.text.trim());
+  };
+  const suggestions = suggested && (
+    <div className={styles.suggest}>
+      <div className={styles.suggestHead}>
+        <span>
+          {suggested.product ? `Captions for your ${suggested.product.toLowerCase()}` : 'Suggested captions'}
+          {suggested.source === 'stock' && <span className={styles.fine}> · general suggestions</span>}
+        </span>
+        <button type="button" className={styles.more} onClick={() => void suggest(true)} disabled={suggesting}>
+          {suggesting ? 'Thinking…' : 'More'}
+        </button>
+      </div>
+      {suggested.captions.map((c) => (
+        <button
+          key={c.angle + c.text}
+          type="button"
+          className={styles.suggestion}
+          onClick={() => useCaption(c)}
+          aria-pressed={caption.startsWith(c.text.trim())}
+        >
+          <strong>{c.angle}</strong>
+          <span>{c.text}</span>
+          {c.hashtags.length > 0 && <small>{c.hashtags.map((h) => `#${h}`).join(' ')}</small>}
+          <em>{c.why}</em>
+        </button>
+      ))}
+    </div>
+  );
+  const goalPicker = (
+    <div className={styles.goalRow}>
+      <SegmentedControl
+        label="This post is for"
+        value={goal}
+        onChange={(g) => setGoal(g as CaptionGoal)}
+        items={[
+          { id: 'sell', label: 'Selling' },
+          { id: 'message', label: 'Getting messages' },
+          { id: 'launch', label: 'A launch' },
+          { id: 'restock', label: 'Back in stock' },
+          { id: 'promo', label: 'A promo' },
+          { id: 'brand', label: 'The brand' },
+        ]}
+      />
+      <Button size="sm" variant="subtle" onClick={() => void suggest(false)} loading={suggesting}>
+        {suggested ? 'Suggest again' : 'Suggest captions'}
+      </Button>
+    </div>
+  );
 
   const copyCaption = async () => {
     try {
@@ -311,6 +395,8 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
                   <SegmentedControl label="As" value={format} onChange={setFormat} items={formatOptions.map((f) => ({ id: f, label: FORMAT_WORDS[f] }))} />
                 )}
 
+                {goalPicker}
+                {suggestions}
                 <Textarea
                   label="Caption"
                   value={caption}
@@ -373,6 +459,8 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
                     <span>In WhatsApp: Status → add, pick the file, paste the caption.</span>
                   </li>
                 </ol>
+                {goalPicker}
+                {suggestions}
                 <Textarea label="Caption" value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} />
                 <p className={styles.fine}>
                   <Badge tone="accent">1 hour</Badge> The file link works for an hour; open this again for a fresh one.
