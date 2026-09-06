@@ -299,12 +299,14 @@ export const capabilityParams = {
     /** Their own lyrics. Absent with vocals → the pipeline writes them first. */
     lyrics: z.string().max(3000).optional(),
     /**
-     * What to do with their lyrics: 'exact' sings them as pasted; 'complete'
+     * What to do with their text: 'exact' sings it as pasted; 'complete'
      * keeps every line they gave and writes the rest of the song around it;
-     * 'auto' picks: text with [Verse]/[Chorus] markers is exact, a hook or a
-     * few lines is completed.
+     * 'inspire' treats it as a story or a memory and writes the song FROM it
+     * (names, places and moments kept, nothing sung verbatim); 'auto' picks:
+     * [Verse]/[Chorus] markers → exact, prose → inspire, a hook or a few
+     * short lines → complete.
      */
-    lyricsMode: z.enum(['auto', 'exact', 'complete']).default('auto'),
+    lyricsMode: z.enum(['auto', 'exact', 'complete', 'inspire']).default('auto'),
     /**
      * Who sings: the music model, or the seller ('me') — the model's vocal
      * is separated from the track and converted into their cloned voice.

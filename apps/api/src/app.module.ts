@@ -34,6 +34,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { LibraryModule } from './modules/library/library.module';
 import { InsightsModule } from './modules/insights/insights.module';
 import { AudioModule } from './modules/audio/audio.module';
+import { StudioModule } from './modules/studio/studio.module';
 import { DeveloperModule } from './modules/developer/developer.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -67,6 +68,7 @@ import { WaitlistModule } from './modules/waitlist/waitlist.module';
     LibraryModule,
     InsightsModule,
     AudioModule,
+    StudioModule,
     DeveloperModule,
     WhatsappModule,
     NotificationModule,

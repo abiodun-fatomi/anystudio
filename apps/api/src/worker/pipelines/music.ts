@@ -53,16 +53,17 @@ export const musicPipeline: Pipeline = async (ctx) => {
 
   // ---- 1. words
   const own = p.lyrics?.trim() || '';
-  // Their lines are the whole song only when they say so, or when the text
-  // already has the shape of one; a hook or a few lines gets a song written
-  // around it, with every word they gave kept.
-  const complete = own !== '' && (p.lyricsMode === 'complete' || (p.lyricsMode === 'auto' && !looksComplete(own)));
-  let lyricsText: string | undefined = p.lyricsWritten || (own && !complete ? own : undefined);
+  // Their text is the whole song only when they say so, or when it already
+  // has the shape of one. A story or a memory becomes the material the song
+  // is written from; a hook or a few lines gets a song written around it,
+  // with every word they gave kept.
+  const mode = own === '' ? 'none' : seedMode(own, p.lyricsMode ?? 'auto');
+  let lyricsText: string | undefined = p.lyricsWritten || (mode === 'exact' ? own : undefined);
   let lyrics: Lyrics | null = null;
   let lyricsCost = 0;
   if (p.vocal !== 'instrumental' && !lyricsText) {
-    await ctx.stage('preparing', 8, 'writing the words');
-    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints, complete ? own : null);
+    await ctx.stage('preparing', 8, mode === 'inspire' ? 'turning your story into a song' : 'writing the words');
+    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints, mode === 'complete' || mode === 'inspire' ? { text: own, mode } : null);
     lyrics = written.lyrics;
     lyricsCost = written.costMinor ?? 0;
     lyricsText = lyricsToText(lyrics);
@@ -161,13 +162,30 @@ export function looksComplete(text: string): boolean {
   return lines.length >= 12;
 }
 
+/** Prose — sentences that run long — is a story to write from, not lines to sing. */
+export function looksLikeProse(text: string): boolean {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length === 0) return false;
+  const avg = lines.reduce((s, l) => s + l.trim().length, 0) / lines.length;
+  const sentences = (text.match(/[.!?](\s|$)/g) ?? []).length;
+  return avg > 70 || (sentences >= 2 && lines.length <= 3);
+}
+
+/** What their text is for, given what they chose and what it looks like. */
+export function seedMode(text: string, chosen: 'auto' | 'exact' | 'complete' | 'inspire'): 'exact' | 'complete' | 'inspire' {
+  if (chosen !== 'auto') return chosen;
+  if (looksComplete(text)) return 'exact';
+  if (looksLikeProse(text)) return 'inspire';
+  return 'complete';
+}
+
 async function writeLyrics(
   ctx: PipelineContext,
   p: CapabilityParams<'MUSIC'>,
   genreName: string,
   hints: string,
-  /** Lines the customer wrote, to be kept word for word and built around. */
-  seed: string | null = null,
+  /** What the customer wrote: lines to keep word for word and build around, or a story to write the song from. */
+  seed: { text: string; mode: 'complete' | 'inspire' } | null = null,
 ): Promise<{ lyrics: Lyrics; costMinor?: number }> {
   const profile = (ctx.workspace.profile as Record<string, unknown> | null) ?? {};
   const language = LANGUAGE_NAME[p.language] ?? p.language;
@@ -200,15 +218,22 @@ async function writeLyrics(
       text: [
         p.title ? `Title: ${p.title}` : 'Choose a short title.',
         `What the song is about: ${p.brief}`,
-        seed
+        seed?.mode === 'complete'
           ? [
               'The customer wrote these lines. Keep EVERY one of them word for word, in the order given — do not paraphrase, translate or trim them.',
               'If they read as a hook, they are the chorus and repeat each time; otherwise place them where they fit best and write the rest of the song around them in the same voice.',
               '--- their lines ---',
-              seed,
+              seed.text,
               '--- end ---',
             ].join('\n')
-          : '',
+          : seed?.mode === 'inspire'
+            ? [
+                'The customer told this story or memory. Write the song FROM it: keep the names, the places, the specific moments and the feeling; turn them into singable lines. Do not quote the text verbatim — it is prose, not lyrics.',
+                '--- their story ---',
+                seed.text,
+                '--- end ---',
+              ].join('\n')
+            : '',
         'Write the lyrics now.',
       ]
         .filter(Boolean)

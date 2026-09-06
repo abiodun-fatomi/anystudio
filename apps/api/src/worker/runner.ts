@@ -44,6 +44,7 @@ import {
 } from '@anystudio/shared';
 import { logger } from '../../config/logger';
 import { GenerationService } from '../modules/generation/generation.service';
+import { MAX_ATTEMPTS } from '../modules/generation/generation.types';
 import { GenerationEvents } from '../modules/generation/generation.events';
 import { MediaService } from '../modules/media/media.service';
 import { ProviderRouter, type RouteCandidate, type RouteConstraint } from '../modules/provider/provider.router';
@@ -73,7 +74,6 @@ export const BUDGET_MS: Record<Capability, number> = {
   LIPSYNC: 12 * 60_000,
 };
 
-const MAX_ATTEMPTS = 3;
 const HEARTBEAT_MS = 20_000;
 const RETRY_DELAY_MS = [0, 15_000, 60_000];
 

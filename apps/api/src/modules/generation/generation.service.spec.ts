@@ -159,21 +159,37 @@ suite('GenerationService', () => {
     await expect(service.cancel(b.generation.id)).rejects.toMatchObject({ status: 409 });
   });
 
-  it('reclaims and refunds a generation whose worker went silent', async () => {
+  it('requeues a generation whose worker went silent, and refunds only when attempts are spent', async () => {
     const { generation } = await request();
     await service.start(generation.id);
     // Backdate the heartbeat rather than waiting fifteen minutes.
-    await db.generation.update({
-      where: { id: generation.id },
-      data: { heartbeatAt: new Date(Date.now() - 60 * 60 * 1000) },
-    });
+    const silent = () => db.generation.update({ where: { id: generation.id }, data: { heartbeatAt: new Date(Date.now() - 60 * 60 * 1000) } });
+    await silent();
 
-    const reclaimed = await service.sweepStale();
+    // First interruption: another attempt, the debit stands.
+    expect(await service.sweepStale()).toContain(generation.id);
+    let row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    expect(row.status).toBe('QUEUED');
+    expect(row.failureReason).toMatch(/stopped mid-job/);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - row.credits);
 
-    expect(reclaimed).toContain(generation.id);
-    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    // Attempts spent: failed and refunded.
+    await db.generation.update({ where: { id: generation.id }, data: { attempts: 3 } });
+    await service.start(generation.id);
+    await silent();
+    expect(await service.sweepStale()).toContain(generation.id);
+    row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
     expect(row.status).toBe('FAILED');
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
+  it('does not reclaim a row that is merely waiting in a busy queue', async () => {
+    const { generation } = await request();
+    await db.generation.update({ where: { id: generation.id }, data: { createdAt: new Date(Date.now() - 30 * 60 * 1000) } });
+    expect(await service.sweepStale()).not.toContain(generation.id);
+    await db.generation.update({ where: { id: generation.id }, data: { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) } });
+    expect(await service.sweepStale()).toContain(generation.id);
+    expect((await db.generation.findUniqueOrThrow({ where: { id: generation.id } })).failureReason).toMatch(/no worker picked it up/);
   });
 
   it('leaves a generation alone while its worker is still checking in', async () => {

@@ -75,25 +75,37 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
     const report = await fidelity(source, cutout, bytes);
     ctx.log.info({ attempt, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'fidelity measured');
 
+    // The check says where in the output it found the product; a drifted
+    // product is pasted back THERE, at that size, whatever shape the frame
+    // took. Only a product that cannot be found at all is a lost cause.
+    const found = report.placed && report.structure >= FIDELITY.locate;
     if (report.score >= FIDELITY.keep) {
       picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
-    } else if (report.score >= FIDELITY.composite) {
+    } else if (report.score >= FIDELITY.composite || (attempt === 2 && found)) {
       const same = await sameFrame(source, bytes);
-      if (same) {
+      if (same && report.score >= FIDELITY.composite) {
         picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true, placed: null };
         ctx.log.info({ attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
+      } else if (found) {
+        picked = { bytes: await pasteProductAt(bytes, cutout, report.placed!), result, score: report.score, composited: true, placed: report.placed };
+        ctx.log.warn({ attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels composited back where the model put it');
       } else {
         picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
-        ctx.log.warn({ attempt, score: report.score }, 'product drifted but the frame changed; shipping the model output');
+        ctx.log.warn({ attempt, score: report.score }, 'product drifted but the frame changed and it could not be located; shipping the model output');
       }
     } else if (attempt === 1) {
       ctx.log.warn({ attempt, score: report.score }, 'product not kept; asking once more with a stricter prompt');
       await ctx.stage('generating', 30, 'the first try changed your product — trying again');
     } else {
-      throw new ProviderError('LOW_QUALITY', `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts`, result.providerKey, {
-        providerJobId: result.providerJobId,
-        raw: report,
-      });
+      throw new ProviderError(
+        'LOW_QUALITY',
+        `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts and it could not be found in the scene`,
+        result.providerKey,
+        {
+          providerJobId: result.providerJobId,
+          raw: report,
+        },
+      );
     }
   }
   if (!picked) throw new ProviderError('RETRYABLE', 'no image produced', 'image-pipeline');
@@ -163,6 +175,63 @@ export async function pasteProduct(scene: Uint8Array, cutout: Uint8Array): Promi
     .composite([
       { input: shadowPng, top: Math.round(H * 0.012), left: 0 },
       { input: product, top: 0, left: 0 },
+    ])
+    .png()
+    .toBuffer();
+  return new Uint8Array(out);
+}
+
+/**
+ * The original product pixels over the generated scene at the place and
+ * size the fidelity check found it — for a frame the model reshaped, where
+ * pasting at the source position would put the bottle in the wrong place.
+ */
+export async function pasteProductAt(scene: Uint8Array, cutout: Uint8Array, placed: { x: number; y: number; w: number; h: number }): Promise<Uint8Array> {
+  const meta = await sharp(scene).metadata();
+  const W = meta.width ?? 1024;
+  const H = meta.height ?? 1024;
+  // The product's own box inside the cutout.
+  const cm = await sharp(cutout).metadata();
+  const cw = cm.width ?? 1;
+  const ch = cm.height ?? 1;
+  const alpha = await sharp(cutout).ensureAlpha().extractChannel(3).raw().toBuffer();
+  let minX = cw;
+  let minY = ch;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < ch; y++)
+    for (let x = 0; x < cw; x++)
+      if (alpha[y * cw + x]! >= 128) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+  if (maxX < 0) return pasteProduct(scene, cutout);
+  const tw = Math.max(4, Math.round(placed.w * W));
+  const th = Math.max(4, Math.round(placed.h * H));
+  const left = Math.min(Math.max(Math.round(placed.x * W - tw / 2), 0), Math.max(0, W - tw));
+  const top = Math.min(Math.max(Math.round(placed.y * H - th / 2), 0), Math.max(0, H - th));
+  const product = await sharp(cutout)
+    .ensureAlpha()
+    .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
+    .resize(tw, th, { fit: 'fill' })
+    .png()
+    .toBuffer();
+  const shadowAlpha = await sharp(product)
+    .extractChannel(3)
+    .blur(Math.max(4, tw / 40))
+    .raw()
+    .toBuffer();
+  const shadow = Buffer.alloc(tw * th * 4);
+  for (let i = 0; i < tw * th; i++) shadow[i * 4 + 3] = Math.round((shadowAlpha[i] ?? 0) * 0.38);
+  const shadowPng = await sharp(shadow, { raw: { width: tw, height: th, channels: 4 } })
+    .png()
+    .toBuffer();
+  const out = await sharp(scene)
+    .composite([
+      { input: shadowPng, top: Math.min(top + Math.round(th * 0.03), H - th), left },
+      { input: product, top, left },
     ])
     .png()
     .toBuffer();

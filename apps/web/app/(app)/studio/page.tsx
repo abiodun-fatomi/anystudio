@@ -346,6 +346,7 @@ function Studio() {
           values={toolValues}
           onChange={setValue}
           hasSource={Boolean(sourceKey)}
+          sourceKey={sourceKey}
           busy={busy}
           onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
         />
