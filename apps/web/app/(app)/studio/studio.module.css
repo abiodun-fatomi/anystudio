@@ -352,21 +352,27 @@
 }
 /* Every tool visible at once, in as many rows as the pane needs: a strip that
    scrolls sideways hides half the studio behind an edge nobody notices. */
+/* A grid, not a wrapping row: every tool sits in a column of the same width,
+   so the second row lines up under the first instead of drifting. */
 .strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
   gap: var(--s-1);
   padding: var(--s-2);
   border-top: 1px solid var(--line-soft);
 }
+@media (max-width: 480px) {
+  .strip {
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  }
+}
 .toolBtn {
-  flex: 1 0 72px;
-  max-width: 120px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  min-width: 72px;
+  min-width: 0;
   min-height: var(--touch);
   padding: var(--s-2) var(--s-2);
   border: 0;

@@ -41,6 +41,8 @@ export interface IdeasOut {
   ideas: Idea[];
   /** 'model' when a vendor wrote them, 'stock' when these are the generic fallback. */
   source: 'model' | 'stock';
+  /** Why the fallback, outside production: a blank suggestion box with no reason is impossible to debug. */
+  reason?: string;
 }
 
 const ideaSchema = z.object({
@@ -60,9 +62,9 @@ const ideaSchema = z.object({
 const IDEAS_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['product', 'ideas'],
+  required: ['ideas'],
   properties: {
-    product: { type: 'string', description: 'The product in the photo, in at most eight words' },
+    product: { type: 'string', description: 'The product in the photo, in at most eight words; omit if there is no photo' },
     ideas: {
       type: 'array',
       minItems: 3,
@@ -94,6 +96,7 @@ export interface CaptionsOut {
   product: string | null;
   captions: CaptionIdea[];
   source: 'model' | 'stock';
+  reason?: string;
 }
 
 const captionSchema = z.object({
@@ -113,9 +116,9 @@ const captionSchema = z.object({
 const CAPTIONS_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['product', 'captions'],
+  required: ['captions'],
   properties: {
-    product: { type: 'string', description: 'The product in the picture, in at most eight words' },
+    product: { type: 'string', description: 'The product in the picture, in at most eight words; omit if there is no picture' },
     captions: {
       type: 'array',
       minItems: 3,
@@ -171,6 +174,24 @@ const STOCK_CAPTIONS: CaptionIdea[] = [
     hashtags: ['madewithcare', 'shopsmall'],
     why: 'A detail justifies the price without arguing it.',
   },
+  {
+    angle: 'Only a few',
+    text: 'A small batch, and when they go they go. Message us to hold one.',
+    hashtags: ['smallbatch', 'shopsmall'],
+    why: 'Honest scarcity moves the people who were already thinking about it.',
+  },
+  {
+    angle: 'The maker',
+    text: 'Made by hand, here, this week. Every one is a little different.',
+    hashtags: ['handmade', 'supportlocal'],
+    why: 'People buy from people; the story is the difference.',
+  },
+  {
+    angle: 'For someone',
+    text: 'Someone you know would love this. We wrap it for you — just say the word.',
+    hashtags: ['giftideas', 'shopsmall'],
+    why: 'Half of what a small business sells is bought for somebody else.',
+  },
 ];
 
 const CACHE_TTL_MS = 15 * 60_000;
@@ -192,7 +213,11 @@ const TOOL_BRIEF: Record<IdeaTool, string> = {
   restyle: 'a restyle of this whole photo — a look, a mood, a treatment',
 };
 
-/** What we hand back when no model could answer. Generic on purpose and labelled as such. */
+/**
+ * What we hand back when no model could answer. Generic on purpose and
+ * labelled as such — and six deep per tool, rotated by round, so "More"
+ * always gives the seller something they have not just read.
+ */
 const STOCK: Record<IdeaTool, Idea[]> = {
   video: [
     {
@@ -213,6 +238,24 @@ const STOCK: Record<IdeaTool, Idea[]> = {
       motion: 'slow lateral slide',
       why: 'Context lets a buyer picture owning it, which is what converts.',
     },
+    {
+      title: 'One turn around it',
+      prompt: 'A slow half-orbit around the product on a plain surface, one soft light travelling across its edge as it turns.',
+      motion: 'orbit',
+      why: 'People wonder what the other side looks like; show them before they ask.',
+    },
+    {
+      title: 'Out of the wrapping',
+      prompt: 'Hands lifting the product out of its wrapping on a table, the paper falling away, the product settling in frame.',
+      motion: 'handheld, following',
+      why: 'The unwrapping is the moment a buyer imagines having it.',
+    },
+    {
+      title: 'Two to choose from',
+      prompt: 'The product beside a second one in another colour or size on the same surface, the camera drifting from one to the other.',
+      motion: 'slow lateral slide',
+      why: 'A choice invites a reply, and a reply is where the sale starts.',
+    },
   ],
   scene: [
     {
@@ -230,6 +273,21 @@ const STOCK: Record<IdeaTool, Idea[]> = {
       prompt: 'On a dark matte surface with one soft rim light and a faint reflection.',
       why: 'Reads as expensive; good for higher-priced items.',
     },
+    {
+      title: 'Sunlit table',
+      prompt: 'On a wooden table in late afternoon light, long soft shadows falling to one side.',
+      why: 'Warm light makes anything look worth having.',
+    },
+    {
+      title: 'Held up',
+      prompt: 'Held in a hand against a plain wall, so its real size is obvious at a glance.',
+      why: 'Scale is the question every online buyer has.',
+    },
+    {
+      title: 'With its people',
+      prompt: 'On a surface beside two or three everyday things it would sit with, softly out of focus behind.',
+      why: 'A little context makes it feel real rather than cut out.',
+    },
   ],
   background: [
     {
@@ -243,13 +301,34 @@ const STOCK: Record<IdeaTool, Idea[]> = {
       why: 'Feels handmade and honest; suits food, crafts and fashion.',
     },
     { title: 'Pure white', prompt: 'Seamless pure white, no horizon line.', why: 'What marketplaces ask for; cuts out cleanly anywhere.' },
+    {
+      title: 'Soft grey',
+      prompt: 'A cool light-grey backdrop with a gentle vignette.',
+      why: 'Neutral enough for any colour, and it never fights the product.',
+    },
+    { title: 'Marble', prompt: 'A pale marble surface with soft daylight from above.', why: 'Reads as premium without saying so.' },
+    {
+      title: 'Deep colour',
+      prompt: 'A rich single-colour backdrop a shade darker than the product, evenly lit.',
+      why: 'A bold ground makes a small product fill the frame.',
+    },
   ],
   restyle: [
     { title: 'Warm film', prompt: 'Warm film look, golden hour, soft grain, gentle contrast.', why: 'Feels like a memory; performs well on feeds.' },
     { title: 'Clean and bright', prompt: 'Bright, airy, slightly lifted shadows, neutral whites.', why: 'Reads as trustworthy and new.' },
     { title: 'Bold and punchy', prompt: 'High contrast, saturated colour, crisp edges.', why: 'Stops a scrolling thumb.' },
+    { title: 'Studio clean', prompt: 'Even light, true colours, no grain — as if it were reshot properly.', why: 'What a marketplace listing wants.' },
+    { title: 'Evening warmth', prompt: 'Deep shadows, warm highlights, a little haze.', why: 'Suits food, candles and anything cosy.' },
+    { title: 'Cool and modern', prompt: 'Cooler whites, crisp shadows, a little more contrast through the mid-tones.', why: 'Reads as new and well made.' },
   ],
 };
+
+/** Three of the set, moved on by the round, so asking again is never the same three. */
+function rotate<T>(all: readonly T[], round: number, take = 3): T[] {
+  if (all.length <= take) return [...all];
+  const start = (round * take) % all.length;
+  return Array.from({ length: take }, (_, i) => all[(start + i) % all.length]!);
+}
 
 @Injectable()
 export class StudioService {
@@ -273,20 +352,20 @@ export class StudioService {
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.out;
     this.sweep();
 
+    const round = dto.round ?? 0;
     if (!this.allow(workspaceId)) {
       logger.warn({ workspaceId, tool: dto.tool }, 'ideas: rate limit reached; answering with stock ideas');
-      return { product: null, ideas: STOCK[dto.tool], source: 'stock' };
+      return this.stockIdeas(dto.tool, round, 'too many requests in the last hour');
     }
 
     let out: IdeasOut;
     try {
       out = await this.ask(workspaceId, dto);
     } catch (err) {
-      logger.warn(
-        { err: err instanceof Error ? err.message : err, workspaceId, tool: dto.tool },
-        'ideas: the model did not answer; answering with stock ideas',
-      );
-      out = { product: null, ideas: STOCK[dto.tool], source: 'stock' };
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: reason, workspaceId, tool: dto.tool }, 'ideas: the model did not answer; answering with stock ideas');
+      // Never cached: the next tap tries the model again rather than serving the fallback for fifteen minutes.
+      return this.stockIdeas(dto.tool, round, reason);
     }
     this.cache.set(key, { at: Date.now(), out });
     return out;
@@ -313,16 +392,19 @@ export class StudioService {
       .digest('hex');
     const hit = this.captionCache.get(key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.out;
+    const round = dto.round ?? 0;
     if (!this.allow(workspaceId)) {
       logger.warn({ workspaceId }, 'captions: rate limit reached; answering with stock captions');
-      return { product: null, captions: STOCK_CAPTIONS, source: 'stock' };
+      return this.stockCaptions(round, dto.platform, 'too many requests in the last hour');
     }
     let out: CaptionsOut;
     try {
       out = await this.askCaptions(workspaceId, dto);
     } catch (err) {
-      logger.warn({ err: err instanceof Error ? err.message : err, workspaceId }, 'captions: the model did not answer; answering with stock captions');
-      out = { product: null, captions: STOCK_CAPTIONS, source: 'stock' };
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: reason, workspaceId }, 'captions: the model did not answer; answering with stock captions');
+      // Never cached: the next tap tries the model again rather than serving the fallback for fifteen minutes.
+      return this.stockCaptions(round, dto.platform, reason);
     }
     this.captionCache.set(key, { at: Date.now(), out });
     return out;
@@ -486,6 +568,21 @@ export class StudioService {
       ideas: parsed.data.ideas.slice(0, 3).map((i) => ({ title: i.title, prompt: i.prompt, motion: isVideo ? i.motion : undefined, why: i.why })),
       source: 'model',
     };
+  }
+
+  /** The generic set, moved on by the round, with the reason attached outside production. */
+  private stockIdeas(tool: IdeaTool, round: number, reason: string): IdeasOut {
+    return { product: null, ideas: rotate(STOCK[tool], round), source: 'stock', ...this.why(reason) };
+  }
+
+  private stockCaptions(round: number, platform: string | undefined, reason: string): CaptionsOut {
+    const captions = rotate(STOCK_CAPTIONS, round).map((c) => (platform === 'whatsapp' ? { ...c, hashtags: [] } : c));
+    return { product: null, captions, source: 'stock', ...this.why(reason) };
+  }
+
+  /** Operators and developers get the reason; a customer in production gets the suggestions and no apology. */
+  private why(reason: string): { reason?: string } {
+    return process.env.APP_ENV === 'production' ? {} : { reason: reason.slice(0, 300) };
   }
 
   private allow(workspaceId: string): boolean {

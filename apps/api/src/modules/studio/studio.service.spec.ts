@@ -124,3 +124,32 @@ describe('StudioService.captions', () => {
     expect((await failing.svc.captions('ws', { platform: 'instagram' })).source).toBe('stock');
   });
 });
+
+describe('when no model answers', () => {
+  it('rotates the fallback so asking again is never the same three, and never caches a failure', async () => {
+    const boom = () => {
+      throw new Error('vendor down');
+    };
+    const { svc, provider } = make(boom);
+    const a = await svc.ideas('ws', { tool: 'video', sourceKey: 'k' });
+    const b = await svc.ideas('ws', { tool: 'video', sourceKey: 'k', round: 1 });
+    expect(a.source).toBe('stock');
+    expect(b.source).toBe('stock');
+    expect(b.ideas.map((i) => i.title)).not.toEqual(a.ideas.map((i) => i.title));
+    // Outside production the reason travels with it, so a blank box is explainable.
+    expect(a.reason).toMatch(/vendor down/);
+    // The same question again still asks the model rather than serving the cached fallback.
+    await svc.ideas('ws', { tool: 'video', sourceKey: 'k' });
+    expect(provider.generate).toHaveBeenCalledTimes(3);
+  });
+
+  it('rotates the fallback captions too, and still drops hashtags for WhatsApp', async () => {
+    const { svc } = make(() => {
+      throw new Error('down');
+    });
+    const a = await svc.captions('ws', { platform: 'instagram' });
+    const b = await svc.captions('ws', { platform: 'whatsapp', round: 1 });
+    expect(a.captions.map((c) => c.angle)).not.toEqual(b.captions.map((c) => c.angle));
+    expect(b.captions.every((c) => c.hashtags.length === 0)).toBe(true);
+  });
+});

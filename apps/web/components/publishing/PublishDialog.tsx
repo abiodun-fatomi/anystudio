@@ -203,7 +203,12 @@ export function PublishDialog({ open, onClose, target }: { open: boolean; onClos
       <div className={styles.suggestHead}>
         <span>
           {suggested.product ? `Captions for your ${suggested.product.toLowerCase()}` : 'Suggested captions'}
-          {suggested.source === 'stock' && <span className={styles.fine}> · general suggestions</span>}
+          {suggested.source === 'stock' && (
+            <span className={styles.fine} title={suggested.reason}>
+              {' '}
+              · general suggestions
+            </span>
+          )}
         </span>
         <button type="button" className={styles.more} onClick={() => void suggest(true)} disabled={suggesting}>
           {suggesting ? 'Thinking…' : 'More'}

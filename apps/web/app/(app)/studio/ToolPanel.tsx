@@ -413,7 +413,12 @@ function Ideas({ tool, values, sourceKey, onPick }: { tool: Tool; values: Record
       <div className={styles.ideasHead}>
         <span>
           {out?.product ? `Ideas for your ${out.product.toLowerCase()}` : 'Ideas for this product'}
-          {out?.source === 'stock' && <span className={styles.ideasNote}> · general suggestions</span>}
+          {out?.source === 'stock' && (
+            <span className={styles.ideasNote} title={out.reason}>
+              {' '}
+              · general suggestions
+            </span>
+          )}
         </span>
         <button type="button" className={styles.ideasMore} onClick={() => setRound((r) => r + 1)} disabled={loading}>
           {loading ? 'Thinking…' : 'More'}
