@@ -145,10 +145,13 @@ services:
         value: worker
       - key: LOG_LEVEL
         value: debug
-      # Concurrency per weight class. Video holds a slot for minutes.
+      # Concurrency per weight class. A "heavy" slot is a socket waiting on a
+      # vendor, so it is cheap; "local" is ffmpeg on this box, so it is not.
       - key: WORKER_FAST_CONCURRENCY
         value: '6'
       - key: WORKER_HEAVY_CONCURRENCY
+        value: '8'
+      - key: WORKER_LOCAL_CONCURRENCY
         value: '2'
 
 envVarGroups:

@@ -7,7 +7,7 @@
  * a param is presented — a segmented control, a slider, a text box — not
  * whether it is valid. Adding a tool is adding an entry here.
  */
-import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize, adPlan, presenterCostCode } from '@anystudio/shared';
+import { ASPECTS, EXPORT_SIZES, PIPELINE_WRITTEN_KEYS, type Capability, type ExportSize, adPlan, presenterCostCode } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
 export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
@@ -761,6 +761,10 @@ export function coerceParams(tool: Tool, values: Record<string, unknown>): Recor
   // A hidden field's value is not sent: the other branch's script does not ride along with an audio file.
   for (const f of tool.fields) if (f.showIf && !f.showIf(out)) delete out[f.key];
   // The panel's own switches (which branch is showing) are not params.
+  // What the last run wrote for itself (the lyrics it composed, the shot plan,
+  // the presenter it filmed) is not a setting: a repeat must ask for new work,
+  // not replay the old. The API drops these too; this keeps the panel honest.
+  for (const k of PIPELINE_WRITTEN_KEYS) delete out[k];
   const assembled = tool.assemble ? tool.assemble(out) : out;
   for (const k of tool.localKeys ?? []) delete assembled[k];
   for (const [k, v] of Object.entries(assembled)) if (v === '' || v === undefined || (k === 'consent' && v !== true)) delete assembled[k];

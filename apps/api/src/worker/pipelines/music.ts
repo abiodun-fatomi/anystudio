@@ -75,14 +75,20 @@ export const musicPipeline: Pipeline = async (ctx) => {
   }
 
   // ---- 2. the track
+  // Two songs from the same brief should not be the same song. The words are
+  // written fresh each time, and the arrangement gets a nudge of its own —
+  // fixed for this row (a retry sounds like the take it is retrying) and
+  // different from the next one.
+  const flavour = ARRANGEMENTS[hashToIndex(ctx.row.id, ARRANGEMENTS.length)]!;
   await ctx.stage('generating', 20, `composing ${genre.name}`);
+  ctx.log.info({ genre: genre.key, arrangement: flavour }, 'arrangement chosen for this take');
   const result = await ctx.callProvider(
     {
       generationId: ctx.row.id,
       workspaceId: ctx.row.workspaceId,
       capability: 'MUSIC',
       files: ctx.files,
-      params: { ...p, styleHints: genre.promptHints, lyricsText, title: p.title ?? lyrics?.title },
+      params: { ...p, styleHints: `${genre.promptHints}, ${flavour}`, lyricsText, title: p.title ?? lyrics?.title },
     },
     {
       timeoutMs: ctx.budgetMs,
@@ -154,6 +160,34 @@ export const musicPipeline: Pipeline = async (ctx) => {
     extraOutputs: [{ key: fullKey, role: 'audio', mime, bytes: bytes.byteLength, durationMs: fullMs, locked: true }],
   } as PipelineResult;
 };
+
+/**
+ * A nudge to the arrangement, so two songs from one brief are two songs.
+ * Deliberately about texture and groove rather than genre: the genre row
+ * already decided what it is, and these decide what this take of it sounds
+ * like. Never a name, never an era that would pull the model toward one.
+ */
+const ARRANGEMENTS = [
+  'live drums, room ambience, a little swing in the groove',
+  'programmed drums, tight and dry, clipped percussion',
+  'sparse arrangement, space between the parts, one lead instrument',
+  'layered harmonies behind the lead vocal, thick chorus',
+  'bright plucked lead, syncopated bass, high hats forward',
+  'warm keys and pads, soft attack, rounded low end',
+  'call and response between the vocal and the horns',
+  'acoustic guitar driving it, hand percussion, natural reverb',
+  'deep sub bass, half-time feel, restrained top end',
+  'strings under the chorus, building through the second half',
+  'off-beat guitar skank, bass leading the melody',
+  'muted intro, everything arriving at the chorus',
+];
+
+/** A stable number from an id: the same row picks the same arrangement, a new row picks another. */
+function hashToIndex(id: string, n: number): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % n;
+}
 
 /** Text with section markers, or long enough to be a whole song, is sung as is. */
 export function looksComplete(text: string): boolean {

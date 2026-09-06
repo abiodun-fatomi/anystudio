@@ -190,6 +190,22 @@ These are not routed capabilities: a clone lives at one vendor and every later s
 
 **Length.** Vendors bill by the minute; one credit price covers up to 5 minutes for a dub and 3 for a lip-sync (`DUB_MAX_SEC`, `LIPSYNC_MAX_SEC`). The pipeline measures the source with ffprobe over HTTP before any vendor is paid and refuses longer ones with the credits returned.
 
+### Queues and how long an ad takes
+
+Three weight classes, because "long" means two different things. `media.fast`
+(6 at once) is everything that finishes in seconds. `media.heavy` (8) is work
+that WAITS on a vendor — a shot rendering, a song composing, a dub: the slot
+holds a socket and a timer, not a core, so a four-shot ad renders its four
+shots side by side rather than two at a time. `media.local` (2) is ffmpeg on
+our own box — stitching — which really does need the CPU. Concurrency comes
+from `WORKER_FAST_CONCURRENCY`, `WORKER_HEAVY_CONCURRENCY` and
+`WORKER_LOCAL_CONCURRENCY`.
+
+A parent ad steps aside while its shots run (it holds no slot), and each
+finished shot publishes the parent's score — "shot 3 of 4 · 2 rendering at
+once" — so the card moves instead of showing one frozen sentence for five
+minutes.
+
 ### How a post did
 
 Every published post is re-read from its platform on a rota (`PublishingService.refreshMetrics`, every 15 minutes on the worker; a post under a day old is read hourly, older ones every six hours, nothing older than 30 days): Instagram's `like_count`/`comments_count` plus `/insights` for reach, saves, shares and views (needs `instagram_manage_insights`), TikTok's `video/query` for views, likes, comments and shares (needs `video.list`). The numbers land on `PublishJob.metrics` as `{views, reach, likes, comments, shares, saved}` — a figure the platform does not report stays **null**, never zero, so the UI can say "not reported" instead of "none". A refusal keeps the last numbers and touches `metricsAt` so one broken post cannot hold up the rota; a dead token marks the account `NEEDS_REAUTH`. Insights folds these into the Today page along with next steps.

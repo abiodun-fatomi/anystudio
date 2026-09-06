@@ -90,11 +90,15 @@ export class WorkerSupervisor {
 
   async start(): Promise<void> {
     const fast = Number(process.env.WORKER_FAST_CONCURRENCY ?? 6);
-    const heavy = Number(process.env.WORKER_HEAVY_CONCURRENCY ?? 2);
+    // Heavy work waits on a vendor rather than on this box, so the slots are
+    // cheap: four shots of one ad should render side by side, not two by two.
+    const heavy = Number(process.env.WORKER_HEAVY_CONCURRENCY ?? 8);
+    // Stitching is ffmpeg here; that one really does need a core.
+    const local = Number(process.env.WORKER_LOCAL_CONCURRENCY ?? 2);
 
     if (this.redis) {
-      this.workers = [this.consumer(QUEUES.fast, fast), this.consumer(QUEUES.heavy, heavy)];
-      logger.info({ fast, heavy }, 'queue consumers started');
+      this.workers = [this.consumer(QUEUES.fast, fast), this.consumer(QUEUES.heavy, heavy), this.consumer(QUEUES.local, local)];
+      logger.info({ fast, heavy, local }, 'queue consumers started');
     } else {
       this.directMode = true;
       logger.warn('no REDIS_URL: the worker will run QUEUED rows straight from the database');

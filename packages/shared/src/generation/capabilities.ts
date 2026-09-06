@@ -50,13 +50,22 @@ export const isCapability = (v: unknown): v is Capability => typeof v === 'strin
 export const QUEUES = {
   fast: 'media.fast',
   heavy: 'media.heavy',
+  local: 'media.local',
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
-const HEAVY: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'VIDEO_STITCH', 'MUSIC', 'DUB', 'LIPSYNC']);
+/**
+ * Long jobs that WAIT on a vendor. A slot here is a socket and a timer, not
+ * a CPU: while a shot renders somewhere else the worker is idle, so this
+ * queue is allowed many at once. Too few slots is what makes a four-shot ad
+ * take twenty minutes on a machine doing nothing.
+ */
+const HEAVY: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'MUSIC', 'DUB', 'LIPSYNC']);
+/** Long jobs that use OUR machine: ffmpeg stitching pins a core, so only a couple run at once. */
+const LOCAL: ReadonlySet<Capability> = new Set<Capability>(['VIDEO_STITCH']);
 
-/** Which queue carries a capability. Video and audio wait on GPUs; the rest do not. */
-export const queueFor = (capability: Capability): QueueName => (HEAVY.has(capability) ? QUEUES.heavy : QUEUES.fast);
+/** Which queue carries a capability: our CPU, a vendor's, or neither. */
+export const queueFor = (capability: Capability): QueueName => (LOCAL.has(capability) ? QUEUES.local : HEAVY.has(capability) ? QUEUES.heavy : QUEUES.fast);
 
 /**
  * The only thing a queue job carries. The worker re-reads the row; a payload
@@ -394,6 +403,34 @@ export const LIPSYNC_MAX_SEC = 180;
 export type CapabilityParams<C extends Capability = Capability> = z.infer<(typeof capabilityParams)[C]>;
 
 /** Parse the params for a capability, or return the field-level problems. */
+/**
+ * Fields a pipeline writes onto the row as it works — the lyrics it wrote,
+ * the shot plan it made, the vendor's id for a voice, the presenter it
+ * already filmed. They exist so a RETRY does not redo settled work, and
+ * they must never come in from outside: a "do it again" sends the row's
+ * params straight back, and one of these riding along would make the
+ * second song reuse the first song's words.
+ */
+export const PIPELINE_WRITTEN_KEYS: readonly string[] = [
+  'lyricsWritten',
+  'lyricsText',
+  'styleHints',
+  'providerVoiceId',
+  'presenterClip',
+  'plan',
+  'caption',
+  'shotIndex',
+  'unlockedAt',
+  'unlockLedgerEntryId',
+];
+
+/** A copy of the params with everything a pipeline writes for itself removed. */
+export function withoutPipelineFields<T extends Record<string, unknown>>(params: T): T {
+  const out = { ...params };
+  for (const k of PIPELINE_WRITTEN_KEYS) delete out[k];
+  return out;
+}
+
 export function parseCapabilityParams(
   capability: Capability,
   params: unknown,
