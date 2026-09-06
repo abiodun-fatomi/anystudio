@@ -46,6 +46,8 @@ const CREDIT_COSTS = [
   { code: 'video.stitch', credits: 20, label: 'Assemble a multi-shot ad' },
   { code: 'video.ad_15s', credits: 260, label: '15-second ad (two shots)' },
   { code: 'video.ad_30s', credits: 480, label: '30-second ad (four shots)' },
+  { code: 'video.ad_45s', credits: 700, label: '45-second ad (six shots)' },
+  { code: 'video.ad_60s', credits: 920, label: '60-second ad (eight shots)' },
   // A shot of a multi-shot ad. The PARENT row holds the price; its children
   // are work units, not money units, and carry zero credits by design.
   { code: 'video.shot', credits: 0, label: 'One shot of an ad' },
@@ -59,6 +61,8 @@ const CREDIT_COSTS = [
   { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
   { code: 'audio.music.unlock', credits: 30, label: 'Unlock the full song' },
   { code: 'audio.music', credits: 40, label: 'Full song' },
+  // Sung in the seller's own voice: the song, then stems and a voice conversion on top — vendor cost roughly double.
+  { code: 'audio.music.preview.my_voice', credits: 25, label: 'Song preview, sung in your voice' },
 ];
 
 /**
@@ -196,6 +200,18 @@ const PROVIDERS: Array<{
     workspaceType: 'ORGANIZATION',
     config: { endpoint: 'fal-ai/bria/background/remove' },
     licenceNote: 'Bria trains only on licensed data and sells enterprise resale terms. Checked 2026-09-04.',
+  },
+  // Photoroom's cut-out for everyone, behind BiRefNet on price: with no
+  // Replicate key set, a personal workspace still gets a real result.
+  // (Bria cannot appear twice: a row is keyed on vendor + capability.)
+  {
+    key: 'photoroom:edit',
+    capability: 'BACKGROUND_REMOVE',
+    priority: 30,
+    costPerCall: 2,
+    enabled: true,
+    config: {},
+    licenceNote: 'Photoroom API is sold for embedding in third-party products. Checked 2026-09-04.',
   },
 
   // ---- background replace, relight, shadow ---------------------------------

@@ -106,7 +106,7 @@ export const shotPlanSchema = z.object({
       }),
     )
     .min(1)
-    .max(4),
+    .max(8),
   endCard: z.object({ text: z.string().max(80), price: z.string().max(40).optional() }),
   music: z.object({ mood: z.string().max(40), tempo: z.enum(['slow', 'mid', 'fast']) }).optional(),
 });

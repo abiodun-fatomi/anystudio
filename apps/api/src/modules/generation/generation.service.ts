@@ -37,6 +37,7 @@ import {
   CUSTOMER_MESSAGE,
   DEFAULT_COST_CODE,
   DUB_LIPSYNC_COST_CODE,
+  MUSIC_MY_VOICE_COST_CODE,
   dubLanguage,
   generationDebitKey,
   parseCapabilityParams,
@@ -44,6 +45,7 @@ import {
   type Capability,
   type GenerationOutput,
   type ProviderErrorKind,
+  adPlan,
 } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { GenerationHooks } from './generation.hooks';
@@ -139,15 +141,13 @@ export class GenerationService {
     // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
     const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
     const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
+    // A song in their own voice is priced above the client's say-so: the extra vendor work is real whatever the request claimed.
     const costCode =
-      req.costCode ??
-      (shots === 4
-        ? 'video.ad_30s'
-        : shots === 2
-          ? 'video.ad_15s'
-          : req.capability === 'DUB' && params.lipsync === true
-            ? DUB_LIPSYNC_COST_CODE
-            : DEFAULT_COST_CODE[req.capability]);
+      req.capability === 'MUSIC' && params.singer === 'me'
+        ? MUSIC_MY_VOICE_COST_CODE
+        : (req.costCode ??
+          adPlan(shots)?.costCode ??
+          (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 

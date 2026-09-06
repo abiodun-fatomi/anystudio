@@ -8,9 +8,10 @@
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
 import { useEffect, useRef, useState } from 'react';
-import { api, type DubLanguages, type Genre, type Quote, type Voice } from '@/lib/api';
+import { api, type DubLanguages, type Genre, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
+import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -129,14 +130,16 @@ export function ToolPanel({
 
 /** Genres, voices and dub languages come from the server; the first option is chosen when nothing is. */
 type Option = { value: string; label: string; sub?: string; keywords?: string };
-const catalogueCache: { genres?: Promise<Genre[]>; voices?: Promise<Voice[]>; languages?: Promise<DubLanguages> } = {};
+const catalogueCache: { genres?: Promise<Genre[]>; languages?: Promise<DubLanguages> } = {};
 const EMPTY_HINT: Record<string, string> = {
   voices: 'No voice vendor is configured in this environment yet.',
+  myVoices: 'You have not recorded your voice yet. Settings → Your voice takes a minute.',
   languages: 'No dubbing vendor is configured in this environment yet.',
   sourceLanguages: 'No dubbing vendor is configured in this environment yet.',
   genres: 'The catalogue is empty.',
 };
 function CatalogueField({ field, value, onChange }: { field: Extract<Field, { kind: 'catalogue' }>; value: string; onChange: (v: unknown) => void }) {
+  const { workspace } = useApp();
   const [options, setOptions] = useState<Option[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
@@ -161,22 +164,22 @@ function CatalogueField({ field, value, onChange }: { field: Extract<Field, { ki
           ),
         )
         .catch(fail);
-    } else if (field.source === 'voices') {
-      catalogueCache.voices ??= api.audio.voices();
-      catalogueCache.voices
-        .then((vs) =>
-          done(
-            vs.map((v) => ({
-              value: v.key,
-              label: v.name,
-              sub: [v.accent ? `${v.accent} ${v.language.startsWith('en') ? 'English' : v.language}` : v.language, v.gender, ...v.tags]
-                .filter(Boolean)
-                .join(' · '),
-              keywords: `${v.language} ${v.accent ?? ''} ${v.gender ?? ''} ${v.tags.join(' ')} ${v.provider}`,
-            })),
-          ),
-        )
-        .catch(fail);
+    } else if (field.source === 'voices' || field.source === 'myVoices') {
+      // The workspace's own voices ride along with the catalogue; the "myVoices" pick shows only those.
+      voicesCache[workspace.id] ??= api.audio.workspaceVoices(workspace.id).then((r) => r.voices);
+      voicesCache[workspace.id]!.then((all) => {
+        const vs = field.source === 'myVoices' ? all.filter((v) => v.mine) : all;
+        done(
+          vs.map((v) => ({
+            value: v.key,
+            label: v.mine ? `${v.name} (yours)` : v.name,
+            sub: [v.accent ? `${v.accent} ${v.language.startsWith('en') ? 'English' : v.language}` : v.language, v.gender, ...v.tags]
+              .filter(Boolean)
+              .join(' · '),
+            keywords: `${v.language} ${v.accent ?? ''} ${v.gender ?? ''} ${v.tags.join(' ')} ${v.provider} ${v.mine ? 'mine yours my voice' : ''}`,
+          })),
+        );
+      }).catch(fail);
     } else {
       catalogueCache.languages ??= api.audio.dubLanguages();
       catalogueCache.languages
@@ -199,7 +202,7 @@ function CatalogueField({ field, value, onChange }: { field: Extract<Field, { ki
     return () => {
       live = false;
     };
-  }, [field.source]);
+  }, [field.source, workspace.id]);
   useEffect(() => {
     if (!value && options?.[0]) onChange(options[0].value);
   }, [value, options, onChange]);

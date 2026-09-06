@@ -14,11 +14,21 @@ const H = 320;
 
 /** A textured "product": a disc with stripes, so structure exists inside the mask. */
 function productSvg(fill: string, stripes: string, cx = 160, cy = 160, r = 90): string {
-  const lines = Array.from(
-    { length: 9 },
-    (_, i) =>
-      `<line x1="${cx - r}" y1="${cy - r + (i * (2 * r)) / 8}" x2="${cx + r}" y2="${cy - r + (i * (2 * r)) / 8}" stroke="${stripes}" stroke-width="6"/>`,
-  ).join('');
+  // Broad bands, not a fine grating: a label, not a test chart. Fine stripes alias
+  // differently at every scale and would fail any resampling-based comparison.
+  const bands: Array<[number, number]> = [
+    [0.12, 0.05],
+    [0.3, 0.12],
+    [0.55, 0.06],
+    [0.66, 0.16],
+    [0.9, 0.05],
+  ];
+  const lines = bands
+    .map(
+      ([at, w]) =>
+        `<line x1="${cx - r}" y1="${cy - r + at * 2 * r}" x2="${cx + r}" y2="${cy - r + at * 2 * r}" stroke="${stripes}" stroke-width="${w * 2 * r}"/>`,
+    )
+    .join('');
   return `<clipPath id="c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath><circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/><g clip-path="url(#c)">${lines}</g>`;
 }
 const scene = (bg: string, product: string) =>
@@ -53,6 +63,24 @@ describe('fidelity', () => {
     expect(recoloured.score).toBeLessThan(FIDELITY.keep);
     expect(replaced.score).toBeLessThan(FIDELITY.composite);
     expect(replaced.score).toBeLessThan(recoloured.score);
+  });
+
+  it('finds the product when the frame changed shape and it moved, and reports where', async () => {
+    const src = await scene(PLAIN, PRODUCT);
+    const mask = await cutout(PRODUCT);
+    // A 16:9 output with the same product at the left third, a little smaller.
+    const wide = await sharp(
+      Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">${MARBLE.replace('width="100%" height="100%"', 'width="640" height="360"')}${productSvg('#D6006E', '#FFFFFF', 200, 180, 75)}</svg>`,
+      ),
+    )
+      .png()
+      .toBuffer();
+    const r = await fidelity(src, mask, wide);
+    expect(r.score).toBeGreaterThanOrEqual(FIDELITY.keep);
+    expect(r.placed?.x).toBeCloseTo(200 / 640, 1);
+    expect(r.placed?.y).toBeCloseTo(0.5, 1);
+    expect(r.placed?.scale).toBeLessThan(1);
   });
 
   it('returns zero when there is no product to judge', async () => {

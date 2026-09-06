@@ -16,7 +16,9 @@ export const voiceoverPipeline: Pipeline = async (ctx) => {
   let language = p.language;
   if (p.voiceId) {
     const voice = await ctx.db.voiceProfile.findUnique({ where: { key: p.voiceId } });
-    if (!voice || !voice.active) throw new ProviderError('INVALID_INPUT', `unknown voice "${p.voiceId}"`, 'voiceover-pipeline');
+    // A cloned voice belongs to one workspace; to any other it does not exist.
+    if (!voice || !voice.active || (voice.kind === 'CLONE' && voice.workspaceId !== ctx.row.workspaceId))
+      throw new ProviderError('INVALID_INPUT', `unknown voice "${p.voiceId}"`, 'voiceover-pipeline');
     providerVoiceId = voice.providerVoiceId;
     // A Nigerian-English voice reads Nigerian English; the language follows the voice unless the seller chose another.
     if (!p.language || p.language === 'en') language = voice.language.split('-')[0] ?? 'en';

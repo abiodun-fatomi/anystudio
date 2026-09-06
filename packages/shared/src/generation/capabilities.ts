@@ -113,6 +113,21 @@ export const objectKey = z
   .regex(/^[A-Za-z0-9/_.-]+$/);
 
 export const ASPECTS = ['1:1', '4:5', '9:16', '16:9', '3:4'] as const;
+
+/**
+ * A multi-shot video, by shot count: how long each shot runs (the models make
+ * 5 or 8 seconds a call) and what the whole is priced under. One reel is a
+ * single 5–8 s shot; everything longer is a plan of shots stitched by us,
+ * up to a minute.
+ */
+export const AD_PLANS = {
+  2: { seconds: 15, durations: [8, 8], costCode: 'video.ad_15s' },
+  4: { seconds: 30, durations: [8, 8, 8, 5], costCode: 'video.ad_30s' },
+  6: { seconds: 45, durations: [8, 8, 8, 8, 8, 5], costCode: 'video.ad_45s' },
+  8: { seconds: 60, durations: [8, 8, 8, 8, 8, 8, 8, 5], costCode: 'video.ad_60s' },
+} as const;
+export type AdShots = keyof typeof AD_PLANS;
+export const adPlan = (shots: number) => (AD_PLANS as Record<number, (typeof AD_PLANS)[AdShots] | undefined>)[shots];
 export type Aspect = (typeof ASPECTS)[number];
 
 export const EXPORT_SIZES = {
@@ -214,7 +229,7 @@ export const capabilityParams = {
      * its own CHILD generation rendered in parallel, and the parent stitches
      * them with captions, a bed and an end card. 1 = a single reel.
      */
-    shots: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
+    shots: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)]).default(1),
     /** The ad's shape, for the planner. */
     format: z.enum(['reveal', 'benefits', 'before_after', 'unboxing', 'price_drop', 'ugc']).default('reveal'),
     /** Words for the end card; the price comes from the copy fields when present. */
@@ -283,6 +298,21 @@ export const capabilityParams = {
     language: z.string().max(16).default('en'),
     /** Their own lyrics. Absent with vocals → the pipeline writes them first. */
     lyrics: z.string().max(3000).optional(),
+    /**
+     * What to do with their lyrics: 'exact' sings them as pasted; 'complete'
+     * keeps every line they gave and writes the rest of the song around it;
+     * 'auto' picks: text with [Verse]/[Chorus] markers is exact, a hook or a
+     * few lines is completed.
+     */
+    lyricsMode: z.enum(['auto', 'exact', 'complete']).default('auto'),
+    /**
+     * Who sings: the music model, or the seller ('me') — the model's vocal
+     * is separated from the track and converted into their cloned voice.
+     * Experimental: needs a CLONE VoiceProfile in the workspace (`voiceId`).
+     */
+    singer: z.enum(['model', 'me']).default('model'),
+    /** The VoiceProfile key of their cloned voice, when `singer` is 'me'. */
+    voiceId: z.string().max(80).optional(),
     durationSec: z.number().int().min(30).max(240).default(120),
     /** Set by the pipeline on the row after the lyrics step so a retry does not write them twice. */
     lyricsWritten: z.string().max(3000).optional(),
@@ -374,6 +404,10 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
 /** How much of a song is heard before paying, and what the rest costs. */
 export const MUSIC_PREVIEW_SEC = 30;
 export const MUSIC_UNLOCK_COST_CODE = 'audio.music.unlock';
+/** A song sung in the seller's own voice is priced higher: the track, then stems and a voice conversion. */
+export const MUSIC_MY_VOICE_COST_CODE = 'audio.music.preview.my_voice';
+/** How long a voice sample must be to clone from, and how long is enough. */
+export const VOICE_SAMPLE = { minSec: 10, idealSec: 30, maxSec: 180 } as const;
 
 /** Outputs as a customer may see them: a locked track keeps its shape and loses its key. */
 export function redactLocked<T extends { locked?: boolean; key: string }>(outputs: T[] | null | undefined): T[] {

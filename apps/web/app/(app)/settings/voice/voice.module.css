@@ -1,0 +1,96 @@
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-2);
+}
+.script {
+  margin: 0 0 var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-left: 3px solid var(--accent);
+  background: var(--sunk);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: var(--t-3);
+  line-height: 1.55;
+}
+.script p {
+  margin: 0 0 var(--s-2);
+}
+.script p:last-child {
+  margin-bottom: 0;
+}
+.recorder {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  min-height: 56px;
+}
+.recorder[data-state='recording'] {
+  border-color: var(--danger);
+  background: var(--danger-wash);
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+  flex: none;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: var(--t-2);
+  min-width: 3.5ch;
+}
+.meter {
+  flex: 1 1 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--ok);
+  transition: transform 80ms linear;
+}
+.or {
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.player {
+  width: min(100%, 360px);
+  height: 36px;
+  margin-top: 4px;
+}
+.warn {
+  margin: var(--s-2) 0 0;
+  color: var(--danger);
+  font-size: var(--t-2);
+}
+.tips {
+  margin: var(--s-2) 0 0;
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.form {
+  margin-top: var(--s-4);
+  display: grid;
+  gap: var(--s-3);
+}

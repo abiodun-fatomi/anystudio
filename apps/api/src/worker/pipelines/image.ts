@@ -16,7 +16,7 @@
  *                     — refunded, and the customer told why in plain words
  *   4. composite price, business name or logo, watermark — ours, with
  *      sharp, never asked of a model that cannot spell a price
- *   5. cut every export size with an attention crop
+ *   5. cut every export size, aimed at the product (crop.ts)
  *
  * Every number the loop decides on is logged with the generation, so a
  * refused image can be explained and the thresholds tuned from evidence.
@@ -26,6 +26,7 @@ import sharp, { type OverlayOptions } from 'sharp';
 import { EXPORT_SIZES, ProviderError, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity } from './fidelity';
+import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 
 const STRICTER =
@@ -56,7 +57,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
   }
 
   // 2–3. Ask, measure, decide — at most twice.
-  let picked: { bytes: Uint8Array; result: ProviderResult; score?: number; composited: boolean } | null = null;
+  let picked: { bytes: Uint8Array; result: ProviderResult; score?: number; composited: boolean; placed?: { x: number; y: number } | null } | null = null;
   for (let attempt = 1; attempt <= 2 && !picked; attempt++) {
     const params = attempt === 1 ? p : { ...p, prompt: p.prompt + STRICTER };
     const result = await ctx.callProvider(
@@ -75,14 +76,14 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
     ctx.log.info({ attempt, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'fidelity measured');
 
     if (report.score >= FIDELITY.keep) {
-      picked = { bytes, result, score: report.score, composited: false };
+      picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
     } else if (report.score >= FIDELITY.composite) {
       const same = await sameFrame(source, bytes);
       if (same) {
-        picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true };
+        picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true, placed: null };
         ctx.log.info({ attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
       } else {
-        picked = { bytes, result, score: report.score, composited: false };
+        picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
         ctx.log.warn({ attempt, score: report.score }, 'product drifted but the frame changed; shipping the model output');
       }
     } else if (attempt === 1) {
@@ -105,12 +106,19 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
   await ctx.stage('composing', 84, 'cutting every size');
   const meta = await sharp(branded).metadata();
   const artifacts: ProviderArtifact[] = [{ bytes: new Uint8Array(branded), mime: 'image/png', role: 'image', width: meta.width, height: meta.height }];
+  // Aim every crop at the product: by its mask when the model kept it where
+  // it was, by sharpness otherwise. A generic attention crop keeps the
+  // brightest thing in frame, which in a shop is the window.
+  // Aim: where the fidelity check found the product; else the mask, when the
+  // frame was kept and the original pixels are back in it; else sharpness.
+  const focal =
+    (picked.placed ? { ...picked.placed, from: 'match' as const } : null) ??
+    (picked.composited && cutout ? await maskFocal(cutout) : null) ??
+    (await sharpnessFocal(branded));
+  ctx.log.info({ focal }, 'export crops aimed');
   for (const size of p.sizes) {
     const spec = EXPORT_SIZES[size];
-    const bytes = await sharp(branded)
-      .resize(spec.width, spec.height, { fit: 'cover', position: sharp.strategy.attention })
-      .jpeg({ quality: 90, mozjpeg: true, chromaSubsampling: '4:4:4' })
-      .toBuffer();
+    const bytes = await focalCrop(branded, spec.width, spec.height, focal);
     artifacts.push({ bytes: new Uint8Array(bytes), mime: 'image/jpeg', role: 'variant', width: spec.width, height: spec.height, size });
   }
   return { artifacts, providerKey: picked.result.providerKey, providerJobId: picked.result.providerJobId, costMinor: picked.result.costMinor };

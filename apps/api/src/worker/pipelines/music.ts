@@ -9,6 +9,10 @@
  *      the music call, so a retry never writes a second set.
  *   2. MUSIC. The genre row's hints (instruments, rhythm, delivery — never a
  *      name) plus the lyrics go to the music provider. Full length, once.
+ *   2b. THEIR VOICE. When the seller asked to sing it themselves, the
+ *      vocal is separated, converted into their cloned voice and mixed
+ *      back (see my-voice.ts). If that fails the song is kept as the
+ *      model sang it and the result says so.
  *   3. THE VAULT. The full track is stored under the workspace's vault
  *      prefix, which the API refuses to sign. The output is marked locked.
  *   4. THE PREVIEW. ffmpeg cuts the first thirty seconds with a fade and a
@@ -38,6 +42,7 @@ import {
 import type { Pipeline, PipelineContext, PipelineResult } from './index';
 import { MediaService } from '../../modules/media/media.service';
 import { fetchBytes } from '../../modules/provider/adapters/http';
+import { singInMyVoice, type MyVoiceOutcome } from './my-voice';
 
 const exec = promisify(execFile);
 
@@ -47,12 +52,17 @@ export const musicPipeline: Pipeline = async (ctx) => {
   if (!genre) throw new ProviderError('INVALID_INPUT', `unknown genre "${p.genre}"`, 'music-pipeline');
 
   // ---- 1. words
-  let lyricsText: string | undefined = p.lyrics?.trim() || p.lyricsWritten || undefined;
+  const own = p.lyrics?.trim() || '';
+  // Their lines are the whole song only when they say so, or when the text
+  // already has the shape of one; a hook or a few lines gets a song written
+  // around it, with every word they gave kept.
+  const complete = own !== '' && (p.lyricsMode === 'complete' || (p.lyricsMode === 'auto' && !looksComplete(own)));
+  let lyricsText: string | undefined = p.lyricsWritten || (own && !complete ? own : undefined);
   let lyrics: Lyrics | null = null;
   let lyricsCost = 0;
   if (p.vocal !== 'instrumental' && !lyricsText) {
     await ctx.stage('preparing', 8, 'writing the words');
-    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints);
+    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints, complete ? own : null);
     lyrics = written.lyrics;
     lyricsCost = written.costMinor ?? 0;
     lyricsText = lyricsToText(lyrics);
@@ -81,20 +91,36 @@ export const musicPipeline: Pipeline = async (ctx) => {
   );
   const track = result.artifacts.find((a) => a.role === 'audio');
   if (!track) throw new ProviderError('RETRYABLE', `${result.providerKey} returned no audio`, result.providerKey);
-  const bytes = track.bytes ?? (track.url ? (await fetchBytes(result.providerKey, track.url, 120_000)).bytes : undefined);
-  if (!bytes) throw new ProviderError('RETRYABLE', `${result.providerKey} returned an audio artifact with no bytes`, result.providerKey);
+  const modelBytes = track.bytes ?? (track.url ? (await fetchBytes(result.providerKey, track.url, 120_000)).bytes : undefined);
+  if (!modelBytes) throw new ProviderError('RETRYABLE', `${result.providerKey} returned an audio artifact with no bytes`, result.providerKey);
+  let bytes = modelBytes;
+  let mime = track.mime;
+  let ext = track.mime === 'audio/wav' ? 'wav' : 'mp3';
+
+  // ---- 2b. their voice
+  let myVoice: MyVoiceOutcome | null = null;
+  if (p.singer === 'me' && p.vocal !== 'instrumental') {
+    const seconds = (track.durationMs ?? p.durationSec * 1000) / 1000;
+    myVoice = await singInMyVoice(ctx, p, { bytes, mime, ext, seconds });
+    bytes = myVoice.bytes;
+    mime = myVoice.mime;
+    ext = myVoice.ext;
+    ctx.log.info(
+      { applied: myVoice.applied, reason: myVoice.reason, costMinor: myVoice.costMinor },
+      myVoice.applied ? 'song sung in their voice' : 'song kept in the model voice',
+    );
+  }
 
   // ---- 3 + 4. vault the whole thing, cut the preview
-  await ctx.stage('storing', 80, 'cutting the preview');
-  const ext = track.mime === 'audio/wav' ? 'wav' : 'mp3';
+  await ctx.stage('storing', 88, 'cutting the preview');
   const fullKey = MediaService.vaultKey(ctx.row.workspaceId, `gen/${ctx.row.id}`, `song.${ext}`, ctx.row.createdAt);
-  await ctx.media.put(fullKey, bytes, track.mime);
+  await ctx.media.put(fullKey, bytes, mime);
   await ctx.media.recordOutput({
     workspaceId: ctx.row.workspaceId,
     generationId: ctx.row.id,
     key: fullKey,
     kind: 'OUTPUT',
-    mime: track.mime,
+    mime,
     bytes: bytes.byteLength,
     durationMs: track.durationMs,
   });
@@ -104,7 +130,16 @@ export const musicPipeline: Pipeline = async (ctx) => {
     // The preview goes through storeArtifacts like any output; the locked track is already stored and is described, not uploaded.
     { bytes: preview, mime: 'audio/mpeg', role: 'preview', durationMs: Math.min(fullMs, MUSIC_PREVIEW_SEC * 1000) },
     {
-      text: { title: p.title ?? lyrics?.title ?? null, lyrics: lyricsText ?? null, genre: genre.name, vocal: p.vocal, language: p.language },
+      text: {
+        title: p.title ?? lyrics?.title ?? null,
+        lyrics: lyricsText ?? null,
+        genre: genre.name,
+        vocal: p.vocal,
+        language: p.language,
+        singer: p.singer ?? 'model',
+        // What happened with their voice, in words the result card shows.
+        myVoice: myVoice ? { applied: myVoice.applied, note: myVoice.note, voice: myVoice.voiceKey } : null,
+      },
       mime: 'application/json',
       role: 'text',
     },
@@ -113,17 +148,26 @@ export const musicPipeline: Pipeline = async (ctx) => {
     artifacts,
     providerKey: result.providerKey,
     providerJobId: result.providerJobId,
-    costMinor: (result.costMinor ?? 0) + lyricsCost,
+    costMinor: (result.costMinor ?? 0) + lyricsCost + (myVoice?.costMinor ?? 0),
     // Reported back to the runner as a pre-stored output; see runner.ts `extraOutputs`.
-    extraOutputs: [{ key: fullKey, role: 'audio', mime: track.mime, bytes: bytes.byteLength, durationMs: fullMs, locked: true }],
+    extraOutputs: [{ key: fullKey, role: 'audio', mime, bytes: bytes.byteLength, durationMs: fullMs, locked: true }],
   } as PipelineResult;
 };
+
+/** Text with section markers, or long enough to be a whole song, is sung as is. */
+export function looksComplete(text: string): boolean {
+  if (/\[(verse|chorus|bridge|intro|outro|pre-chorus|hook)/i.test(text)) return true;
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  return lines.length >= 12;
+}
 
 async function writeLyrics(
   ctx: PipelineContext,
   p: CapabilityParams<'MUSIC'>,
   genreName: string,
   hints: string,
+  /** Lines the customer wrote, to be kept word for word and built around. */
+  seed: string | null = null,
 ): Promise<{ lyrics: Lyrics; costMinor?: number }> {
   const profile = (ctx.workspace.profile as Record<string, unknown> | null) ?? {};
   const language = LANGUAGE_NAME[p.language] ?? p.language;
@@ -152,7 +196,24 @@ async function writeLyrics(
     .filter(Boolean)
     .join('\n');
   const parts: LlmRequest['parts'] = [
-    { text: [p.title ? `Title: ${p.title}` : 'Choose a short title.', `What the song is about: ${p.brief}`, 'Write the lyrics now.'].join('\n') },
+    {
+      text: [
+        p.title ? `Title: ${p.title}` : 'Choose a short title.',
+        `What the song is about: ${p.brief}`,
+        seed
+          ? [
+              'The customer wrote these lines. Keep EVERY one of them word for word, in the order given — do not paraphrase, translate or trim them.',
+              'If they read as a hook, they are the chorus and repeat each time; otherwise place them where they fit best and write the rest of the song around them in the same voice.',
+              '--- their lines ---',
+              seed,
+              '--- end ---',
+            ].join('\n')
+          : '',
+        'Write the lyrics now.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    },
   ];
   const request: LlmRequest = { system, parts, jsonSchema: LYRICS_JSON_SCHEMA, maxTokens: 1500, temperature: 0.9 };
 
