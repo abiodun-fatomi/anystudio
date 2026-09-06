@@ -197,6 +197,18 @@ const PROVIDERS: Array<{
     config: { endpoint: 'fal-ai/bria/background/remove' },
     licenceNote: 'Bria trains only on licensed data and sells enterprise resale terms. Checked 2026-09-04.',
   },
+  // Photoroom's cut-out for everyone, behind BiRefNet on price: with no
+  // Replicate key set, a personal workspace still gets a real result.
+  // (Bria cannot appear twice: a row is keyed on vendor + capability.)
+  {
+    key: 'photoroom:edit',
+    capability: 'BACKGROUND_REMOVE',
+    priority: 30,
+    costPerCall: 2,
+    enabled: true,
+    config: {},
+    licenceNote: 'Photoroom API is sold for embedding in third-party products. Checked 2026-09-04.',
+  },
 
   // ---- background replace, relight, shadow ---------------------------------
   {
