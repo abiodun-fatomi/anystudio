@@ -757,6 +757,14 @@ export interface AdminOverview {
     workspaceId: string;
     createdAt: string;
   }>;
+  worker: WorkerStatus | null;
+}
+/** The last worker that reported in. `alive` is "seen in the last 90 seconds". */
+export interface WorkerStatus {
+  seenAt: string;
+  host: string;
+  version: string | null;
+  alive: boolean;
 }
 export interface AdminCustomer {
   id: string;
@@ -981,6 +989,7 @@ export const api = {
   },
   admin: {
     overview: () => request<AdminOverview>('GET', '/admin/overview'),
+    worker: () => request<WorkerStatus | null>('GET', '/admin/worker'),
     customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',

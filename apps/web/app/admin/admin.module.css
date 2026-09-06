@@ -239,3 +239,23 @@ pre.json {
   max-height: 360px;
   white-space: pre-wrap;
 }
+.workerBanner {
+  display: grid;
+  gap: 4px;
+  margin-bottom: var(--s-5);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-lg);
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, var(--line-soft));
+  background: var(--warn-wash);
+  font-size: var(--t-2);
+}
+.workerBanner b {
+  color: var(--warn);
+}
+.workerBanner span {
+  color: var(--ink-soft);
+}
+.workerBanner code {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+}

@@ -37,6 +37,7 @@ import { createRedis, redisHealthy } from '../../config/redis';
 import { logger } from '../../config/logger';
 import { GenerationService } from '../modules/generation/generation.service';
 import { QueueService } from '../modules/queue/queue.service';
+import { hostname } from 'node:os';
 import { GenerationRunner } from './runner';
 import { WebhookDispatcher } from '../modules/developer/webhook.dispatcher';
 import { SupportService } from '../modules/support/support.service';
@@ -163,13 +164,32 @@ export class WorkerSupervisor {
     return w;
   }
 
-  /** Liveness: a key the healthcheck reads, or a log line when there is no Redis to write it to. */
+  /**
+   * Liveness, told two ways: a Redis key the healthcheck reads, and a row in
+   * Postgres the staff console reads — so "is a worker running?" has an
+   * answer even when Redis is down or absent.
+   */
+  private readonly startedAt = new Date();
+  private readonly heartbeatId = `worker@${hostname()}`;
+
   private async heartbeat(): Promise<void> {
-    if (!this.redis) return;
+    const now = new Date();
+    if (this.redis) {
+      try {
+        await this.redis.set(HEARTBEAT_KEY, now.getTime().toString(), 'EX', 90);
+      } catch {
+        /* the availability story is told by createRedis */
+      }
+    }
     try {
-      await this.redis.set(HEARTBEAT_KEY, Date.now().toString(), 'EX', 90);
-    } catch {
-      /* the availability story is told by createRedis */
+      const version = process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT ?? null;
+      await this.db.workerHeartbeat.upsert({
+        where: { id: this.heartbeatId },
+        create: { id: this.heartbeatId, service: 'worker', host: hostname(), version, startedAt: this.startedAt, seenAt: now },
+        update: { seenAt: now, version },
+      });
+    } catch (err) {
+      logger.warn({ err }, 'could not record the worker heartbeat');
     }
   }
 

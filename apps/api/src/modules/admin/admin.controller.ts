@@ -70,6 +70,9 @@ export class AdminController {
     return this.admin.adjustCredits(a, id, b, req);
   }
 
+  @Get('/worker') worker() {
+    return this.admin.workerStatus();
+  }
   @Get('/generations') generations(@Query() q: GenerationsQueryDto) {
     return this.admin.generations(q);
   }

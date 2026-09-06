@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/shell/Page';
 import { Skeleton, Table, tableCell } from '@/components/ui';
 import { Hero } from '@/components/charts/Charts';
 import styles from './admin.module.css';
+import { WorkerBanner } from './WorkerBanner';
 
 export default function AdminOverviewPage() {
   const [o, setO] = useState<AdminOverview | null>(null);
@@ -39,6 +40,7 @@ export default function AdminOverviewPage() {
   return (
     <div className="rise">
       <PageHeader title="Overview" lede="The last 24 hours, and anything that needs a hand." />
+      <WorkerBanner />
       <div className={styles.heroes}>
         <Hero
           label="Generations today"
@@ -54,8 +56,16 @@ export default function AdminOverviewPage() {
         <Hero
           label="Running now"
           value={o.generations.runningNow.toLocaleString()}
-          sub={o.generations.queuedStale ? `${o.generations.queuedStale} queued for 10+ min` : 'queue is moving'}
-          tone={o.generations.queuedStale ? 'warn' : undefined}
+          sub={
+            !o.worker?.alive
+              ? o.worker
+                ? `no worker since ${new Date(o.worker.seenAt).toLocaleTimeString()}`
+                : 'no worker has ever checked in'
+              : o.generations.queuedStale
+                ? `${o.generations.queuedStale} queued for 10+ min`
+                : `worker on ${o.worker.host} · queue is moving`
+          }
+          tone={!o.worker?.alive || o.generations.queuedStale ? 'warn' : undefined}
         />
         <Hero label="Credits sold, 30 days" value={o.credits.soldLast30d.toLocaleString()} sub={`${o.credits.paymentsLast30d} payments`} />
       </div>

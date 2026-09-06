@@ -58,26 +58,40 @@ export class AdminService {
     const day = new Date(now - DAY_MS);
     const week = new Date(now - 7 * DAY_MS);
     const month = new Date(now - 30 * DAY_MS);
-    const [users, usersWeek, workspaces, genToday, failedToday, runningNow, queuedStale, paymentsMonth, providers, recentFailures, whatsappToday, apiToday] =
-      await Promise.all([
-        this.db.user.count({ where: { status: { not: 'DELETED' } } }),
-        this.db.user.count({ where: { createdAt: { gte: week } } }),
-        this.db.workspace.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true } }),
-        this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' } } }),
-        this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' }, status: 'FAILED' } }),
-        this.db.generation.count({ where: { status: 'RUNNING' } }),
-        this.db.generation.count({ where: { status: 'QUEUED', createdAt: { lt: new Date(now - 10 * 60_000) } } }),
-        this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: month } }, _sum: { credits: true }, _count: { _all: true } }),
-        this.db.providerModel.findMany({ where: { enabled: true } }),
-        this.db.generation.findMany({
-          where: { status: 'FAILED', createdAt: { gte: day }, kind: { not: 'CHILD' } },
-          orderBy: { createdAt: 'desc' },
-          take: 8,
-          select: { id: true, capability: true, failureKind: true, failureReason: true, providerKey: true, workspaceId: true, createdAt: true },
-        }),
-        this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'WHATSAPP' } }),
-        this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'API' } }),
-      ]);
+    const [
+      users,
+      usersWeek,
+      workspaces,
+      genToday,
+      failedToday,
+      runningNow,
+      queuedStale,
+      paymentsMonth,
+      providers,
+      recentFailures,
+      whatsappToday,
+      apiToday,
+      worker,
+    ] = await Promise.all([
+      this.db.user.count({ where: { status: { not: 'DELETED' } } }),
+      this.db.user.count({ where: { createdAt: { gte: week } } }),
+      this.db.workspace.groupBy({ by: ['type'], where: { deletedAt: null }, _count: { _all: true } }),
+      this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' } } }),
+      this.db.generation.count({ where: { createdAt: { gte: day }, kind: { not: 'CHILD' }, status: 'FAILED' } }),
+      this.db.generation.count({ where: { status: 'RUNNING' } }),
+      this.db.generation.count({ where: { status: 'QUEUED', createdAt: { lt: new Date(now - 10 * 60_000) } } }),
+      this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: month } }, _sum: { credits: true }, _count: { _all: true } }),
+      this.db.providerModel.findMany({ where: { enabled: true } }),
+      this.db.generation.findMany({
+        where: { status: 'FAILED', createdAt: { gte: day }, kind: { not: 'CHILD' } },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: { id: true, capability: true, failureKind: true, failureReason: true, providerKey: true, workspaceId: true, createdAt: true },
+      }),
+      this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'WHATSAPP' } }),
+      this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'API' } }),
+      this.db.workerHeartbeat.findFirst({ orderBy: { seenAt: 'desc' } }),
+    ]);
     const breakers = providers.filter((p) => p.breakerOpenedAt && now - p.breakerOpenedAt.getTime() < 10 * 60_000);
     const missing = providers.filter((p) => !this.registry.get(p.key));
     return {
@@ -91,7 +105,15 @@ export class AdminService {
         noAdapter: missing.map((m) => `${m.key} (${m.capability})`),
       },
       recentFailures,
+      // A worker refreshes its row every thirty seconds; three misses means it is gone.
+      worker: worker ? { seenAt: worker.seenAt, host: worker.host, version: worker.version, alive: now - worker.seenAt.getTime() < 90_000 } : null,
     };
+  }
+
+  /** Just the liveness, for pages that must not wait on the whole overview. */
+  async workerStatus() {
+    const worker = await this.db.workerHeartbeat.findFirst({ orderBy: { seenAt: 'desc' } });
+    return worker ? { seenAt: worker.seenAt, host: worker.host, version: worker.version, alive: Date.now() - worker.seenAt.getTime() < 90_000 } : null;
   }
 
   // ---------------------------------------------------------------- customers
