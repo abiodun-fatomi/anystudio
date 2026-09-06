@@ -125,6 +125,17 @@ export default function SignupPage() {
       <button className="btn" type="submit" style={{ marginTop: 8 }} disabled={busy}>
         {busy ? 'Creating your studio…' : 'Create account'}
       </button>
+      <p style={{ textAlign: 'center', marginTop: 14, color: 'var(--muted)', fontSize: 13 }}>
+        By creating an account you agree to the{' '}
+        <a href="/terms" target="_blank" rel="noopener">
+          Terms
+        </a>{' '}
+        and{' '}
+        <a href="/privacy" target="_blank" rel="noopener">
+          Privacy Policy
+        </a>
+        .
+      </p>
       <p style={{ textAlign: 'center', marginTop: 18, color: 'var(--muted)', fontSize: 14.5 }}>
         Already have one? <Link href="/login">Sign in</Link>
       </p>

@@ -43,6 +43,7 @@ import { SupportService } from '../modules/support/support.service';
 import { PublishingService } from '../modules/publishing/publishing.service';
 import { UsageBillingService } from '../modules/usage-billing/usage-billing.service';
 import { CatalogueService } from '../modules/catalogue/catalogue.service';
+import { RetentionService } from '../modules/retention/retention.service';
 
 const HEARTBEAT_KEY = 'worker:heartbeat';
 const SWEEP_EVERY_MS = 60_000;
@@ -58,6 +59,8 @@ const TOKEN_REFRESH_EVERY_MS = 6 * 60 * 60_000;
 const BILLING_EVERY_MS = 60 * 60_000;
 /** Connected stores are re-read every few hours; this is how often the worker looks for one that is due. */
 const CATALOGUE_EVERY_MS = 5 * 60_000;
+/** The privacy policy's clocks tick in days; four passes a day keeps every promise within hours of due. */
+const RETENTION_EVERY_MS = 6 * 60 * 60_000;
 
 @Injectable()
 export class WorkerSupervisor {
@@ -78,6 +81,7 @@ export class WorkerSupervisor {
     private readonly publishing: PublishingService,
     private readonly usageBilling: UsageBillingService,
     private readonly catalogue: CatalogueService,
+    private readonly retention: RetentionService,
   ) {
     this.redis = createRedis('queue', 'worker-consumer');
   }
@@ -115,9 +119,11 @@ export class WorkerSupervisor {
     this.timers.push(
       setInterval(() => void this.catalogue.syncDue().catch((err: unknown) => logger.error({ err }, 'catalogue sync sweep failed')), CATALOGUE_EVERY_MS),
     );
+    this.timers.push(setInterval(() => void this.retention.run(), RETENTION_EVERY_MS));
     await this.heartbeat();
     await this.dispatch();
     void this.billingTick();
+    void this.retention.run();
   }
 
   private async billingTick(): Promise<void> {

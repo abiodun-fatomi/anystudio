@@ -33,6 +33,9 @@ const LINKS = [
   ['why.html#roi', '/why#roi'],
   ['why.html', '/why'],
   ['careers.html', '/careers'],
+  ['terms.html', '/terms'],
+  ['privacy.html', '/privacy'],
+  ['refunds.html', '/refunds'],
   ['auth.html#signup', '/signup'],
   ['auth.html#login', '/login'],
   ['auth.html#forgot', '/forgot'],
@@ -218,6 +221,42 @@ PAGES.push({
     'What AnyStudio does for a person, a seller and a platform; how it compares with the tools you use today; what it costs against what it returns — and the mobile app that is on its way.',
 });
 
+// The legal pages: body fragments plus one shared stylesheet, in the landing
+// chrome. Terms, privacy and refunds are what Paddle, Google's OAuth consent
+// screen and the Meta/TikTok app reviews all ask for by URL.
+const legalStyle = `<style>\n${readFileSync(resolve(root, 'design/legal/style.css'), 'utf8')}</style>\n`;
+const LEGAL = [
+  {
+    path: '/terms',
+    name: 'terms',
+    symbol: 'TERMS',
+    title: 'Terms of Service — AnyStudio',
+    ogTitle: 'AnyStudio Terms of Service',
+    description: 'The agreement between you and AnyStudio: credits and payment, what you own, AI-generated output, acceptable use, and the API.',
+  },
+  {
+    path: '/privacy',
+    name: 'privacy',
+    symbol: 'PRIVACY',
+    title: 'Privacy Policy — AnyStudio',
+    ogTitle: 'AnyStudio Privacy Policy',
+    description:
+      'What AnyStudio collects, what it is used for, which providers see it, how long it is kept, and how to export or delete it. No trackers, nothing sold, nothing trains a model.',
+  },
+  {
+    path: '/refunds',
+    name: 'refunds',
+    symbol: 'REFUNDS',
+    title: 'Refund Policy — AnyStudio',
+    ogTitle: 'AnyStudio Refund Policy',
+    description:
+      'A credit pack you have not touched is refundable for 14 days from inside the app. Failed generations are never charged. How to ask and how long it takes.',
+  },
+];
+for (const page of LEGAL) {
+  PAGES.push({ ...page, body: legalStyle + readFileSync(resolve(root, `design/legal/${page.name}.html`), 'utf8'), keepAnchors: false });
+}
+
 for (const page of PAGES) {
   const doc = [
     headFor(head, page),
@@ -280,6 +319,9 @@ const urls = [
   ['/org', '0.7', 'monthly'],
   ['/why', '0.9', 'monthly'],
   ['/careers', '0.6', 'weekly'],
+  ['/terms', '0.3', 'yearly'],
+  ['/privacy', '0.3', 'yearly'],
+  ['/refunds', '0.3', 'yearly'],
 ];
 writeFileSync(
   resolve(pub, 'sitemap.xml'),

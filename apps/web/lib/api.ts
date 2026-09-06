@@ -398,7 +398,7 @@ export interface MediaAssetRow {
   id: string;
   workspaceId: string;
   kind: 'SOURCE' | 'OUTPUT' | 'DERIVED';
-  status: 'PENDING' | 'READY' | 'REJECTED';
+  status: 'PENDING' | 'READY' | 'REJECTED' | 'PURGED';
   key: string;
   mime: string | null;
   bytes: number | null;

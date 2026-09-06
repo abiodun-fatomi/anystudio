@@ -343,6 +343,20 @@ export class MediaService {
     if (count === 0) throw new NotFoundError('file');
   }
 
+  /**
+   * Remove an object from storage. True when it is gone (or never was);
+   * false when storage refused, so the caller leaves the row for next time.
+   */
+  async deleteObject(key: string): Promise<boolean> {
+    try {
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+      return true;
+    } catch (err) {
+      logger.warn({ err, key }, 'storage delete failed');
+      return false;
+    }
+  }
+
   private async range(key: string, from: number, to: number): Promise<Buffer> {
     const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=${from}-${to}` }));
     return Buffer.from(await res.Body!.transformToByteArray());

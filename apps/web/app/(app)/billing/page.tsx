@@ -320,7 +320,11 @@ export default function BillingPage() {
         {!postpaid && (
           <p style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', marginTop: 'var(--s-2)' }}>
             Changed your mind? A purchase can be refunded within {refundWindow} days, as long as none of its credits have been used. The money goes back the way
-            it came.
+            it came — the{' '}
+            <a href="/refunds" target="_blank" rel="noopener">
+              refund policy
+            </a>{' '}
+            has the details.
           </p>
         )}
         {payments && payments.length > 0 && (
