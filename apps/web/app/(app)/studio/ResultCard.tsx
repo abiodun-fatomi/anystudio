@@ -117,6 +117,14 @@ export function ResultCard({
               <Icon.check width={14} height={14} /> {card.credits} credits returned
             </span>
           )}
+          <span className={styles.failActions}>
+            <Button size="sm" onClick={() => onAgain(card)}>
+              Try again
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onDismiss(card.clientKey)}>
+              Hide
+            </Button>
+          </span>
         </div>
       )}
 
@@ -225,12 +233,12 @@ export function ResultCard({
             Make a reel from this
           </Button>
         )}
-        {!live && (
+        {card.status === 'SUCCEEDED' && (
           <Button variant="ghost" size="sm" onClick={() => onAgain(card)}>
             Do it again
           </Button>
         )}
-        {!live && (
+        {card.status === 'SUCCEEDED' && (
           <Button variant="link" size="sm" onClick={() => onDismiss(card.clientKey)} style={{ marginLeft: 'auto' }}>
             Hide
           </Button>
