@@ -17,15 +17,16 @@ describe('QueueService', () => {
     const q = new QueueService();
     const r = await q.enqueue('11111111-1111-4111-8111-111111111111', 'IMAGE_EDIT');
     expect(r).toEqual({ queued: false, queue: 'media.fast', reason: 'redis not configured' });
-    expect(await q.depths()).toEqual({ 'media.fast': null, 'media.heavy': null });
+    expect(await q.depths()).toEqual({ 'media.fast': null, 'media.heavy': null, 'media.local': null });
     await q.onModuleDestroy();
   });
 
-  it('routes video to the heavy queue and images to the fast one', async () => {
+  it('routes video to the heavy queue, images to the fast one and our own ffmpeg to the local one', async () => {
     delete process.env.REDIS_URL;
     const q = new QueueService();
     expect((await q.enqueue('a', 'IMAGE_TO_VIDEO')).queue).toBe('media.heavy');
     expect((await q.enqueue('b', 'TEXT_GENERATE')).queue).toBe('media.fast');
+    expect((await q.enqueue('c', 'VIDEO_STITCH')).queue).toBe('media.local');
     await q.onModuleDestroy();
   });
 

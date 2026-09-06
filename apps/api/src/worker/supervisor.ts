@@ -3,10 +3,12 @@
  *
  * NORMAL OPERATION
  * ----------------
- * Two BullMQ workers, one per queue, with separate concurrency: images and
- * text on media.fast (many at once, seconds each), video and audio on
- * media.heavy (a couple at once, minutes each). A job is a generation id;
- * the runner does the rest.
+ * Three BullMQ workers, one per queue, with separate concurrency. The split
+ * is by what a slot actually costs us: images and text on media.fast (many at
+ * once, seconds each); video and audio on media.heavy, where a slot is a
+ * socket waiting on a vendor and so runs wide; stitching on media.local,
+ * which is ffmpeg burning our own CPU and stays capped. A job is a generation
+ * id; the runner does the rest.
  *
  * TWO TIMERS THAT KEEP THE PROMISES
  * ---------------------------------
