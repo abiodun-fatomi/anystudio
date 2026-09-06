@@ -13,12 +13,20 @@
  * offer. `mode: 'precision'` costs more and takes longer; the row's config
  * may pin it, otherwise the request's `quality` decides.
  *
+ * And a person on camera (see presenter-lab.ts), on the v2 avatar API:
+ *
+ *   POST https://api.heygen.com/v2/video/generate   { video_inputs: [{ character: {type:'avatar', avatar_id} | {type:'talking_photo', talking_photo_id}, voice: {type:'audio', audio_url}, background }], dimension }
+ *                                                    → { data: { video_id } }
+ *   GET  https://api.heygen.com/v1/video_status.get?video_id=   → { data: { status: pending|processing|completed|failed, video_url, error } }
+ *   POST https://upload.heygen.com/v1/talking_photo  raw image bytes, Content-Type image/jpeg|png → { data: { talking_photo_id } }
+ *
  * Endpoint shapes from HeyGen's v3 reference, September 2026. Some
  * responses wrap the object in `data` and some do not; both are read.
  */
 import { ProviderError, dubLanguage, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
 import { http, pick, poll } from './http';
+import type { PresenterLab, TalkingVideoInput } from './presenter-lab';
 
 const KNOWN: Record<string, Capability> = { 'heygen:translate': 'DUB', 'heygen:lipsync': 'LIPSYNC' };
 
@@ -26,10 +34,12 @@ interface HeyGenJob {
   status?: string;
   video_url?: string;
   failure_message?: string;
+  /** The v1 status endpoint's name for the same thing (an object or a string). */
+  error?: { message?: string; detail?: string } | string | null;
   output_language?: string;
 }
 
-export class HeyGenProvider extends BaseProvider {
+export class HeyGenProvider extends BaseProvider implements PresenterLab {
   static all(apiKey: string): HeyGenProvider[] {
     return Object.entries(KNOWN).map(([k, c]) => new HeyGenProvider(apiKey, k, c));
   }
@@ -111,6 +121,82 @@ export class HeyGenProvider extends BaseProvider {
     return { providerKey: this.key, providerJobId, artifacts: [{ url: job.video_url!, mime: 'video/mp4', role: 'video' }], meta: { mode } };
   }
 
+  // ---- a person on camera --------------------------------------------------------
+
+  async talkingVideo(
+    input: TalkingVideoInput,
+    opts: { timeoutMs: number; signal?: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
+  ): Promise<{ url: string; providerJobId: string }> {
+    let character: Record<string, unknown>;
+    if (input.avatarId) {
+      character = { type: 'avatar', avatar_id: input.avatarId, avatar_style: 'normal' };
+    } else if (input.photo) {
+      const id = await this.uploadTalkingPhoto(input.photo, opts.signal);
+      character = { type: 'talking_photo', talking_photo_id: id, talking_photo_style: 'square', talking_style: 'expressive', expression: 'happy' };
+    } else {
+      throw new ProviderError('INVALID_INPUT', `${this.key}: a presenter needs an avatar or a photo`, this.key);
+    }
+    const dimension =
+      input.aspect === '9:16' ? { width: 1080, height: 1920 } : input.aspect === '1:1' ? { width: 1080, height: 1080 } : { width: 1920, height: 1080 };
+    const body = {
+      title: input.title,
+      video_inputs: [{ character, voice: { type: 'audio', audio_url: input.audioUrl }, background: { type: 'color', value: '#F4EFE8' } }],
+      dimension,
+    };
+    const submitted = await http<unknown>(this.key, 'https://api.heygen.com/v2/video/generate', {
+      headers: this.headers(),
+      body,
+      timeoutMs: 30_000,
+      signal: opts.signal,
+    });
+    const providerJobId = pick<string>(submitted.json, 'data.video_id') ?? pick<string>(submitted.json, 'video_id');
+    if (!providerJobId)
+      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no video_id in response'}`, this.key, {
+        raw: submitted.json,
+      });
+    opts.onProgress?.('HeyGen is filming the presenter', 20);
+    const job = await this.wait(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(providerJobId)}`, providerJobId, opts, 'filming');
+    return { url: job.video_url!, providerJobId };
+  }
+
+  /** One photo → a talking-photo id. Deprecated on HeyGen's side in favour of photo avatars, still served; see PROVIDERS.md. */
+  private async uploadTalkingPhoto(photo: { bytes: Uint8Array; mime: string }, signal?: AbortSignal): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    signal?.addEventListener('abort', () => controller.abort(), { once: true });
+    let res: Response;
+    try {
+      res = await fetch('https://upload.heygen.com/v1/talking_photo', {
+        method: 'POST',
+        headers: { ...this.headers(), 'content-type': photo.mime === 'image/png' ? 'image/png' : 'image/jpeg' },
+        body: photo.bytes as unknown as ArrayBuffer,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      throw new ProviderError('RETRYABLE', `${this.key}: network error uploading the photo: ${err instanceof Error ? err.message : err}`, this.key);
+    }
+    clearTimeout(timer);
+    const json = (await res.json().catch(() => ({}))) as unknown;
+    if (!res.ok) {
+      const msg = pick<string>(json, 'message') ?? pick<string>(json, 'error.message') ?? `HTTP ${res.status}`;
+      throw new ProviderError(
+        res.status === 400 || res.status === 422 ? 'INVALID_INPUT' : res.status >= 500 ? 'RETRYABLE' : 'PROVIDER_DOWN',
+        `${this.key}: talking photo upload failed: ${msg}`,
+        this.key,
+        { status: res.status },
+      );
+    }
+    const id = pick<string>(json, 'data.talking_photo_id') ?? pick<string>(json, 'talking_photo_id');
+    if (!id) throw new ProviderError('RETRYABLE', `${this.key}: no talking_photo_id in upload response`, this.key, { raw: json });
+    return id;
+  }
+
+  /** HeyGen bills avatar video by the minute; about $1/min on the API plan, rounded up. */
+  presenterCostMinor(seconds: number): number {
+    return Math.ceil(seconds / 60) * 100;
+  }
+
   private headers(): Record<string, string> {
     return { 'x-api-key': this.apiKey };
   }
@@ -126,8 +212,10 @@ export class HeyGenProvider extends BaseProvider {
           if (!job.video_url) throw new ProviderError('RETRYABLE', `${this.key}: completed without a video_url`, this.key, { providerJobId });
           return job;
         }
-        if (st === 'failed' || st === 'error')
-          throw new ProviderError(classifyFailure(job.failure_message), `${this.key}: ${job.failure_message ?? 'job failed'}`, this.key, { providerJobId });
+        if (st === 'failed' || st === 'error') {
+          const why = job.failure_message ?? (typeof job.error === 'string' ? job.error : (job.error?.message ?? job.error?.detail)) ?? undefined;
+          throw new ProviderError(classifyFailure(why), `${this.key}: ${why ?? 'job failed'}`, this.key, { providerJobId });
+        }
         return null;
       },
       {

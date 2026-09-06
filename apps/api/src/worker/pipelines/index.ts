@@ -15,6 +15,7 @@ import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
 import type { RouteConstraint } from '../../modules/provider/provider.router';
 import type { VoiceLab } from '../../modules/provider/adapters/voice-lab';
+import type { PresenterLab } from '../../modules/provider/adapters/presenter-lab';
 import { copyPipeline } from './copy';
 import { musicPipeline } from './music';
 import { voiceoverPipeline } from './voiceover';
@@ -52,6 +53,8 @@ export interface PipelineContext {
   stage: (stage: GenerationStage, progress: number, detail?: string) => Promise<void>;
   /** The adapter behind a VoiceProfile's providerKey, when it can clone and convert voices; null otherwise. */
   voiceLab: (providerKey: string) => VoiceLab | null;
+  /** The adapter that can put a person on camera for a vendor name ("heygen"); null when it is not configured. */
+  presenterLab: (vendor: string) => PresenterLab | null;
 }
 
 export interface PipelineResult {

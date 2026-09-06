@@ -109,6 +109,8 @@ export const shotPlanSchema = z.object({
     .max(8),
   endCard: z.object({ text: z.string().max(80), price: z.string().max(40).optional() }),
   music: z.object({ mood: z.string().max(40), tempo: z.enum(['slow', 'mid', 'fast']) }).optional(),
+  /** For an ad with a presenter: what they say to camera, spoken first. */
+  presenterScript: z.string().max(1200).optional(),
 });
 export type ShotPlan = z.infer<typeof shotPlanSchema>;
 
@@ -131,6 +133,7 @@ export const SHOT_PLAN_JSON_SCHEMA: Record<string, unknown> = {
     },
     endCard: { type: 'object', properties: { text: { type: 'string' }, price: { type: 'string' } }, required: ['text'] },
     music: { type: 'object', properties: { mood: { type: 'string' }, tempo: { type: 'string', enum: ['slow', 'mid', 'fast'] } }, required: ['mood', 'tempo'] },
+    presenterScript: { type: 'string', description: 'Only when asked for: what the presenter says to camera, first person, spoken language' },
   },
   required: ['hook', 'shots', 'endCard'],
 };
