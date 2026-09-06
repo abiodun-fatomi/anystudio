@@ -13,6 +13,7 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
+import { PRESENTERS } from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
@@ -254,7 +255,9 @@ function FileField({ field, value, onChange }: { field: Extract<Field, { kind: '
   const accept =
     field.accept === 'video'
       ? 'video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm'
-      : 'audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/x-m4a,.mp3,.m4a,.wav,.ogg';
+      : field.accept === 'image'
+        ? 'image/jpeg,image/png,image/webp,image/heic,.jpg,.jpeg,.png,.webp,.heic'
+        : 'audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/x-m4a,.mp3,.m4a,.wav,.ogg';
 
   // A key that arrived without a file (a "do it again", a prefill) still gets its player.
   useEffect(() => {
@@ -304,7 +307,13 @@ function FileField({ field, value, onChange }: { field: Extract<Field, { kind: '
       />
       {value && url ? (
         <div className={styles.fileIn}>
-          {field.accept === 'video' ? <video src={url} controls playsInline preload="metadata" /> : <audio src={url} controls preload="metadata" />}
+          {field.accept === 'video' ? (
+            <video src={url} controls playsInline preload="metadata" />
+          ) : field.accept === 'image' ? (
+            <img src={url} alt="" className={styles.fileImg} />
+          ) : (
+            <audio src={url} controls preload="metadata" />
+          )}
           <div className={styles.fileRow}>
             <span className={styles.fileName}>{name ?? 'Your file'}</span>
             <Button variant="ghost" size="sm" onClick={() => input.current?.click()}>
@@ -519,6 +528,29 @@ function FieldControl({ field, value, onChange }: { field: Field; value: unknown
       );
     case 'catalogue':
       return <CatalogueField field={field} value={String(value ?? '')} onChange={onChange} />;
+    case 'presenter':
+      return (
+        <div>
+          <span className={styles.fieldLabel}>{field.label}</span>
+          <div className={styles.presenters} role="radiogroup" aria-label={field.label}>
+            {PRESENTERS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                role="radio"
+                aria-checked={value === p.key}
+                className={styles.presenter}
+                onClick={() => onChange(p.key)}
+                title={`${p.name} — ${p.look}`}
+              >
+                <img src={p.previewUrl} alt="" loading="lazy" />
+                <span>{p.name}</span>
+              </button>
+            ))}
+          </div>
+          {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+        </div>
+      );
     case 'file':
       return <FileField field={field} value={String(value ?? '')} onChange={onChange} />;
     case 'consent':

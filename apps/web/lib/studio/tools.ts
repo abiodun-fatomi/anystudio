@@ -7,7 +7,7 @@
  * a param is presented — a segmented control, a slider, a text box — not
  * whether it is valid. Adding a tool is adding an entry here.
  */
-import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize, adPlan } from '@anystudio/shared';
+import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize, adPlan, presenterCostCode } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
 export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
@@ -34,7 +34,9 @@ export type Field =
   /** A pick from a server catalogue (genres, voices, dub languages), fetched by the panel. 'myVoices' is only the workspace's own. */
   | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices' | 'myVoices' | 'languages' | 'sourceLanguages'; hint?: string }
   /** A file the tool works on, uploaded from the panel: the param holds the storage key. */
-  | { key: string; kind: 'file'; label: string; accept: 'video' | 'audio'; hint?: string; required?: boolean }
+  | { key: string; kind: 'file'; label: string; accept: 'video' | 'audio' | 'image'; hint?: string; required?: boolean }
+  /** A face for a "filmed by a customer" ad, from the PRESENTERS catalogue. */
+  | { key: string; kind: 'presenter'; label: string; hint?: string }
   /** A box that must be ticked before the button works — permission for a real person's face and voice. */
   | { key: string; kind: 'consent'; label: string; hint?: string };
 
@@ -63,6 +65,8 @@ export interface Tool {
    * part of an idea lands in.
    */
   ideas?: { under: string; fills: { prompt: string; motion?: string } };
+  /** Last word on the params: nest or rename flat panel values before they are sent. */
+  assemble?: (params: Record<string, unknown>) => Record<string, unknown>;
 }
 
 const SIZE_OPTIONS = Object.entries(EXPORT_SIZES).map(([id, s]) => ({
@@ -81,6 +85,9 @@ const IMAGE_STAGES = {
   storing: 'Saving your images',
   done: 'Done',
 };
+
+/** A presenter needs the customer-filmed format and an ad long enough to hold a testimonial and the product. */
+const canPresent = (v: Record<string, unknown>): boolean => v.format === 'ugc' && Number(v.shots ?? 1) > 1;
 
 export const TOOLS: Tool[] = [
   {
@@ -369,9 +376,83 @@ export const TOOLS: Tool[] = [
       },
       { key: 'productName', kind: 'text', label: 'Product name', placeholder: 'For the end card', maxLength: 120 },
       { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000 — shown on the end card', maxLength: 40 },
+      // ---- a person talking to camera: only for "filmed by a customer", 15 s and up
+      {
+        key: 'presenterKind',
+        kind: 'segment',
+        label: 'Someone talking to camera',
+        options: [
+          { id: 'none', label: 'No one' },
+          { id: 'stock', label: 'A presenter' },
+          { id: 'photo', label: 'Me, from a photo' },
+        ],
+        showIf: canPresent,
+      },
+      {
+        key: 'presenterKey',
+        kind: 'presenter',
+        label: 'Who',
+        hint: 'They open the ad with a short, honest testimonial, then the product shots follow. Costs more than a plain ad.',
+        showIf: (v) => canPresent(v) && v.presenterKind === 'stock',
+      },
+      {
+        key: 'presenterPhotoKey',
+        kind: 'file',
+        accept: 'image',
+        label: 'A photo of you',
+        required: true,
+        hint: 'A clear face looking at the camera, good light, nothing over the mouth. Shoulders up is best.',
+        showIf: (v) => canPresent(v) && v.presenterKind === 'photo',
+      },
+      {
+        key: 'presenterConsent',
+        kind: 'consent',
+        label: 'This is me, or someone who has agreed to appear',
+        hint: 'A face is personal. We only animate a photo of a person who has said yes.',
+        showIf: (v) => canPresent(v) && v.presenterKind === 'photo',
+      },
+      {
+        key: 'presenterVoiceId',
+        kind: 'catalogue',
+        source: 'voices',
+        label: 'Their voice',
+        hint: 'A catalogue voice, or your own from Settings → Your voice.',
+        showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
+      },
+      {
+        key: 'presenterScript',
+        kind: 'text',
+        label: 'What they say',
+        placeholder: 'Leave blank and we write a short testimonial from your brief and the product.',
+        rows: 3,
+        maxLength: 600,
+        hint: 'About 25 words is 10 seconds.',
+        showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
+      },
     ],
-    defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false },
-    costCodeFor: (v) => adPlan(Number(v.shots))?.costCode,
+    defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
+    localKeys: ['presenterKind'],
+    costCodeFor: (v) => {
+      const plan = adPlan(Number(v.shots));
+      if (!plan) return undefined;
+      return canPresent(v) && v.presenterKind && v.presenterKind !== 'none' ? presenterCostCode(plan.costCode) : plan.costCode;
+    },
+    assemble: (p) => {
+      const kind = p.presenterKind;
+      const out = { ...p };
+      for (const k of ['presenterKind', 'presenterKey', 'presenterPhotoKey', 'presenterConsent', 'presenterVoiceId', 'presenterScript']) delete out[k];
+      if (canPresent(p) && (kind === 'stock' || kind === 'photo')) {
+        out.presenter = {
+          kind,
+          key: kind === 'stock' ? p.presenterKey : undefined,
+          photoKey: kind === 'photo' ? p.presenterPhotoKey : undefined,
+          consent: kind === 'photo' ? p.presenterConsent === true : undefined,
+          voiceId: p.presenterVoiceId || undefined,
+          script: typeof p.presenterScript === 'string' && p.presenterScript.trim() ? p.presenterScript.trim() : undefined,
+        };
+      }
+      return out;
+    },
     ideas: { under: 'prompt', fills: { prompt: 'prompt', motion: 'motion' } },
   },
   {
@@ -680,9 +761,10 @@ export function coerceParams(tool: Tool, values: Record<string, unknown>): Recor
   // A hidden field's value is not sent: the other branch's script does not ride along with an audio file.
   for (const f of tool.fields) if (f.showIf && !f.showIf(out)) delete out[f.key];
   // The panel's own switches (which branch is showing) are not params.
-  for (const k of tool.localKeys ?? []) delete out[k];
-  for (const [k, v] of Object.entries(out)) if (v === '' || v === undefined || (k === 'consent' && v !== true)) delete out[k];
-  return out;
+  const assembled = tool.assemble ? tool.assemble(out) : out;
+  for (const k of tool.localKeys ?? []) delete assembled[k];
+  for (const [k, v] of Object.entries(assembled)) if (v === '' || v === undefined || (k === 'consent' && v !== true)) delete assembled[k];
+  return assembled;
 }
 
 /** What stops the button: a required file, an empty required text, a catalogue with nothing picked, or a consent box left unticked. */
@@ -693,6 +775,7 @@ export function missingFor(tool: Tool, values: Record<string, unknown>): string 
     if (f.kind === 'file' && f.required && !String(v ?? '').trim()) return `Add ${f.label.toLowerCase()} first.`;
     if (f.kind === 'text' && f.required && !String(v ?? '').trim()) return 'Fill in the required field.';
     if (f.kind === 'catalogue' && !String(v ?? '').trim()) return `Pick ${f.label.toLowerCase()}.`;
+    if (f.kind === 'presenter' && !String(v ?? '').trim()) return 'Pick who talks to camera.';
     if (f.kind === 'consent' && v !== true) return 'Tick the permission box first.';
   }
   if (tool.id === 'lipsync' && values.mode === 'audio' && !String(values.audioKey ?? '').trim()) return 'Add the audio first.';

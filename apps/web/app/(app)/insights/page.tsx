@@ -4,8 +4,8 @@
  * credits will last. Every number is computed on the server from the
  * generation rows and the ledger; nothing is estimated here.
  *
- * Engagement per published post appears once publishing lands; the API
- * already returns the slot for it.
+ * How each post did lives on Today, where a seller looks first; this page
+ * is the longer view — every capability, every timing, the whole period.
  */
 import { useEffect, useState } from 'react';
 import { useApp } from '@/lib/app-context';

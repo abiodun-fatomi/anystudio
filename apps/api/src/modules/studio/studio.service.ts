@@ -27,7 +27,7 @@ import type { LlmRequest } from '@anystudio/shared';
 import { logger } from '../../../config/logger';
 import { MediaService } from '../media/media.service';
 import { ProviderRouter } from '../provider/provider.router';
-import type { IdeasDto, IdeaTool } from './studio.dto';
+import type { CaptionsDto, IdeasDto, IdeaTool } from './studio.dto';
 
 export interface Idea {
   title: string;
@@ -81,6 +81,97 @@ const IDEAS_JSON_SCHEMA = {
     },
   },
 } as const;
+
+export interface CaptionIdea {
+  /** A name for the angle: "Scarcity", "The detail", "Straight offer". */
+  angle: string;
+  /** The caption itself, without hashtags. */
+  text: string;
+  hashtags: string[];
+  why: string;
+}
+export interface CaptionsOut {
+  product: string | null;
+  captions: CaptionIdea[];
+  source: 'model' | 'stock';
+}
+
+const captionSchema = z.object({
+  product: z.string().max(120).nullable().optional(),
+  captions: z
+    .array(
+      z.object({
+        angle: z.string().min(2).max(40),
+        text: z.string().min(5).max(2000),
+        hashtags: z.array(z.string().min(2).max(40)).max(30),
+        why: z.string().min(5).max(200),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+const CAPTIONS_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['product', 'captions'],
+  properties: {
+    product: { type: 'string', description: 'The product in the picture, in at most eight words' },
+    captions: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['angle', 'text', 'hashtags', 'why'],
+        properties: {
+          angle: { type: 'string', description: 'Two or three words naming the selling angle' },
+          text: { type: 'string', description: 'The caption, ready to post, WITHOUT hashtags; line breaks allowed' },
+          hashtags: { type: 'array', items: { type: 'string' }, description: 'Without the # sign; specific before generic' },
+          why: { type: 'string', description: 'One sentence on why this one converts' },
+        },
+      },
+    },
+  },
+} as const;
+
+const PLATFORM_BRIEF: Record<string, string> = {
+  instagram:
+    'Instagram: the first line is what shows before "more" — make it the hook; 60–150 words is the sweet spot; 5–12 hashtags, niche and local before broad; one clear call to action (DM, link in bio, order via WhatsApp).',
+  tiktok: 'TikTok: short — under 40 words; casual, first person; 3–6 hashtags; the caption supports the video, it is not the pitch.',
+  whatsapp:
+    'WhatsApp Status: no hashtags, no "link in bio"; short lines, the price and how to order ("reply to this status", "send a message"); emojis sparingly; under 60 words.',
+  facebook: 'Facebook: conversational, 40–120 words, a question or a hook first, up to 5 hashtags, a clear "send a message" or "order" line.',
+};
+const GOAL_BRIEF: Record<string, string> = {
+  sell: 'Goal: sell now — price, what they get, how to order, why today.',
+  message: 'Goal: get people to send a message — ask a question they will want to answer, invite the DM.',
+  launch: 'Goal: announce something new — the news first, what is different, how to be first.',
+  restock: 'Goal: back in stock — who was waiting, how many, how to grab one.',
+  promo: 'Goal: a promotion — the offer in the first line, the deadline, the mechanics in one line.',
+  brand: 'Goal: brand warmth — the story, the maker, the craft; sell softly, one line of invitation at the end.',
+};
+
+const STOCK_CAPTIONS: CaptionIdea[] = [
+  {
+    angle: 'Straight offer',
+    text: 'Now in stock. Send a message to order — delivery across the city.',
+    hashtags: ['smallbusiness', 'shopsmall', 'nowinstock'],
+    why: 'Says what it is and how to buy, nothing in the way.',
+  },
+  {
+    angle: 'The question',
+    text: 'Which one would you pick? Tell us below and we will hold it for you.',
+    hashtags: ['smallbusiness', 'newarrival'],
+    why: 'A question earns replies, and replies are the start of a sale.',
+  },
+  {
+    angle: 'The detail',
+    text: 'Look closer. Made to last, priced to move. DM for yours.',
+    hashtags: ['madewithcare', 'shopsmall'],
+    why: 'A detail justifies the price without arguing it.',
+  },
+];
 
 const CACHE_TTL_MS = 15 * 60_000;
 const RATE = { perHour: 60 };
@@ -163,6 +254,7 @@ const STOCK: Record<IdeaTool, Idea[]> = {
 @Injectable()
 export class StudioService {
   private readonly cache = new Map<string, { at: number; out: IdeasOut }>();
+  private readonly captionCache = new Map<string, { at: number; out: CaptionsOut }>();
   private readonly calls = new Map<string, number[]>();
 
   constructor(
@@ -198,6 +290,123 @@ export class StudioService {
     }
     this.cache.set(key, { at: Date.now(), out });
     return out;
+  }
+
+  /** Three captions with hashtags for a post — the same seller context, aimed at a platform and a goal. */
+  async captions(workspaceId: string, dto: CaptionsDto): Promise<CaptionsOut> {
+    const key = createHash('sha1')
+      .update(
+        JSON.stringify([
+          'captions',
+          workspaceId,
+          dto.sourceKey ?? '',
+          dto.platform ?? '',
+          dto.kind ?? '',
+          dto.goal ?? '',
+          dto.productName ?? '',
+          dto.price ?? '',
+          dto.notes ?? '',
+          dto.language ?? '',
+          dto.round ?? 0,
+        ]),
+      )
+      .digest('hex');
+    const hit = this.captionCache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.out;
+    if (!this.allow(workspaceId)) {
+      logger.warn({ workspaceId }, 'captions: rate limit reached; answering with stock captions');
+      return { product: null, captions: STOCK_CAPTIONS, source: 'stock' };
+    }
+    let out: CaptionsOut;
+    try {
+      out = await this.askCaptions(workspaceId, dto);
+    } catch (err) {
+      logger.warn({ err: err instanceof Error ? err.message : err, workspaceId }, 'captions: the model did not answer; answering with stock captions');
+      out = { product: null, captions: STOCK_CAPTIONS, source: 'stock' };
+    }
+    this.captionCache.set(key, { at: Date.now(), out });
+    return out;
+  }
+
+  private async askCaptions(workspaceId: string, dto: CaptionsDto): Promise<CaptionsOut> {
+    const [workspace, brandKit] = await Promise.all([
+      this.db.workspace.findUniqueOrThrow({ where: { id: workspaceId } }),
+      this.db.brandKit.findUnique({ where: { workspaceId } }),
+    ]);
+    const profile = (workspace.profile as Record<string, unknown> | null) ?? {};
+    const platform = dto.platform ?? 'instagram';
+    const system = [
+      'You write captions that sell for small businesses on social media. Plain words, no marketing jargon, no fake urgency, no claims the picture does not support.',
+      PLATFORM_BRIEF[platform] ?? PLATFORM_BRIEF.instagram,
+      dto.kind === 'story'
+        ? 'It is a story: the text is short, one line of intent, the sticker does the rest.'
+        : dto.kind === 'reel'
+          ? 'It is a reel: the caption supports the video; keep it short and lead with the hook.'
+          : '',
+      GOAL_BRIEF[dto.goal ?? 'sell'],
+      'Write exactly three captions, each a DIFFERENT selling angle (the offer straight; a question that earns replies; the detail or the story; scarcity or a deadline only when it is true; social proof only when given). Name each angle in two or three words.',
+      'Hashtags separately, without the # sign: specific (the product, the city, the niche) before broad; none for WhatsApp.',
+      `Language: ${dto.language ?? 'en'}. Local phrasing is welcome where it sounds natural.`,
+      profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
+      brandKit?.tone ? `Their tone: ${brandKit.tone}.` : profile.tone ? `The tone they chose: ${String(profile.tone)}.` : '',
+      brandKit?.businessName ? `Business name: ${brandKit.businessName}.` : '',
+      workspace.region ? `Market: ${workspace.region.toUpperCase()} (prices in ${workspace.currency}).` : '',
+      'Return only the structure requested.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const parts: LlmRequest['parts'] = [];
+    if (dto.sourceKey) {
+      const asset = await this.db.mediaAsset.findFirst({ where: { workspaceId, key: dto.sourceKey }, select: { mime: true } });
+      // Only an image can be looked at; a video's caption comes from the words alone.
+      if (asset?.mime?.startsWith('image/')) parts.push({ imageUrl: await this.media.readUrl(workspaceId, dto.sourceKey), mime: asset.mime });
+    }
+    parts.push({
+      text: [
+        dto.productName ? `Product: ${dto.productName}` : parts.length ? 'Product: identify it from the picture' : 'Product: what this seller sells',
+        dto.price ? `Price: ${dto.price}` : 'No price given — do not invent one.',
+        dto.notes ? `The seller says: ${dto.notes}` : '',
+        dto.round ? `Round ${dto.round + 1}: three different captions from the obvious ones.` : '',
+        'Write the three captions now.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+    const decision = await this.router.route('TEXT_GENERATE', workspace.type);
+    const candidate = decision.candidates[0];
+    if (!candidate) throw new Error('no TEXT_GENERATE provider');
+    const result = await candidate.provider.generate(
+      {
+        generationId: `captions-${workspaceId.slice(0, 8)}`,
+        workspaceId,
+        capability: 'TEXT_GENERATE',
+        params: { task: 'captions', platform, goal: dto.goal ?? 'sell' },
+        files: {},
+        config: { ...((candidate.row.config as Record<string, unknown> | null) ?? {}) },
+        prompt: { system, parts, jsonSchema: CAPTIONS_JSON_SCHEMA, maxTokens: 1200, temperature: dto.round ? 0.95 : 0.8 },
+      },
+      { timeoutMs: 25_000 },
+    );
+    const parsed = captionSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
+    if (!parsed.success) {
+      logger.warn({ workspaceId, providerKey: result.providerKey, issues: parsed.error.issues.slice(0, 3) }, 'captions: the model answered off-structure');
+      throw new Error('off-structure');
+    }
+    logger.info({ workspaceId, platform, goal: dto.goal, providerKey: result.providerKey }, 'captions proposed');
+    return {
+      product: parsed.data.product ?? null,
+      captions: parsed.data.captions.slice(0, 3).map((c) => ({
+        ...c,
+        hashtags:
+          platform === 'whatsapp'
+            ? []
+            : c.hashtags
+                .map((h) => h.replace(/^#/, '').replace(/\s+/g, ''))
+                .filter(Boolean)
+                .slice(0, 15),
+      })),
+      source: 'model',
+    };
   }
 
   private async ask(workspaceId: string, dto: IdeasDto): Promise<IdeasOut> {

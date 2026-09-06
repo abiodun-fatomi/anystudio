@@ -51,6 +51,7 @@ import { ProviderRouter, type RouteCandidate, type RouteConstraint } from '../mo
 import { QueueService } from '../modules/queue/queue.service';
 import { ProviderRegistry } from '../modules/provider/provider.registry';
 import { isVoiceLab } from '../modules/provider/adapters/voice-lab';
+import { isPresenterLab } from '../modules/provider/adapters/presenter-lab';
 import { fetchBytes } from '../modules/provider/adapters/http';
 import { Pipelines, type PipelineContext } from './pipelines';
 
@@ -151,6 +152,13 @@ export class GenerationRunner {
         voiceLab: (providerKey) => {
           const p = this.registry.get(providerKey);
           return isVoiceLab(p) ? p : null;
+        },
+        presenterLab: (vendor) => {
+          const p = this.registry
+            .keys()
+            .map((k) => this.registry.get(k))
+            .find((a) => a && a.key.startsWith(`${vendor}:`) && isPresenterLab(a));
+          return isPresenterLab(p) ? p : null;
         },
         media: this.media,
         db: this.db,

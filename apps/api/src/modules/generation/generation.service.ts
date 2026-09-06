@@ -38,6 +38,7 @@ import {
   DEFAULT_COST_CODE,
   DUB_LIPSYNC_COST_CODE,
   MUSIC_MY_VOICE_COST_CODE,
+  presenterCostCode,
   dubLanguage,
   generationDebitKey,
   parseCapabilityParams,
@@ -144,12 +145,16 @@ export class GenerationService {
     const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
     const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
     // A song in their own voice is priced above the client's say-so: the extra vendor work is real whatever the request claimed.
+    // An ad with a presenter talking to camera is priced above the plain ad; the server decides, whatever the client sent.
+    const withPresenter = req.capability === 'IMAGE_TO_VIDEO' && shots > 1 && params.format === 'ugc' && Boolean(params.presenter);
     const costCode =
       req.capability === 'MUSIC' && params.singer === 'me'
         ? MUSIC_MY_VOICE_COST_CODE
-        : (req.costCode ??
-          adPlan(shots)?.costCode ??
-          (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
+        : withPresenter && adPlan(shots)
+          ? presenterCostCode(adPlan(shots)!.costCode)
+          : (req.costCode ??
+            adPlan(shots)?.costCode ??
+            (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 

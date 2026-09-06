@@ -42,7 +42,11 @@ function harness() {
         }
         return { count: hit.length };
       }),
-      findMany: vi.fn(async () => jobs.filter((j) => j.status === 'SCHEDULED' && (j.nextAttemptAt ?? new Date(0)) <= new Date()).map((j) => ({ id: j.id }))),
+      findMany: vi.fn(async ({ where, include }: { where?: { status?: string }; include?: unknown } = {}) => {
+        // The metrics sweep asks for PUBLISHED rows with their account; the due-runner for SCHEDULED ids.
+        if (where?.status === 'PUBLISHED') return jobs.filter((j) => j.status === 'PUBLISHED').map((j) => (include ? { ...j, account } : j));
+        return jobs.filter((j) => j.status === 'SCHEDULED' && (j.nextAttemptAt ?? new Date(0)) <= new Date()).map((j) => ({ id: j.id }));
+      }),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => ({ ...jobs.find((j) => j.id === where.id)!, account })),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const j = jobs.find((x) => x.id === where.id)!;
@@ -56,8 +60,9 @@ function harness() {
   const notifications = { notify: vi.fn(async () => undefined) };
   const svc = new PublishingService(db as never, {} as never, media as never, notifications as never);
   const publish = vi.fn();
-  (svc as unknown as { connectors: Record<string, unknown> }).connectors.INSTAGRAM = { configured: () => true, publish, formats: () => ['IMAGE'] };
-  return { svc, jobs, publish, notifications, accountUpdates, db };
+  const metrics = vi.fn();
+  (svc as unknown as { connectors: Record<string, unknown> }).connectors.INSTAGRAM = { configured: () => true, publish, metrics, formats: () => ['IMAGE'] };
+  return { svc, jobs, publish, metrics, notifications, accountUpdates, db };
 }
 
 describe('publishing loop', () => {
@@ -112,5 +117,48 @@ describe('publishing loop', () => {
       expect.objectContaining({ accessToken: 'tok', externalId: 'ig1' }),
       expect.objectContaining({ mediaUrl: 'https://signed/k' }),
     );
+  });
+});
+
+describe('how a post is doing', () => {
+  const published = (over: Record<string, unknown> = {}) => ({
+    status: 'PUBLISHED',
+    externalPostId: '17890',
+    publishedAt: new Date(Date.now() - 2 * 3600_000),
+    metricsAt: null,
+    ...over,
+  });
+
+  it('reads the numbers off the platform and writes them on the post', async () => {
+    const h = harness();
+    Object.assign(h.jobs[0]!, published());
+    h.metrics.mockResolvedValueOnce({ views: 1200, reach: 900, likes: 41, comments: 6, shares: 2, saved: 8 });
+    expect(await h.svc.refreshMetrics()).toBe(1);
+    expect(h.jobs[0]!.metrics).toEqual({ views: 1200, reach: 900, likes: 41, comments: 6, shares: 2, saved: 8 });
+    expect(h.jobs[0]!.metricsAt).toBeInstanceOf(Date);
+    // The token reached the connector decrypted, and only the id it needs.
+    expect(h.metrics).toHaveBeenCalledWith({ externalId: 'ig1', accessToken: 'tok' }, '17890');
+  });
+
+  it('leaves a fresh post alone, and re-reads an older one', async () => {
+    const h = harness();
+    Object.assign(h.jobs[0]!, published({ metricsAt: new Date(Date.now() - 5 * 60_000) }));
+    expect(await h.svc.refreshMetrics()).toBe(0);
+    expect(h.metrics).not.toHaveBeenCalled();
+
+    h.jobs[0]!.metricsAt = new Date(Date.now() - 3 * 3600_000);
+    h.metrics.mockResolvedValueOnce({ views: 1, reach: null, likes: 0, comments: 0, shares: null, saved: null });
+    expect(await h.svc.refreshMetrics()).toBe(1);
+  });
+
+  it('keeps the last numbers when the platform refuses, and marks a dead token', async () => {
+    const h = harness();
+    Object.assign(h.jobs[0]!, published({ metrics: { views: 10, reach: null, likes: 1, comments: 0, shares: null, saved: null } }));
+    h.metrics.mockRejectedValueOnce(new PublishError('graph: invalid token (code 190)', true, true));
+    expect(await h.svc.refreshMetrics()).toBe(0);
+    expect(h.jobs[0]!.metrics).toEqual({ views: 10, reach: null, likes: 1, comments: 0, shares: null, saved: null });
+    // Touched anyway, so one broken post does not hold up the rota.
+    expect(h.jobs[0]!.metricsAt).toBeInstanceOf(Date);
+    expect(h.accountUpdates[0]).toEqual(expect.objectContaining({ data: expect.objectContaining({ status: 'NEEDS_REAUTH' }) }));
   });
 });

@@ -52,6 +52,8 @@ const STUCK_AFTER_MS = 20 * 60_000;
 const BATCH = 5;
 /** Refresh a token this long before it expires. */
 const REFRESH_AHEAD_MS = 7 * 86_400_000;
+/** Posts older than this stop being re-read; their numbers stay as last seen. */
+const METRICS_WINDOW_MS = 30 * 86_400_000;
 /** The signed URL a platform fetches media from must outlive its processing. */
 const MEDIA_URL_TTL_SEC = 60 * 60;
 
@@ -94,6 +96,7 @@ export interface PlatformView {
 @Injectable()
 export class PublishingService {
   private readonly connectors: Record<SocialPlatform, Connector> = { INSTAGRAM: new InstagramConnector(), TIKTOK: new TikTokConnector() };
+  private refreshingMetrics = false;
   private running = false;
 
   constructor(
@@ -501,6 +504,64 @@ export class PublishingService {
         });
       }
     }
+  }
+
+  /**
+   * How posts are doing. Every published post from the last 30 days is
+   * re-read from its platform on a rota — the youngest most often, because
+   * that is when the numbers move — and the counts are written on the job.
+   * A platform that will not answer leaves the last numbers in place; a
+   * dead token marks the account, not the post. Called on a timer; never
+   * overlaps itself.
+   */
+  async refreshMetrics(): Promise<number> {
+    if (this.refreshingMetrics) return 0;
+    this.refreshingMetrics = true;
+    let done = 0;
+    try {
+      const now = Date.now();
+      const jobs = await this.db.publishJob.findMany({
+        where: {
+          status: 'PUBLISHED',
+          externalPostId: { not: null },
+          publishedAt: { gte: new Date(now - METRICS_WINDOW_MS) },
+          account: { status: 'CONNECTED' },
+        },
+        include: { account: true },
+        orderBy: { metricsAt: { sort: 'asc', nulls: 'first' } },
+        take: 200,
+      });
+      for (const job of jobs) {
+        // A post under a day old is read hourly; older ones every six hours.
+        const age = now - (job.publishedAt?.getTime() ?? now);
+        const every = age < 24 * 3600_000 ? 3600_000 : 6 * 3600_000;
+        if (job.metricsAt && now - job.metricsAt.getTime() < every) continue;
+        const connector = this.connectors[job.platform];
+        if (!connector.configured()) continue;
+        try {
+          const metrics = await connector.metrics({ externalId: job.account.externalId, accessToken: decrypt(job.account.accessToken) }, job.externalPostId!);
+          await this.db.publishJob.update({ where: { id: job.id }, data: { metrics: metrics as unknown as Prisma.InputJsonObject, metricsAt: new Date() } });
+          done++;
+        } catch (err) {
+          const e = err instanceof PublishError ? err : null;
+          logger.warn(
+            { jobId: job.id, platform: job.platform, err: err instanceof Error ? err.message : String(err), reauth: e?.reauth },
+            'publishing: metrics read failed',
+          );
+          // Touch the row so one broken post does not hog the rota.
+          await this.db.publishJob.update({ where: { id: job.id }, data: { metricsAt: new Date() } }).catch(() => undefined);
+          if (e?.reauth)
+            await this.db.socialAccount
+              .update({ where: { id: job.accountId }, data: { status: 'NEEDS_REAUTH', lastError: err instanceof Error ? err.message : String(err) } })
+              .catch(() => undefined);
+        }
+      }
+    } catch (err) {
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, 'publishing: metrics tick failed');
+    } finally {
+      this.refreshingMetrics = false;
+    }
+    return done;
   }
 
   /** Keep tokens alive: anything expiring within a week is exchanged for a fresh one. Once a day is plenty. */

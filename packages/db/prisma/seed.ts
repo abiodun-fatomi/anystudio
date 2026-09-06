@@ -48,6 +48,11 @@ const CREDIT_COSTS = [
   { code: 'video.ad_30s', credits: 480, label: '30-second ad (four shots)' },
   { code: 'video.ad_45s', credits: 700, label: '45-second ad (six shots)' },
   { code: 'video.ad_60s', credits: 920, label: '60-second ad (eight shots)' },
+  // With a presenter talking to camera first: the same shots less one, plus a voice and a rendered talking segment.
+  { code: 'video.ad_15s_presenter', credits: 400, label: '15-second ad with a presenter' },
+  { code: 'video.ad_30s_presenter', credits: 620, label: '30-second ad with a presenter' },
+  { code: 'video.ad_45s_presenter', credits: 840, label: '45-second ad with a presenter' },
+  { code: 'video.ad_60s_presenter', credits: 1060, label: '60-second ad with a presenter' },
   // A shot of a multi-shot ad. The PARENT row holds the price; its children
   // are work units, not money units, and carry zero credits by design.
   { code: 'video.shot', credits: 0, label: 'One shot of an ad' },

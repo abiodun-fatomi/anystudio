@@ -143,6 +143,16 @@ function stubText(input: ProviderInput) {
     };
   }
   if (task === 'field') return { value: `Stub rewrite of ${(input.params as { field?: string }).field ?? 'a field'}` };
+  if (task === 'captions') {
+    return {
+      product: 'Stub product',
+      captions: [
+        { angle: 'Straight offer', text: 'Stub: now in stock. Send a message to order.', hashtags: ['stub', 'smallbusiness'], why: 'Says how to buy.' },
+        { angle: 'The question', text: 'Stub: which colour would you pick?', hashtags: ['stub'], why: 'Earns replies.' },
+        { angle: 'The detail', text: 'Stub: look at the stitching.', hashtags: ['stub', 'handmade'], why: 'Justifies the price.' },
+      ],
+    };
+  }
   if (task === 'ideas') {
     return {
       product: 'Stub product',

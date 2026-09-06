@@ -23,8 +23,18 @@
  */
 
 import type { Generation } from '@prisma/client';
-import { adPlan, ProviderError, shotPlanSchema, SHOT_PLAN_JSON_SCHEMA, type CapabilityParams, type LlmRequest, type ShotPlan } from '@anystudio/shared';
+import {
+  adPlan,
+  presenterWords,
+  ProviderError,
+  shotPlanSchema,
+  SHOT_PLAN_JSON_SCHEMA,
+  type CapabilityParams,
+  type LlmRequest,
+  type ShotPlan,
+} from '@anystudio/shared';
 import type { Pipeline, PipelineContext, PipelineResult } from './index';
+import { renderPresenter, wantsPresenter, type PresenterClip } from './presenter';
 
 const FORMAT_BRIEF: Record<CapabilityParams<'IMAGE_TO_VIDEO'>['format'], string> = {
   reveal: 'A product reveal: start close and abstract, pull back to show the whole product, end settled on it.',
@@ -41,8 +51,18 @@ export const adPipeline: Pipeline = async (ctx) => {
   return plan(ctx, p);
 };
 
+/** With a presenter, shot one is the person talking; the table's first slot (plus a breath) is how long they get. */
+function presenterSeconds(p: CapabilityParams<'IMAGE_TO_VIDEO'>): number {
+  return (adPlan(p.shots)?.durations[0] ?? 8) + 2;
+}
+
 /** First run: write the plan, create the shots, step aside. */
 async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): Promise<PipelineResult> {
+  const withPresenter = wantsPresenter(p);
+  if (p.presenter && !withPresenter)
+    throw new ProviderError('INVALID_INPUT', 'a presenter needs the "filmed by a customer" format and at least two shots', 'ad-pipeline');
+  if (withPresenter && !ctx.presenterLab('heygen'))
+    throw new ProviderError('PROVIDER_DOWN', 'no presenter vendor is configured (HEYGEN_API_KEY); the ad cannot have a presenter here', 'presenter');
   await ctx.stage('preparing', 6, 'planning the shots');
   const request = planRequest(ctx, p);
   const result = await ctx.callCapability(
@@ -53,17 +73,41 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
   const parsed = shotPlanSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
   if (!parsed.success)
     throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
-  const shotPlan: ShotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, p.shots) };
+  // With a presenter, the person is shot one and the product shots fill the rest of the table.
+  const productShots = withPresenter ? p.shots - 1 : p.shots;
+  const shotPlan: ShotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, productShots) };
   // A short plan is padded with the settle shot rather than refused: the customer asked for four.
-  const wanted = adPlan(p.shots)?.durations ?? [];
-  while (shotPlan.shots.length < p.shots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
+  const table = adPlan(p.shots)?.durations ?? [];
+  const wanted = withPresenter ? table.slice(1) : table;
+  while (shotPlan.shots.length < productShots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
   // The table's durations win over the planner's: they are what the price and the running time assume.
   shotPlan.shots = shotPlan.shots.map((shot, i) => ({ ...shot, durationSec: (wanted[i] ?? shot.durationSec) as 5 | 8 }));
+  if (withPresenter) {
+    // Their own words first; a segment already filmed on an earlier attempt keeps its words; else the planner's.
+    const own = p.presenter?.script?.trim();
+    shotPlan.presenterScript = (own || p.presenterClip?.script || shotPlan.presenterScript || '').trim();
+    if (!shotPlan.presenterScript) throw new ProviderError('RETRYABLE', 'the planner wrote no presenter script', result.providerKey);
+  }
 
   await ctx.db.generation.update({ where: { id: ctx.row.id }, data: { input: { ...(ctx.row.input as object), plan: shotPlan } } });
-  ctx.log.info({ shots: shotPlan.shots.length, hook: shotPlan.hook, format: p.format }, 'shot plan written');
+  ctx.log.info({ shots: shotPlan.shots.length, hook: shotPlan.hook, format: p.format, presenter: withPresenter }, 'shot plan written');
 
-  await ctx.stage('routing', 12, `dispatching ${shotPlan.shots.length} shots`);
+  // The talking segment, before the shots go out: it is the slowest piece and the one a retry must not repeat.
+  let presenterCost = 0;
+  if (withPresenter) {
+    let clip: PresenterClip | undefined = p.presenterClip;
+    if (!clip) {
+      const made = await renderPresenter(ctx, p, shotPlan.presenterScript!);
+      clip = made.clip;
+      presenterCost = made.costMinor;
+      const fresh = await ctx.db.generation.findUniqueOrThrow({ where: { id: ctx.row.id } });
+      await ctx.db.generation.update({ where: { id: ctx.row.id }, data: { input: { ...(fresh.input as object), presenterClip: clip } } });
+    } else {
+      ctx.log.info({ key: clip.key }, 'presenter already filmed on an earlier attempt; reusing it');
+    }
+  }
+
+  await ctx.stage('routing', 42, `dispatching ${shotPlan.shots.length} shots`);
   const parent = await ctx.db.generation.findUniqueOrThrow({ where: { id: ctx.row.id } });
   for (const [i, shot] of shotPlan.shots.entries()) {
     await ctx.generations.createChild(
@@ -79,12 +123,12 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
         shots: 1,
         format: p.format,
         caption: shot.caption,
-        shotIndex: i,
+        shotIndex: withPresenter ? i + 1 : i,
       },
       i,
     );
   }
-  return { artifacts: [], waiting: true, providerKey: result.providerKey, costMinor: result.costMinor };
+  return { artifacts: [], waiting: true, providerKey: result.providerKey, costMinor: (result.costMinor ?? 0) + presenterCost };
 }
 
 /** Second run: every child is terminal. Stitch, or fail with the whole price refunded. */
@@ -100,29 +144,39 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
     );
   }
   const plan = (ctx.row.input as { plan?: ShotPlan }).plan;
+  const clip = wantsPresenter(p) ? p.presenterClip : undefined;
   const shotKeys = children.map((c) => videoKey(c)).filter((k): k is string => Boolean(k));
   if (shotKeys.length !== children.length) throw new ProviderError('RETRYABLE', 'a shot finished without a video output', 'shots');
+  if (wantsPresenter(p) && !clip) throw new ProviderError('RETRYABLE', 'the presenter segment is missing from the row', 'presenter');
 
   // Captions timed to the shots: each shot's caption for the length of that shot.
+  // With a presenter, the hook sits over the first seconds of them talking, then the product shots carry their own lines.
   const captions: Array<{ text: string; fromMs: number; toMs: number }> = [];
   let t = 0;
+  if (clip) {
+    if (plan?.hook) captions.push({ text: plan.hook, fromMs: 300, toMs: Math.min(clip.durationMs - 300, 3500) });
+    t = clip.durationMs;
+  }
   for (const [i, c] of children.entries()) {
     const durationMs = (c.input as { durationSec?: number }).durationSec ? (c.input as { durationSec: number }).durationSec * 1000 : 5000;
-    const text = i === 0 && plan?.hook ? plan.hook : (plan?.shots[i]?.caption ?? '');
+    const text = !clip && i === 0 && plan?.hook ? plan.hook : (plan?.shots[i]?.caption ?? '');
     if (text) captions.push({ text, fromMs: t + 300, toMs: t + durationMs - 300 });
     t += durationMs;
   }
   const endCard = plan?.endCard ?? { text: p.productName ?? '', price: p.price };
-  await ctx.stage('composing', 70, `stitching ${children.length} shots`);
-  const files = Object.fromEntries(
-    await Promise.all(shotKeys.map(async (k, i) => [`shotKeys[${i}]`, { url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
+  const allKeys = clip ? [clip.key, ...shotKeys] : shotKeys;
+  await ctx.stage('composing', 70, `stitching ${allKeys.length} shots`);
+  const files: Record<string, { url: string; mime: string }> = Object.fromEntries(
+    await Promise.all(allKeys.map(async (k, i) => [`shotKeys[${i}]`, { url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
   );
+  // The presenter's speech is the ad's voiceover: laid from zero, it lines up with the lips in shot one.
+  if (clip) files.voiceoverKey = { url: await ctx.media.signRead(clip.audioKey, 60 * 60), mime: 'audio/mpeg' };
   const stitched = await ctx.callCapability(
     'VIDEO_STITCH',
     {
       generationId: ctx.row.id,
       workspaceId: ctx.row.workspaceId,
-      params: { shotKeys, aspect: p.aspect, captions, endCard: endCard.text ? endCard : undefined, watermark: true },
+      params: { shotKeys: allKeys, aspect: p.aspect, captions, endCard: endCard.text ? endCard : undefined, watermark: true, voiceoverKey: clip?.audioKey },
       files,
     },
     { timeoutMs: 5 * 60_000, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('composing', progress ?? 80, detail) },
@@ -151,7 +205,12 @@ function planRequest(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>
   const system = [
     'You are a director planning a short vertical product ad for social media, to be generated shot by shot by an image-to-video model from ONE reference photo of the product.',
     `Format: ${FORMAT_BRIEF[p.format]}`,
-    `Exactly ${p.shots} shots. Durations: ${durationsPhrase(adPlan(p.shots)?.durations ?? [8, 5])} seconds, in that order.`,
+    wantsPresenter(p)
+      ? [
+          `A presenter speaks to camera FIRST, for about ${presenterSeconds(p)} seconds; that is not one of your shots. Write it as presenterScript: first person, as a happy customer would actually talk, ${presenterWords(presenterSeconds(p))} words or so, the product's name, one concrete thing they noticed, and how to order. Spoken language — no hashtags, no emoji, no brackets.`,
+          `Then exactly ${p.shots - 1} product shots. Durations: ${durationsPhrase((adPlan(p.shots)?.durations ?? [8, 5]).slice(1))} seconds, in that order.`,
+        ].join('\n')
+      : `Exactly ${p.shots} shots. Durations: ${durationsPhrase(adPlan(p.shots)?.durations ?? [8, 5])} seconds, in that order.`,
     `Voice: ${tone}.`,
     "Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); no people unless the format is ugc; realistic lighting; keep every prompt under 60 words. Each shot's caption is under 8 words of on-screen text.",
     'The first shot is the hook. The last shot settles on the product for the end card.',
@@ -168,6 +227,7 @@ function planRequest(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>
       p.details ? `Details: ${p.details}` : '',
       p.price ? `Price to show on the end card: ${p.price}` : '',
       p.prompt ? `The seller's own direction: ${p.prompt}` : '',
+      p.presenter?.script ? `The presenter's words are already written by the seller; do not write presenterScript.` : '',
       'Plan the ad.',
     ]
       .filter(Boolean)

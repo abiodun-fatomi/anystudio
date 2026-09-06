@@ -18,10 +18,11 @@
  * Needs TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET.
  */
 import type { PublishFormat } from '@prisma/client';
-import { PublishError, type Connector, type PublishInput, type PublishOutcome, type RemoteAccount, type TokenSet } from './types';
+import { PublishError, type Connector, type PostMetrics, type PublishInput, type PublishOutcome, type RemoteAccount, type TokenSet } from './types';
 
 const API = 'https://open.tiktokapis.com/v2';
-const SCOPES = ['user.info.basic', 'video.publish', 'video.upload'];
+// video.list is what lets us read back the numbers on a post we made; without it, metrics stay null.
+const SCOPES = ['user.info.basic', 'video.publish', 'video.upload', 'video.list'];
 const CHUNK = 10 * 1024 * 1024;
 const MAX_BYTES = 250 * 1024 * 1024;
 const STATUS_POLL_MS = 5_000;
@@ -137,6 +138,24 @@ export class TikTokConnector implements Connector {
     if (!tokens.refreshToken) throw new PublishError('no refresh token', true, true, 'TikTok needs to be connected again.');
     const { openId: _o, ...fresh } = await this.token({ grant_type: 'refresh_token', refresh_token: tokens.refreshToken });
     return fresh;
+  }
+
+  /** `video/query` takes the video ids the publish status handed back; a publish_id (not yet public) returns nothing, which is null here. */
+  async metrics(account: { externalId: string; accessToken: string }, externalPostId: string): Promise<PostMetrics> {
+    const r = await call<{ videos?: Array<{ id: string; like_count?: number; comment_count?: number; share_count?: number; view_count?: number }> }>(
+      '/video/query/?fields=id,like_count,comment_count,share_count,view_count',
+      account.accessToken,
+      { filters: { video_ids: [externalPostId] } },
+    );
+    const v = r.videos?.[0];
+    return {
+      views: v?.view_count ?? null,
+      reach: null,
+      likes: v?.like_count ?? null,
+      comments: v?.comment_count ?? null,
+      shares: v?.share_count ?? null,
+      saved: null,
+    };
   }
 
   async publish(account: { externalId: string; accessToken: string }, input: PublishInput): Promise<PublishOutcome> {

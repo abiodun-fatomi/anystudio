@@ -49,12 +49,13 @@
 
 .seg {
   display: inline-flex;
+  flex-wrap: wrap;
   padding: 3px;
   background: var(--sunk);
   border-radius: var(--r-md);
   gap: 2px;
   max-width: 100%;
-  overflow-x: auto;
+  min-width: 0;
 }
 .segItem {
   position: relative;

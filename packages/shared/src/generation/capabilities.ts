@@ -236,6 +236,29 @@ export const capabilityParams = {
     productName: z.string().max(120).optional(),
     price: z.string().max(40).optional(),
     details: z.string().max(800).optional(),
+    /**
+     * "Filmed by a customer" with a person actually talking to camera: the
+     * first shot becomes a presenter — a stock face, or the seller from one
+     * photo — saying a short testimonial in a catalogue voice or their own.
+     * Only with `format: 'ugc'` and two or more shots.
+     */
+    presenter: z
+      .object({
+        kind: z.enum(['stock', 'photo']),
+        /** A PRESENTERS key, for `stock`. */
+        key: z.string().max(40).optional(),
+        /** Their photo, for `photo`: a clear face, looking at the camera. */
+        photoKey: objectKey.optional(),
+        /** The person in the photo is them or gave permission; required for `photo`. */
+        consent: z.boolean().optional(),
+        /** A VoiceProfile key — a catalogue voice, or the workspace's own clone. Absent → the default voice. */
+        voiceId: z.string().max(80).optional(),
+        /** What they say, in the seller's words. Absent → the planner writes a testimonial. */
+        script: z.string().max(600).optional(),
+      })
+      .optional(),
+    /** Filled by the pipeline once the presenter segment is rendered, so a retry does not render it twice. */
+    presenterClip: z.object({ key: objectKey, audioKey: objectKey, durationMs: z.number().int().min(500), script: z.string().max(1200) }).optional(),
     /** Shot-level fields the planner writes; a customer never sets them. */
     caption: z.string().max(120).optional(),
     shotIndex: z.number().int().min(0).max(7).optional(),

@@ -720,7 +720,42 @@ export interface Insights {
   timing: Array<{ capability: string; p50Sec: number | null; p90Sec: number | null }>;
   library: { total: number; added: number; images: number; videos: number; copy: number; sources: number };
   topProducts: Array<{ productKey: string; title: string | null; count: number; credits: number }>;
-  engagement: null;
+  posts: {
+    published: number;
+    scheduled: number;
+    failed: number;
+    byPlatform: Record<string, number>;
+    totals: PostMetrics;
+    /** How many published posts carry numbers from their platform. */
+    measured: number;
+    recent: PostView[];
+    best: PostView | null;
+    accountsConnected: number;
+  };
+  /** What to do next, best first; rules over the numbers, not a model. */
+  nextSteps: Array<{ key: string; title: string; body: string; href: string; cta: string }>;
+}
+export interface PostMetrics {
+  views: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saved: number | null;
+}
+export interface PostView {
+  id: string;
+  platform: string;
+  format: string;
+  status: string;
+  caption: string;
+  publishedAt: string | null;
+  scheduledFor: string;
+  externalUrl: string | null;
+  generationId: string | null;
+  handle: string | null;
+  metrics: PostMetrics | null;
+  metricsAt: string | null;
 }
 
 export interface Genre {
@@ -994,8 +1029,36 @@ export interface IdeasOut {
   source: 'model' | 'stock';
 }
 
+export interface CaptionIdea {
+  angle: string;
+  text: string;
+  hashtags: string[];
+  why: string;
+}
+export interface CaptionsOut {
+  product: string | null;
+  captions: CaptionIdea[];
+  source: 'model' | 'stock';
+}
+export type CaptionGoal = 'sell' | 'message' | 'launch' | 'restock' | 'promo' | 'brand';
+
 export const api = {
   studio: {
+    /** Three captions with hashtags for a post, aimed at a platform and a goal. */
+    captions: (
+      workspaceId: string,
+      body: {
+        sourceKey?: string;
+        platform?: 'instagram' | 'tiktok' | 'whatsapp' | 'facebook';
+        kind?: 'feed' | 'story' | 'reel';
+        goal?: CaptionGoal;
+        productName?: string;
+        price?: string;
+        notes?: string;
+        language?: string;
+        round?: number;
+      },
+    ) => request<CaptionsOut>('POST', `/workspaces/${workspaceId}/studio/captions`, body),
     /** Three creative directions for this product and tool, from the copy model. */
     ideas: (
       workspaceId: string,
