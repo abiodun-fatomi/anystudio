@@ -181,6 +181,10 @@ export class GenerationRunner {
       for (const output of outputs)
         await this.events.publish({ type: 'output', generationId, output: output.locked ? { ...output, key: '' } : output, at: new Date().toISOString() });
 
+      // A finished shot moves its parent's bar and names the next one, so a
+      // five-minute wait shows progress instead of one frozen sentence.
+      if (row.parentId) void this.reportShots(row.parentId);
+
       const done = await this.generations.succeed(generationId, {
         providerKey: produced.providerKey,
         providerJobId: produced.providerJobId,
@@ -250,6 +254,16 @@ export class GenerationRunner {
   }
 
   /** The vendor that holds a voice. A workspace's own voice is nobody else's: another workspace asking for it gets "unknown". */
+  /** Tell the parent's card how many of its shots are in. Best effort: a lost update is a stale line, not a lost ad. */
+  private async reportShots(parentId: string): Promise<void> {
+    try {
+      const p = await this.generations.shotProgress(parentId);
+      if (p) await this.events.stage(parentId, 'waiting', p.progress, p.detail);
+    } catch (err) {
+      logger.debug({ err, parentId }, 'could not report shot progress');
+    }
+  }
+
   private async vendorForVoice(voiceId: string, workspaceId: string): Promise<string> {
     const voice = await this.db.voiceProfile.findUnique({
       where: { key: voiceId },

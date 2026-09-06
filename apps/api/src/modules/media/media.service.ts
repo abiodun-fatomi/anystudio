@@ -84,22 +84,26 @@ export class MediaService {
 
   /** Announce an upload: a PENDING row and a URL the browser PUTs the file to. */
   async presignUpload(workspaceId: string, userId: string, file: { filename: string; mime: string; bytes: number }): Promise<PresignedUpload> {
-    const family = familyOf(file.mime);
+    const mime = baseMime(file.mime);
+    const family = familyOf(mime);
     if (!family) throw new ValidationError({ mime: `Unsupported file type ${file.mime}` });
     if (file.bytes > LIMITS[family].maxBytes)
       throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
 
+    // The announced type is kept on the row: the bytes decide the truth, but a
+    // WebM with only an audio track looks exactly like a video one to a sniffer.
     const asset = await this.db.mediaAsset.create({
-      data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: file.filename.slice(0, 200), key: 'pending' },
+      data: { workspaceId, uploadedById: userId, kind: 'SOURCE', filename: file.filename.slice(0, 200), key: 'pending', mime },
     });
-    const key = MediaService.key(workspaceId, 'uploads', `${asset.id}.${extFor(file.mime)}`);
+    const key = MediaService.key(workspaceId, 'uploads', `${asset.id}.${extFor(mime)}`);
     await this.db.mediaAsset.update({ where: { id: asset.id }, data: { key } });
 
-    const url = await getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: file.mime, ContentLength: file.bytes }), {
+    const url = await getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: mime, ContentLength: file.bytes }), {
       expiresIn: UPLOAD_TTL_SEC,
     });
-    logger.info({ workspaceId, assetId: asset.id, key, mime: file.mime, bytes: file.bytes }, 'upload presigned');
-    return { assetId: asset.id, key, url, method: 'PUT', headers: { 'content-type': file.mime }, expiresInSec: UPLOAD_TTL_SEC };
+    logger.info({ workspaceId, assetId: asset.id, key, mime, announced: file.mime, bytes: file.bytes }, 'upload presigned');
+    // The header must match what the URL was signed for, so it is the bare type, not what the browser announced.
+    return { assetId: asset.id, key, url, method: 'PUT', headers: { 'content-type': mime }, expiresInSec: UPLOAD_TTL_SEC };
   }
 
   /**
@@ -107,9 +111,10 @@ export class MediaService {
    * gave us, or downloaded from WhatsApp — stored and verified exactly as a
    * browser upload would be. Same limits, same sniffing, same row.
    */
-  async ingest(workspaceId: string, userId: string | null, bytes: Uint8Array, claimedMime: string, filename: string): Promise<MediaAsset> {
+  async ingest(workspaceId: string, userId: string | null, bytes: Uint8Array, announcedMime: string, filename: string): Promise<MediaAsset> {
+    const claimedMime = baseMime(announcedMime);
     const family = familyOf(claimedMime);
-    if (!family) throw new ValidationError({ mime: `Unsupported file type ${claimedMime}` });
+    if (!family) throw new ValidationError({ mime: `Unsupported file type ${announcedMime}` });
     if (bytes.byteLength > LIMITS[family].maxBytes)
       throw new ValidationError({ bytes: `Too large: the limit for ${family} is ${LIMITS[family].maxBytes / 1024 / 1024} MB` });
     const asset = await this.db.mediaAsset.create({
@@ -177,7 +182,10 @@ export class MediaService {
     }
     const bytes = head.ContentLength ?? 0;
     const headBytes = await this.range(asset.key, 0, 4095);
-    const mime = sniffMime(headBytes);
+    const sniffed = sniffMime(headBytes);
+    // A browser's voice recording is a WebM with no video track; the container
+    // is identical, so the announced type breaks the tie — and only that tie.
+    const mime = sniffed === 'video/webm' && asset.mime === 'audio/webm' ? 'audio/webm' : sniffed;
     const family = mime ? familyOf(mime) : null;
 
     const reject = async (reason: string): Promise<never> => {
@@ -371,8 +379,18 @@ export class MediaService {
   }
 }
 
+/**
+ * A browser's recorder announces "audio/webm;codecs=opus"; a phone's camera
+ * adds its own parameters too. The type is what matters, so the parameters
+ * are dropped before anything is compared.
+ */
+export function baseMime(mime: string): string {
+  return mime.split(';')[0]!.trim().toLowerCase();
+}
+
 function familyOf(mime: string): keyof typeof LIMITS | null {
-  for (const [family, l] of Object.entries(LIMITS)) if (l.mimes.has(mime)) return family as keyof typeof LIMITS;
+  const m = baseMime(mime);
+  for (const [family, l] of Object.entries(LIMITS)) if (l.mimes.has(m)) return family as keyof typeof LIMITS;
   return null;
 }
 

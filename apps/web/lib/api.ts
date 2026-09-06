@@ -1027,6 +1027,8 @@ export interface IdeasOut {
   product: string | null;
   ideas: Idea[];
   source: 'model' | 'stock';
+  /** Why the generic set came back. Sent outside production only. */
+  reason?: string;
 }
 
 export interface CaptionIdea {
@@ -1039,6 +1041,8 @@ export interface CaptionsOut {
   product: string | null;
   captions: CaptionIdea[];
   source: 'model' | 'stock';
+  /** Why the generic set came back. Sent outside production only. */
+  reason?: string;
 }
 export type CaptionGoal = 'sell' | 'message' | 'launch' | 'restock' | 'promo' | 'brand';
 

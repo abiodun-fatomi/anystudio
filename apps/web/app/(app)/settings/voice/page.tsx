@@ -18,11 +18,45 @@ import { Button, Checkbox, ConfirmDialog, Input, LoadError, Select, Skeleton, us
 import styles from '../settings.module.css';
 import own from './voice.module.css';
 
-const SCRIPT = [
-  'Hello, and welcome. This is my voice, and I am recording it so my studio can speak for me.',
-  'I sell things I am proud of, and I want my customers to hear about them the way I would tell them — warm, clear and unhurried.',
-  'Fresh stock arrives every week. Message us to order, and we deliver across the city the same day.',
-  'Numbers help too: one, two, three, four, five, six, seven, eight, nine, ten. Thank you for listening.',
+/**
+ * Something to read. Five of them, and a different one each time the page
+ * opens or a take is discarded: a clone learns more from varied speech than
+ * from the same four sentences, and a seller reading the identical passage
+ * for the third time starts to sound like a robot — which is exactly what
+ * the clone would then copy. Each passage carries a few numbers and a
+ * question, because those shape a voice more than plain statements do.
+ */
+const SCRIPTS: string[][] = [
+  [
+    'Hello, and welcome. This is my voice, and I am recording it so my studio can speak for me.',
+    'I sell things I am proud of, and I want my customers to hear about them the way I would tell them — warm, clear and unhurried.',
+    'Fresh stock arrives every week. Message us to order, and we deliver across the city the same day.',
+    'Numbers help too: one, two, three, four, five, six, seven, eight, nine, ten. Thank you for listening.',
+  ],
+  [
+    'Good morning. Let me tell you a little about what we make and who we make it for.',
+    'Everything here is chosen by hand. If a thing is not good enough for my own house, it does not go on the shelf.',
+    'Where should I send it? Tell me your area and I will tell you when it can reach you — today, tomorrow, or Saturday.',
+    'Prices start at two thousand and go up to fifteen thousand. Ask me anything.',
+  ],
+  [
+    'Thank you for stopping by. My name is on this shop, so my name is on everything that leaves it.',
+    'People ask me how long it lasts. Honestly? Longer than you would expect, and I will tell you why.',
+    'We open at nine and close at six, Monday through Saturday. On Sunday we rest.',
+    'Count with me: one, two, three, four, five. That is how many are left of this one.',
+  ],
+  [
+    'Hi there. I am recording this so my videos can sound like me rather than like a machine.',
+    'What matters to me is that you get the thing you actually wanted, in good condition, when I said it would come.',
+    'If something is wrong, message me. I answer every message myself, usually within the hour.',
+    'Seven, eight, nine, ten — and one more thing before I go. Thank you for listening.',
+  ],
+  [
+    'Welcome, and thank you for your time. Let me speak the way I would speak to a customer standing in front of me.',
+    'This started small: one table, a few things I liked, and people who kept coming back.',
+    'Now we deliver across the city and beyond it, and the questions are the same. How much? How soon? Is it good?',
+    'The answers: from three thousand, same day, and yes — or your money back.',
+  ],
 ];
 
 const LANGUAGES = [
@@ -59,6 +93,14 @@ export default function VoicePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Which passage to read: random on arrival, and a different one whenever a take is discarded.
+  const [scriptIndex, setScriptIndex] = useState(0);
+  useEffect(() => {
+    setScriptIndex(Math.floor(Math.random() * SCRIPTS.length));
+  }, []);
+  const nextScript = () => setScriptIndex((i) => (i + 1 + Math.floor(Math.random() * (SCRIPTS.length - 1))) % SCRIPTS.length);
+  const script = SCRIPTS[scriptIndex] ?? SCRIPTS[0]!;
 
   // ---- the recording
   const [rec, setRec] = useState<RecState>('idle');
@@ -176,6 +218,8 @@ export default function VoicePage() {
     setTake(null, null);
     setRec('idle');
     setSeconds(0);
+    // New words for the new take: reading the same passage twice makes the second one flat.
+    nextScript();
   };
 
   // ---- naming, consent, sending
@@ -191,16 +235,10 @@ export default function VoicePage() {
     setBusy('Uploading your recording');
     setPct(0);
     try {
-      const ext = blob.type.includes('mp4')
-        ? 'm4a'
-        : blob.type.includes('ogg')
-          ? 'ogg'
-          : blob.type.includes('mpeg')
-            ? 'mp3'
-            : blob.type.includes('wav')
-              ? 'wav'
-              : 'webm';
-      const file = new File([blob], fileName ?? `voice-sample.${ext}`, { type: blob.type || 'audio/webm' });
+      // "audio/webm;codecs=opus" is what a recorder announces; the parameters are not part of the type.
+      const type = (blob.type || 'audio/webm').split(';')[0]!.trim();
+      const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : type.includes('mpeg') ? 'mp3' : type.includes('wav') ? 'wav' : 'webm';
+      const file = new File([blob], fileName ?? `voice-sample.${ext}`, { type });
       const asset = await uploadFile(workspace.id, file, (p) => setPct(p.pct));
       setPct(null);
       setBusy('Making your voice — about half a minute');
@@ -322,7 +360,7 @@ export default function VoicePage() {
         ) : (
           <>
             <blockquote className={own.script}>
-              {SCRIPT.map((line) => (
+              {script.map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </blockquote>

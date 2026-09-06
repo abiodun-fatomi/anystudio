@@ -13,7 +13,8 @@ export interface UploadProgress {
 }
 
 export async function uploadFile(workspaceId: string, file: File, onProgress?: (p: UploadProgress) => void, signal?: AbortSignal): Promise<MediaAssetRow> {
-  const mime = file.type || guessMime(file.name);
+  // A recorder announces its codec too ("audio/webm;codecs=opus"); the parameters are not part of the type.
+  const mime = (file.type || guessMime(file.name)).split(';')[0]!.trim();
   const presigned = await api.media.presign(workspaceId, { filename: file.name, mime, bytes: file.size });
 
   await new Promise<void>((resolve, reject) => {

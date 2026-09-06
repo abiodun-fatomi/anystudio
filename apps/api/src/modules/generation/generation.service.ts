@@ -42,6 +42,7 @@ import {
   dubLanguage,
   generationDebitKey,
   parseCapabilityParams,
+  withoutPipelineFields,
   redactLocked,
   type Capability,
   type GenerationOutput,
@@ -104,8 +105,12 @@ export class GenerationService {
    * succeeds: the worker's dispatcher re-reads QUEUED rows and picks it up.
    */
   async request(req: GenerationRequest): Promise<GenerationResult> {
+    // A caller may send back a row's own params ("do it again"), and those carry
+    // what the last run wrote for itself — the lyrics, the shot plan, the filmed
+    // presenter. Dropped here, so a new request is genuinely new work.
+    const asked = req.kind === 'CHILD' ? req.params : withoutPipelineFields((req.params ?? {}) as Record<string, unknown>);
     // Validate before touching money.
-    const parsed = parseCapabilityParams(req.capability, req.params);
+    const parsed = parseCapabilityParams(req.capability, asked);
     if (!parsed.ok) throw new ValidationError(parsed.issues);
     const params = parsed.params as Record<string, unknown>;
 
@@ -293,6 +298,26 @@ export class GenerationService {
   async touchParent(childId: string): Promise<void> {
     const child = await this.db.generation.findUnique({ where: { id: childId }, select: { parentId: true } });
     if (child?.parentId) await this.db.generation.updateMany({ where: { id: child.parentId, status: 'RUNNING' }, data: { heartbeatAt: new Date() } });
+  }
+
+  /**
+   * "Shots are rendering" for six minutes tells a seller nothing. This counts
+   * the parent's children so the card can say which shot it is on; the caller
+   * publishes it, because the wording belongs to the worker.
+   */
+  async shotProgress(parentId: string): Promise<{ done: number; running: number; total: number; progress: number; detail: string } | null> {
+    const children = await this.db.generation.findMany({ where: { parentId }, select: { status: true } });
+    if (children.length === 0) return null;
+    const done = children.filter((c) => c.status === 'SUCCEEDED').length;
+    const running = children.filter((c) => c.status === 'RUNNING').length;
+    const detail =
+      done >= children.length
+        ? 'putting the ad together'
+        : `shot ${Math.min(done + 1, children.length)} of ${children.length}${running > 1 ? ` · ${running} rendering at once` : ''}`;
+    // 20 % for the plan, 50 % shared across the shots, the rest for stitching.
+    const progress = Math.round(20 + (done / children.length) * 50);
+    await this.db.generation.updateMany({ where: { id: parentId, status: 'RUNNING' }, data: { progress, heartbeatAt: new Date() } });
+    return { done, running, total: children.length, progress, detail };
   }
 
   /**
