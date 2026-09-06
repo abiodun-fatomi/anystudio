@@ -1128,6 +1128,22 @@ enum ProviderCapability {
 /// as its own row with its own priority, cost and switch — so demoting it for
 /// video does not demote it for images. `priority` picks the default and the
 /// fallback order; `enabled` is the switch an operator throws during an outage.
+/// One row per worker process that has ever run, refreshed every thirty
+/// seconds while it lives. The console reads it to say whether anyone is
+/// draining the queue — the question behind every "why is it still queued".
+model WorkerHeartbeat {
+  /// "worker@<hostname>" — one row per process, not per deploy.
+  id        String   @id
+  service   String
+  host      String
+  version   String?
+  startedAt DateTime
+  seenAt    DateTime
+
+  @@index([seenAt])
+  @@map("worker_heartbeats")
+}
+
 model ProviderModel {
   key             String /// "vertex:gemini-3-pro-image" — what the adapter registry answers to
   capability      ProviderCapability

@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/shell/Page';
 import { Button, Dialog, Input, Pager, useCursorPages, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
+import { WorkerBanner } from '../WorkerBanner';
 
 const CAPS = [
   '',
@@ -84,6 +85,7 @@ function Generations() {
   return (
     <div className="rise">
       <PageHeader title="Generations" lede="Newest first. Search by id, workspace id, provider job id or title." />
+      <WorkerBanner />
       <form
         className={styles.toolbar}
         onSubmit={(e) => {
