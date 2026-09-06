@@ -48,6 +48,8 @@ import { GenerationEvents } from '../modules/generation/generation.events';
 import { MediaService } from '../modules/media/media.service';
 import { ProviderRouter, type RouteCandidate, type RouteConstraint } from '../modules/provider/provider.router';
 import { QueueService } from '../modules/queue/queue.service';
+import { ProviderRegistry } from '../modules/provider/provider.registry';
+import { isVoiceLab } from '../modules/provider/adapters/voice-lab';
 import { fetchBytes } from '../modules/provider/adapters/http';
 import { Pipelines, type PipelineContext } from './pipelines';
 
@@ -87,6 +89,7 @@ export class GenerationRunner {
     private readonly router: ProviderRouter,
     private readonly queue: QueueService,
     private readonly pipelines: Pipelines,
+    private readonly registry: ProviderRegistry,
   ) {}
 
   async run(generationId: string): Promise<RunOutcome> {
@@ -145,6 +148,10 @@ export class GenerationRunner {
           return this.callWithFallback(d.candidates, { ...input, capability }, { ...opts, generationId }, log);
         },
         stage: (stage, progress, detail) => this.events.stage(generationId, stage, progress, detail),
+        voiceLab: (providerKey) => {
+          const p = this.registry.get(providerKey);
+          return isVoiceLab(p) ? p : null;
+        },
         media: this.media,
         db: this.db,
         generations: this.generations,
@@ -223,7 +230,7 @@ export class GenerationRunner {
     if (row.capability === 'VOICEOVER') {
       const voiceId = (row.input as { voiceId?: string }).voiceId;
       if (!voiceId) return {};
-      return { only: await this.vendorForVoice(voiceId) };
+      return { only: await this.vendorForVoice(voiceId, row.workspaceId) };
     }
     if (row.capability === 'DUB') {
       const p = row.input as CapabilityParams<'DUB'>;
@@ -234,9 +241,14 @@ export class GenerationRunner {
     return {};
   }
 
-  private async vendorForVoice(voiceId: string): Promise<string> {
-    const voice = await this.db.voiceProfile.findUnique({ where: { key: voiceId }, select: { providerKey: true, active: true } });
-    if (!voice?.active) throw new ProviderError('INVALID_INPUT', `unknown voice "${voiceId}"`, 'runner');
+  /** The vendor that holds a voice. A workspace's own voice is nobody else's: another workspace asking for it gets "unknown". */
+  private async vendorForVoice(voiceId: string, workspaceId: string): Promise<string> {
+    const voice = await this.db.voiceProfile.findUnique({
+      where: { key: voiceId },
+      select: { providerKey: true, active: true, kind: true, workspaceId: true },
+    });
+    if (!voice?.active || (voice.kind === 'CLONE' && voice.workspaceId !== workspaceId))
+      throw new ProviderError('INVALID_INPUT', `unknown voice "${voiceId}"`, 'runner');
     return voice.providerKey;
   }
 

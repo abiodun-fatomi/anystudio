@@ -75,7 +75,8 @@ export function ResultCard({
   const variants = card.outputs.filter((o) => o.role === 'variant');
   const text = isAudio || isSpokenVideo ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
   const audioText = isAudio
-    ? (card.outputs.find((o) => o.role === 'text')?.text as { title?: string | null; lyrics?: string | null; script?: string; genre?: string } | undefined)
+    ? (card.outputs.find((o) => o.role === 'text')?.text as
+        { title?: string | null; lyrics?: string | null; script?: string; genre?: string; myVoice?: { applied: boolean; note: string } | null } | undefined)
     : undefined;
   const mainUrl = main ? card.urls[main.key] : undefined;
   const [posting, setPosting] = useState(false);
@@ -152,6 +153,11 @@ export function ResultCard({
             )}
           </div>
         )
+      )}
+      {audioText?.myVoice && (
+        <div className={styles.videoNote} data-tone={audioText.myVoice.applied ? 'ok' : 'warn'}>
+          {audioText.myVoice.note}
+        </div>
       )}
       {audioText && (audioText.lyrics || audioText.script) && (
         <LyricsView label={audioText.lyrics ? 'Lyrics' : 'Script'} text={audioText.lyrics ?? audioText.script ?? ''} />

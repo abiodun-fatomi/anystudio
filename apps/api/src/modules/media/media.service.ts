@@ -42,7 +42,8 @@ const READ_TTL_SEC = 15 * 60;
 const LIMITS = {
   image: { maxBytes: 25 * 1024 * 1024, mimes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif']) },
   video: { maxBytes: 250 * 1024 * 1024, mimes: new Set(['video/mp4', 'video/quicktime', 'video/webm']) },
-  audio: { maxBytes: 30 * 1024 * 1024, mimes: new Set(['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/x-m4a']) },
+  // audio/webm is what a browser's recorder produces; the sniffer files it as video/webm, which is the same container.
+  audio: { maxBytes: 30 * 1024 * 1024, mimes: new Set(['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/webm']) },
 };
 
 export interface PresignedUpload {
@@ -392,6 +393,7 @@ function extFor(mime: string): string {
         'audio/x-m4a': 'm4a',
         'audio/wav': 'wav',
         'audio/ogg': 'ogg',
+        'audio/webm': 'webm',
       } as Record<string, string>
     )[mime] ?? 'bin'
   );

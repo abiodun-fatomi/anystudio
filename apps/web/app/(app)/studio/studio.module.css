@@ -516,6 +516,16 @@
 .videoNote strong {
   color: var(--ink);
 }
+.videoNote[data-tone='warn'] {
+  color: var(--warn-ink, var(--ink));
+  background: var(--warn-wash);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-md);
+  padding: var(--s-2) var(--s-3);
+}
+.videoNote[data-tone='ok'] {
+  color: var(--ink);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;

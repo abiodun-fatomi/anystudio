@@ -305,6 +305,14 @@ export const capabilityParams = {
      * few lines is completed.
      */
     lyricsMode: z.enum(['auto', 'exact', 'complete']).default('auto'),
+    /**
+     * Who sings: the music model, or the seller ('me') — the model's vocal
+     * is separated from the track and converted into their cloned voice.
+     * Experimental: needs a CLONE VoiceProfile in the workspace (`voiceId`).
+     */
+    singer: z.enum(['model', 'me']).default('model'),
+    /** The VoiceProfile key of their cloned voice, when `singer` is 'me'. */
+    voiceId: z.string().max(80).optional(),
     durationSec: z.number().int().min(30).max(240).default(120),
     /** Set by the pipeline on the row after the lyrics step so a retry does not write them twice. */
     lyricsWritten: z.string().max(3000).optional(),
@@ -396,6 +404,10 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
 /** How much of a song is heard before paying, and what the rest costs. */
 export const MUSIC_PREVIEW_SEC = 30;
 export const MUSIC_UNLOCK_COST_CODE = 'audio.music.unlock';
+/** A song sung in the seller's own voice is priced higher: the track, then stems and a voice conversion. */
+export const MUSIC_MY_VOICE_COST_CODE = 'audio.music.preview.my_voice';
+/** How long a voice sample must be to clone from, and how long is enough. */
+export const VOICE_SAMPLE = { minSec: 10, idealSec: 30, maxSec: 180 } as const;
 
 /** Outputs as a customer may see them: a locked track keeps its shape and loses its key. */
 export function redactLocked<T extends { locked?: boolean; key: string }>(outputs: T[] | null | undefined): T[] {

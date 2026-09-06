@@ -85,6 +85,7 @@ export type AuthEventName =
   | 'careers.job'
   | 'careers.application'
   | 'audio.unlock'
+  | 'audio.voice'
   | 'developer.project'
   | 'developer.key'
   | 'developer.webhook'

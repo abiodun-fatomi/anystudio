@@ -388,6 +388,7 @@ model Workspace {
   stores           StoreConnection[]
   products         CatalogueProduct[]
   refundRequests   RefundRequest[]
+  voices           VoiceProfile[]
 
   @@index([type])
   @@map("workspaces")
@@ -614,8 +615,16 @@ model MusicGenre {
 
 /// A voice the customer can pick for a voiceover. The row names the provider
 /// and its id for the voice, so the pipeline routes to exactly that provider.
+/// A voice the studio can speak in. PRESET rows are the catalogue everyone
+/// sees; a CLONE is one workspace's own voice, made from a recording its
+/// owner consented to, and never offered to anyone else.
+enum VoiceKind {
+  PRESET
+  CLONE
+}
+
 model VoiceProfile {
-  key             String   @id
+  key             String    @id
   /// The ProviderModel key that serves it, e.g. "elevenlabs:tts".
   providerKey     String
   /// The vendor's id for the voice.
@@ -627,11 +636,23 @@ model VoiceProfile {
   /// Words for the picker: "warm", "announcer", "conversational".
   tags            String[]
   sampleUrl       String?
-  active          Boolean  @default(true)
-  sort            Int      @default(100)
-  updatedAt       DateTime @updatedAt
+  active          Boolean   @default(true)
+  sort            Int       @default(100)
+  kind            VoiceKind @default(PRESET)
+  /// Set on a CLONE: the workspace that owns it. Null on a preset.
+  workspaceId     String?   @db.Uuid
+  /// The recording the clone was made from — a MediaAsset key in the workspace.
+  sampleKey       String?
+  /// When the owner confirmed it is their own voice and they consent to it being cloned.
+  consentAt       DateTime?
+  createdById     String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([language, sort])
+  @@index([workspaceId])
   @@map("voice_profiles")
 }
 

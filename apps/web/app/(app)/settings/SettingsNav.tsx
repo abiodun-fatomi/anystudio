@@ -7,6 +7,7 @@ const ITEMS = [
   { href: '/settings/profile', label: 'Profile' },
   { href: '/settings/security', label: 'Security' },
   { href: '/settings/workspace', label: 'Workspace' },
+  { href: '/settings/voice', label: 'Your voice' },
   { href: '/settings/notifications', label: 'Notifications' },
   { href: '/settings/data', label: 'Your data' },
 ];

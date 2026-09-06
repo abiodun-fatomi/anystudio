@@ -61,6 +61,8 @@ const CREDIT_COSTS = [
   { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
   { code: 'audio.music.unlock', credits: 30, label: 'Unlock the full song' },
   { code: 'audio.music', credits: 40, label: 'Full song' },
+  // Sung in the seller's own voice: the song, then stems and a voice conversion on top — vendor cost roughly double.
+  { code: 'audio.music.preview.my_voice', credits: 25, label: 'Song preview, sung in your voice' },
 ];
 
 /**

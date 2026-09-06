@@ -63,7 +63,7 @@ suite('GenerationRunner', () => {
   process.env.APP_ENV = 'test';
   const registry = new ProviderRegistry();
   const router = new ProviderRouter(db, registry);
-  const runner = new GenerationRunner(db, generations, events, media, router, queue, new Pipelines());
+  const runner = new GenerationRunner(db, generations, events, media, router, queue, new Pipelines(), registry);
 
   let workspaceId: string;
   let userId: string;

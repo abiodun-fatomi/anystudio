@@ -157,7 +157,18 @@ Prices live in `plans.priceByMarket` / `credit_packs.priceByMarket` (fixed per m
 | `openai:tts` (p30)     | `gpt-4o-mini-tts`                     | nova, onyx, coral                                                                                                                |
 | `spitch:tts`           | Spitch                                | Disabled: Yoruba, Igbo, Hausa by quote.                                                                                          |
 
-**Verify in the sandbox before launch:** Eleven Music's composition-plan field names against the live docs (the `chunks` shape used here is the documented v2 one); that the stub's 30-second preview cut matches the real track's loudness; MiniMax's `audio_setting` acceptance.
+### Your own voice
+
+A workspace can record its owner's voice (Settings → Your voice: 10 s to 3 min, browser recorder or an upload, consent ticked) and the API clones it at ElevenLabs — `POST /v1/voices/add`, an instant voice clone. The clone is a `VoiceProfile` row of kind `CLONE` with `workspaceId`, `sampleKey`, `consentAt` and `createdById`; the catalogue endpoint `GET /workspaces/:id/voices` returns presets plus that workspace's own, and nowhere else does the row appear — the runner, the voiceover pipeline and the music pipeline all refuse a clone that belongs to another workspace as "unknown voice". At most `CLONES_PER_WORKSPACE` (2) per workspace; deleting removes it at the vendor first (`DELETE /v1/voices/{id}`), then here.
+
+Two things use it:
+
+- **Voiceover in your voice** — the clone is just another voice in the picker; `elevenlabs:tts` reads the script with its `providerVoiceId`. Priced as any voiceover.
+- **Song sung in your voice (experimental)** — `singer: 'me'` on a MUSIC request, priced under `audio.music.preview.my_voice` (25; the server sets this code whatever the client claimed). The song is made normally, then `worker/pipelines/my-voice.ts` splits it into stems (`POST /v1/music/stem-separation`, `two_stems_v1`, a ZIP read by `adapters/unzip.ts`), converts the vocal stem with speech-to-speech (`POST /v1/speech-to-speech/{voice_id}`, `eleven_multilingual_sts_v2`) and mixes it back over the instrumental with ffmpeg. Every step falls back to the model's own vocal with a note on the result (`text.myVoice.note`) rather than failing the song. The melody and timing are the model's; only the timbre changes, which is why it is labelled experimental.
+
+These are not routed capabilities: a clone lives at one vendor and every later step has to happen there, so the adapter exposes them through the `VoiceLab` interface (`adapters/voice-lab.ts`) and pipelines reach it with `ctx.voiceLab(providerKey)`. Instant cloning needs a paid ElevenLabs plan (Starter or above); stems and speech-to-speech bill by audio length.
+
+**Verify in the sandbox before launch:** Eleven Music's composition-plan field names against the live docs (the `chunks` shape used here is the documented v2 one); that the stub's 30-second preview cut matches the real track's loudness; MiniMax's `audio_setting` acceptance; the file names inside the stem-separation ZIP (the adapter matches `vocal`/`voice` against everything else) and that speech-to-speech accepts a track as long as a song (STS is documented for speech; a 2–4 minute vocal stem is at the edge).
 
 ## Dubbing and lip-sync (Phase 11)
 

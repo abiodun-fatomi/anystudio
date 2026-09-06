@@ -14,6 +14,7 @@ import type { Capability, GenerationOutput, GenerationStage, ProviderArtifact, P
 import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
 import type { RouteConstraint } from '../../modules/provider/provider.router';
+import type { VoiceLab } from '../../modules/provider/adapters/voice-lab';
 import { copyPipeline } from './copy';
 import { musicPipeline } from './music';
 import { voiceoverPipeline } from './voiceover';
@@ -49,6 +50,8 @@ export interface PipelineContext {
     opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void; route?: RouteConstraint },
   ) => Promise<ProviderResult>;
   stage: (stage: GenerationStage, progress: number, detail?: string) => Promise<void>;
+  /** The adapter behind a VoiceProfile's providerKey, when it can clone and convert voices; null otherwise. */
+  voiceLab: (providerKey: string) => VoiceLab | null;
 }
 
 export interface PipelineResult {

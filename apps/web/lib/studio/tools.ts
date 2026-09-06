@@ -20,8 +20,8 @@ export type Field =
   | { key: string; kind: 'sizes'; label: string }
   | { key: string; kind: 'platforms'; label: string }
   | { key: string; kind: 'slider'; label: string; min: number; max: number; step: number; format: (v: number) => string }
-  /** A pick from a server catalogue (genres, voices, dub languages), fetched by the panel. */
-  | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices' | 'languages' | 'sourceLanguages'; hint?: string }
+  /** A pick from a server catalogue (genres, voices, dub languages), fetched by the panel. 'myVoices' is only the workspace's own. */
+  | { key: string; kind: 'catalogue'; label: string; source: 'genres' | 'voices' | 'myVoices' | 'languages' | 'sourceLanguages'; hint?: string }
   /** A file the tool works on, uploaded from the panel: the param holds the storage key. */
   | { key: string; kind: 'file'; label: string; accept: 'video' | 'audio'; hint?: string; required?: boolean }
   /** A box that must be ticked before the button works — permission for a real person's face and voice. */
@@ -454,8 +454,26 @@ export const TOOLS: Tool[] = [
           { id: 'exact', label: 'Sing them exactly' },
         ],
       },
+      {
+        key: 'singer',
+        kind: 'segment',
+        label: 'Sung by',
+        options: [
+          { id: 'model', label: 'The studio singer' },
+          { id: 'me', label: 'Me — my own voice' },
+        ],
+      },
+      {
+        key: 'voiceId',
+        kind: 'catalogue',
+        source: 'myVoices',
+        label: 'Which of your voices',
+        hint: 'Experimental. The studio sings the song, then the voice is swapped for yours — the melody and timing stay, the voice becomes yours. Costs more. Record a voice under Settings → Your voice.',
+        showIf: (v) => v.singer === 'me',
+      },
     ],
-    defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120, lyricsMode: 'auto' },
+    defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120, lyricsMode: 'auto', singer: 'model' },
+    costCodeFor: (v) => (v.singer === 'me' ? 'audio.music.preview.my_voice' : undefined),
   },
   {
     id: 'voice',
@@ -473,7 +491,13 @@ export const TOOLS: Tool[] = [
       done: 'Done',
     },
     fields: [
-      { key: 'voiceId', kind: 'catalogue', source: 'voices', label: 'Voice', hint: 'Nigerian, Kenyan and South African English voices are here too.' },
+      {
+        key: 'voiceId',
+        kind: 'catalogue',
+        source: 'voices',
+        label: 'Voice',
+        hint: 'Nigerian, Kenyan and South African English voices are here too. Your own voice, once recorded under Settings, is at the top.',
+      },
       {
         key: 'script',
         kind: 'text',

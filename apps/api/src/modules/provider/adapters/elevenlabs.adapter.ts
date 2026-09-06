@@ -8,6 +8,13 @@
  *   GET  https://api.elevenlabs.io/v1/dubbing/{id}                  → { status: dubbing | dubbed | failed, error }
  *   GET  https://api.elevenlabs.io/v1/dubbing/{id}/audio/{lang}     → the dubbed file (MP4 for a video source)
  *
+ * And, for a seller's own voice (see voice-lab.ts):
+ *
+ *   POST https://api.elevenlabs.io/v1/voices/add (multipart)         → { voice_id }        instant voice clone
+ *   DELETE https://api.elevenlabs.io/v1/voices/{voice_id}
+ *   POST https://api.elevenlabs.io/v1/music/stem-separation (multipart) → a ZIP of stems  (two_stems_v1: vocals + instrumental)
+ *   POST https://api.elevenlabs.io/v1/speech-to-speech/{voice_id} (multipart) → audio bytes, the same performance in that voice
+ *
  * Dubbing keeps the speaker's own voice (it clones it for the target
  * language) and, by default, the music and ambience under it. It does not
  * move the lips — the DUB pipeline adds that step with a LIPSYNC vendor
@@ -25,6 +32,8 @@
 import { ProviderError, dubLanguage, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
 import { http, poll } from './http';
+import { unzip } from './unzip';
+import type { VoiceLab, VoiceSample } from './voice-lab';
 
 const API = 'https://api.elevenlabs.io/v1';
 
@@ -34,7 +43,7 @@ const KNOWN: Record<string, { capability: Capability }> = {
   'elevenlabs:dubbing-v1': { capability: 'DUB' },
 };
 
-export class ElevenLabsProvider extends BaseProvider {
+export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
   static all(apiKey: string): ElevenLabsProvider[] {
     return Object.entries(KNOWN).map(([key, k]) => new ElevenLabsProvider(apiKey, key, k.capability));
   }
@@ -186,6 +195,97 @@ export class ElevenLabsProvider extends BaseProvider {
     opts.onProgress?.('speaking', 30);
     const bytes = await this.audio(`${API}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(format)}`, body, opts, 'tts');
     return { providerKey: this.key, artifacts: [{ bytes, mime: mimeOf(format), role: 'audio' }], meta: { model, voiceId } };
+  }
+
+  // ---- your own voice -----------------------------------------------------------
+
+  async cloneVoice(input: { name: string; samples: VoiceSample[]; description?: string; labels?: Record<string, string> }, signal?: AbortSignal) {
+    const form = new FormData();
+    form.set('name', input.name.slice(0, 100));
+    if (input.description) form.set('description', input.description.slice(0, 500));
+    if (input.labels) form.set('labels', JSON.stringify(input.labels));
+    // A phone recording in a room: let the vendor take the room out before it learns the voice.
+    form.set('remove_background_noise', 'true');
+    for (const s of input.samples) form.append('files', new Blob([s.bytes as unknown as ArrayBuffer], { type: s.mime }), s.filename);
+    const res = await this.raw(
+      `${API}/voices/add`,
+      { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'application/json' }, body: form },
+      { timeoutMs: 120_000, signal },
+      'voice clone',
+    );
+    const json = (await res.json()) as { voice_id?: string; requires_verification?: boolean };
+    if (!json.voice_id) throw new ProviderError('RETRYABLE', `${this.key}: no voice_id in clone response`, this.key, { raw: json });
+    return { providerVoiceId: json.voice_id };
+  }
+
+  async deleteVoice(providerVoiceId: string, signal?: AbortSignal): Promise<void> {
+    try {
+      await this.raw(
+        `${API}/voices/${encodeURIComponent(providerVoiceId)}`,
+        { method: 'DELETE', headers: { 'xi-api-key': this.apiKey } },
+        { timeoutMs: 30_000, signal },
+        'voice delete',
+      );
+    } catch (err) {
+      // Already gone is the outcome we wanted.
+      if (err instanceof ProviderError && err.meta.status === 404) return;
+      throw err;
+    }
+  }
+
+  async separateStems(audio: VoiceSample, opts: { timeoutMs: number; signal?: AbortSignal }) {
+    const form = new FormData();
+    form.set('file', new Blob([audio.bytes as unknown as ArrayBuffer], { type: audio.mime }), audio.filename);
+    form.set('stem_variation_id', 'two_stems_v1');
+    form.set('output_format', 'mp3_44100_128');
+    const res = await this.raw(
+      `${API}/music/stem-separation`,
+      { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'application/zip' }, body: form },
+      { timeoutMs: opts.timeoutMs, signal: opts.signal },
+      'stem separation',
+    );
+    const zip = new Uint8Array(await res.arrayBuffer());
+    let entries: ReturnType<typeof unzip>;
+    try {
+      entries = unzip(zip).filter((e) => /\.(mp3|wav|flac|ogg)$/i.test(e.name));
+    } catch (err) {
+      throw new ProviderError('RETRYABLE', `${this.key}: stems came back unreadable: ${err instanceof Error ? err.message : err}`, this.key);
+    }
+    const isVocal = (n: string) => /vocal|voice|sing/i.test(n) && !/no[_ -]?vocal|instrument|accomp|backing/i.test(n);
+    const vocals = entries.find((e) => isVocal(e.name.split('/').pop() ?? e.name));
+    const instrumental = entries.find((e) => e !== vocals);
+    if (!vocals || !instrumental)
+      throw new ProviderError(
+        'RETRYABLE',
+        `${this.key}: expected a vocal and an instrumental stem, got ${entries.map((e) => e.name).join(', ') || 'nothing'}`,
+        this.key,
+      );
+    return { vocals: vocals.bytes, instrumental: instrumental.bytes, mime: 'audio/mpeg' };
+  }
+
+  async convertVoice(providerVoiceId: string, audio: VoiceSample, opts: { timeoutMs: number; signal?: AbortSignal; language?: string }) {
+    const form = new FormData();
+    form.set('audio', new Blob([audio.bytes as unknown as ArrayBuffer], { type: audio.mime }), audio.filename);
+    form.set('model_id', 'eleven_multilingual_sts_v2');
+    form.set('remove_background_noise', 'false');
+    // Similarity high, stability middling: it is their voice we want, on the model's melody.
+    form.set('voice_settings', JSON.stringify({ stability: 0.45, similarity_boost: 0.9, style: 0.15, use_speaker_boost: true }));
+    const res = await this.raw(
+      `${API}/speech-to-speech/${encodeURIComponent(providerVoiceId)}?output_format=mp3_44100_128`,
+      { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'audio/mpeg' }, body: form },
+      { timeoutMs: opts.timeoutMs, signal: opts.signal },
+      'voice conversion',
+    );
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength < 1000) throw new ProviderError('RETRYABLE', `${this.key}: voice conversion returned ${bytes.byteLength} bytes`, this.key);
+    return { bytes, mime: 'audio/mpeg' };
+  }
+
+  /** ElevenLabs bills these in characters-equivalent credits; the figures are the Pro-plan cents, rounded up. */
+  voiceLabCostMinor(step: 'clone' | 'stems' | 'convert', seconds: number): number {
+    if (step === 'clone') return 0;
+    if (step === 'stems') return Math.ceil(seconds / 60) * 10;
+    return Math.ceil(seconds) * 2;
   }
 
   /** POST JSON and take the bytes. */

@@ -741,6 +741,14 @@ export interface Voice {
   tags: string[];
   sampleUrl: string | null;
   provider: string;
+  kind: 'PRESET' | 'CLONE';
+  /** This workspace's own voice. */
+  mine: boolean;
+  createdAt: string | null;
+}
+export interface WorkspaceVoices {
+  voices: Voice[];
+  cloning: { available: boolean; limit: number; sample: { minSec: number; idealSec: number; maxSec: number } };
 }
 export interface AdminOverview {
   users: { total: number; newThisWeek: number };
@@ -978,6 +986,11 @@ export const api = {
   audio: {
     genres: () => request<Genre[]>('GET', '/audio/genres'),
     voices: () => request<Voice[]>('GET', '/audio/voices'),
+    /** The catalogue plus the workspace's own cloned voices. */
+    workspaceVoices: (workspaceId: string) => request<WorkspaceVoices>('GET', `/workspaces/${workspaceId}/voices`),
+    cloneVoice: (workspaceId: string, body: { sampleKey: string; name?: string; language?: string; consent: true }) =>
+      request<Voice>('POST', `/workspaces/${workspaceId}/voices`, body),
+    deleteVoice: (workspaceId: string, key: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/voices/${encodeURIComponent(key)}`),
     dubLanguages: () => request<DubLanguages>('GET', '/audio/dub-languages'),
     unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
     unlock: (workspaceId: string, generationId: string) =>
