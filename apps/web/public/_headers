@@ -2,3 +2,10 @@
 # these straight from the assets binding without invoking the Worker.
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The Why-page film and voice samples are large and change rarely; a day at
+# the edge, a week in the browser with revalidation, keeps repeat visits free.
+/why/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+/voices/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400

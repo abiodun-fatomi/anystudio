@@ -18,6 +18,46 @@
 .why-film .cap b{font-family:var(--f-display);font-size:15px;font-weight:700;display:block}
 .why-film .cap span{font-size:13px;opacity:.85}
 .why-film .cap .mono{color:#fff;opacity:.75}
+.why-film .cap{transition:opacity .4s}
+.why-film[data-stage="phone"] .cap,.why-film[data-stage="swipe"] .cap{opacity:0}
+/* the pop-up: appears while she looks at the shot, answers itself when she nods */
+.film-ask{position:absolute;top:6%;right:5%;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 10px;border-radius:999px;background:rgba(255,255,255,.96);color:#17131a;box-shadow:0 12px 40px rgba(0,0,0,.28);font-size:14px;font-weight:600;letter-spacing:-.01em;
+  opacity:0;transform:translateY(8px) scale(.96);transition:opacity .35s,transform .35s cubic-bezier(.2,.8,.2,1);pointer-events:none;backdrop-filter:blur(6px)}
+.film-ask-mark{width:26px;height:26px;border-radius:8px;background:#17131a;color:#fff;display:grid;place-items:center}
+.film-ask-mark svg{width:16px;height:16px}
+.film-ask-q em{font-style:normal;color:var(--accent)}
+.film-ask-yes{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;background:#efecf1;color:#5f5766;font-size:13px;transition:background .25s,color .25s,transform .25s}
+.film-ask-yes svg{width:13px;height:13px;opacity:0;transition:opacity .25s}
+.why-film[data-stage="ask"] .film-ask,.why-film[data-stage="yes"] .film-ask{opacity:1;transform:none}
+.why-film[data-stage="yes"] .film-ask-yes{background:var(--accent);color:#fff;transform:scale(1.06)}
+.why-film[data-stage="yes"] .film-ask-yes svg{opacity:1}
+/* the phone: what her screen shows, at full quality instead of through a lens */
+.film-phone{position:absolute;inset:0;display:grid;grid-template-columns:auto auto;align-items:center;justify-content:center;gap:clamp(18px,4vw,44px);padding:4%;
+  background:radial-gradient(120% 100% at 50% 60%,rgba(23,19,26,.55),rgba(23,19,26,.9));opacity:0;visibility:hidden;transition:opacity .55s,visibility 0s .55s}
+.why-film[data-stage="phone"] .film-phone,.why-film[data-stage="swipe"] .film-phone{opacity:1;visibility:visible;transition:opacity .55s,visibility 0s}
+.film-phone-shell{height:88%;aspect-ratio:9/19;max-height:100%;border-radius:clamp(18px,3vw,34px);padding:clamp(5px,.8vw,9px);background:#0d0b10;box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.12);
+  transform:translateY(14px) scale(.97);transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+.why-film[data-stage="phone"] .film-phone-shell,.why-film[data-stage="swipe"] .film-phone-shell{transform:none}
+.film-phone-screen{position:relative;width:100%;height:100%;border-radius:clamp(14px,2.4vw,27px);overflow:hidden;background:#fff}
+.film-phone-track{display:flex;width:200%;height:100%;transition:transform .7s cubic-bezier(.3,.9,.25,1)}
+.why-film[data-stage="swipe"] .film-phone-track{transform:translateX(-50%)}
+.film-phone-track figure{position:relative;margin:0;width:50%;height:100%}
+.film-phone-track img{width:100%;height:100%;object-fit:cover;display:block}
+.film-phone-track figcaption{position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(23,19,26,.7);color:#fff;font-size:11px;font-weight:600;letter-spacing:.02em;backdrop-filter:blur(4px)}
+.film-finger{position:absolute;left:70%;bottom:32%;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 6px rgba(255,255,255,.28);opacity:0;transform:translateX(0)}
+.why-film[data-stage="swipe"] .film-finger{animation:filmSwipe .9s ease-out both}
+@keyframes filmSwipe{0%{opacity:0;transform:translateX(0)}20%{opacity:1}100%{opacity:0;transform:translateX(-110px)}}
+.film-dots{position:absolute;left:50%;top:10px;transform:translateX(-50%);display:flex;gap:5px}
+.film-dots i{width:6px;height:6px;border-radius:50%;background:rgba(23,19,26,.25);transition:background .3s}
+.film-dots i:first-child{background:#17131a}
+.why-film[data-stage="swipe"] .film-dots i:first-child{background:rgba(255,255,255,.4)}
+.why-film[data-stage="swipe"] .film-dots i:last-child{background:#fff}
+.film-phone-note{color:#fff;max-width:22ch;display:grid;gap:6px;opacity:0;transform:translateY(6px);transition:opacity .5s .25s,transform .5s .25s}
+.why-film[data-stage="phone"] .film-phone-note,.why-film[data-stage="swipe"] .film-phone-note{opacity:1;transform:none}
+.film-phone-note b{font-family:var(--f-display);font-size:clamp(17px,2vw,24px);font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.film-phone-note span{font-size:14px;opacity:.8;line-height:1.45}
+@media(max-width:600px){.film-phone{grid-template-columns:1fr;justify-items:center}.film-phone-shell{height:90%}.film-phone-note,.film-phone-track figcaption{display:none}.film-ask{font-size:12.5px;top:5%;right:4%;gap:7px;padding:7px 8px 7px 7px}.film-ask-yes{padding:4px 8px}}
+@media(prefers-reduced-motion:reduce){.film-phone-track,.film-phone-shell,.film-ask{transition:none}.film-finger{animation:none!important}}
 .why-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;margin-top:6px}
 @media(max-width:860px){.why-stats{grid-template-columns:repeat(2,1fr)}}
 .why-stats>div{background:var(--surface-2);padding:20px 22px}
@@ -153,11 +193,29 @@
         <a class="btn btn-ghost btn-lg" href="#roi">See what it saves you</a>
       </div>
     </div>
-    <div class="why-film rv">
-      <video class="vd" src="/why/hero.mp4" poster="/why/hero-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="A shop owner photographs a tote bag, then turns her phone to the camera: the screen shows it already styled on a studio backdrop, and she smiles"></video>
+    <div class="why-film rv" id="film" data-stage="film">
+      <video class="vd" poster="/why/hero-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="A shop owner stands up, photographs a tote bag on her counter, pauses over the result, says yes, and turns her phone to the camera. Then the screen: the same bag on studio white, and with a swipe, on a sunlit terrace."></video>
+      <div class="film-ask" aria-hidden="true">
+        <span class="film-ask-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/></svg></span>
+        <span class="film-ask-q">Make it on <em>AnyStudio</em>?</span>
+        <span class="film-ask-yes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Yes</span>
+      </div>
+      <div class="film-phone" aria-hidden="true">
+        <div class="film-phone-shell">
+          <div class="film-phone-screen">
+            <div class="film-phone-track">
+              <figure><img src="/why/bag-white.webp" alt="" loading="lazy" decoding="async"><figcaption>Studio white</figcaption></figure>
+              <figure><img src="/why/bag-terrace.webp" alt="" loading="lazy" decoding="async"><figcaption>Golden hour</figcaption></figure>
+            </div>
+            <span class="film-finger"></span>
+            <span class="film-dots"><i></i><i></i></span>
+          </div>
+        </div>
+        <div class="film-phone-note"><b>Same photo. Every background.</b><span>Swipe through the set. Post the one that sells.</span></div>
+      </div>
       <div class="cap">
-        <div><b>A fabric shop in Lagos, on a Tuesday.</b><span>Photograph it. Send it. Post it. The studio is the part in between.</span></div>
-        <span class="mono">00:05</span>
+        <div><b>A fabric shop in Lagos, on a Tuesday.</b><span class="cap-line">Photograph it. Send it. Post it. The studio is the part in between.</span></div>
+        <span class="mono" id="filmClock">00:00</span>
       </div>
     </div>
     <div class="why-stats rv">
@@ -180,11 +238,11 @@
     </div>
     <div class="why-people">
       <article class="why-person rv">
-        <div class="pic"><img src="/why/person.webp" alt="A man at a kitchen table shows off a birthday flyer he made on his phone" loading="lazy"></div>
+        <div class="pic"><img src="/why/person.webp" alt="A woman at a kitchen table laughs as she shows off the birthday flyer she made on her phone" loading="lazy"></div>
         <div class="body">
           <div class="who">For anyone</div>
           <h3>The flyer that looks properly done</h3>
-          <p class="story">Kunle's daughter turns six on Saturday. He sends one photo and one line on WhatsApp, picks a look, changes the words himself, and it is on his Status before the jollof is served.</p>
+          <p class="story">Claire's son turns six on Saturday. She sends one photo and one line on WhatsApp, picks a look, changes the words herself, and it is on her Status before dinner is on the table.</p>
           <ul>
             <li>Flyers, posters and portraits from a photo or a sentence</li>
             <li>Restyle and enhance your own pictures</li>
@@ -419,6 +477,42 @@
   var POST_CREDITS = 13, REEL_CREDITS = 120, WEEKS = 4.33, OUR_HOURS = 0.05;
   var cur = 'NGN';
   var $ = function(id){ return document.getElementById(id); };
+  /* ---------- the film: pick a source, then run the timeline ---------- */
+  var film = $('film');
+  if (film) (function(){
+    var v = film.querySelector('video'), clock = $('filmClock'), line = film.querySelector('.cap-line');
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var conn = navigator.connection || {};
+    var slow = !!conn.saveData || /(^|[^a-z])[23]g/.test(conn.effectiveType || '');
+    var big = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2400 && !slow;
+    var av1 = false;
+    try { av1 = /probably|maybe/.test(v.canPlayType('video/mp4; codecs="av01.0.08M.10"')); } catch (e) {}
+    v.src = '/why/hero' + (big ? '-4k' : '') + (av1 ? '.av1' : '') + '.mp4';
+    if (reduce) return;                     /* plain loop, no pop-up, no phone */
+    v.loop = false;
+    var stage = 'film', timer = null;
+    function set(s){ if (stage !== s) { stage = s; film.setAttribute('data-stage', s); } }
+    function say(t){ if (line && line.textContent !== t) line.textContent = t; }
+    v.addEventListener('timeupdate', function(){
+      if (v.ended) return;
+      var t = v.currentTime;
+      clock.textContent = '00:' + (t < 10 ? '0' : '') + Math.floor(t);
+      if (t < 5.0) { set('film'); say('Photograph it. Send it. Post it. The studio is the part in between.'); }
+      else if (t < 7.4) { set('ask'); say('One question, and the studio does the rest.'); }
+      else if (t < 8.9) { set('yes'); }
+      else { set('film'); say('Ready before she has put the phone down.'); }
+    });
+    v.addEventListener('ended', function(){
+      set('phone'); clock.textContent = '00:10';
+      timer = setTimeout(function(){
+        set('swipe'); clock.textContent = '00:12';
+        timer = setTimeout(function(){ set('film'); v.currentTime = 0; v.play().catch(function(){}); }, 2600);
+      }, 2000);
+    });
+    document.addEventListener('visibilitychange', function(){ if (document.hidden) { clearTimeout(timer); } });
+    film.addEventListener('click', function(){ if (v.paused && stage === 'film') v.play().catch(function(){}); });
+  })();
+
   var els = { posts:$('roiPosts'), reels:$('roiReels'), cost:$('roiCost'), hours:$('roiHours'), hourly:$('roiHourly'), aov:$('roiAov'), orders:$('roiOrders') };
   if (!els.posts) return;
   function money(n){
