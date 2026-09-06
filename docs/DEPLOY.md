@@ -311,18 +311,17 @@ certificate is three problems at once; behind a plain hostname it is one.
 
 ## 8. What is not ready
 
-- Only the **user portal** (`apps/web`, → `app.`) has a Worker config. The
-  org and admin portals do not exist as apps yet; when they do, each gets its
-  own `wrangler.jsonc` with the same three environments.
-- The marketing site (`anystudio.ai` apex) is still the static prototype in
-  `design/landing.html`. Until it moves into an app, nothing serves the apex.
-- **No `prisma/migrations/…_init` yet.** Run `pnpm db:migrate --name init`
-  locally once (against `pnpm infra:up`'s Postgres) and commit the folder —
-  `db:deploy` on Render applies committed migrations and does nothing without
-  them, so every `/auth/*` call would fail on a missing table.
-- Rate limiting inside the API is a table (`apps/api/config/rate-limit`)
-  and not yet a guard; the Cloudflare rule in section 3.2 is the only limit
-  on `/api/v1/auth/*` for now.
+- **Staging and production** are not yet in `render.yaml` or provisioned:
+  today only the dev environment exists end to end. Add them by copying the
+  dev services (a paid instance costs from the day it is created).
+- **Approvals that only the account owner can start**, each taking days to
+  weeks: Flutterwave business verification, Paddle live-account website
+  review, Meta business verification, Meta and TikTok app review. Until
+  they pass, payments run in sandbox/test mode and Instagram/TikTok post
+  only for accounts with a role on the app.
+- **The mobile app** is a waitlist (`/why#mobile`), not an app.
+- The complete variable checklist, with the steps to obtain each value, is
+  `docs/ENV.md`.
 
 ---
 
