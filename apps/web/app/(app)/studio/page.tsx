@@ -247,6 +247,24 @@ function Studio() {
     [generate, setUrl, sourceKey],
   );
 
+  /**
+   * The same settings, back in the panel, with nothing made and nothing
+   * charged: the seller changes one thing and taps the button themselves.
+   * "Do it again" is the other half of the pair — same settings, straight to
+   * the vendor.
+   */
+  const edit = useCallback(
+    (card: GenerationCard) => {
+      const t = toolById(card.toolId);
+      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
+      setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast({ title: 'Ready to change', body: 'Your settings are back in the panel. Change what you like, then make it again.' });
+    },
+    [setUrl, sourceKey, toast],
+  );
+
   const useAsSource = useCallback(
     (key: string) => {
       setSourceMeta(null);
@@ -372,6 +390,7 @@ function Studio() {
                 onUseAsSource={useAsSource}
                 onSendToVideo={sendToVideo}
                 onAgain={again}
+                onEdit={edit}
                 onCancel={(k) => void cancel(k)}
                 onDismiss={dismiss}
                 onRefreshUrls={(k, keys) => void resolveUrls(k, keys)}

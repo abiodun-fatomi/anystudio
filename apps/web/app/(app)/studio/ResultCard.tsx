@@ -38,6 +38,7 @@ export function ResultCard({
   onUseAsSource,
   onSendToVideo,
   onAgain,
+  onEdit,
   onCancel,
   onDismiss,
   onRefreshUrls,
@@ -50,6 +51,8 @@ export function ResultCard({
   onUseAsSource: (key: string) => void;
   onSendToVideo: (key: string) => void;
   onAgain: (card: GenerationCard) => void;
+  /** Put this result's settings back in the panel without making anything, so one thing can be changed first. */
+  onEdit: (card: GenerationCard) => void;
   onCancel: (clientKey: string) => void;
   onDismiss: (clientKey: string) => void;
   onRefreshUrls: (clientKey: string, keys: string[]) => void;
@@ -119,6 +122,9 @@ export function ResultCard({
             </span>
           )}
           <span className={styles.failActions}>
+            <Button variant="subtle" size="sm" onClick={() => onEdit(card)}>
+              Change something
+            </Button>
             <Button size="sm" onClick={() => onAgain(card)}>
               Try again
             </Button>
@@ -237,6 +243,11 @@ export function ResultCard({
         {card.status === 'SUCCEEDED' && main?.role === 'image' && (
           <Button variant="ghost" size="sm" onClick={() => onSendToVideo(main.key)}>
             Make a reel from this
+          </Button>
+        )}
+        {card.status === 'SUCCEEDED' && (
+          <Button variant="ghost" size="sm" onClick={() => onEdit(card)}>
+            Change something
           </Button>
         )}
         {card.status === 'SUCCEEDED' && (
