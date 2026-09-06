@@ -53,6 +53,7 @@ const WEBHOOK_EVERY_MS = 10_000;
 /** Help chats nobody has touched for a day are closed and their transcript sent. */
 const SUPPORT_SWEEP_EVERY_MS = 15 * 60_000;
 /** Scheduled posts: the database is the queue, so this is a poll, not a consumer. */
+const METRICS_EVERY_MS = 15 * 60_000;
 const PUBLISH_EVERY_MS = 15_000;
 /** Social tokens about to expire are exchanged for fresh ones. */
 const TOKEN_REFRESH_EVERY_MS = 6 * 60 * 60_000;
@@ -116,6 +117,8 @@ export class WorkerSupervisor {
         TOKEN_REFRESH_EVERY_MS,
       ),
     );
+    // How the posts are doing: the youngest hourly, the rest every six hours; the tick itself runs often and skips what is fresh.
+    this.timers.push(setInterval(() => void this.publishing.refreshMetrics(), METRICS_EVERY_MS));
     this.timers.push(setInterval(() => void this.billingTick(), BILLING_EVERY_MS));
     this.timers.push(
       setInterval(() => void this.catalogue.syncDue().catch((err: unknown) => logger.error({ err }, 'catalogue sync sweep failed')), CATALOGUE_EVERY_MS),

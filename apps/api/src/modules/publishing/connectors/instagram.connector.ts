@@ -22,10 +22,11 @@
  * app (its developers and testers) can post — which is enough for dev.
  */
 import type { PublishFormat } from '@prisma/client';
-import { PublishError, type Connector, type PublishInput, type PublishOutcome, type RemoteAccount, type TokenSet } from './types';
+import { PublishError, type Connector, type PostMetrics, type PublishInput, type PublishOutcome, type RemoteAccount, type TokenSet } from './types';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const SCOPES = ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'business_management'];
+// instagram_manage_insights is what lets us read reach, saves and views back off a post we published.
+const SCOPES = ['instagram_basic', 'instagram_content_publish', 'instagram_manage_insights', 'pages_show_list', 'pages_read_engagement', 'business_management'];
 const CONTAINER_POLL_MS = 5_000;
 const CONTAINER_TIMEOUT_MS = 8 * 60_000;
 
@@ -170,5 +171,44 @@ export class InstagramConnector implements Connector {
       /* the post is up; the link is a nicety */
     }
     return { externalPostId: published.id, externalUrl: permalink };
+  }
+
+  /**
+   * Likes and comments are plain fields on the media; reach, saves, shares
+   * and views are "insights" and vary by media type and API version, so
+   * they are asked for separately and a refusal there leaves them null
+   * rather than failing the whole read.
+   */
+  async metrics(account: { externalId: string; accessToken: string }, externalPostId: string): Promise<PostMetrics> {
+    const token = account.accessToken;
+    const media = await graph<{ like_count?: number; comments_count?: number }>(`/${externalPostId}`, {
+      token,
+      query: { fields: 'like_count,comments_count' },
+    });
+    const out: PostMetrics = {
+      views: null,
+      reach: null,
+      likes: media.like_count ?? null,
+      comments: media.comments_count ?? null,
+      shares: null,
+      saved: null,
+    };
+    try {
+      const ins = await graph<{ data?: Array<{ name: string; values?: Array<{ value: number }> }> }>(`/${externalPostId}/insights`, {
+        token,
+        query: { metric: 'reach,saved,shares,views' },
+      });
+      for (const m of ins.data ?? []) {
+        const v = m.values?.[0]?.value ?? null;
+        if (m.name === 'reach') out.reach = v;
+        if (m.name === 'saved') out.saved = v;
+        if (m.name === 'shares') out.shares = v;
+        if (m.name === 'views') out.views = v;
+      }
+    } catch (err) {
+      // Stories older than a day, and some media types, have no insights; the counts above still stand.
+      if (err instanceof PublishError && err.reauth) throw err;
+    }
+    return out;
   }
 }

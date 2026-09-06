@@ -1961,6 +1961,10 @@ model PublishJob {
   externalPostId String?
   externalUrl    String?
   publishedAt    DateTime?
+  /// How the post is doing, as the platform last reported it:
+  /// { views, reach, likes, comments, shares, saved } — any may be null.
+  metrics        Json?
+  metricsAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

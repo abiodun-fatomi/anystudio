@@ -43,6 +43,16 @@ export interface PublishOutcome {
   externalUrl: string | null;
 }
 
+/** How a post is doing, as the platform reports it. Anything the platform does not give is null, never zero. */
+export interface PostMetrics {
+  views: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saved: number | null;
+}
+
 /**
  * Thrown by a connector when the platform said no. `permanent` means
  * retrying will not help (a rejected caption, an unsupported file, a token
@@ -76,4 +86,6 @@ export interface Connector {
   publish(account: { externalId: string; accessToken: string; pageId?: string | null }, input: PublishInput): Promise<PublishOutcome>;
   /** Which formats this platform takes, so the UI can offer the right ones. */
   formats(): PublishFormat[];
+  /** The numbers on a post already published; PublishError with `reauth` when the token is dead. */
+  metrics(account: { externalId: string; accessToken: string }, externalPostId: string): Promise<PostMetrics>;
 }
