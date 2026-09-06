@@ -537,8 +537,8 @@
   var film = $('film');
   if (film) (function(){
     var FILMS = {
-      lagos:  { title: 'A fabric shop in Lagos, on a Tuesday.', raw: '/why/bag-raw.webp', white: '/why/bag-white.webp', life: '/why/bag-terrace.webp', lifeCap: 'Golden hour', rawNote: ['Her photo, as taken.', 'Counter, clutter, shop light.'], lifeNote: ['Then a terrace at golden hour.', 'Same bag. Post the one that sells.'], poster: '/why/film-lagos-poster.webp' },
-      lisbon: { title: 'A ceramics studio in Lisbon, on a Thursday.', raw: '/why/vase-raw.webp', white: '/why/vase-white.webp', life: '/why/vase-oak.webp', lifeCap: 'Sunday morning', rawNote: ['Her photo, as taken.', 'Work table, clay dust, overhead light.'], lifeNote: ['Then an oak sideboard on a Sunday.', 'Same vase. Post the one that sells.'], poster: '/why/film-lisbon-poster.webp' }
+      lagos:  { title: 'A fabric shop in Lagos, on a Tuesday.', raw: '/why/bag-raw.webp', white: '/why/bag-white.webp', life: '/why/bag-terrace.webp', lifeCap: 'Golden hour', rawNote: ['Her photo, as taken.', 'Counter, clutter, shop light.'], lifeNote: ['Then a terrace at golden hour.', 'Same bag. Post the one that sells.'], poster: '/why/film-lagos-poster.webp', beats: [5.0, 7.4, 8.9] },
+      lisbon: { title: 'A ceramics studio in Lisbon, on a Thursday.', raw: '/why/vase-raw.webp', white: '/why/vase-white.webp', life: '/why/vase-oak.webp', lifeCap: 'Sunday morning', rawNote: ['Her photo, as taken.', 'Work table, clay dust, overhead light.'], lifeNote: ['Then an oak sideboard on a Sunday.', 'Same vase. Post the one that sells.'], poster: '/why/film-lisbon-poster.webp', beats: [4.4, 6.6, 7.8] }
     };
     var vids = film.querySelectorAll('video'), clock = $('filmClock'), line = film.querySelector('.cap-line'), title = film.querySelector('.cap-title');
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -574,15 +574,14 @@
     function set(s){ if (stage !== s) { stage = s; film.setAttribute('data-stage', s); } }
     function say(t){ if (line && line.textContent !== t) line.textContent = t; }
     function note(pair){ film.querySelector('.film-note-t').textContent = pair[0]; film.querySelector('.film-note-s').textContent = pair[1]; }
-    var cut = false;
     function onTime(){
-      var el = v(); if (el.ended || cut) return;
+      var el = v(); if (el.ended) return;
       var t = el.currentTime;
-      if (t >= 9.6) { cut = true; el.pause(); onEnded(); return; }   /* cut before her screen is legible */
       clock.textContent = '00:' + (t < 10 ? '0' : '') + Math.floor(t);
-      if (t < 5.0) { set('film'); say('Photograph it. Send it. Post it. The studio is the part in between.'); }
-      else if (t < 7.4) { set('ask'); say('One question, and the studio does the rest.'); }
-      else if (t < 8.9) { set('yes'); }
+      var b = FILMS[cur].beats;
+      if (t < b[0]) { set('film'); say('Photograph it. Send it. Post it. The studio is the part in between.'); }
+      else if (t < b[1]) { set('ask'); say('One question, and the studio does the rest.'); }
+      else if (t < b[2]) { set('yes'); }
       else { set('film'); say('Ready before the phone is down.'); }
     }
     function onEnded(){
@@ -599,7 +598,7 @@
     function swap(){
       var nextId = cur === order[0] ? order[1] : order[0], next = vids[1 - slot];
       if (!next.src) { next.src = srcFor(nextId); next.poster = FILMS[nextId].poster; }
-      next.currentTime = 0; cut = false;
+      next.currentTime = 0;
       cur = nextId; slot = 1 - slot; dress(cur);
       film.setAttribute('data-swap', String(slot));
       set('film');
