@@ -28,7 +28,7 @@ export class PhotoroomProvider extends BaseProvider {
   }
 
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
-    const q = new URLSearchParams({ imageUrl: this.file(input, 'sourceKey'), outputSize: 'originalImage', export: 'format=png' });
+    const q = new URLSearchParams({ imageUrl: this.file(input, 'sourceKey'), outputSize: 'originalImage', 'export.format': 'png' });
     switch (input.capability) {
       case 'BACKGROUND_REPLACE': {
         const p = this.params(input, 'BACKGROUND_REPLACE');

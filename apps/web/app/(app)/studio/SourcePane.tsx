@@ -18,6 +18,8 @@ interface Pending {
   id: string;
   name: string;
   pct: number;
+  /** Kept on failure so one click can send it again. */
+  file?: File;
   error?: string;
 }
 
@@ -82,26 +84,33 @@ export function SourcePane({
     void load();
   }, [load, refreshKey]);
 
+  /** One upload, by id, so a failed one can be sent again under the same row. */
+  const send = useCallback(
+    async (id: string, file: File) => {
+      setPending((p) =>
+        p.some((x) => x.id === id) ? p.map((x) => (x.id === id ? { ...x, pct: 0, error: undefined } : x)) : [...p, { id, name: file.name, pct: 0 }],
+      );
+      try {
+        const asset = await uploadFile(workspace.id, file, (p) => setPending((ps) => ps.map((x) => (x.id === id ? { ...x, pct: p.pct } : x))));
+        setPending((ps) => ps.filter((x) => x.id !== id));
+        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
+        setUrls((prev) => ({ ...prev, ...u }));
+        setRecent((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
+        onSelect(asset);
+      } catch (err) {
+        setPending((ps) => ps.map((x) => (x.id === id ? { ...x, file, error: err instanceof Error ? err.message : 'Upload failed' } : x)));
+      }
+    },
+    [workspace.id, onSelect],
+  );
+
   const accept = useCallback(
     async (files: FileList | File[]) => {
       const list = [...files].filter((f) => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
       if (list.length === 0) return;
-      for (const file of list) {
-        const id = crypto.randomUUID();
-        setPending((p) => [...p, { id, name: file.name, pct: 0 }]);
-        try {
-          const asset = await uploadFile(workspace.id, file, (p) => setPending((ps) => ps.map((x) => (x.id === id ? { ...x, pct: p.pct } : x))));
-          setPending((ps) => ps.filter((x) => x.id !== id));
-          const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
-          setUrls((prev) => ({ ...prev, ...u }));
-          setRecent((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
-          onSelect(asset);
-        } catch (err) {
-          setPending((ps) => ps.map((x) => (x.id === id ? { ...x, error: err instanceof Error ? err.message : 'Upload failed' } : x)));
-        }
-      }
+      for (const file of list) await send(crypto.randomUUID(), file);
     },
-    [workspace.id, onSelect],
+    [send],
   );
 
   // Paste a screenshot straight in.
@@ -216,7 +225,23 @@ export function SourcePane({
                 <Icon.library width={16} height={16} />
                 <div>
                   <div className={styles.uploadName}>{p.name}</div>
-                  {p.error ? <div className={styles.uploadErr}>{p.error}</div> : <Progress value={p.pct} label={p.pct < 100 ? 'Uploading' : 'Checking'} />}
+                  {p.error ? (
+                    <>
+                      <div className={styles.uploadErr}>{p.error}</div>
+                      <div className={styles.uploadRetry}>
+                        {p.file && (
+                          <Button size="sm" onClick={() => void send(p.id, p.file!)}>
+                            Try again
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => setPending((ps) => ps.filter((x) => x.id !== p.id))}>
+                          Remove
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <Progress value={p.pct} label={p.pct < 100 ? 'Uploading' : 'Checking'} />
+                  )}
                 </div>
               </div>
             ))}

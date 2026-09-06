@@ -269,10 +269,16 @@ export class GenerationRunner {
           { ok: false, kind: pe.kind, latencyMs: Date.now() - started },
           { generationId: opts.generationId },
         );
-        if (!pe.retryable) {
+        // A malformed request is our bug in ONE adapter, not a verdict on the
+        // customer's input: another vendor may well serve it. Log it loudly
+        // (it is a bug to fix) and move on. Moderation and quality verdicts
+        // still stop the line — a second vendor would say the same.
+        const ourBug = pe.kind === 'INVALID_INPUT' && pe.providerKey !== 'runner';
+        if (!pe.retryable && !ourBug) {
           log.warn({ providerKey: c.row.key, kind: pe.kind, err: pe.message }, 'provider refused; not trying another — the input is the problem');
           throw pe;
         }
+        if (ourBug) log.error({ providerKey: c.row.key, err: pe.message }, 'adapter sent a request the vendor rejected as malformed — fix the adapter');
         if (i < candidates.length - 1) {
           log.warn(
             { providerKey: c.row.key, kind: pe.kind, err: pe.message, next: candidates[i + 1]!.row.key },
