@@ -94,6 +94,24 @@ describe('ProviderRouter', () => {
     expect(d.excluded).toEqual([{ key: 'z:nokey', reason: 'no adapter or credential in this process' }]);
   });
 
+  it('outside production, a capability with no vendor falls to the stub — but a real vendor always comes first', async () => {
+    process.env.APP_ENV = 'development';
+    const reg = new ProviderRegistry(); // registers the stub itself
+    reg.register(new Fake('a:cheap', ['IMAGE_EDIT']));
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT', { priority: 10 })]);
+    const router = new ProviderRouter(db, reg);
+
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual(['a:cheap']);
+    const d = await router.route('UPSCALE', 'PERSONAL');
+    expect(d.candidates.map((c) => c.row.key)).toEqual(['stub:any']);
+    expect(d.candidates[0]!.row.costPerCall).toBe(0);
+    // `only` names one vendor; the stub must not stand in for it.
+    expect((await router.route('UPSCALE', 'PERSONAL', { only: 'z:none' })).candidates).toEqual([]);
+
+    process.env.APP_ENV = 'production';
+    expect((await new ProviderRouter(db, new ProviderRegistry()).route('UPSCALE', 'PERSONAL')).candidates).toEqual([]);
+  });
+
   it('routes an ORGANIZATION workspace to its tier row and everyone else to the general one', async () => {
     const { db } = fakeDb([
       row('d:birefnet', 'BACKGROUND_REMOVE', { priority: 10 }),

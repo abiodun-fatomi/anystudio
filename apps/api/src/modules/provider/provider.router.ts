@@ -64,6 +64,25 @@ const MIN_SAMPLES = 5;
 const TRIP_ERROR_RATE = 0.5;
 const COOLDOWN_MS = 60 * 1000;
 
+/** The no-vendor adapter's key; registered only outside production. */
+const STUB_KEY = 'stub:any';
+
+/** A row the stub can be routed through when the table has none for it. Never persisted. */
+function stubRow(capability: Capability): ProviderModel {
+  return {
+    key: STUB_KEY,
+    capability,
+    priority: 1000,
+    costPerCall: 0,
+    enabled: true,
+    breakerOpenedAt: null,
+    workspaceType: null,
+    config: null,
+    licenceNote: 'Development stub: no vendor, no licence, never in production.',
+    updatedAt: new Date(0),
+  };
+}
+
 @Injectable()
 export class ProviderRouter {
   private readonly health = new Map<string, Health>();
@@ -128,6 +147,18 @@ export class ProviderRouter {
         logger.warn({ providerKey: row.key, capability, ...ctx }, 'breaker half-open: sending one probe request');
       }
       candidates.push({ row, provider });
+    }
+
+    // Outside production the stub answers whatever no vendor can, so a
+    // capability with no key behind it still produces a (watermarked) result
+    // instead of a failed generation. It is a last resort, never a peer: a
+    // real vendor that exists but is merely unhealthy still comes first.
+    if (candidates.length === 0 && !ctx.only) {
+      const stub = this.registry.get(STUB_KEY);
+      if (stub && stub.supports(capability)) {
+        candidates.push({ row: stubRow(capability), provider: stub });
+        logger.warn({ capability, workspaceType, excluded, ...ctx }, 'no vendor for this capability here: the stub will answer');
+      }
     }
 
     if (candidates.length === 0) {
