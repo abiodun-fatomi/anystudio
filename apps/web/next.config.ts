@@ -22,7 +22,8 @@ const config: NextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://*.paddle.com")' },
+          // The microphone is ours alone (Settings → Your voice records there); no third-party frame ever gets it.
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=(), payment=(self "https://*.paddle.com")' },
         ],
       },
     ];

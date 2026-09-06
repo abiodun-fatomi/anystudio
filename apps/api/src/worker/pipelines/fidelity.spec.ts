@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
 import { FIDELITY, fidelity } from './fidelity';
-import { pasteProduct } from './image';
+import { pasteProduct, pasteProductAt } from './image';
 
 const W = 320;
 const H = 320;
@@ -81,6 +81,31 @@ describe('fidelity', () => {
     expect(r.placed?.x).toBeCloseTo(200 / 640, 1);
     expect(r.placed?.y).toBeCloseTo(0.5, 1);
     expect(r.placed?.scale).toBeLessThan(1);
+  });
+
+  it('pastes the original product back where the model put it, in a reshaped frame', async () => {
+    const src = await scene(PLAIN, PRODUCT);
+    const mask = await cutout(PRODUCT);
+    // The model recoloured the product (blue) and moved it to the left third of a 16:9 frame.
+    const wide = await sharp(
+      Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">${MARBLE.replace('width="100%" height="100%"', 'width="640" height="360"')}${productSvg('#2255DD', '#FFFFFF', 200, 180, 75)}</svg>`,
+      ),
+    )
+      .png()
+      .toBuffer();
+    const r = await fidelity(src, mask, wide);
+    expect(r.score).toBeLessThan(FIDELITY.keep);
+    expect(r.structure).toBeGreaterThanOrEqual(FIDELITY.locate);
+    const fixed = await pasteProductAt(wide, mask, r.placed!);
+    // The centre of where it was found is now the original magenta, not the model's blue.
+    const { data } = await sharp(fixed).extract({ left: 196, top: 176, width: 8, height: 8 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const [rr, gg, bb] = [data[0]!, data[1]!, data[2]!];
+    expect(rr).toBeGreaterThan(180);
+    expect(bb).toBeLessThan(160);
+    expect(gg).toBeLessThan(80);
+    // And the fidelity of the fixed image is high again.
+    expect((await fidelity(src, mask, fixed)).score).toBeGreaterThanOrEqual(FIDELITY.keep);
   });
 
   it('returns zero when there is no product to judge', async () => {

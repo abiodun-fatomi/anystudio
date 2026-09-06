@@ -13,7 +13,18 @@ import type { IconName } from '@/components/shell/icons';
 export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
 
 export type Field =
-  | { key: string; kind: 'text'; label: string; placeholder?: string; hint?: string; maxLength?: number; rows?: number; required?: boolean }
+  | {
+      key: string;
+      kind: 'text';
+      label: string;
+      placeholder?: string;
+      hint?: string;
+      maxLength?: number;
+      rows?: number;
+      required?: boolean;
+      /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
+      suggestions?: string[];
+    }
   | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string }> }
   | { key: string; kind: 'select'; label: string; options: Array<{ value: string; label: string }> }
   | { key: string; kind: 'switch'; label: string; hint?: string }
@@ -46,6 +57,12 @@ export interface Tool {
   costCodeFor?: (values: Record<string, unknown>) => string | undefined;
   /** Values the panel keeps for itself (which branch is showing); never sent as params. */
   localKeys?: string[];
+  /**
+   * The copy model proposes three directions for this product under the
+   * named field (see StudioService.ideas); `fills` says which param each
+   * part of an idea lands in.
+   */
+  ideas?: { under: string; fills: { prompt: string; motion?: string } };
 }
 
 const SIZE_OPTIONS = Object.entries(EXPORT_SIZES).map(([id, s]) => ({
@@ -91,6 +108,7 @@ export const TOOLS: Tool[] = [
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
     ],
     defaults: { preserveProduct: true, aspect: '1:1', sizes: ['feed_square', 'story'] },
+    ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
   },
   {
     id: 'background',
@@ -107,6 +125,7 @@ export const TOOLS: Tool[] = [
       { key: 'relight', kind: 'switch', label: 'Match the lighting' },
     ],
     defaults: { aspect: '1:1', shadow: true, relight: true },
+    ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
   },
   {
     id: 'cutout',
@@ -175,6 +194,7 @@ export const TOOLS: Tool[] = [
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
     ],
     defaults: { preserveProduct: false, aspect: '1:1', sizes: ['feed_square', 'story'], brand: { showPrice: false, showBusinessName: false } },
+    ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
   },
   {
     id: 'flyer',
@@ -352,6 +372,7 @@ export const TOOLS: Tool[] = [
     ],
     defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false },
     costCodeFor: (v) => adPlan(Number(v.shots))?.costCode,
+    ideas: { under: 'prompt', fills: { prompt: 'prompt', motion: 'motion' } },
   },
   {
     id: 'music',
@@ -414,7 +435,14 @@ export const TOOLS: Tool[] = [
           { value: 'ko', label: 'Korean' },
         ],
       },
-      { key: 'mood', kind: 'text', label: 'Mood', placeholder: 'joyful · romantic · confident · nostalgic', maxLength: 60 },
+      {
+        key: 'mood',
+        kind: 'text',
+        label: 'Mood',
+        placeholder: 'Tap a few, or type your own',
+        maxLength: 60,
+        suggestions: ['joyful', 'romantic', 'confident', 'nostalgic', 'celebratory', 'heartfelt', 'calm', 'hopeful', 'proud', 'cheeky', 'grateful', 'party'],
+      },
       {
         key: 'tempo',
         kind: 'segment',
@@ -438,20 +466,22 @@ export const TOOLS: Tool[] = [
       {
         key: 'lyrics',
         kind: 'text',
-        label: 'Your own words',
-        placeholder: 'Leave blank and we write the song from the brief. Or give us a hook, a few lines, or the whole thing with [Verse] and [Chorus].',
-        rows: 5,
+        label: 'Your words, a story or a memory',
+        placeholder:
+          'Leave blank and we write the song from the brief. Or tell us a story or a memory — how the business started, who it is for, a day you will not forget. Or give us a hook, a few lines, or full lyrics with [Verse] and [Chorus].',
+        rows: 6,
         maxLength: 3000,
-        hint: 'A line or two is enough — we keep every word you give us and write the rest around it. Full lyrics with [Verse] and [Chorus] are sung as written.',
+        hint: 'A story becomes the song — names, places and moments kept. A line or two is kept word for word with the rest written around it. Full lyrics are sung as written.',
       },
       {
         key: 'lyricsMode',
         kind: 'segment',
-        label: 'With your words',
+        label: 'With what you wrote',
         options: [
           { id: 'auto', label: 'Decide for me' },
-          { id: 'complete', label: 'Build a song around them' },
-          { id: 'exact', label: 'Sing them exactly' },
+          { id: 'inspire', label: 'Turn my story into a song' },
+          { id: 'complete', label: 'Keep my lines, write the rest' },
+          { id: 'exact', label: 'Sing it exactly' },
         ],
       },
       {

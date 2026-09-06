@@ -7,13 +7,13 @@
  * error — the panel says what this would cost and offers the two ways to
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
-import { useEffect, useRef, useState } from 'react';
-import { api, type DubLanguages, type Genre, type Quote } from '@/lib/api';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { api, type DubLanguages, type Genre, type Idea, type IdeasOut, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
-import { Button, Combobox, Input, Progress, SegmentedControl, Select, Slider, Switch, Textarea } from '@/components/ui';
+import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
@@ -24,6 +24,7 @@ export function ToolPanel({
   values,
   onChange,
   hasSource,
+  sourceKey,
   onGenerate,
   busy,
 }: {
@@ -31,6 +32,8 @@ export function ToolPanel({
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
   hasSource: boolean;
+  /** The photo on the canvas, for the ideas the copy model proposes. */
+  sourceKey?: string | null;
   onGenerate: (quote: Quote) => void;
   busy: boolean;
 }) {
@@ -72,7 +75,12 @@ export function ToolPanel({
             {tool.fields
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
-                <FieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => onChange(f.key, v)} />
+                <Fragment key={f.key}>
+                  <FieldControl field={f} value={values[f.key]} onChange={(v) => onChange(f.key, v)} />
+                  {tool.ideas && tool.ideas.under === f.key && (
+                    <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
+                  )}
+                </Fragment>
               ))}
           </div>
 
@@ -336,9 +344,133 @@ function FileField({ field, value, onChange }: { field: Extract<Field, { kind: '
   );
 }
 
+/** An idea lands in the prompt, and its camera move in the camera field when that one is still empty. */
+function pickIdea(tool: Tool, values: Record<string, unknown>, idea: Idea, onChange: (key: string, value: unknown) => void) {
+  if (!tool.ideas) return;
+  onChange(tool.ideas.fills.prompt, idea.prompt);
+  if (tool.ideas.fills.motion && idea.motion && !String(values[tool.ideas.fills.motion] ?? '').trim()) onChange(tool.ideas.fills.motion, idea.motion);
+}
+
+/**
+ * Three directions for THIS product, proposed by the copy model from the
+ * photo and what the seller told us about themselves; a tap fills the
+ * field. Refetched when the photo, the format or the length changes;
+ * "More" asks for a different three.
+ */
+function Ideas({ tool, values, sourceKey, onPick }: { tool: Tool; values: Record<string, unknown>; sourceKey: string | null; onPick: (idea: Idea) => void }) {
+  const { workspace } = useApp();
+  const [out, setOut] = useState<IdeasOut | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [round, setRound] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const format = tool.id === 'video' ? String(values.format ?? 'reveal') : undefined;
+  const shots = tool.id === 'video' ? Number(values.shots ?? 1) : undefined;
+  // A new photo or a new format is a new question; a new product name or price is not worth a refetch on every keystroke,
+  // so those are read at call time rather than watched.
+  const extras = useRef<{ productName?: string; price?: string }>({});
+  extras.current = {
+    productName: typeof values.productName === 'string' && values.productName.trim() ? values.productName : undefined,
+    price: typeof values.price === 'string' && values.price.trim() ? values.price : undefined,
+  };
+  useEffect(() => {
+    setRound(0);
+  }, [sourceKey, format, shots, tool.id]);
+  useEffect(() => {
+    if (tool.needsSource && !sourceKey) {
+      setOut(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    api.studio
+      .ideas(workspace.id, { tool: tool.id, sourceKey: sourceKey ?? undefined, format, shots, ...extras.current, round })
+      .then((r) => {
+        if (live) setOut(r);
+      })
+      .catch(() => {
+        if (live) setOut(null);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, tool.id, tool.needsSource, sourceKey, format, shots, round]);
+
+  if (tool.needsSource && !sourceKey) return null;
+  return (
+    <div className={styles.ideas} aria-live="polite">
+      <div className={styles.ideasHead}>
+        <span>
+          {out?.product ? `Ideas for your ${out.product.toLowerCase()}` : 'Ideas for this product'}
+          {out?.source === 'stock' && <span className={styles.ideasNote}> · general suggestions</span>}
+        </span>
+        <button type="button" className={styles.ideasMore} onClick={() => setRound((r) => r + 1)} disabled={loading}>
+          {loading ? 'Thinking…' : 'More'}
+        </button>
+      </div>
+      {out ? (
+        <div className={styles.ideaList}>
+          {out.ideas.map((idea) => (
+            <button
+              key={idea.title + idea.prompt}
+              type="button"
+              className={styles.idea}
+              aria-pressed={picked === idea.prompt}
+              onClick={() => {
+                setPicked(idea.prompt);
+                onPick(idea);
+              }}
+            >
+              <strong>{idea.title}</strong>
+              <span>{idea.prompt}</span>
+              <em>{idea.why}</em>
+            </button>
+          ))}
+        </div>
+      ) : loading ? (
+        <Skeleton style={{ height: 96 }} />
+      ) : null}
+    </div>
+  );
+}
+
 function FieldControl({ field, value, onChange }: { field: Field; value: unknown; onChange: (v: unknown) => void }) {
   switch (field.kind) {
     case 'text':
+      if (field.suggestions && !field.rows) {
+        const current = String(value ?? '')
+          .split(/[,·]/)
+          .map((w) => w.trim().toLowerCase())
+          .filter(Boolean);
+        const toggle = (word: string) => {
+          const next = current.includes(word) ? current.filter((w) => w !== word) : [...current, word];
+          const joined = next.join(', ');
+          if (field.maxLength && joined.length > field.maxLength) return;
+          onChange(joined);
+        };
+        return (
+          <div>
+            <Input
+              label={field.label}
+              placeholder={field.placeholder}
+              hint={field.hint}
+              maxLength={field.maxLength}
+              value={String(value ?? '')}
+              onChange={(e) => onChange(e.target.value)}
+              optional={!field.required}
+            />
+            <div className={styles.chips} style={{ marginTop: 'var(--s-2)' }}>
+              {field.suggestions.map((word) => (
+                <button key={word} type="button" className={styles.chip} aria-pressed={current.includes(word)} onClick={() => toggle(word)}>
+                  {word}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
       return field.rows ? (
         <Textarea
           label={field.label}

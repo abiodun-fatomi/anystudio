@@ -33,6 +33,8 @@ export const FIDELITY = {
   keep: 0.86,
   /** Between: composite the original pixels back over the scene. Below: try again. */
   composite: 0.62,
+  /** Structure at or above this means the product was FOUND, even if changed; the original can be pasted where it is. */
+  locate: 0.35,
 } as const;
 
 export interface FidelityReport {

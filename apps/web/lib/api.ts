@@ -982,7 +982,26 @@ export interface DubLanguages {
   missing: string;
 }
 
+export interface Idea {
+  title: string;
+  prompt: string;
+  motion?: string;
+  why: string;
+}
+export interface IdeasOut {
+  product: string | null;
+  ideas: Idea[];
+  source: 'model' | 'stock';
+}
+
 export const api = {
+  studio: {
+    /** Three creative directions for this product and tool, from the copy model. */
+    ideas: (
+      workspaceId: string,
+      body: { tool: string; sourceKey?: string; format?: string; shots?: number; productName?: string; price?: string; round?: number },
+    ) => request<IdeasOut>('POST', `/workspaces/${workspaceId}/studio/ideas`, body),
+  },
   audio: {
     genres: () => request<Genre[]>('GET', '/audio/genres'),
     voices: () => request<Voice[]>('GET', '/audio/voices'),

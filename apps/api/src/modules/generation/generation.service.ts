@@ -55,6 +55,8 @@ import { QueueService } from '../queue/queue.service';
 import { ConflictError, CreditLineError, InsufficientCreditsError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import {
+  MAX_ATTEMPTS,
+  QUEUED_STALE_AFTER_MS,
   STALE_AFTER_MS,
   TERMINAL_STATUSES,
   type GenerationOutcome,
@@ -500,32 +502,69 @@ export class GenerationService {
   /**
    * Reclaim generations nobody is working on any more.
    *
-   * This is what makes a lost Redis job survivable. Anything RUNNING whose
-   * heartbeat has gone quiet, or anything QUEUED that was never picked up,
-   * is failed and refunded. Run it on a schedule.
+   * This is what makes a lost job survivable. Three cases, treated
+   * differently because they mean different things:
    *
-   * Returns the ids it reclaimed, so the caller can log and alert on a number
-   * that should normally be zero.
+   *   - RUNNING with a quiet heartbeat: the worker that had it died mid-job
+   *     (a deploy, a crash, an out-of-memory). The work is not wrong, just
+   *     interrupted — so it goes back on the queue for another attempt
+   *     while attempts remain, and only then is failed and refunded.
+   *   - RUNNING, a parent in 'waiting': its shots are the ones alive, and
+   *     they keep its heartbeat; while any shot is still queued or running
+   *     the parent is left alone however quiet it is.
+   *   - QUEUED for a very long time: nothing picked it up in an hour and a
+   *     half. The dispatcher re-queues orphans far sooner than this, so by
+   *     now the wait itself is the failure; refund.
+   *
+   * Returns the ids it reclaimed (failed or requeued), so the caller can log
+   * and alert on a number that should normally be zero.
    */
   async sweepStale(now = new Date()): Promise<string[]> {
-    const cutoff = new Date(now.getTime() - STALE_AFTER_MS);
+    const runningCutoff = new Date(now.getTime() - STALE_AFTER_MS);
+    const queuedCutoff = new Date(now.getTime() - QUEUED_STALE_AFTER_MS);
     const stale = await this.db.generation.findMany({
       where: {
-        status: { in: ['QUEUED', 'RUNNING'] },
-        OR: [{ heartbeatAt: { lt: cutoff } }, { heartbeatAt: null, createdAt: { lt: cutoff } }],
+        OR: [
+          {
+            status: 'RUNNING',
+            OR: [{ heartbeatAt: { lt: runningCutoff } }, { heartbeatAt: null, createdAt: { lt: runningCutoff } }],
+            NOT: { kind: 'PARENT', stage: 'waiting', children: { some: { status: { in: ['QUEUED', 'RUNNING'] } } } },
+          },
+          { status: 'QUEUED', createdAt: { lt: queuedCutoff } },
+        ],
       },
-      select: { id: true },
+      select: { id: true, status: true, kind: true, capability: true, attempts: true, heartbeatAt: true, createdAt: true },
       take: 100, // bounded: a backlog is drained over several runs, not one long lock
     });
 
     const reclaimed: string[] = [];
-    for (const { id } of stale) {
+    for (const row of stale) {
       try {
-        await this.fail(id, { failureReason: 'no worker heartbeat; reclaimed by the sweeper' });
-        reclaimed.push(id);
+        const quietMin = Math.round((now.getTime() - (row.heartbeatAt ?? row.createdAt).getTime()) / 60_000);
+        if (row.status === 'RUNNING' && row.kind !== 'PARENT' && row.attempts < MAX_ATTEMPTS) {
+          const reason = `the worker stopped mid-job (no heartbeat for ${quietMin} min — usually a restart); trying again, attempt ${row.attempts + 1} of ${MAX_ATTEMPTS}`;
+          await this.requeue(row.id, reason);
+          const r = await this.queue.enqueue(row.id, row.capability);
+          logger.warn(
+            { generationId: row.id, capability: row.capability, attempts: row.attempts, queued: r.queued },
+            'sweeper requeued an interrupted generation',
+          );
+        } else if (row.status === 'RUNNING') {
+          await this.fail(row.id, {
+            failureReason:
+              row.kind === 'PARENT'
+                ? `the ad's shots stopped reporting for ${quietMin} min; the worker that ran them was probably restarted. Credits refunded — try again.`
+                : `the worker stopped mid-job ${row.attempts} times (no heartbeat for ${quietMin} min each time). Credits refunded.`,
+          });
+        } else {
+          await this.fail(row.id, {
+            failureReason: `waited ${quietMin} min and no worker picked it up. Credits refunded — check the worker is running.`,
+          });
+        }
+        reclaimed.push(row.id);
       } catch (err) {
         // One poisoned row must not stop the others being refunded.
-        logger.error({ err, generationId: id }, 'sweeper could not reclaim generation');
+        logger.error({ err, generationId: row.id }, 'sweeper could not reclaim generation');
       }
     }
     if (reclaimed.length) logger.warn({ count: reclaimed.length, reclaimed }, 'generations reclaimed by the sweeper');

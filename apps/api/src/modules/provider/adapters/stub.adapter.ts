@@ -143,6 +143,31 @@ function stubText(input: ProviderInput) {
     };
   }
   if (task === 'field') return { value: `Stub rewrite of ${(input.params as { field?: string }).field ?? 'a field'}` };
+  if (task === 'ideas') {
+    return {
+      product: 'Stub product',
+      ideas: [
+        {
+          title: 'Stub: the detail',
+          prompt: 'Start tight on the stitching, pull back to the whole product on a wooden table.',
+          motion: 'slow pull-back',
+          why: 'A detail first makes people stop.',
+        },
+        {
+          title: 'Stub: in use',
+          prompt: 'The product in the place it is used, morning light, one slow slide across it.',
+          motion: 'lateral slide',
+          why: 'Buyers picture owning it.',
+        },
+        {
+          title: 'Stub: the drop',
+          prompt: 'The product on a dark surface, one rim light, building to the price.',
+          motion: 'orbit',
+          why: 'Urgency sells this week.',
+        },
+      ],
+    };
+  }
   if (task === 'lyrics') {
     return {
       title: 'Stub song',

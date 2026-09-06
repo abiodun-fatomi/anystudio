@@ -82,3 +82,12 @@ export const TERMINAL_STATUSES = ['SUCCEEDED', 'FAILED', 'CANCELLED'] as const;
  * paid for once. The worker refreshes `heartbeatAt` far more often than this.
  */
 export const STALE_AFTER_MS = 15 * 60 * 1000;
+/**
+ * A QUEUED row is a different matter: it is waiting for a slot, and a busy
+ * heavy queue (an eight-shot ad on two GPU slots) can legitimately keep a
+ * shot waiting for a long time. Only after this long with nobody picking it
+ * up is the wait itself the failure.
+ */
+export const QUEUED_STALE_AFTER_MS = 90 * 60 * 1000;
+/** How many times a generation may be started before its failure is final. Shared by the runner and the sweeper. */
+export const MAX_ATTEMPTS = 3;
