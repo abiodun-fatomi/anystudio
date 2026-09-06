@@ -126,6 +126,7 @@ model User {
   platformReads        PlatformMessageRead[]
 
   @@index([status])
+  @@index([deleteRequestedAt])
   @@map("users")
 }
 
@@ -1408,6 +1409,7 @@ enum MediaStatus {
   PENDING // presigned, not yet seen
   READY // verified and usable
   REJECTED // wrong type, too large, or failed the content gate
+  PURGED // the object is gone from storage; the row stays so references still resolve to "deleted"
 }
 
 model MediaAsset {
@@ -1439,6 +1441,7 @@ model MediaAsset {
   @@index([workspaceId, createdAt])
   @@index([workspaceId, sha256])
   @@index([generationId])
+  @@index([deletedAt])
   @@map("media_assets")
 }
 

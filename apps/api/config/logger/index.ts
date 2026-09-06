@@ -7,6 +7,7 @@
 
 import pino, { type LoggerOptions } from 'pino';
 import { REDACT_PATHS } from './redact';
+import { captureFromLog } from './sentry';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -40,6 +41,15 @@ export const loggerOptions: LoggerOptions = {
   formatters: { level: (label) => ({ level: label }) },
   // Readable in development, machine-parseable everywhere else.
   transport: devTransport(),
+  // Every error-level line is also an error-tracker event, when one is configured.
+  hooks: {
+    logMethod(args, method, level) {
+      if (level >= 50 && args.length && typeof args[0] === 'object' && args[0] !== null) {
+        captureFromLog(args[0] as Record<string, unknown>, typeof args[1] === 'string' ? args[1] : undefined);
+      }
+      method.apply(this, args as Parameters<typeof method>);
+    },
+  },
 };
 
 export const logger = pino(loggerOptions);

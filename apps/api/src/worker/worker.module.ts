@@ -24,6 +24,7 @@ import { NotificationModule } from '../modules/notification/notification.module'
 import { PublishingModule } from '../modules/publishing/publishing.module';
 import { UsageBillingModule } from '../modules/usage-billing/usage-billing.module';
 import { CatalogueModule } from '../modules/catalogue/catalogue.module';
+import { RetentionModule } from '../modules/retention/retention.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CatalogueModule } from '../modules/catalogue/catalogue.module';
     PublishingModule,
     UsageBillingModule,
     CatalogueModule,
+    RetentionModule,
   ],
   providers: [Pipelines, GenerationRunner, WorkerSupervisor],
   exports: [WorkerSupervisor],

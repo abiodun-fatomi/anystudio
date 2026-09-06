@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import '../styles/globals.css';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
+import { ErrorReporter } from '@/components/ErrorReporter';
 
 export const metadata: Metadata = {
   title: { default: 'AnyStudio', template: '%s · AnyStudio' },
@@ -36,7 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ErrorReporter />
+        {children}
+      </body>
     </html>
   );
 }

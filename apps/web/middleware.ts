@@ -29,7 +29,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { baseHost, isLocalHost, siblingOrigin } from '@/lib/hosts';
 
 /** The marketing pages. On the app host these belong to the other hostname. */
-const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers', '/why', '/careers'];
+const MARKETING_PATHS = ['/', '/org', '/pricing', '/developers', '/why', '/careers', '/terms', '/privacy', '/refunds'];
 
 /**
  * The sign-in pages. They live on the marketing host — `app.` is for people

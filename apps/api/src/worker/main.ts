@@ -13,9 +13,11 @@ import { WorkerModule } from './worker.module';
 import { WorkerSupervisor } from './supervisor';
 import { assertAppKey } from '../utils/crypto/encrypt';
 import { logger } from '../../config/logger';
+import { flushSentry, initSentry } from '../../config/logger/sentry';
 
 async function main(): Promise<void> {
   assertAppKey();
+  if (initSentry('worker')) logger.info('error tracking on');
   process.env.SERVICE_NAME ??= 'worker';
 
   const app = await NestFactory.createApplicationContext(WorkerModule, { bufferLogs: true });
@@ -36,6 +38,7 @@ async function main(): Promise<void> {
     }, 5 * 60_000);
     deadline.unref();
     await supervisor.stop();
+    await flushSentry();
     await app.close();
     process.exit(0);
   };

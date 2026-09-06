@@ -7,12 +7,14 @@
  * flight — and a retry a minute later is the fix.
  */
 import { useEffect } from 'react';
+import { reportError } from '@/lib/report-error';
 import { Button, EmptyState } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('page crashed', error);
+    reportError(error, { where: 'app-error', digest: error.digest });
   }, [error]);
   return (
     <EmptyState

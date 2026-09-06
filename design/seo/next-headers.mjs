@@ -44,7 +44,7 @@ const CSP = [
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https://cdn.anystudio.ai https://*.r2.cloudflarestorage.com",
   "media-src 'self' blob: https://cdn.anystudio.ai https://*.r2.cloudflarestorage.com",
-  "connect-src 'self' https://api.anystudio.ai https://*.supabase.co wss://*.supabase.co https://app.posthog.com https://api.flutterwave.com https://checkout.paddle.com",
+  "connect-src 'self' https://api.anystudio.ai https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io https://*.supabase.co wss://*.supabase.co https://app.posthog.com https://api.flutterwave.com https://checkout.paddle.com",
   "frame-src https://checkout.paddle.com https://checkout.flutterwave.com",
   "worker-src 'self' blob:",
   "manifest-src 'self'",

@@ -180,6 +180,8 @@ envVarGroups:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: SENTRY_DSN # error tracking, optional (docs/DEPLOY.md §17); leave unset to keep it off
+        sync: false
       - key: MAIL_FROM # "AnyStudio <hello@anystudio.ai>"
         sync: false
       - key: R2_ENDPOINT

@@ -620,3 +620,80 @@ under `careers/`), a confirmation email to the applicant, and an alert to
 `GET /api/v1/admin/waitlist`.
 
 **Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.
+
+## 17. Error tracking (Sentry, optional)
+
+Everything already logs one JSON line per failure with a request id. Sentry
+adds the part logs cannot do: tell you a new kind of failure started at
+14:02 without anyone reading the logs.
+
+**API and worker.** Set `SENTRY_DSN` in the Render environment group. On
+start the process logs `error tracking on`; from then on every
+`logger.error` / `logger.fatal` line that carries an `err` is also a Sentry
+event, tagged with the same `requestId`, `userId`, `workspaceId`, `jobId`
+and so on that the log line has, so an issue in Sentry and a search in
+Render logs land on the same request. Traces are off (`tracesSampleRate: 0`)
+and PII is not attached; the redaction list in `config/logger/redact.ts`
+applies to what is forwarded. Unset, nothing is started.
+
+**Web.** The browser has no SDK — a 60 KB dependency for a page that must
+stay small on Workers. `lib/report-error.ts` writes the Sentry envelope by
+hand and posts it with a keepalive fetch from the two error boundaries
+(`app/error.tsx`, `app/(app)/error.tsx`) and from window `error` /
+`unhandledrejection`. It sends the exception, the path (never the query
+string), the release and the environment derived from the hostname. The
+DSN is public by design and is baked in at build time: add
+`NEXT_PUBLIC_SENTRY_DSN` as a **GitHub Actions variable** (not a secret)
+and pass it into the build step of `.github/workflows/web-deploy.yml`:
+
+```yaml
+- name: Build for Cloudflare
+  run: pnpm --filter @anystudio/web cf:build
+  env:
+    NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+    NEXT_PUBLIC_RELEASE: ${{ github.sha }}
+```
+
+One Sentry project per surface (api, worker, web) keeps the alert rules
+sane; the `service` tag tells them apart if you prefer one.
+
+## 18. Before the first real customer: the payment rehearsal
+
+Nothing in the billing code has met a real gateway yet — the tests run
+against a stub. Do this once on staging, with sandbox keys, before
+production keys go in. Ten minutes.
+
+1. **Paddle sandbox.** `PADDLE_ENV=sandbox`, sandbox `PADDLE_API_KEY`,
+   `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`; a sandbox product for
+   `PADDLE_USAGE_PRODUCT_ID`. Point a Paddle notification destination at
+   `https://api.staging.anystudio.ai/api/v1/billing/webhooks/paddle` with
+   `transaction.completed`, `transaction.payment_failed`,
+   `subscription.activated`, `subscription.updated`, `subscription.canceled`,
+   `adjustment.updated`.
+2. **Buy a pack** on the staging app with Paddle's test card
+   (`4242 4242 4242 4242`). Expect: the checkout closes, the wallet shows
+   the credits within a few seconds, a receipt email arrives, and
+   `GET /api/v1/admin/payments` shows the row with `provider: PADDLE`,
+   `status: SUCCEEDED`. If credits do not land, the webhook did not: check
+   Paddle's notification log for the delivery and the API log for
+   `webhook signature rejected` (a wrong secret) or `webhook processed`
+   with `outcome: ignore` (an event type the gateway does not act on).
+3. **Refund it.** Request the refund from Billing, approve it in the
+   console. Expect: an adjustment appears in Paddle within a minute, the
+   credits leave the wallet, both emails arrive. If Paddle refuses the
+   adjustment, the sandbox transaction is usually too fresh — wait a minute
+   and approve again.
+4. **Renew a plan.** Subscribe to a plan, then in Paddle's sandbox
+   dashboard advance the subscription's billing date. Expect a RENEWAL
+   payment row and a second grant of credits.
+5. **Flutterwave** (NG/GH/KE/ZA): test keys, then the same three steps with
+   a test card from their docs. The webhook is
+   `/api/v1/billing/webhooks/flutterwave` with `FLUTTERWAVE_WEBHOOK_SECRET`
+   as the `verif-hash`.
+6. **Usage billing.** Put a staging workspace on a credit line, spend a
+   few credits, then `POST /api/v1/admin/billing/accounts/<ws>/close-period`
+   to issue an invoice now. Pay it by card from the invoice page; expect
+   `paidVia: PADDLE`, the ledger row, and the paid email.
+
+Only after all six: production keys, `PADDLE_ENV=production`, and the
+production webhook destinations.
