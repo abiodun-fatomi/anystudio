@@ -218,6 +218,17 @@ const PROVIDERS: Array<{
     licenceNote: 'As above.',
   },
   { key: 'photoroom:edit', capability: 'RELIGHT', priority: 10, costPerCall: 10, enabled: true, config: { relight: true }, licenceNote: 'As above.' },
+  // Gemini relights by instruction — a good result, a little less controllable
+  // than Photoroom's, so it takes the call when Photoroom has no key here.
+  {
+    key: 'vertex:gemini-3-pro-image',
+    capability: 'RELIGHT',
+    priority: 20,
+    costPerCall: 13,
+    enabled: true,
+    config: { model: 'gemini-3-pro-image-preview' },
+    licenceNote: 'As above.',
+  },
 
   // ---- upscale ---------------------------------------------------------------
   {
