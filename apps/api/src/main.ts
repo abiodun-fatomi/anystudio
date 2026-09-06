@@ -17,8 +17,10 @@ import { assertAppKey } from './utils/crypto/encrypt';
 import { BODY_LIMIT, configureSecurity } from '../config/security';
 import SwaggerConfig from '../config/swagger';
 import { logger } from '../config/logger';
+import { initSentry } from '../config/logger/sentry';
 
 async function bootstrap(): Promise<void> {
+  if (initSentry('api')) logger.info('error tracking on');
   // Refuse to start on a key we cannot encrypt with, rather than discovering
   // it on someone's first sign-in.
   assertAppKey();

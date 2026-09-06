@@ -96,7 +96,7 @@
 .filters {
   display: flex;
   gap: var(--s-3);
-  align-items: end;
+  align-items: flex-end;
   flex-wrap: wrap;
 }
 .grid {

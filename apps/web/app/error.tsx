@@ -1,10 +1,12 @@
 'use client';
 /** A crash outside the app shell (the sign-in pages, the landing). Plain, and it offers the way back. */
 import { useEffect } from 'react';
+import { reportError } from '@/lib/report-error';
 
 export default function RootError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('page crashed', error);
+    reportError(error, { where: 'root-error', digest: error.digest });
   }, [error]);
   return (
     <main
