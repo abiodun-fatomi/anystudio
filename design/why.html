@@ -5,6 +5,35 @@
    ============================================================ */
 .why-hero{padding-top:clamp(36px,6vw,64px);padding-bottom:0;border-top:0;position:relative}
 .why-hero .wrap{display:grid;gap:clamp(28px,4vw,44px)}
+.why-side{display:none}
+@media(min-width:1000px){
+  .why-hero .wrap{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);align-items:center;column-gap:clamp(32px,5vw,72px)}
+  .why-hero-copy{grid-column:1}
+  .why-side{display:block;grid-column:2;position:relative;aspect-ratio:1/1;max-width:520px;justify-self:end;width:100%}
+  .why-film,.why-stats{grid-column:1/-1}
+}
+/* the side: the photo that goes in, and a spread of what comes out */
+.ws-in{position:absolute;left:2%;top:4%;width:30%;aspect-ratio:4/5;border-radius:8px;overflow:hidden;box-shadow:var(--frame-shadow-lg);border:1px solid var(--line-soft);transform:rotate(-5deg);background:var(--surface-2)}
+.ws-in img{width:100%;height:100%;object-fit:cover;display:block}
+.ws-tag{position:absolute;left:8px;bottom:8px;padding:4px 8px;border-radius:999px;background:rgba(23,19,26,.72);color:#fff;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;backdrop-filter:blur(4px)}
+.ws-arrow{position:absolute;left:31%;top:10%;width:24%;color:var(--accent);opacity:.9}
+.ws-out{position:absolute;inset:0}
+.ws-card{position:absolute;margin:0;border-radius:10px;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);box-shadow:var(--frame-shadow-lg);will-change:transform}
+.ws-card img{width:100%;height:100%;object-fit:cover;display:block}
+.ws-card figcaption{position:absolute;left:8px;bottom:8px;padding:4px 8px;border-radius:999px;background:rgba(23,19,26,.72);color:#fff;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;backdrop-filter:blur(4px)}
+.ws-c1{right:16%;top:0;width:38%;aspect-ratio:1/1;transform:rotate(3deg);animation:wsFloat 7s ease-in-out infinite}
+.ws-c2{right:0;top:34%;width:30%;aspect-ratio:9/16;transform:rotate(-2deg);animation:wsFloat 8s ease-in-out infinite reverse;z-index:2}
+.ws-txt{left:6%;bottom:6%;width:52%;padding:14px 16px 12px;display:grid;gap:6px;transform:rotate(-1.5deg);animation:wsFloat 9s ease-in-out infinite 1s;z-index:3}
+.ws-cap{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ws-txt p{margin:0;font-size:14px;line-height:1.45;color:var(--ink)}
+.ws-hash{font-size:12.5px;color:var(--accent);font-weight:600}
+.ws-chip{position:absolute;display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;background:var(--ink);color:var(--paper);font-weight:700;font-size:13px;letter-spacing:-.01em;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:4}
+.ws-chip svg{width:12px;height:12px;fill:currentColor}
+.ws-price{left:2%;top:47%;background:var(--accent);color:#fff;transform:rotate(-6deg);animation:wsFloat 6s ease-in-out infinite .5s}
+.ws-reel{left:50%;bottom:3%;transform:rotate(4deg);animation:wsFloat 7.5s ease-in-out infinite 2s}
+.ws-sizes{right:1%;bottom:0;background:var(--surface);color:var(--ink);border:1px solid var(--line);transform:rotate(-3deg);animation:wsFloat 8.5s ease-in-out infinite 1.5s}
+@keyframes wsFloat{0%,100%{translate:0 0}50%{translate:0 -7px}}
+@media(prefers-reduced-motion:reduce){.ws-card,.ws-chip{animation:none!important}}
 .why-hero-copy{max-width:60ch}
 .why-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
 .why-eyebrow::before{content:"";width:18px;height:2px;background:var(--accent)}
@@ -19,7 +48,11 @@
 .why-film .cap span{font-size:13px;opacity:.85}
 .why-film .cap .mono{color:#fff;opacity:.75}
 .why-film .cap{transition:opacity .4s}
-.why-film[data-stage="phone"] .cap,.why-film[data-stage="swipe"] .cap{opacity:0}
+.why-film .vd{transition:opacity .5s}
+.why-film .vd-next{opacity:0;pointer-events:none}
+.why-film[data-swap="1"] .vd-next{opacity:1}
+.why-film[data-swap="1"] .vd:not(.vd-next){opacity:0}
+.why-film[data-stage="phone"] .cap,.why-film[data-stage="swipe"] .cap,.why-film[data-stage="swipe2"] .cap{opacity:0}
 /* the pop-up: appears while she looks at the shot, answers itself when she nods */
 .film-ask{position:absolute;top:6%;right:5%;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 10px;border-radius:999px;background:rgba(255,255,255,.96);color:#17131a;box-shadow:0 12px 40px rgba(0,0,0,.28);font-size:14px;font-weight:600;letter-spacing:-.01em;
   opacity:0;transform:translateY(8px) scale(.96);transition:opacity .35s,transform .35s cubic-bezier(.2,.8,.2,1);pointer-events:none;backdrop-filter:blur(6px)}
@@ -34,26 +67,28 @@
 /* the phone: what her screen shows, at full quality instead of through a lens */
 .film-phone{position:absolute;inset:0;display:grid;grid-template-columns:auto auto;align-items:center;justify-content:center;gap:clamp(18px,4vw,44px);padding:4%;
   background:radial-gradient(120% 100% at 50% 60%,rgba(23,19,26,.55),rgba(23,19,26,.9));opacity:0;visibility:hidden;transition:opacity .55s,visibility 0s .55s}
-.why-film[data-stage="phone"] .film-phone,.why-film[data-stage="swipe"] .film-phone{opacity:1;visibility:visible;transition:opacity .55s,visibility 0s}
+.why-film[data-stage="phone"] .film-phone,.why-film[data-stage="swipe"] .film-phone,.why-film[data-stage="swipe2"] .film-phone{opacity:1;visibility:visible;transition:opacity .55s,visibility 0s}
 .film-phone-shell{height:88%;aspect-ratio:9/19;max-height:100%;border-radius:clamp(18px,3vw,34px);padding:clamp(5px,.8vw,9px);background:#0d0b10;box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.12);
   transform:translateY(14px) scale(.97);transition:transform .6s cubic-bezier(.2,.8,.2,1)}
-.why-film[data-stage="phone"] .film-phone-shell,.why-film[data-stage="swipe"] .film-phone-shell{transform:none}
+.why-film[data-stage="phone"] .film-phone-shell,.why-film[data-stage="swipe"] .film-phone-shell,.why-film[data-stage="swipe2"] .film-phone-shell{transform:none}
 .film-phone-screen{position:relative;width:100%;height:100%;border-radius:clamp(14px,2.4vw,27px);overflow:hidden;background:#fff}
-.film-phone-track{display:flex;width:200%;height:100%;transition:transform .7s cubic-bezier(.3,.9,.25,1)}
-.why-film[data-stage="swipe"] .film-phone-track{transform:translateX(-50%)}
-.film-phone-track figure{position:relative;margin:0;width:50%;height:100%}
+.film-phone-track{display:flex;width:300%;height:100%;transition:transform .7s cubic-bezier(.3,.9,.25,1)}
+.why-film[data-stage="swipe"] .film-phone-track{transform:translateX(-33.333%)}
+.why-film[data-stage="swipe2"] .film-phone-track{transform:translateX(-66.667%)}
+.film-phone-track figure{position:relative;margin:0;width:33.333%;height:100%}
 .film-phone-track img{width:100%;height:100%;object-fit:cover;display:block}
 .film-phone-track figcaption{position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(23,19,26,.7);color:#fff;font-size:11px;font-weight:600;letter-spacing:.02em;backdrop-filter:blur(4px)}
 .film-finger{position:absolute;left:70%;bottom:32%;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 6px rgba(255,255,255,.28);opacity:0;transform:translateX(0)}
 .why-film[data-stage="swipe"] .film-finger{animation:filmSwipe .9s ease-out both}
+.why-film[data-stage="swipe2"] .film-finger{animation:filmSwipe .9s ease-out both}
 @keyframes filmSwipe{0%{opacity:0;transform:translateX(0)}20%{opacity:1}100%{opacity:0;transform:translateX(-110px)}}
 .film-dots{position:absolute;left:50%;top:10px;transform:translateX(-50%);display:flex;gap:5px}
 .film-dots i{width:6px;height:6px;border-radius:50%;background:rgba(23,19,26,.25);transition:background .3s}
 .film-dots i:first-child{background:#17131a}
-.why-film[data-stage="swipe"] .film-dots i:first-child{background:rgba(255,255,255,.4)}
-.why-film[data-stage="swipe"] .film-dots i:last-child{background:#fff}
+.why-film[data-stage="swipe"] .film-dots i,.why-film[data-stage="swipe2"] .film-dots i{background:rgba(255,255,255,.4)}
+.why-film[data-stage="swipe"] .film-dots i:nth-child(2),.why-film[data-stage="swipe2"] .film-dots i:nth-child(3){background:#fff}
 .film-phone-note{color:#fff;max-width:22ch;display:grid;gap:6px;opacity:0;transform:translateY(6px);transition:opacity .5s .25s,transform .5s .25s}
-.why-film[data-stage="phone"] .film-phone-note,.why-film[data-stage="swipe"] .film-phone-note{opacity:1;transform:none}
+.why-film[data-stage="phone"] .film-phone-note,.why-film[data-stage="swipe"] .film-phone-note,.why-film[data-stage="swipe2"] .film-phone-note{opacity:1;transform:none}
 .film-phone-note b{font-family:var(--f-display);font-size:clamp(17px,2vw,24px);font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .film-phone-note span{font-size:14px;opacity:.8;line-height:1.45}
 @media(max-width:600px){.film-phone{grid-template-columns:1fr;justify-items:center}.film-phone-shell{height:90%}.film-phone-note,.film-phone-track figcaption{display:none}.film-ask{font-size:12.5px;top:5%;right:4%;gap:7px;padding:7px 8px 7px 7px}.film-ask-yes{padding:4px 8px}}
@@ -193,8 +228,28 @@
         <a class="btn btn-ghost btn-lg" href="#roi">See what it saves you</a>
       </div>
     </div>
+    <div class="why-side rv" aria-hidden="true">
+      <div class="ws-in">
+        <img src="/why/bag-raw.webp" alt="" loading="eager" decoding="async">
+        <span class="ws-tag">1 photo in</span>
+      </div>
+      <svg class="ws-arrow" viewBox="0 0 120 60" aria-hidden="true"><path d="M4 30 C 40 30, 60 8, 112 12" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round"/><path d="M104 6 l10 6 -9 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="ws-out">
+        <figure class="ws-card ws-c1"><img src="/why/bag-white.webp" alt="" loading="lazy" decoding="async"><figcaption>Marketplace · 1:1</figcaption></figure>
+        <figure class="ws-card ws-c2"><img src="/why/bag-terrace.webp" alt="" loading="lazy" decoding="async"><figcaption>Story · 9:16</figcaption></figure>
+        <div class="ws-card ws-txt">
+          <span class="ws-cap">Caption</span>
+          <p>Ankara tote, fully lined, fits a 13" laptop. Two left in this print.</p>
+          <span class="ws-hash">#AnkaraTote #MadeInLagos #Balogun</span>
+        </div>
+        <span class="ws-chip ws-price">₦18,000</span>
+        <span class="ws-chip ws-reel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>12 s reel</span>
+        <span class="ws-chip ws-sizes">5 sizes</span>
+      </div>
+    </div>
     <div class="why-film rv" id="film" data-stage="film">
-      <video class="vd" poster="/why/hero-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="A shop owner stands up, photographs a tote bag on her counter, pauses over the result, says yes, and turns her phone to the camera. Then the screen: the same bag on studio white, and with a swipe, on a sunlit terrace."></video>
+      <video class="vd" data-slot="0" poster="/why/film-lagos-poster.webp" muted loop playsinline autoplay preload="metadata" aria-label="A shop owner stands up, photographs a tote bag on her counter, pauses over the result, says yes, and turns her phone to the camera. Then the screen: the same bag on studio white, and with a swipe, on a sunlit terrace. A second take, in a Lisbon ceramics studio, tells the same story with a vase."></video>
+      <video class="vd vd-next" data-slot="1" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video>
       <div class="film-ask" aria-hidden="true">
         <span class="film-ask-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/></svg></span>
         <span class="film-ask-q">Make it on <em>AnyStudio</em>?</span>
@@ -204,17 +259,18 @@
         <div class="film-phone-shell">
           <div class="film-phone-screen">
             <div class="film-phone-track">
-              <figure><img src="/why/bag-white.webp" alt="" loading="lazy" decoding="async"><figcaption>Studio white</figcaption></figure>
-              <figure><img src="/why/bag-terrace.webp" alt="" loading="lazy" decoding="async"><figcaption>Golden hour</figcaption></figure>
+              <figure><img class="film-raw" src="/why/bag-raw.webp" alt="" loading="lazy" decoding="async"><figcaption>Her photo</figcaption></figure>
+              <figure><img class="film-white" src="/why/bag-white.webp" alt="" loading="lazy" decoding="async"><figcaption>Studio white</figcaption></figure>
+              <figure><img class="film-life" src="/why/bag-terrace.webp" alt="" loading="lazy" decoding="async"><figcaption class="film-life-cap">Golden hour</figcaption></figure>
             </div>
             <span class="film-finger"></span>
-            <span class="film-dots"><i></i><i></i></span>
+            <span class="film-dots"><i></i><i></i><i></i></span>
           </div>
         </div>
-        <div class="film-phone-note"><b>Same photo. Every background.</b><span>Swipe through the set. Post the one that sells.</span></div>
+        <div class="film-phone-note"><b class="film-note-t">Her photo, as taken.</b><span class="film-note-s">Counter, clutter, shop light.</span></div>
       </div>
       <div class="cap">
-        <div><b>A fabric shop in Lagos, on a Tuesday.</b><span class="cap-line">Photograph it. Send it. Post it. The studio is the part in between.</span></div>
+        <div><b class="cap-title">A fabric shop in Lagos, on a Tuesday.</b><span class="cap-line">Photograph it. Send it. Post it. The studio is the part in between.</span></div>
         <span class="mono" id="filmClock">00:00</span>
       </div>
     </div>
@@ -477,40 +533,95 @@
   var POST_CREDITS = 13, REEL_CREDITS = 120, WEEKS = 4.33, OUR_HOURS = 0.05;
   var cur = 'NGN';
   var $ = function(id){ return document.getElementById(id); };
-  /* ---------- the film: pick a source, then run the timeline ---------- */
+  /* ---------- the film: two takes of one story, in the order that fits the visitor ---------- */
   var film = $('film');
   if (film) (function(){
-    var v = film.querySelector('video'), clock = $('filmClock'), line = film.querySelector('.cap-line');
+    var FILMS = {
+      lagos:  { title: 'A fabric shop in Lagos, on a Tuesday.', raw: '/why/bag-raw.webp', white: '/why/bag-white.webp', life: '/why/bag-terrace.webp', lifeCap: 'Golden hour', rawNote: ['Her photo, as taken.', 'Counter, clutter, shop light.'], lifeNote: ['Then a terrace at golden hour.', 'Same bag. Post the one that sells.'], poster: '/why/film-lagos-poster.webp' },
+      lisbon: { title: 'A ceramics studio in Lisbon, on a Thursday.', raw: '/why/vase-raw.webp', white: '/why/vase-white.webp', life: '/why/vase-oak.webp', lifeCap: 'Sunday morning', rawNote: ['Her photo, as taken.', 'Work table, clay dust, overhead light.'], lifeNote: ['Then an oak sideboard on a Sunday.', 'Same vase. Post the one that sells.'], poster: '/why/film-lisbon-poster.webp' }
+    };
+    var vids = film.querySelectorAll('video'), clock = $('filmClock'), line = film.querySelector('.cap-line'), title = film.querySelector('.cap-title');
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var conn = navigator.connection || {};
     var slow = !!conn.saveData || /(^|[^a-z])[23]g/.test(conn.effectiveType || '');
     var big = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) >= 2400 && !slow;
     var av1 = false;
-    try { av1 = /probably|maybe/.test(v.canPlayType('video/mp4; codecs="av01.0.08M.10"')); } catch (e) {}
-    v.src = '/why/hero' + (big ? '-4k' : '') + (av1 ? '.av1' : '') + '.mp4';
-    if (reduce) return;                     /* plain loop, no pop-up, no phone */
-    v.loop = false;
+    try { av1 = /probably|maybe/.test(vids[0].canPlayType('video/mp4; codecs="av01.0.08M.10"')); } catch (e) {}
+    function srcFor(id){ return '/why/film-' + id + (big ? '-4k' : '') + (av1 ? '.av1' : '') + '.mp4'; }
+    /* Who is watching: an African time zone or locale sees Lagos first, everyone else Lisbon;
+       the next visit in the same tab starts with the other one, and each loop swaps. */
+    var order = ['lagos', 'lisbon'];
+    try {
+      var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), lang = navigator.language || '';
+      if (!/^Africa\//.test(tz) && !/-(NG|GH|KE|ZA|TZ|UG|RW|ET|CM|CI|SN|ZM|ZW|MW)$/i.test(lang)) order.reverse();
+      if (sessionStorage.getItem('anystudio:film') === order[0]) order.reverse();
+      sessionStorage.setItem('anystudio:film', order[0]);
+    } catch (e) {}
+    var slot = 0, cur = order[0];
+    function dress(id){
+      var f = FILMS[id];
+      title.textContent = f.title;
+      film.querySelector('.film-raw').src = f.raw;
+      film.querySelector('.film-white').src = f.white;
+      film.querySelector('.film-life').src = f.life;
+      film.querySelector('.film-life-cap').textContent = f.lifeCap;
+    }
+    vids[0].poster = FILMS[cur].poster; vids[0].src = srcFor(cur); dress(cur);
+    if (reduce) return;                     /* plain loop of one take, no pop-up, no phone */
+    vids[0].loop = false;
     var stage = 'film', timer = null;
+    function v(){ return vids[slot]; }
     function set(s){ if (stage !== s) { stage = s; film.setAttribute('data-stage', s); } }
     function say(t){ if (line && line.textContent !== t) line.textContent = t; }
-    v.addEventListener('timeupdate', function(){
-      if (v.ended) return;
-      var t = v.currentTime;
+    function note(pair){ film.querySelector('.film-note-t').textContent = pair[0]; film.querySelector('.film-note-s').textContent = pair[1]; }
+    var cut = false;
+    function onTime(){
+      var el = v(); if (el.ended || cut) return;
+      var t = el.currentTime;
+      if (t >= 9.6) { cut = true; el.pause(); onEnded(); return; }   /* cut before her screen is legible */
       clock.textContent = '00:' + (t < 10 ? '0' : '') + Math.floor(t);
       if (t < 5.0) { set('film'); say('Photograph it. Send it. Post it. The studio is the part in between.'); }
       else if (t < 7.4) { set('ask'); say('One question, and the studio does the rest.'); }
       else if (t < 8.9) { set('yes'); }
-      else { set('film'); say('Ready before she has put the phone down.'); }
-    });
-    v.addEventListener('ended', function(){
-      set('phone'); clock.textContent = '00:10';
+      else { set('film'); say('Ready before the phone is down.'); }
+    }
+    function onEnded(){
+      if (stage === 'phone' || stage === 'swipe' || stage === 'swipe2') return;
+      set('phone'); note(FILMS[cur].rawNote); clock.textContent = '00:10';
       timer = setTimeout(function(){
-        set('swipe'); clock.textContent = '00:12';
-        timer = setTimeout(function(){ set('film'); v.currentTime = 0; v.play().catch(function(){}); }, 2600);
-      }, 2000);
+        set('swipe'); note(['The studio hands it back.', 'Cut out, lit, on white. Ready for the marketplace.']); clock.textContent = '00:12';
+        timer = setTimeout(function(){
+          set('swipe2'); note(FILMS[cur].lifeNote); clock.textContent = '00:14';
+          timer = setTimeout(swap, 2600);
+        }, 2200);
+      }, 1800);
+    }
+    function swap(){
+      var nextId = cur === order[0] ? order[1] : order[0], next = vids[1 - slot];
+      if (!next.src) { next.src = srcFor(nextId); next.poster = FILMS[nextId].poster; }
+      next.currentTime = 0; cut = false;
+      cur = nextId; slot = 1 - slot; dress(cur);
+      film.setAttribute('data-swap', String(slot));
+      set('film');
+      next.play().catch(function(){});
+    }
+    for (var i = 0; i < vids.length; i++) {
+      vids[i].loop = false;
+      vids[i].addEventListener('timeupdate', function(e){ if (e.target === v()) onTime(); });
+      vids[i].addEventListener('ended', function(e){ if (e.target === v()) onEnded(); });
+    }
+    /* warm the second take once the first is rolling, so the cut is clean */
+    vids[0].addEventListener('playing', function once(){
+      vids[0].removeEventListener('playing', once);
+      if (slow) return;
+      var other = order[1]; vids[1].preload = 'auto'; vids[1].src = srcFor(other); vids[1].poster = FILMS[other].poster;
     });
-    document.addEventListener('visibilitychange', function(){ if (document.hidden) { clearTimeout(timer); } });
-    film.addEventListener('click', function(){ if (v.paused && stage === 'film') v.play().catch(function(){}); });
+    document.addEventListener('visibilitychange', function(){
+      if (document.hidden) { clearTimeout(timer); return; }
+      if (stage === 'phone' || stage === 'swipe' || stage === 'swipe2') swap();
+      else if (v().paused && !v().ended) v().play().catch(function(){});
+    });
+    film.addEventListener('click', function(){ if (v().paused && stage === 'film') v().play().catch(function(){}); });
   })();
 
   var els = { posts:$('roiPosts'), reels:$('roiReels'), cost:$('roiCost'), hours:$('roiHours'), hourly:$('roiHourly'), aov:$('roiAov'), orders:$('roiOrders') };
