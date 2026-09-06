@@ -3,7 +3,7 @@
  *
  * NO MODEL MAKES THIRTY SECONDS IN ONE CALL
  * ----------------------------------------
- * Veo makes ~8 s, Sora 4–12 s, Wan 5–10 s. So an ad is a PLAN of 2–4 shots,
+ * Veo makes ~8 s, Sora 4–12 s, Wan 5–10 s. So an ad is a PLAN of 2–8 shots (up to a minute),
  * each its own CHILD generation rendered in parallel, stitched by us.
  *
  * THE PARENT NEVER HOLDS A WORKER WHILE IT WAITS
@@ -23,7 +23,7 @@
  */
 
 import type { Generation } from '@prisma/client';
-import { ProviderError, shotPlanSchema, SHOT_PLAN_JSON_SCHEMA, type CapabilityParams, type LlmRequest, type ShotPlan } from '@anystudio/shared';
+import { adPlan, ProviderError, shotPlanSchema, SHOT_PLAN_JSON_SCHEMA, type CapabilityParams, type LlmRequest, type ShotPlan } from '@anystudio/shared';
 import type { Pipeline, PipelineContext, PipelineResult } from './index';
 
 const FORMAT_BRIEF: Record<CapabilityParams<'IMAGE_TO_VIDEO'>['format'], string> = {
@@ -55,7 +55,10 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
     throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
   const shotPlan: ShotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, p.shots) };
   // A short plan is padded with the settle shot rather than refused: the customer asked for four.
+  const wanted = adPlan(p.shots)?.durations ?? [];
   while (shotPlan.shots.length < p.shots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
+  // The table's durations win over the planner's: they are what the price and the running time assume.
+  shotPlan.shots = shotPlan.shots.map((shot, i) => ({ ...shot, durationSec: (wanted[i] ?? shot.durationSec) as 5 | 8 }));
 
   await ctx.db.generation.update({ where: { id: ctx.row.id }, data: { input: { ...(ctx.row.input as object), plan: shotPlan } } });
   ctx.log.info({ shots: shotPlan.shots.length, hook: shotPlan.hook, format: p.format }, 'shot plan written');
@@ -139,13 +142,16 @@ function videoKey(child: Generation): string | null {
   return outputs.find((o) => o.role === 'video')?.key ?? null;
 }
 
+/** "8, 8, 8 and 5" */
+const durationsPhrase = (d: readonly number[]) => (d.length < 2 ? String(d[0] ?? 8) : `${d.slice(0, -1).join(', ')} and ${d[d.length - 1]}`);
+
 function planRequest(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): LlmRequest {
   const tone = ctx.brandKit?.tone ?? 'warm, direct, confident';
   const profile = (ctx.workspace.profile as Record<string, unknown> | null) ?? {};
   const system = [
     'You are a director planning a short vertical product ad for social media, to be generated shot by shot by an image-to-video model from ONE reference photo of the product.',
     `Format: ${FORMAT_BRIEF[p.format]}`,
-    `Exactly ${p.shots} shots. Durations: ${p.shots === 2 ? '8 and 8' : '8, 8, 8 and 5'} seconds, in that order.`,
+    `Exactly ${p.shots} shots. Durations: ${durationsPhrase(adPlan(p.shots)?.durations ?? [8, 5])} seconds, in that order.`,
     `Voice: ${tone}.`,
     "Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); no people unless the format is ugc; realistic lighting; keep every prompt under 60 words. Each shot's caption is under 8 words of on-screen text.",
     'The first shot is the hook. The last shot settles on the product for the end card.',

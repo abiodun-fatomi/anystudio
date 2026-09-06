@@ -7,7 +7,7 @@
  * a param is presented — a segmented control, a slider, a text box — not
  * whether it is valid. Adding a tool is adding an entry here.
  */
-import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize } from '@anystudio/shared';
+import { ASPECTS, EXPORT_SIZES, type Capability, type ExportSize, adPlan } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
 export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
@@ -298,8 +298,10 @@ export const TOOLS: Tool[] = [
         label: 'Length',
         options: [
           { id: '1', label: 'Reel · 5–8 s' },
-          { id: '2', label: 'Ad · 15 s' },
-          { id: '4', label: 'Ad · 30 s' },
+          { id: '2', label: '15 s' },
+          { id: '4', label: '30 s' },
+          { id: '6', label: '45 s' },
+          { id: '8', label: '60 s' },
         ],
       },
       {
@@ -349,7 +351,7 @@ export const TOOLS: Tool[] = [
       { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000 — shown on the end card', maxLength: 40 },
     ],
     defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false },
-    costCodeFor: (v) => (Number(v.shots) === 4 ? 'video.ad_30s' : Number(v.shots) === 2 ? 'video.ad_15s' : undefined),
+    costCodeFor: (v) => adPlan(Number(v.shots))?.costCode,
   },
   {
     id: 'music',
@@ -436,14 +438,24 @@ export const TOOLS: Tool[] = [
       {
         key: 'lyrics',
         kind: 'text',
-        label: 'Your own lyrics',
-        placeholder: 'Leave blank and we write them. Or paste yours, with [Verse] and [Chorus] lines.',
+        label: 'Your own words',
+        placeholder: 'Leave blank and we write the song from the brief. Or give us a hook, a few lines, or the whole thing with [Verse] and [Chorus].',
         rows: 5,
         maxLength: 3000,
-        hint: 'You hear a 30-second preview first. Unlock the full song when you love it.',
+        hint: 'A line or two is enough — we keep every word you give us and write the rest around it. Full lyrics with [Verse] and [Chorus] are sung as written.',
+      },
+      {
+        key: 'lyricsMode',
+        kind: 'segment',
+        label: 'With your words',
+        options: [
+          { id: 'auto', label: 'Decide for me' },
+          { id: 'complete', label: 'Build a song around them' },
+          { id: 'exact', label: 'Sing them exactly' },
+        ],
       },
     ],
-    defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120 },
+    defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120, lyricsMode: 'auto' },
   },
   {
     id: 'voice',

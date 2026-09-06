@@ -113,6 +113,21 @@ export const objectKey = z
   .regex(/^[A-Za-z0-9/_.-]+$/);
 
 export const ASPECTS = ['1:1', '4:5', '9:16', '16:9', '3:4'] as const;
+
+/**
+ * A multi-shot video, by shot count: how long each shot runs (the models make
+ * 5 or 8 seconds a call) and what the whole is priced under. One reel is a
+ * single 5–8 s shot; everything longer is a plan of shots stitched by us,
+ * up to a minute.
+ */
+export const AD_PLANS = {
+  2: { seconds: 15, durations: [8, 8], costCode: 'video.ad_15s' },
+  4: { seconds: 30, durations: [8, 8, 8, 5], costCode: 'video.ad_30s' },
+  6: { seconds: 45, durations: [8, 8, 8, 8, 8, 5], costCode: 'video.ad_45s' },
+  8: { seconds: 60, durations: [8, 8, 8, 8, 8, 8, 8, 5], costCode: 'video.ad_60s' },
+} as const;
+export type AdShots = keyof typeof AD_PLANS;
+export const adPlan = (shots: number) => (AD_PLANS as Record<number, (typeof AD_PLANS)[AdShots] | undefined>)[shots];
 export type Aspect = (typeof ASPECTS)[number];
 
 export const EXPORT_SIZES = {
@@ -214,7 +229,7 @@ export const capabilityParams = {
      * its own CHILD generation rendered in parallel, and the parent stitches
      * them with captions, a bed and an end card. 1 = a single reel.
      */
-    shots: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
+    shots: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)]).default(1),
     /** The ad's shape, for the planner. */
     format: z.enum(['reveal', 'benefits', 'before_after', 'unboxing', 'price_drop', 'ugc']).default('reveal'),
     /** Words for the end card; the price comes from the copy fields when present. */
@@ -283,6 +298,13 @@ export const capabilityParams = {
     language: z.string().max(16).default('en'),
     /** Their own lyrics. Absent with vocals → the pipeline writes them first. */
     lyrics: z.string().max(3000).optional(),
+    /**
+     * What to do with their lyrics: 'exact' sings them as pasted; 'complete'
+     * keeps every line they gave and writes the rest of the song around it;
+     * 'auto' picks: text with [Verse]/[Chorus] markers is exact, a hook or a
+     * few lines is completed.
+     */
+    lyricsMode: z.enum(['auto', 'exact', 'complete']).default('auto'),
     durationSec: z.number().int().min(30).max(240).default(120),
     /** Set by the pipeline on the row after the lyrics step so a retry does not write them twice. */
     lyricsWritten: z.string().max(3000).optional(),

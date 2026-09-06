@@ -47,12 +47,17 @@ export const musicPipeline: Pipeline = async (ctx) => {
   if (!genre) throw new ProviderError('INVALID_INPUT', `unknown genre "${p.genre}"`, 'music-pipeline');
 
   // ---- 1. words
-  let lyricsText: string | undefined = p.lyrics?.trim() || p.lyricsWritten || undefined;
+  const own = p.lyrics?.trim() || '';
+  // Their lines are the whole song only when they say so, or when the text
+  // already has the shape of one; a hook or a few lines gets a song written
+  // around it, with every word they gave kept.
+  const complete = own !== '' && (p.lyricsMode === 'complete' || (p.lyricsMode === 'auto' && !looksComplete(own)));
+  let lyricsText: string | undefined = p.lyricsWritten || (own && !complete ? own : undefined);
   let lyrics: Lyrics | null = null;
   let lyricsCost = 0;
   if (p.vocal !== 'instrumental' && !lyricsText) {
     await ctx.stage('preparing', 8, 'writing the words');
-    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints);
+    const written = await writeLyrics(ctx, p, genre.name, genre.promptHints, complete ? own : null);
     lyrics = written.lyrics;
     lyricsCost = written.costMinor ?? 0;
     lyricsText = lyricsToText(lyrics);
@@ -119,11 +124,20 @@ export const musicPipeline: Pipeline = async (ctx) => {
   } as PipelineResult;
 };
 
+/** Text with section markers, or long enough to be a whole song, is sung as is. */
+export function looksComplete(text: string): boolean {
+  if (/\[(verse|chorus|bridge|intro|outro|pre-chorus|hook)/i.test(text)) return true;
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  return lines.length >= 12;
+}
+
 async function writeLyrics(
   ctx: PipelineContext,
   p: CapabilityParams<'MUSIC'>,
   genreName: string,
   hints: string,
+  /** Lines the customer wrote, to be kept word for word and built around. */
+  seed: string | null = null,
 ): Promise<{ lyrics: Lyrics; costMinor?: number }> {
   const profile = (ctx.workspace.profile as Record<string, unknown> | null) ?? {};
   const language = LANGUAGE_NAME[p.language] ?? p.language;
@@ -152,7 +166,24 @@ async function writeLyrics(
     .filter(Boolean)
     .join('\n');
   const parts: LlmRequest['parts'] = [
-    { text: [p.title ? `Title: ${p.title}` : 'Choose a short title.', `What the song is about: ${p.brief}`, 'Write the lyrics now.'].join('\n') },
+    {
+      text: [
+        p.title ? `Title: ${p.title}` : 'Choose a short title.',
+        `What the song is about: ${p.brief}`,
+        seed
+          ? [
+              'The customer wrote these lines. Keep EVERY one of them word for word, in the order given — do not paraphrase, translate or trim them.',
+              'If they read as a hook, they are the chorus and repeat each time; otherwise place them where they fit best and write the rest of the song around them in the same voice.',
+              '--- their lines ---',
+              seed,
+              '--- end ---',
+            ].join('\n')
+          : '',
+        'Write the lyrics now.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    },
   ];
   const request: LlmRequest = { system, parts, jsonSchema: LYRICS_JSON_SCHEMA, maxTokens: 1500, temperature: 0.9 };
 

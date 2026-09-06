@@ -44,6 +44,7 @@ import {
   type Capability,
   type GenerationOutput,
   type ProviderErrorKind,
+  adPlan,
 } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { GenerationHooks } from './generation.hooks';
@@ -141,13 +142,8 @@ export class GenerationService {
     const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
     const costCode =
       req.costCode ??
-      (shots === 4
-        ? 'video.ad_30s'
-        : shots === 2
-          ? 'video.ad_15s'
-          : req.capability === 'DUB' && params.lipsync === true
-            ? DUB_LIPSYNC_COST_CODE
-            : DEFAULT_COST_CODE[req.capability]);
+      adPlan(shots)?.costCode ??
+      (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]);
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 

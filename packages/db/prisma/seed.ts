@@ -46,6 +46,8 @@ const CREDIT_COSTS = [
   { code: 'video.stitch', credits: 20, label: 'Assemble a multi-shot ad' },
   { code: 'video.ad_15s', credits: 260, label: '15-second ad (two shots)' },
   { code: 'video.ad_30s', credits: 480, label: '30-second ad (four shots)' },
+  { code: 'video.ad_45s', credits: 700, label: '45-second ad (six shots)' },
+  { code: 'video.ad_60s', credits: 920, label: '60-second ad (eight shots)' },
   // A shot of a multi-shot ad. The PARENT row holds the price; its children
   // are work units, not money units, and carry zero credits by design.
   { code: 'video.shot', credits: 0, label: 'One shot of an ad' },
