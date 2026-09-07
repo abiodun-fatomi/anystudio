@@ -21,6 +21,8 @@
  *   … --url https://example.com/my-dress.jpg   a product of your own (any public URL)
  *   … --modes ghost_mannequin,on_model         just these
  *   … --out ./shots                            where the pictures land
+ *   … --model-photo https://…/me.jpg           put it on a person of your own
+ *   … --angles https://…/back.jpg,https://…/side.jpg   more views of the same item
  *
  * One vendor call per mode. Five modes is five of the month's images.
  */
@@ -56,6 +58,17 @@ async function main(): Promise<void> {
   const url = arg('url') || SAMPLE;
   const out = arg('out') || './photoroom-check';
   const asked = arg('modes');
+  // Two paths a mock can never exercise: a seller's own model, and the extra
+  // angles that stop a model inventing the back of the bag. Both need public
+  // URLs, because the vendor fetches them itself.
+  const modelPhoto = arg('model-photo');
+  const angles = (
+    arg('angles')
+      ? arg('angles')
+          .split(',')
+          .map((a) => a.trim())
+      : []
+  ).filter(Boolean);
   const modes = (asked ? asked.split(',').map((m) => m.trim()) : OFFERED_PRODUCT_MODES) as ProductMode[];
 
   await mkdir(out, { recursive: true });
@@ -64,6 +77,8 @@ async function main(): Promise<void> {
 
   console.log(`\nProduct photo: ${url}`);
   console.log(`Modes:         ${modes.join(', ')}`);
+  if (modelPhoto) console.log(`Model photo:   ${modelPhoto}`);
+  if (angles.length) console.log(`Extra angles:  ${angles.length}`);
   console.log(`This will use ${modes.length} of the month's images.\n`);
 
   let good = 0;
@@ -77,7 +92,16 @@ async function main(): Promise<void> {
       sourceKey: 'verify/source.jpg',
       mode,
       aspect: '1:1',
-      ...(mode === 'on_model' ? { model: 'avery', scene: 'studio', pose: 'standing', shotSize: 'posting' } : {}),
+      ...(mode === 'on_model'
+        ? {
+            model: modelPhoto ? 'custom' : 'avery',
+            ...(modelPhoto ? { modelPhotoKey: 'verify/model.jpg' } : {}),
+            scene: 'studio',
+            pose: 'standing',
+            shotSize: 'posting',
+            angleKeys: angles.map((_, i) => `verify/angle-${i}.jpg`),
+          }
+        : {}),
       ...(mode === 'recolor' ? { color: '#C8102E' } : {}),
       ...(mode === 'retouch' ? { prompt: 'remove the price tag' } : {}),
     });
@@ -91,7 +115,11 @@ async function main(): Promise<void> {
       workspaceId: 'verify',
       capability: 'PRODUCT_SHOT',
       params: parsed.params,
-      files: { sourceKey: { url, mime: 'image/jpeg' } },
+      files: {
+        sourceKey: { url, mime: 'image/jpeg' },
+        ...(modelPhoto ? { modelPhotoKey: { url: modelPhoto, mime: 'image/jpeg' } } : {}),
+        ...Object.fromEntries(angles.map((a, i) => [`angleKeys[${i}]`, { url: a, mime: 'image/jpeg' }])),
+      },
       config: {},
     };
 

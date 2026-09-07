@@ -46,11 +46,18 @@ const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'S
 const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams, files: ProviderInput['files']) => void>> = {
   on_model: (p, q, files) => {
     q.set('virtualModel.mode', 'ai.auto');
-    // Their own saved model is an image URL; a preset is a name.
+    // A person wearing the garment IS the new background, so cutting the old
+    // one out first is both wasted work and, per the vendor, refused.
+    q.set('removeBackground', 'false');
+    // `model` and `scene` are objects, not strings: each is either a named
+    // preset or a photo of your own. The dotted query path is how the vendor
+    // spells a nested field, so it is `.preset.name`, never a bare value —
+    // sending the bare value is a 400 that says "must match a schema in anyOf".
     const photo = files.modelPhotoKey?.url;
-    if (photo) q.set('virtualModel.model', photo);
-    else if (p.model && p.model !== 'custom') q.set('virtualModel.model', p.model);
-    q.set('virtualModel.scene', p.scene ?? 'random');
+    if (photo) q.set('virtualModel.model.custom.imageUrl', photo);
+    else if (p.model && p.model !== 'custom') q.set('virtualModel.model.preset.name', p.model);
+    q.set('virtualModel.scene.preset.name', p.scene ?? 'random');
+    // Pose really is a plain string — the one flat field of the three.
     q.set('virtualModel.pose', p.pose ?? 'random');
     q.set('virtualModel.size', sizeOf(p));
     // Roughly 1K, 2K or 4K on the long side. The only mode with this
@@ -82,6 +89,10 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
   expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');
     q.set('outputSize', 'auto');
+    // The vendor refuses outright: "expand.mode will activate when
+    // `removeBackground` is set to false". Which is right — continuing the
+    // surroundings requires surroundings to continue.
+    q.set('removeBackground', 'false');
   },
 };
 
