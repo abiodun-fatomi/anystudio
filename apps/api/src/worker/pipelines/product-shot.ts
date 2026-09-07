@@ -88,7 +88,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
 
     await ctx.stage('composing', 62, 'Checking it is still your product');
     const report = await fidelity(source, cutout, bytes);
-    ctx.log.info({ mode: p.mode, attempt, strict, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'product shot fidelity measured');
+    ctx.log.info({ mode: p.mode, pass: attempt, strict, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'product shot fidelity measured');
 
     // A mode that reshapes the product on purpose is measured for the record
     // and shipped regardless. Refusing here would refuse the good ones.
@@ -104,9 +104,9 @@ export const productShotPipeline: Pipeline = async (ctx) => {
       // Close but drifting: the seller's own pixels go back where the model
       // put the product, so they keep the new light and their real label.
       picked = { bytes: await pasteProductAt(bytes, cutout, report.placed!), result, report, repaired: true };
-      ctx.log.warn({ mode: p.mode, attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels put back where it was found');
+      ctx.log.warn({ mode: p.mode, pass: attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels put back where it was found');
     } else if (attempt < attempts) {
-      ctx.log.warn({ mode: p.mode, attempt, score: report.score }, 'product not kept; asking once more');
+      ctx.log.warn({ mode: p.mode, pass: attempt, score: report.score }, 'product not kept; asking once more');
       await ctx.stage('generating', 30, 'That one changed your product — trying again');
     } else {
       throw new ProviderError('LOW_QUALITY', `product fidelity ${report.score} below ${FIDELITY.composite} on ${attempts} attempts`, result.providerKey, {

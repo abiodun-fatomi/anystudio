@@ -58,11 +58,23 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 
   // 2–3. Ask, measure, decide — at most twice.
   let picked: { bytes: Uint8Array; result: ProviderResult; score?: number; composited: boolean; placed?: { x: number; y: number } | null } | null = null;
+  /** The vendor whose first answer changed the product; the retry avoids it. */
+  let disappointed: string | null = null;
   for (let attempt = 1; attempt <= 2 && !picked; attempt++) {
     const params = attempt === 1 ? p : { ...p, prompt: p.prompt + STRICTER };
     const result = await ctx.callProvider(
       { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'IMAGE_EDIT', params, files: ctx.files },
-      { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
+      {
+        timeoutMs: ctx.budgetMs,
+        signal: ctx.signal,
+        onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail),
+        // The second ask goes to somebody else. A sterner prompt to the model
+        // that just redrew the customer's bottle is asking the same question
+        // twice: in the two live cases that prompted this, gemini answered
+        // 0.461 then 0.436, and 0.394 then 0.520 — never close, and a
+        // perfectly good second vendor sat in the fallback list untouched.
+        ...(disappointed ? { route: { exclude: [disappointed] } } : {}),
+      },
     );
     const bytes = await artifactBytes(result);
 
@@ -73,7 +85,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 
     await ctx.stage('composing', 62, 'checking the product stayed the same');
     const report = await fidelity(source, cutout, bytes);
-    ctx.log.info({ attempt, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'fidelity measured');
+    ctx.log.info({ pass: attempt, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'fidelity measured');
 
     // The check says where in the output it found the product; a drifted
     // product is pasted back THERE, at that size, whatever shape the frame
@@ -96,16 +108,17 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       const moved = !report.origin || !report.placed || shifted(report.origin, report.placed);
       if (same && !moved && report.score >= FIDELITY.composite) {
         picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true, placed: null };
-        ctx.log.info({ attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
+        ctx.log.info({ pass: attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
       } else if (found) {
         picked = { bytes: await pasteProductAt(bytes, cutout, report.placed!), result, score: report.score, composited: true, placed: report.placed };
-        ctx.log.warn({ attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels composited back where the model put it');
+        ctx.log.warn({ pass: attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels composited back where the model put it');
       } else {
         picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
-        ctx.log.warn({ attempt, score: report.score }, 'product drifted but the frame changed and it could not be located; shipping the model output');
+        ctx.log.warn({ pass: attempt, score: report.score }, 'product drifted but the frame changed and it could not be located; shipping the model output');
       }
     } else if (attempt === 1) {
-      ctx.log.warn({ attempt, score: report.score }, 'product not kept; asking once more with a stricter prompt');
+      disappointed = result.providerKey;
+      ctx.log.warn({ pass: attempt, score: report.score, avoiding: disappointed }, 'product not kept; asking someone else, with a stricter prompt');
       await ctx.stage('generating', 30, 'the first try changed your product — trying again');
     } else {
       throw new ProviderError(

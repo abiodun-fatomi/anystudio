@@ -45,7 +45,19 @@ export interface PipelineContext {
   resume: boolean;
   callProvider: (
     input: Omit<ProviderInput, 'config'>,
-    opts: { timeoutMs: number; signal: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
+    opts: {
+      timeoutMs: number;
+      signal: AbortSignal;
+      onProgress?: (detail: string, progress?: number) => void;
+      /**
+       * Ask a different vendor than the default ranking would. A pipeline
+       * that has just watched a model mangle the customer's product has
+       * information the router does not, and asking that same model again is
+       * the one thing least likely to work. Honoured on a best-effort basis:
+       * if the constraint leaves nobody, the original candidates stand.
+       */
+      route?: RouteConstraint;
+    },
   ) => Promise<ProviderResult>;
   /** Route and call a DIFFERENT capability — a pipeline that cuts out before it edits, or records before it lip-syncs. */
   callCapability: (
