@@ -83,6 +83,23 @@ describe('the schema handed to Gemini', () => {
     expect(out.properties).toHaveProperty('examples');
   });
 
+  it('quotes numeric enum values, which Gemini reads as strings whatever the type', () => {
+    // The shot plan's real shape. Sent as numbers it came back
+    //   Invalid value at '…enum[0]' (TYPE_STRING), 5
+    // and every ad's plan fell through to the fallback model.
+    const out = stripUnsupported({
+      type: 'object',
+      properties: { durationSec: { type: 'integer', enum: [5, 8] }, tempo: { type: 'string', enum: ['slow', 'fast'] } },
+    });
+    expect(at(out, ['properties', 'durationSec']).enum).toEqual(['5', '8']);
+    expect(at(out, ['properties', 'tempo']).enum).toEqual(['slow', 'fast']);
+  });
+
+  it('leaves a property NAMED enum alone', () => {
+    const out = stripUnsupported({ type: 'object', required: ['enum'], properties: { enum: { type: 'string' } } });
+    expect(at(out, ['properties', 'enum'])).toEqual({ type: 'string' });
+  });
+
   it('does not disturb a schema with nothing to strip', () => {
     const plain = { type: 'object', required: ['a'], properties: { a: { type: 'string' } } };
     expect(stripUnsupported(plain)).toEqual(plain);

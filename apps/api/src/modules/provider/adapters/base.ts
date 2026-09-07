@@ -61,6 +61,19 @@ export abstract class BaseProvider implements GenerationProvider {
     return typeof v === 'string' && v ? v : fallback;
   }
 
+  /**
+   * A list of numbers from the row's config — the shape a vendor's "allowed
+   * values" grid takes. Config comes from the database, so it is unknown[]
+   * until proven otherwise; anything that is not a finite number is dropped
+   * rather than passed on to the vendor.
+   */
+  protected nums(config: Record<string, unknown>, name: string, fallback: readonly number[] | undefined): readonly number[] | undefined {
+    const v = config[name];
+    if (!Array.isArray(v)) return fallback;
+    const list = v.map(Number).filter((n) => Number.isFinite(n));
+    return list.length ? list : fallback;
+  }
+
   protected unsupported(capability: Capability): never {
     throw new ProviderError('INVALID_INPUT', `${this.key}: routed for ${capability}, which it does not implement`, this.key);
   }

@@ -272,6 +272,17 @@ export class GoogleProvider extends BaseProvider {
  *
  * So the walk now knows where it is: inside a map of property names, a key
  * is a NAME and is never dropped; anywhere else it is a keyword.
+ *
+ * `enum` needs translating rather than dropping. In Gemini's Schema proto
+ * the field is a repeated STRING whatever the node's type is, so the shot
+ * plan's honest `{ type: 'integer', enum: [5, 8] }` came back as
+ *
+ *   Invalid value at '…items.properties[2].value.enum[0]' (TYPE_STRING), 5
+ *
+ * and every ad's shot plan fell through to the text fallback. The values are
+ * quoted here rather than corrected in the schema itself, because the schema
+ * is right — it is Gemini's dialect that wants them as strings, and OpenAI
+ * and Anthropic are both given the same schema and want them as numbers.
  */
 const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions']);
 const DROP = new Set(['$schema', 'additionalProperties', 'default', 'examples', 'title']);
@@ -284,6 +295,10 @@ export function stripUnsupported(schema: Record<string, unknown>): Record<string
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
       if (DROP.has(k)) continue;
+      if (k === 'enum' && Array.isArray(val)) {
+        out[k] = val.map((m) => (m === null || typeof m === 'object' ? m : String(m)));
+        continue;
+      }
       out[k] = SCHEMA_MAPS.has(k) ? names(val) : node(val);
     }
     return out;

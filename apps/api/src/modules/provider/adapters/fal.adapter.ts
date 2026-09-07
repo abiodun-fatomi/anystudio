@@ -47,6 +47,40 @@ const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
   'fal:sync-lipsync': { capability: 'LIPSYNC', endpoint: 'fal-ai/sync-lipsync/v2' },
 };
 
+/**
+ * The clip lengths an endpoint will actually accept, in seconds.
+ *
+ * Our plans are built on 5 and 8 (AD_PLANS), and most vendors take both.
+ * wan-2.5 does not — it takes 5 or 10, and answers an 8 with a 422 before it
+ * renders anything. That cost us three of every four shots in an ad: each one
+ * failed here and fell through to vertex:veo-3.1-fast at 260 minor against
+ * fal's 80, so the bug was billed as well as logged.
+ *
+ * A row's `config.durations` overrides this, so a vendor changing their grid
+ * is an UPDATE and not a deploy.
+ */
+const DURATIONS: Record<string, readonly number[]> = {
+  'fal-ai/wan-25-preview/image-to-video': [5, 10],
+};
+
+/**
+ * The clip length to ask this endpoint for, given the one the plan wants.
+ *
+ * The nearest allowed length that does not RUN LONG, and the shortest
+ * allowed if every option runs long. Rounding down rather than to the
+ * nearest is deliberate: the customer chose "a 30-second ad", the price is
+ * set against that, and four shots that each quietly gain two seconds hand
+ * them a 40-second one. A shot that comes back short is still the shot; the
+ * stitch reads the real lengths off the files, so the ad stays coherent
+ * either way. Sending 8 to a vendor that has never accepted 8 is the only
+ * option that produces nothing at all.
+ */
+export function snapDuration(wanted: number, allowed: readonly number[] | undefined): number {
+  if (!allowed?.length || allowed.includes(wanted)) return wanted;
+  const under = allowed.filter((d) => d < wanted);
+  return under.length ? Math.max(...under) : Math.min(...allowed);
+}
+
 export class FalProvider extends BaseProvider {
   static all(apiKey: string): FalProvider[] {
     return Object.entries(KNOWN).map(([key, k]) => new FalProvider(apiKey, key, k.capability, k.endpoint));
@@ -123,10 +157,11 @@ export class FalProvider extends BaseProvider {
       }
       case 'IMAGE_TO_VIDEO': {
         const p = this.params(input, 'IMAGE_TO_VIDEO');
+        const endpoint = this.str(input.config, 'endpoint', this.defaultEndpoint);
         return {
           image_url: this.file(input, 'sourceKey'),
           prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
-          duration: String(p.durationSec),
+          duration: String(snapDuration(p.durationSec, this.nums(input.config, 'durations', DURATIONS[endpoint]))),
           resolution: this.str(input.config, 'resolution', '720p'),
           aspect_ratio: p.aspect,
           enable_prompt_expansion: true,
@@ -178,7 +213,19 @@ export class FalProvider extends BaseProvider {
     if (audio) list.push({ url: audio.url, mime: audio.content_type ?? 'audio/mpeg', role: 'audio' });
     for (const im of images) list.push({ url: im.url, mime: im.content_type ?? 'image/png', role: 'image', width: im.width, height: im.height });
     if (image) list.push({ url: image.url, mime: image.content_type ?? 'image/png', role: 'image', width: image.width, height: image.height });
-    if (video) list.push({ url: video.url, mime: video.content_type ?? 'video/mp4', role: 'video' });
+    // The length we ASKED for, not the length in the plan: when snapDuration
+    // rounded an 8 down to a 5, the shot really is five seconds and whatever
+    // times captions against it needs to know that.
+    if (video) {
+      const asked =
+        input.capability === 'IMAGE_TO_VIDEO'
+          ? snapDuration(
+              this.params(input, 'IMAGE_TO_VIDEO').durationSec,
+              this.nums(input.config, 'durations', DURATIONS[this.str(input.config, 'endpoint', this.defaultEndpoint)]),
+            )
+          : undefined;
+      list.push({ url: video.url, mime: video.content_type ?? 'video/mp4', role: 'video', ...(asked ? { durationMs: asked * 1000 } : {}) });
+    }
 
     if (list.length === 0) {
       const nsfw = pick<boolean[]>(out, 'has_nsfw_concepts')?.some(Boolean);
