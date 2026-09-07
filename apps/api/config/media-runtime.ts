@@ -29,6 +29,7 @@
  * the garbage collector feels any pressure at all).
  */
 
+import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { logger } from './logger';
 
@@ -59,9 +60,56 @@ export function tuneMediaRuntime(): void {
   );
 }
 
-/** What the process is holding, in MB, for the heartbeat log. */
-export function memoryMb(): { rss: number; heap: number; external: number; buffers: number } {
+const mb = (n: number) => Math.round(n / 1024 / 1024);
+
+/**
+ * What the CONTAINER is holding, which is not what this process is holding.
+ *
+ * A four-shot ad was killed mid-stitch with the heartbeat reporting a
+ * comfortable 165 MB, because ffmpeg is a CHILD process: its 637 MB never
+ * appeared in our rss, and the only evidence was the log starting over. A
+ * number that cannot see the thing most likely to exhaust the box is worse
+ * than no number, because it reads as reassurance.
+ *
+ * cgroup v2 first (`memory.current` / `memory.max`), then v1, then nothing —
+ * outside a container there is no limit to report and that is not an error.
+ */
+function cgroupMb(): { used: number; limit: number } | null {
+  const read = (path: string): number | null => {
+    try {
+      const raw = readFileSync(path, 'utf8').trim();
+      if (raw === 'max') return Infinity;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  };
+  const used = read('/sys/fs/cgroup/memory.current') ?? read('/sys/fs/cgroup/memory/memory.usage_in_bytes');
+  const limit = read('/sys/fs/cgroup/memory.max') ?? read('/sys/fs/cgroup/memory/memory.limit_in_bytes');
+  // A "limit" of the whole machine is the kernel saying there isn't one.
+  if (used === null || limit === null || !Number.isFinite(limit) || limit > 64 * 1024 ** 3) return null;
+  return { used: mb(used), limit: mb(limit) };
+}
+
+/**
+ * What to report every heartbeat: this process, and the container around it.
+ *
+ * `rss` is Node. `containerUsed` includes every child — ffmpeg above all —
+ * and is the number that decides whether the process is about to be killed.
+ */
+export function memoryMb(): {
+  rss: number;
+  heap: number;
+  external: number;
+  buffers: number;
+  containerUsed?: number;
+  containerLimit?: number;
+  containerPct?: number;
+} {
   const m = process.memoryUsage();
-  const mb = (n: number) => Math.round(n / 1024 / 1024);
-  return { rss: mb(m.rss), heap: mb(m.heapUsed), external: mb(m.external), buffers: mb(m.arrayBuffers) };
+  const base = { rss: mb(m.rss), heap: mb(m.heapUsed), external: mb(m.external), buffers: mb(m.arrayBuffers) };
+  const cg = cgroupMb();
+  if (!cg) return base;
+  return { ...base, containerUsed: cg.used, containerLimit: cg.limit, containerPct: Math.round((cg.used / cg.limit) * 100) };
 }

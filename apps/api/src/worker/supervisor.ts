@@ -228,7 +228,9 @@ export class WorkerSupervisor {
     // while the other three stay flat. One line at DEBUG tells them apart,
     // and it is the first thing to read after the next restart.
     const mem = memoryMb();
-    const level = mem.rss >= HIGH_WATER_MB ? 'warn' : 'debug';
+    // Judge on the CONTAINER when the kernel will tell us, because the
+    // process's own rss cannot see ffmpeg, and ffmpeg is what overruns.
+    const level = (mem.containerPct ?? 0) >= 80 || mem.rss >= HIGH_WATER_MB ? 'warn' : 'debug';
     logger[level](
       { ...mem, inFlight: this.inFlight },
       level === 'warn' ? 'memory is close to the container limit; jobs may be interrupted by a restart' : 'worker memory',
