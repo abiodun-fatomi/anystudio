@@ -26,8 +26,20 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
-import { acceptsSourceKey, capabilityFields, namesAVendor, parseCapabilityParams, type Capability } from '@anystudio/shared';
-import { TOOLS, TOOL_GROUPS, TOOL_META, coerceParams, missingFor, searchTools, toolsIn, type Tool, type ToolGroup, type ToolId } from './tools';
+import { CAPABILITIES, acceptsSourceKey, capabilityFields, namesAVendor, parseCapabilityParams, type Capability } from '@anystudio/shared';
+import {
+  TOOLS,
+  TOOL_GROUPS,
+  TOOL_META,
+  coerceParams,
+  groupOfCapability,
+  missingFor,
+  searchTools,
+  toolsIn,
+  type Tool,
+  type ToolGroup,
+  type ToolId,
+} from './tools';
 
 /** Whether the tool brings its own source rather than using the canvas photo. */
 const ownsSource = (t: Tool): boolean => t.fields.some((f) => (f.kind === 'file' && f.key === 'sourceKey') || f.kind === 'photos');
@@ -208,5 +220,45 @@ describe('finding a tool', () => {
       expect(namesAVendor(g.label), g.label).toBe(false);
       expect(namesAVendor(g.note), g.note).toBe(false);
     }
+  });
+});
+
+/**
+ * Sifting the results.
+ *
+ * A result carries the capability it used, not the tool that asked for it —
+ * two tools can share one capability, and a row outlives the tool list it was
+ * made from. So the filter maps from the capability, and the thing that can
+ * silently rot is a capability added to the product and never filed here: it
+ * would vanish from every filter except All, which is exactly the kind of
+ * disappearance nobody reports as a bug.
+ */
+describe('filtering what has been made', () => {
+  it('files every capability that can produce a result', () => {
+    // BATCH is filed too — its own row is what a merchant sees for the shoot.
+    const notAResult: Capability[] = ['VIDEO_STITCH'];
+    for (const c of CAPABILITIES) {
+      if (notAResult.includes(c)) continue;
+      expect(groupOfCapability(c), `${c} belongs to no group, so it can never be filtered to`).toBeTruthy();
+    }
+  });
+
+  it('puts each one where a merchant would look for it', () => {
+    expect(groupOfCapability('PRODUCT_SHOT')).toBe('photo');
+    expect(groupOfCapability('COLLAGE')).toBe('photo');
+    expect(groupOfCapability('IMAGE_TO_VIDEO')).toBe('video');
+    // A dub and a lip-sync hand back a video, whatever they did to get there.
+    expect(groupOfCapability('DUB')).toBe('video');
+    expect(groupOfCapability('LIPSYNC')).toBe('video');
+    expect(groupOfCapability('MUSIC')).toBe('sound');
+    expect(groupOfCapability('VOICEOVER')).toBe('sound');
+    expect(groupOfCapability('TEXT_GENERATE')).toBe('words');
+    expect(groupOfCapability('BATCH')).toBe('bulk');
+  });
+
+  it('says nothing rather than guessing about a capability it does not know', () => {
+    // A row from a newer server than this build. It belongs to no group and
+    // so is never filtered out — invisible is the one outcome to avoid.
+    expect(groupOfCapability('SOMETHING_NEW')).toBeUndefined();
   });
 });

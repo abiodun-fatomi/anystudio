@@ -5,6 +5,12 @@
  * stitching, the thing they are about to pay to have restyled. Zoom with the
  * buttons, a pinch, or ⌘/Ctrl + wheel; drag or scroll to pan; double-click
  * flips between "fit the screen" and "actual pixels"; Esc closes.
+ *
+ * It takes a LIST, because a finished generation is not one picture. A
+ * merchant shot comes back as the full frame plus a Story crop and a Feed
+ * crop, and the question they actually have — did the crop cut the label
+ * off? — can only be answered by looking at them one after another. Arrow
+ * keys step through; with a single picture the stepper is simply not there.
  */
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -15,8 +21,32 @@ const STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
 const MIN = STEPS[0]!;
 const MAX = STEPS[STEPS.length - 1]!;
 
-export function Lightbox({ src, alt, meta, onClose }: { src: string; alt: string; meta?: string; onClose: () => void }) {
+export interface Shot {
+  src: string;
+  alt: string;
+  /** Dimensions, a size name — whatever helps someone judge what they are looking at. */
+  meta?: string;
+}
+
+export function Lightbox({ shots, startAt = 0, onClose }: { shots: Shot[]; startAt?: number; onClose: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState(() => Math.min(Math.max(0, startAt), Math.max(0, shots.length - 1)));
+  const shot = shots[at] ?? shots[0];
+  const { src, alt, meta } = shot ?? { src: '', alt: '' };
+  const many = shots.length > 1;
+  const go = useCallback(
+    (dir: 1 | -1) => {
+      if (shots.length < 2) return;
+      // Wrapping, because someone comparing two crops flips back and forth and
+      // a dead end at either edge makes them hunt for the other button.
+      setAt((i) => (i + dir + shots.length) % shots.length);
+      // A new picture is a new subject: start it fitted rather than inheriting
+      // the zoom someone used to inspect the last one.
+      setZoom(null);
+      setNatural(null);
+    },
+    [shots.length],
+  );
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   // null = fit to the screen; a number = scale against actual pixels
   const [zoom, setZoom] = useState<number | null>(null);
@@ -52,10 +82,12 @@ export function Lightbox({ src, alt, meta, onClose }: { src: string; alt: string
       if (e.key === '-') step(-1);
       if (e.key === '0') setZoom(null);
       if (e.key === '1') setZoom(1);
+      if (e.key === 'ArrowRight') go(1);
+      if (e.key === 'ArrowLeft') go(-1);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, step]);
+  }, [onClose, step, go]);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -147,6 +179,19 @@ export function Lightbox({ src, alt, meta, onClose }: { src: string; alt: string
             1:1
           </button>
         </div>
+        {many && (
+          <div className={styles.step} role="group" aria-label="Move between sizes">
+            <button type="button" onClick={() => go(-1)} aria-label="Previous">
+              ‹
+            </button>
+            <span aria-live="polite">
+              {at + 1} / {shots.length}
+            </span>
+            <button type="button" onClick={() => go(1)} aria-label="Next">
+              ›
+            </button>
+          </div>
+        )}
         <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
           <Icon.x width={18} height={18} />
         </button>
@@ -161,6 +206,7 @@ export function Lightbox({ src, alt, meta, onClose }: { src: string; alt: string
         }}
       >
         <img
+          key={src}
           src={src}
           alt={alt}
           draggable={false}
@@ -170,7 +216,7 @@ export function Lightbox({ src, alt, meta, onClose }: { src: string; alt: string
         />
       </div>
       <div className={styles.hint} aria-hidden="true">
-        Double-click for actual size · ⌘/Ctrl + scroll to zoom · Esc to close
+        {many ? '← → between sizes · ' : ''}Double-click for actual size · ⌘/Ctrl + scroll to zoom · Esc to close
       </div>
     </div>,
     document.body,
