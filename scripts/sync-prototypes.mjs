@@ -15,7 +15,7 @@
  *
  * Run after editing anything in design/:   node scripts/sync-prototypes.mjs
  */
-import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,7 +59,24 @@ function rewriteAssets(html) {
   }
   const leftover = html.match(/https:\/\/d8j0ntlcm91z4\.cloudfront\.net[^"']+/g);
   if (leftover) throw new Error(`CDN links not in scripts/shots.json:\n${[...new Set(leftover)].join('\n')}`);
+  checkShotsExist(html);
   return html;
+}
+
+/**
+ * Every /shots/ file the pages ask for has to actually be in public/.
+ *
+ * A missing one is invisible here and a broken image box on the landing
+ * page, which is the worst place to find out. This warns rather than
+ * throws, because a picture that has not been dropped in yet should not
+ * stop someone editing copy — but it says exactly what is missing.
+ */
+const missingShots = new Set();
+function checkShotsExist(html) {
+  for (const m of html.matchAll(/\/shots\/([A-Za-z0-9._-]+)/g)) {
+    const name = m[1];
+    if (!existsSync(resolve(pub, 'shots', name))) missingShots.add(name);
+  }
 }
 
 function rewriteLinks(html) {
@@ -336,3 +353,11 @@ writeFileSync(
     `\n</urlset>\n`,
 );
 console.log('✓ design/seo/* → apps/web/public/');
+
+if (missingShots.size > 0) {
+  console.warn(
+    `\n⚠  ${missingShots.size} picture(s) referenced by the pages are not in apps/web/public/shots/:\n` +
+      [...missingShots].map((n) => `     ${n}`).join('\n') +
+      `\n   The pages will render with empty image boxes until those files are there.\n`,
+  );
+}
