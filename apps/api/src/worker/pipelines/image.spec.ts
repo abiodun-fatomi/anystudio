@@ -188,6 +188,65 @@ describe('a model that kept the product where it was', () => {
   });
 });
 
+/**
+ * The band between "nothing found" and "really found", which is where the
+ * reported failure lived.
+ *
+ * A striped disc and a plain square are not the same product by any
+ * reading, and yet they correlate at about 0.38 — a hair above the 0.35
+ * that used to count as found. So the pipeline pasted the seller's disc at
+ * the square's place and size, on top of the square, and called it a
+ * repair. Two live generations from one photo scored 0.429 and 0.563 and
+ * disagreed about the product's size by 45%.
+ *
+ * A weak match is not a location. It is a refusal — refunded, and the
+ * merchant told why.
+ */
+const stripes = (body: string, cx: number, cy: number, r: number) =>
+  `<g><circle cx="${cx}" cy="${cy}" r="${r}" fill="${body}"/>${[0, 1, 2, 3, 4]
+    .map((i) => `<rect x="${cx - r}" y="${cy - r + i * ((2 * r) / 5)}" width="${2 * r}" height="${r / 5}" fill="#FFFFFF" opacity="0.85"/>`)
+    .join('')}</g>`;
+
+const render = async (svg: string, w = SIZE, h = SIZE) =>
+  new Uint8Array(
+    await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${svg}</svg>`))
+      .png()
+      .toBuffer(),
+  );
+
+describe('a match too weak to be a location', () => {
+  it('refuses rather than pasting the product somewhere it was never found', async () => {
+    sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
+    const { ctx, callProvider } = ctxWith({
+      // A green square where a striped disc used to be: about 0.38, which
+      // the old threshold called "found".
+      output: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>`),
+      mask: await render(stripes('#D6006E', 128, 128, 64)),
+    });
+
+    await expect(brandedImagePipeline(ctx)).rejects.toThrow(/fidelity/i);
+    // It asked twice before giving up, as it should.
+    expect(callProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it('still repairs a product it really did find, moved and in a reshaped frame', async () => {
+    // The same disc, recoloured and moved into a 16:9 frame: 0.97. This is
+    // what a real match looks like, and it must survive the stricter bar.
+    sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
+    const { ctx } = ctxWith({
+      output: await render(`<rect width="640" height="360" fill="#DCD8D2"/>${stripes('#2255DD', 200, 180, 60)}`, 640, 360),
+      mask: await render(stripes('#D6006E', 128, 128, 64)),
+    });
+
+    const image = full(await brandedImagePipeline(ctx));
+
+    // Where the model put it: the seller's magenta, not the model's blue.
+    const there = await patch(image, 196, 176, 8);
+    expect(there.r).toBeGreaterThan(150);
+    expect(there.b).toBeLessThan(there.r);
+  });
+});
+
 describe('when the cutout cannot be made', () => {
   it('ships the model output rather than failing the customer, and says why', async () => {
     sourceBytes = await photoAt(RED, 80, 80);

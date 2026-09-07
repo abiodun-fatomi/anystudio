@@ -33,8 +33,28 @@ export const FIDELITY = {
   keep: 0.86,
   /** Between: composite the original pixels back over the scene. Below: try again. */
   composite: 0.62,
-  /** Structure at or above this means the product was FOUND, even if changed; the original can be pasted where it is. */
-  locate: 0.35,
+  /**
+   * Structure at or above this means the product was really FOUND, and the
+   * original may be pasted where the match says it is.
+   *
+   * This was 0.35, which was not a match — it was a licence. Measured on
+   * fixtures: the same product moved into a reshaped frame correlates at
+   * 0.975, the same product recoloured and moved at 0.974, and a COMPLETELY
+   * DIFFERENT product — a green square where a striped disc used to be —
+   * still correlates at 0.379. So 0.35 admitted "found" for an object that
+   * was not the product, and the pipeline then pasted the seller's product
+   * at that imaginary place and size, over the model's own version of it.
+   *
+   * Two live generations from the same photo proved it: structure 0.429 and
+   * 0.563, and the located size disagreed between them by 45% (scale 0.53
+   * against 0.768). A real match does not wobble like that. A merchant saw
+   * the result as a bottle with somebody else's bottom half.
+   *
+   * 0.72 sits far above every false match observed and far below every true
+   * one, so a weak match now refuses — refunded, and explained — instead of
+   * shipping a mangled product.
+   */
+  locate: 0.72,
 } as const;
 
 export interface FidelityReport {
