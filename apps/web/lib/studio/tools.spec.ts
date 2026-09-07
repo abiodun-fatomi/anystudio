@@ -29,6 +29,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CAPABILITIES,
   PRODUCT_REFERENCE_ANGLES,
+  REEL_BRIEF,
   acceptsSourceKey,
   capabilityFields,
   namesAVendor,
@@ -311,5 +312,57 @@ describe('offering the fix that exists', () => {
 
   it('says nothing for a tool that has no angles at all', () => {
     for (const id of ['copy', 'music', 'collage', 'video'] as const) expect(anglesWouldHelp(toolById(id), { mode: 'on_model' }, 'LOW_QUALITY'), id).toBe(false);
+  });
+});
+
+/**
+ * The words a reel is made from, and who wrote them.
+ *
+ * The format's direction was only ever a placeholder — grey, and gone the
+ * moment anyone typed a character — so a seller could use this tool without
+ * ever noticing the format was writing their reel. It is a choice now, and
+ * taking it shows the words rather than hinting at them.
+ *
+ * The switch is panel state only. That matters: the server fills a blank
+ * prompt from the format regardless, so if `brief` ever reached the API it
+ * would be a key nothing reads — the exact failure this repo has a whole
+ * audit for.
+ */
+describe('the words a reel is made from', () => {
+  const video = toolById('video');
+
+  it('starts on the format, so a photo and a tap is a whole request', () => {
+    expect(video.defaults.brief).toBe('format');
+    expect(missingFor(video, video.defaults)).toBeNull();
+  });
+
+  it('hides the box until someone takes the pen', () => {
+    const promptField = video.fields.find((f) => f.key === 'prompt')!;
+    expect(promptField.showIf?.({ brief: 'format' })).toBe(false);
+    expect(promptField.showIf?.({ brief: 'own' })).toBe(true);
+  });
+
+  it('quotes the chosen format back, so the words are read and not guessed at', () => {
+    const brief = video.fields.find((f) => f.key === 'brief') as Extract<(typeof video.fields)[number], { kind: 'segment' }>;
+    const note = brief.noteFor?.({ brief: 'format', format: 'price_drop' });
+    expect(note).toContain(REEL_BRIEF.price_drop);
+    // And says nothing when the seller is writing their own.
+    expect(brief.noteFor?.({ brief: 'own', format: 'price_drop' })).toBeUndefined();
+  });
+
+  it('never sends the switch itself', () => {
+    // It decides what the panel shows. The API has no such field, and a key
+    // nothing reads is the bug this file exists to catch.
+    for (const brief of ['format', 'own']) {
+      const sent = coerceParams(video, { ...video.defaults, brief, prompt: brief === 'own' ? 'hold on the label' : '' });
+      expect(Object.keys(sent), brief).not.toContain('brief');
+    }
+  });
+
+  it('sends the seller’s words when they wrote some, and nothing when they did not', () => {
+    expect(coerceParams(video, { ...video.defaults, brief: 'own', prompt: 'hold on the label' }).prompt).toBe('hold on the label');
+    // Blank goes as absent, and the server fills it from the format — the one
+    // place that decision is made.
+    expect(coerceParams(video, { ...video.defaults, brief: 'format' }).prompt).toBeUndefined();
   });
 });

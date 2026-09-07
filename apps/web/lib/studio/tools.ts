@@ -9,6 +9,7 @@
  */
 import {
   ASPECTS,
+  ASPECT_USE,
   COLLAGE_LAYOUTS,
   COLLAGE_MAX_PHOTOS,
   COLLAGE_MIN_PHOTOS,
@@ -74,7 +75,15 @@ export type Field =
       suggestions?: string[];
     }
   /** `note` on an option is the sentence shown under the control once it is chosen. */
-  | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string; note?: string }> }
+  | {
+      key: string;
+      kind: 'segment';
+      label: string;
+      /** `ratio` draws the shape itself on the button — five aspect numbers are arithmetic; a rectangle is not. */
+      options: Array<{ id: string; label: string; note?: string; ratio?: [number, number] }>;
+      /** A note that depends on the other controls — the chosen format's own words, quoted back. */
+      noteFor?: (values: Record<string, unknown>) => string | undefined;
+    }
   /**
    * One switch for "put my shop on this one", with a sentence under it naming
    * exactly what will be stamped. The fine-grained settings live on the Brand
@@ -222,7 +231,12 @@ export const TOOLS: Tool[] = [
         key: 'aspect',
         kind: 'segment',
         label: 'Shape',
-        options: ASPECTS.map((a) => ({ id: a, label: a })),
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
         showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
       },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
@@ -269,7 +283,17 @@ export const TOOLS: Tool[] = [
     narrative: { ...IMAGE_STAGES, generating: 'Building the new background' },
     fields: [
       { key: 'prompt', kind: 'text', label: 'New background', placeholder: 'Plain warm beige studio backdrop', rows: 2, maxLength: 400, required: true },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'shadow', kind: 'switch', label: 'Natural shadow', hint: 'A soft contact shadow so it sits on the surface' },
       { key: 'relight', kind: 'switch', label: 'Match the lighting' },
     ],
@@ -339,7 +363,17 @@ export const TOOLS: Tool[] = [
         required: true,
         hint: 'For a personal photo or a flyer you already have. The whole image can change.',
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
     ],
     defaults: { preserveProduct: false, aspect: '1:1', sizes: ['feed_square', 'story'], brand: { showPrice: false, showBusinessName: false } },
@@ -677,7 +711,17 @@ export const TOOLS: Tool[] = [
           { id: 'none', label: 'None' },
         ],
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
@@ -793,7 +837,17 @@ export const TOOLS: Tool[] = [
           { id: 'none', label: 'None' },
         ],
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       // The one place this matters most: forty pictures either all carry the
       // shop's name or none of them do, and doing it here is the difference
@@ -924,17 +978,34 @@ export const TOOLS: Tool[] = [
         ],
       },
       {
-        // Optional now. Picking a format IS the brief: the planner already
-        // reads it for an ad, and a single reel gets that format's own camera
-        // direction. A seller who wants a price-drop reel should be one tap
-        // from one, not stuck inventing a camera move first.
+        /**
+         * The format's words were only ever a placeholder — grey, and gone
+         * the moment anyone typed a character. A seller could use this tool
+         * without ever noticing the format was writing their reel for them.
+         *
+         * So it is a choice now, and taking it shows the words: pick the
+         * format and read exactly what it will do, or take the pen. Panel
+         * state, never sent — the server fills a blank prompt from the
+         * format regardless, so this only decides what is on screen.
+         */
+        key: 'brief',
+        kind: 'segment',
+        label: 'The words',
+        options: [
+          { id: 'format', label: 'Use the format' },
+          { id: 'own', label: 'Write my own' },
+        ],
+        noteFor: (v) => (v.brief === 'own' ? undefined : `“${REEL_BRIEF[(v.format as AdFormat) ?? 'reveal']}”`),
+      },
+      {
         key: 'prompt',
         kind: 'text',
-        label: 'Anything in particular? (optional)',
+        label: 'What happens',
         placeholderFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         rows: 3,
         maxLength: 600,
-        hint: 'Leave it blank and the format above decides. Type here to overrule it.',
+        hint: 'Your words instead of the format’s. Leave it empty and the format decides anyway.',
+        showIf: (v) => v.brief === 'own',
       },
       { key: 'motion', kind: 'text', label: 'Camera', placeholder: 'slow push-in · orbit · tilt up · rack focus', maxLength: 200 },
       {
@@ -1012,8 +1083,10 @@ export const TOOLS: Tool[] = [
         showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
       },
     ],
-    defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
-    localKeys: ['presenterKind'],
+    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
+    // `brief` decides what the panel shows, not what is sent: a blank prompt
+    // is filled from the format on the server either way.
+    localKeys: ['presenterKind', 'brief'],
     costCodeFor: (v) => {
       const plan = adPlan(Number(v.shots));
       if (!plan) return undefined;

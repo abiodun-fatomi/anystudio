@@ -140,6 +140,27 @@ export const objectKey = z
   .regex(/^[A-Za-z0-9/_.-]+$/);
 
 export const ASPECTS = ['1:1', '4:5', '9:16', '16:9', '3:4'] as const;
+export type Aspect = (typeof ASPECTS)[number];
+
+/**
+ * What each shape is FOR.
+ *
+ * "9:16" is a photographer's word. A seller deciding between five of them is
+ * being asked to do arithmetic about a thing they could simply be shown, and
+ * the honest answer to "what does 9:16 look like" is a shape — which fits
+ * inside the button, so nobody has to open anything to find out.
+ *
+ * `w` and `h` draw that shape at the size the control has room for; the note
+ * says where the picture is going, because that is the decision actually
+ * being made.
+ */
+export const ASPECT_USE: Record<Aspect, { label: string; note: string; w: number; h: number }> = {
+  '1:1': { label: 'Square', note: 'Instagram and Facebook feed, WhatsApp display picture.', w: 16, h: 16 },
+  '4:5': { label: 'Tall post', note: 'The tallest a feed post can be — takes up the most screen.', w: 14, h: 17 },
+  '9:16': { label: 'Full screen', note: 'WhatsApp Status, Instagram and Facebook Stories, TikTok.', w: 11, h: 19 },
+  '16:9': { label: 'Wide', note: 'YouTube, a website banner, a slide.', w: 20, h: 11 },
+  '3:4': { label: 'Portrait', note: 'A little taller than square. Marketplace listings.', w: 15, h: 20 },
+};
 
 /**
  * A multi-shot video, by shot count: how long each shot runs (the models make
@@ -155,7 +176,6 @@ export const AD_PLANS = {
 } as const;
 export type AdShots = keyof typeof AD_PLANS;
 export const adPlan = (shots: number) => (AD_PLANS as Record<number, (typeof AD_PLANS)[AdShots] | undefined>)[shots];
-export type Aspect = (typeof ASPECTS)[number];
 
 /**
  * Several photos in one picture — the post a seller makes when one photo is
