@@ -14,6 +14,7 @@ import {
   COLLAGE_MIN_PHOTOS,
   EXPORT_SIZES,
   PIPELINE_WRITTEN_KEYS,
+  type AdFormat,
   type Capability,
   type CollageLayout,
   type ExportSize,
@@ -24,6 +25,7 @@ import {
   MODEL_PRESETS,
   MODEL_SCENES,
   PRODUCT_REFERENCE_ANGLES,
+  REEL_BRIEF,
   preset,
   presetCapability,
   productMode,
@@ -66,6 +68,8 @@ export type Field =
       maxLength?: number;
       rows?: number;
       required?: boolean;
+      /** A placeholder that follows another control — the format's own direction, so the box shows what blank means. */
+      placeholderFor?: (values: Record<string, unknown>) => string | undefined;
       /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
       suggestions?: string[];
     }
@@ -909,6 +913,7 @@ export const TOOLS: Tool[] = [
         key: 'format',
         kind: 'select',
         label: 'Ad format',
+        hintFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         options: [
           { value: 'reveal', label: 'Product reveal' },
           { value: 'benefits', label: 'Three benefits' },
@@ -919,14 +924,17 @@ export const TOOLS: Tool[] = [
         ],
       },
       {
+        // Optional now. Picking a format IS the brief: the planner already
+        // reads it for an ad, and a single reel gets that format's own camera
+        // direction. A seller who wants a price-drop reel should be one tap
+        // from one, not stuck inventing a camera move first.
         key: 'prompt',
         kind: 'text',
-        label: 'What happens',
-        placeholder: 'The camera slowly pushes in as light sweeps across the fabric',
+        label: 'Anything in particular? (optional)',
+        placeholderFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         rows: 3,
         maxLength: 600,
-        required: true,
-        hint: 'For an ad, this is your direction to the planner; each shot gets its own prompt.',
+        hint: 'Leave it blank and the format above decides. Type here to overrule it.',
       },
       { key: 'motion', kind: 'text', label: 'Camera', placeholder: 'slow push-in · orbit · tilt up · rack focus', maxLength: 200 },
       {

@@ -1028,7 +1028,7 @@ function FieldControl({
           <div>
             <Input
               label={field.label}
-              placeholder={field.placeholder}
+              placeholder={field.placeholderFor?.(values) ?? field.placeholder}
               hint={field.hint}
               maxLength={field.maxLength}
               value={String(value ?? '')}
@@ -1048,7 +1048,7 @@ function FieldControl({
       return field.rows ? (
         <Textarea
           label={field.label}
-          placeholder={field.placeholder}
+          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
           hint={field.hint}
           rows={field.rows}
           maxLength={field.maxLength}
@@ -1060,7 +1060,7 @@ function FieldControl({
       ) : (
         <Input
           label={field.label}
-          placeholder={field.placeholder}
+          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
           hint={field.hint}
           maxLength={field.maxLength}
           value={String(value ?? '')}

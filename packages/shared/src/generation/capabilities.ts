@@ -241,6 +241,33 @@ export const isBatchable = (c: string): c is BatchableCapability => (BATCHABLE a
 /** How many photos one batch may carry. The children are ordinary jobs, so the ceiling is patience, not throughput. */
 export const BATCH_MAX = 100;
 
+/** The ad shapes a seller picks between. The planner reads them; so does the single reel. */
+export const AD_FORMATS = ['reveal', 'benefits', 'before_after', 'unboxing', 'price_drop', 'ugc'] as const;
+export type AdFormat = (typeof AD_FORMATS)[number];
+
+/**
+ * What each ad format looks like as a single reel.
+ *
+ * A multi-shot ad has a planner: it is handed the format's brief and writes
+ * a prompt per shot, and the seller's own words were always optional
+ * direction on top. A one-shot reel had no such help — it sent whatever was
+ * typed straight to the video model — which is why the prompt was required
+ * everywhere, and why a seller who just wanted a price-drop reel had to
+ * invent a camera move first.
+ *
+ * These are that missing half: one sentence of direction per format, good
+ * enough to make a reel worth posting with nothing typed at all. A seller
+ * who does have words still overrules them.
+ */
+export const REEL_BRIEF: Record<AdFormat, string> = {
+  reveal: 'Start close on a detail and pull slowly back until the whole product is in frame, settling on it.',
+  benefits: 'A slow, even push-in on the product, holding steady long enough to read it.',
+  before_after: 'A slow tilt across the product, ending settled and square on it.',
+  unboxing: 'Hands lift the product into frame and turn it gently, as if just opened.',
+  price_drop: 'An energetic orbit around the product with light sweeping across it, ending square on.',
+  ugc: 'Handheld, as if filmed on a phone: a small drift and refocus, natural light, nothing staged.',
+};
+
 export const capabilityParams = {
   IMAGE_GENERATE: z.object({
     prompt: z.string().min(3).max(2000),
@@ -408,53 +435,68 @@ export const capabilityParams = {
       if (probe.ok) return;
       for (const [path, message] of Object.entries(probe.issues)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['params', ...path.split('.')], message });
     }),
-  IMAGE_TO_VIDEO: z.object({
-    sourceKey: objectKey,
-    prompt: z.string().min(3).max(2000),
-    durationSec: z.union([z.literal(5), z.literal(8)]).default(5),
-    aspect: z.enum(['9:16', '1:1', '16:9']).default('9:16'),
-    /** Camera and motion hints the shot planner fills in. */
-    motion: z.string().max(300).optional(),
-    audio: z.boolean().default(false),
+  IMAGE_TO_VIDEO: z
+    .object({
+      sourceKey: objectKey,
+      /**
+       * Optional. Picking a format IS the brief — see REEL_BRIEF — and a
+       * merchant who wants a price-drop reel should not have to describe a
+       * camera move to get one. Filled in below when it is left blank, so
+       * what was actually asked for is recorded on the row rather than
+       * invented later by something downstream.
+       */
+      prompt: z.string().max(2000).optional(),
+      durationSec: z.union([z.literal(5), z.literal(8)]).default(5),
+      aspect: z.enum(['9:16', '1:1', '16:9']).default('9:16'),
+      /** Camera and motion hints the shot planner fills in. */
+      motion: z.string().max(300).optional(),
+      audio: z.boolean().default(false),
+      /**
+       * More than one shot makes this a PARENT: a plan is written, each shot is
+       * its own CHILD generation rendered in parallel, and the parent stitches
+       * them with captions, a bed and an end card. 1 = a single reel.
+       */
+      shots: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)]).default(1),
+      /** The ad's shape — for the planner, and for the single reel's direction. */
+      format: z.enum(AD_FORMATS).default('reveal'),
+      /** Words for the end card; the price comes from the copy fields when present. */
+      productName: z.string().max(120).optional(),
+      price: z.string().max(40).optional(),
+      details: z.string().max(800).optional(),
+      /**
+       * "Filmed by a customer" with a person actually talking to camera: the
+       * first shot becomes a presenter — a stock face, or the seller from one
+       * photo — saying a short testimonial in a catalogue voice or their own.
+       * Only with `format: 'ugc'` and two or more shots.
+       */
+      presenter: z
+        .object({
+          kind: z.enum(['stock', 'photo']),
+          /** A PRESENTERS key, for `stock`. */
+          key: z.string().max(40).optional(),
+          /** Their photo, for `photo`: a clear face, looking at the camera. */
+          photoKey: objectKey.optional(),
+          /** The person in the photo is them or gave permission; required for `photo`. */
+          consent: z.boolean().optional(),
+          /** A VoiceProfile key — a catalogue voice, or the workspace's own clone. Absent → the default voice. */
+          voiceId: z.string().max(80).optional(),
+          /** What they say, in the seller's words. Absent → the planner writes a testimonial. */
+          script: z.string().max(600).optional(),
+        })
+        .optional(),
+      /** Filled by the pipeline once the presenter segment is rendered, so a retry does not render it twice. */
+      presenterClip: z.object({ key: objectKey, audioKey: objectKey, durationMs: z.number().int().min(500), script: z.string().max(1200) }).optional(),
+      /** Shot-level fields the planner writes; a customer never sets them. */
+      caption: z.string().max(120).optional(),
+      shotIndex: z.number().int().min(0).max(7).optional(),
+    })
     /**
-     * More than one shot makes this a PARENT: a plan is written, each shot is
-     * its own CHILD generation rendered in parallel, and the parent stitches
-     * them with captions, a bed and an end card. 1 = a single reel.
+     * A format with no words is a complete request, so it is completed here —
+     * once, on the server, and recorded on the row. Filling it in downstream
+     * would mean the seller could never see what was actually asked for, and
+     * two code paths could disagree about it.
      */
-    shots: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)]).default(1),
-    /** The ad's shape, for the planner. */
-    format: z.enum(['reveal', 'benefits', 'before_after', 'unboxing', 'price_drop', 'ugc']).default('reveal'),
-    /** Words for the end card; the price comes from the copy fields when present. */
-    productName: z.string().max(120).optional(),
-    price: z.string().max(40).optional(),
-    details: z.string().max(800).optional(),
-    /**
-     * "Filmed by a customer" with a person actually talking to camera: the
-     * first shot becomes a presenter — a stock face, or the seller from one
-     * photo — saying a short testimonial in a catalogue voice or their own.
-     * Only with `format: 'ugc'` and two or more shots.
-     */
-    presenter: z
-      .object({
-        kind: z.enum(['stock', 'photo']),
-        /** A PRESENTERS key, for `stock`. */
-        key: z.string().max(40).optional(),
-        /** Their photo, for `photo`: a clear face, looking at the camera. */
-        photoKey: objectKey.optional(),
-        /** The person in the photo is them or gave permission; required for `photo`. */
-        consent: z.boolean().optional(),
-        /** A VoiceProfile key — a catalogue voice, or the workspace's own clone. Absent → the default voice. */
-        voiceId: z.string().max(80).optional(),
-        /** What they say, in the seller's words. Absent → the planner writes a testimonial. */
-        script: z.string().max(600).optional(),
-      })
-      .optional(),
-    /** Filled by the pipeline once the presenter segment is rendered, so a retry does not render it twice. */
-    presenterClip: z.object({ key: objectKey, audioKey: objectKey, durationMs: z.number().int().min(500), script: z.string().max(1200) }).optional(),
-    /** Shot-level fields the planner writes; a customer never sets them. */
-    caption: z.string().max(120).optional(),
-    shotIndex: z.number().int().min(0).max(7).optional(),
-  }),
+    .transform((v) => ({ ...v, prompt: v.prompt?.trim() || REEL_BRIEF[v.format] })),
   VIDEO_STITCH: z.object({
     /** Ordered shot keys — each one an IMAGE_TO_VIDEO output. */
     shotKeys: z.array(objectKey).min(1).max(8),
