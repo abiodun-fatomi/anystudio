@@ -104,11 +104,21 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('ironing.mode', 'ai.auto');
     q.set('removeBackground', 'false');
   },
-  // `beautify` takes a subject tuning and a seed. There is no prompt.
-  beautify: (p, q) => {
-    q.set('beautify.mode', `ai.${p.subject}`);
-    q.set('removeBackground', 'false');
-  },
+  /**
+   * `beautify` takes a subject tuning and a seed. There is no prompt.
+   *
+   * And it is the one exception to the rule above, which we learned by
+   * breaking it: asked to keep the background it answers HTTP 500, "An error
+   * occurred during Subject Beautifier processing". The name is the reason —
+   * it beautifies the SUBJECT, so it has to know which pixels those are, and
+   * the cutout is how it finds out. Setting removeBackground=false here does
+   * not preserve a background, it fails the generation.
+   *
+   * So the mode keeps the default and the honesty moved to its description
+   * instead: it now says the product comes back on a clean ground, because
+   * that is what a merchant is going to get.
+   */
+  beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
   // Widening the frame is the whole point, so this one must not keep the original size.
   expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');

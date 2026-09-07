@@ -153,14 +153,23 @@ describe('the modes that work on the product itself', () => {
  */
 describe('who asked for a cutout', () => {
   it('keeps the room a merchant photographed their goods in', async () => {
-    for (const mode of ['ironing', 'beautify', 'expand', 'on_model'])
+    for (const mode of ['ironing', 'expand', 'on_model'])
       expect((await sent(shot({ mode, ...(mode === 'on_model' ? { model: 'avery' } : {}) }))).get('removeBackground'), mode).toBe('false');
   });
 
-  it('leaves the two shapes that are isolated by nature alone', async () => {
+  it('leaves the shots that are isolated by nature alone', async () => {
     // A garment holding its own shape and a flat lay come back cut out
-    // because that is what those shots ARE, not as a side effect.
-    for (const mode of ['ghost_mannequin', 'flat_lay']) expect((await sent(shot({ mode }))).get('removeBackground'), mode).toBeNull();
+    // because that is what those shots ARE, not as a side effect. And
+    // `beautify` beautifies the SUBJECT — asked to keep the background it
+    // answers HTTP 500, because the cutout is how it finds the subject.
+    for (const mode of ['ghost_mannequin', 'flat_lay', 'beautify']) expect((await sent(shot({ mode }))).get('removeBackground'), mode).toBeNull();
+  });
+
+  it('warns in the studio about the one that takes the background away', async () => {
+    // The behaviour cannot change, so the description has to carry it: a
+    // merchant should read that the background goes, not discover it.
+    const { PRODUCT_MODES } = await import('@anystudio/shared');
+    expect(`${PRODUCT_MODES.beautify.note} ${PRODUCT_MODES.beautify.hint}`).toMatch(/background goes|clean ground/i);
   });
 });
 
