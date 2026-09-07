@@ -11,13 +11,14 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, type DubLanguages, type Genre, type Idea, type IdeasOut, type MediaAssetRow, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
+import { filesFromDrop, uploadMany } from '@/lib/studio/folder';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import {
   PRESENTERS,
   PRESET_GROUPS,
+  OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
-  PRODUCT_MODE_KEYS,
   acceptsSourceKey,
   presetsIn,
   type PhotoPreset,
@@ -60,6 +61,9 @@ export function ToolPanel({
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
   const capability = tool.capabilityFor?.(values) ?? tool.capability;
+  // A batch is priced per photo, so the quote has to know how many. The
+  // server works the same number out again from what it is actually sent.
+  const quantity = tool.quantityFor?.(values) ?? 1;
   // Some tools need the canvas photo only for some settings, and some
   // capabilities cannot take a photo at all. Both must be visible before the
   // button is pressed, never discovered in the result.
@@ -69,7 +73,7 @@ export function ToolPanel({
     let live = true;
     setQuote(null);
     api.generations
-      .quote(workspace.id, capability, costCode)
+      .quote(workspace.id, capability, costCode, quantity)
       .then((q) => {
         if (live) setQuote(q);
       })
@@ -77,7 +81,7 @@ export function ToolPanel({
     return () => {
       live = false;
     };
-  }, [workspace.id, capability, costCode]);
+  }, [workspace.id, capability, costCode, quantity]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;
@@ -406,8 +410,11 @@ function PhotosField({ field, value, onChange }: { field: Extract<Field, { kind:
   const [rows, setRows] = useState<MediaAssetRow[] | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [pct, setPct] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const folder = useRef<HTMLInputElement>(null);
   const chosen = value.filter(Boolean);
 
   const load = useCallback(async () => {
@@ -452,26 +459,45 @@ function PhotosField({ field, value, onChange }: { field: Extract<Field, { kind:
     else if (chosen.length < field.max) onChange([...chosen, key]);
   };
 
-  const upload = async (files: FileList | null) => {
-    const list = [...(files ?? [])].filter((f) => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
-    if (list.length === 0) return;
+  /**
+   * However they arrive — chosen, dropped, or a whole folder dragged in.
+   * A few at a time so a phone tether is not asked for sixty connections,
+   * and one bad file never loses the rest.
+   */
+  const take = async (files: File[]) => {
+    if (files.length === 0) return;
     setError(null);
-    const added: string[] = [];
-    for (const file of list) {
-      if (chosen.length + added.length >= field.max) break;
-      try {
-        setPct(0);
-        const asset = await uploadFile(workspace.id, file, (p) => setPct(p.pct));
-        added.push(asset.key);
-        setRows((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
-        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
-        setUrls((prev) => ({ ...prev, ...u }));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Upload failed');
-      }
-    }
+    setNote(null);
+    setPct(0);
+    const out = await uploadMany(workspace.id, files, field.max - chosen.length, (done, total, name) => {
+      setPct(Math.round((done / total) * 100));
+      setNote(total > 1 ? `${done} of ${total} — ${name}` : name);
+    });
     setPct(null);
-    if (added.length) onChange([...chosen, ...added]);
+    setNote(null);
+    if (out.added.length) {
+      setRows((r) => [...out.added, ...(r ?? []).filter((x) => !out.added.some((a) => a.id === x.id))]);
+      const { urls: u } = await api.media.urls(
+        workspace.id,
+        out.added.map((a) => a.key),
+      );
+      setUrls((prev) => ({ ...prev, ...u }));
+      onChange([...chosen, ...out.added.map((a) => a.key)]);
+    }
+    // Say what did not make it, rather than quietly dropping it.
+    const problems: string[] = [];
+    if (out.skipped > 0) problems.push(`${out.skipped} more than the ${field.max} that fit`);
+    if (out.failed.length > 0) problems.push(`${out.failed.length} would not upload (${out.failed[0]!.name})`);
+    if (problems.length) setError(`Added ${out.added.length}. Left out: ${problems.join(', ')}.`);
+  };
+
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    // A dropped FOLDER is an entry tree, not a file list; a dropped selection
+    // of files is both. Try the tree first and fall back to the plain list.
+    const fromTree = e.dataTransfer.items ? await filesFromDrop(e.dataTransfer.items) : [];
+    await take(fromTree.length ? fromTree : [...e.dataTransfer.files]);
   };
 
   const full = chosen.length >= field.max;
@@ -484,7 +510,50 @@ function PhotosField({ field, value, onChange }: { field: Extract<Field, { kind:
           {chosen.length < field.min ? ` · ${field.min} minimum` : ''}
         </span>
       </span>
-      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void upload(e.target.files).finally(() => (e.target.value = ''))} />
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => void take([...(e.target.files ?? [])]).finally(() => (e.target.value = ''))}
+      />
+      {/* webkitdirectory is how a browser offers "choose a folder"; React does not know the attribute by name. */}
+      <input
+        ref={folder}
+        type="file"
+        multiple
+        hidden
+        {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+        onChange={(e) => void take([...(e.target.files ?? [])]).finally(() => (e.target.value = ''))}
+      />
+      {field.max > 8 && !full && (
+        <div
+          className={styles.folderDrop}
+          data-over={over || undefined}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => void onDrop(e)}
+        >
+          {pct !== null ? (
+            <Progress value={pct} label={note ?? 'Adding your photos'} />
+          ) : (
+            <>
+              <strong>Drop a folder here</strong>
+              <span>
+                or{' '}
+                <button type="button" onClick={() => folder.current?.click()}>
+                  choose a folder
+                </button>{' '}
+                — everything photographable inside comes in, up to {field.max}.
+              </span>
+            </>
+          )}
+        </div>
+      )}
       {rows === null ? (
         <Skeleton style={{ height: 132 }} />
       ) : (
@@ -667,7 +736,7 @@ function ModesField({ field, value, onChange }: { field: Extract<Field, { kind: 
     <div>
       <span className={styles.fieldLabel}>{field.label}</span>
       <div className={styles.modes} role="radiogroup" aria-label={field.label}>
-        {PRODUCT_MODE_KEYS.map((k) => {
+        {OFFERED_PRODUCT_MODES.map((k) => {
           const m = PRODUCT_MODES[k];
           return (
             <button key={k} type="button" role="radio" aria-checked={value === k} className={styles.mode} onClick={() => onChange(k)} title={m.hint}>

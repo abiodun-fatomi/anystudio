@@ -104,7 +104,7 @@ export class GoogleProvider extends BaseProvider {
     }
     parts.push({ text: prompt });
 
-    opts.onProgress?.('asking Gemini', 20);
+    opts.onProgress?.('Writing', 20);
     const res = await http<unknown>(this.key, await this.auth.url(`models/${model}:generateContent`), {
       headers: await this.auth.headers(),
       body: { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: aspect } } },
@@ -150,7 +150,7 @@ export class GoogleProvider extends BaseProvider {
       signal: opts.signal,
     });
     const providerJobId = started.json.name;
-    opts.onProgress?.('Veo is rendering', 25);
+    opts.onProgress?.('Rendering your video', 25);
 
     const done = await poll(
       async () => {
@@ -169,7 +169,7 @@ export class GoogleProvider extends BaseProvider {
         intervalMs: 8_000,
         timeoutMs: opts.timeoutMs,
         signal: opts.signal,
-        onTick: (ms) => opts.onProgress?.(`Veo is rendering (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
+        onTick: (ms) => opts.onProgress?.(`Rendering your video (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
       },
     );
 

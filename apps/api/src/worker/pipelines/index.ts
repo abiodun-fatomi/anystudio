@@ -23,6 +23,7 @@ import { dubPipeline } from './dub';
 import { lipsyncPipeline } from './lipsync';
 import { brandedImagePipeline } from './image';
 import { collagePipeline } from './collage';
+import { batchPipeline } from './batch';
 import { adPipeline } from './ad';
 import type { GenerationService } from '../../modules/generation/generation.service';
 
@@ -92,6 +93,7 @@ export class Pipelines {
     TEXT_GENERATE: copyPipeline,
     IMAGE_EDIT: brandedImagePipeline,
     COLLAGE: collagePipeline,
+    BATCH: batchPipeline,
     MUSIC: musicPipeline,
     VOICEOVER: voiceoverPipeline,
     DUB: dubPipeline,

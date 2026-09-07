@@ -1458,8 +1458,11 @@ export const api = {
     remove: (workspaceId: string, assetId: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/media/${assetId}`),
   },
   generations: {
-    quote: (workspaceId: string, capability: string, costCode?: string) =>
-      request<Quote>('GET', `/workspaces/${workspaceId}/generations/quote?capability=${capability}${costCode ? `&costCode=${costCode}` : ''}`),
+    quote: (workspaceId: string, capability: string, costCode?: string, quantity?: number) =>
+      request<Quote>(
+        'GET',
+        `/workspaces/${workspaceId}/generations/quote?capability=${capability}${costCode ? `&costCode=${costCode}` : ''}${quantity && quantity > 1 ? `&quantity=${quantity}` : ''}`,
+      ),
     create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string; costCode?: string }) =>
       request<GenerationResult>('POST', `/workspaces/${workspaceId}/generations`, body),
     get: (workspaceId: string, id: string) => request<GenerationView>('GET', `/workspaces/${workspaceId}/generations/${id}`),

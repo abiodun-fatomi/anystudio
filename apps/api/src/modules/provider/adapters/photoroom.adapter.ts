@@ -24,48 +24,60 @@ const KNOWN: Record<string, Capability[]> = {
 };
 
 /**
- * One mode, one set of query fields. A table rather than a switch so adding
- * the next mode is a row — and so the whole mapping can be read at a glance
- * when a vendor renames a field.
+ * One mode, one set of query fields — the names taken from the vendor's own
+ * OpenAPI document, not from the shape of its app.
  *
- * `p` is the validated params; the schema has already refused anything a mode
- * cannot work without, so nothing here needs to re-check.
+ * That distinction cost a rewrite. The first version of this table guessed
+ * `recolor.*`, `retouch.*`, `beautify.prompt`, `expand.prompt`, a top-level
+ * `size` and `referenceImages[]`, because the app has all of those. None of
+ * them are in the specification. A parameter a vendor does not know is not an
+ * error — it is ignored, billed, and the customer gets back a picture that
+ * quietly did not do what they asked. Only fields the spec lists appear here.
+ *
+ * `p` is already validated; the schema refuses anything a mode cannot work
+ * without, so nothing below re-checks.
  */
 type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
-const MODE_FIELDS: Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams) => void> = {
-  on_model: (p, q) => {
+
+/** The per-feature frame name, for the modes whose size is set on themselves. */
+const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD';
+
+const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams, files: ProviderInput['files']) => void>> = {
+  on_model: (p, q, files) => {
     q.set('virtualModel.mode', 'ai.auto');
-    // A workspace's own model is passed as an image; a preset by name.
-    if (p.model && p.model !== 'custom') q.set('virtualModel.model', p.model);
+    // Their own saved model is an image URL; a preset is a name.
+    const photo = files.modelPhotoKey?.url;
+    if (photo) q.set('virtualModel.model', photo);
+    else if (p.model && p.model !== 'custom') q.set('virtualModel.model', p.model);
     q.set('virtualModel.scene', p.scene ?? 'random');
     q.set('virtualModel.pose', p.pose ?? 'random');
+    q.set('virtualModel.size', sizeOf(p));
     if (p.prompt) q.set('virtualModel.prompt', p.prompt);
+    // The only place the vendor accepts more angles of the product. Elsewhere
+    // the extra photos are ours to keep for a retry, not the vendor's to read.
+    for (const name of Object.keys(files)
+      .filter((n) => n.startsWith('angleKeys['))
+      .sort())
+      q.append('virtualModel.additionalProductImages', files[name]!.url);
   },
   ghost_mannequin: (p, q) => {
     q.set('ghostMannequin.mode', 'ai.auto');
+    q.set('ghostMannequin.size', sizeOf(p));
     if (p.prompt) q.set('ghostMannequin.prompt', p.prompt);
   },
   flat_lay: (p, q) => {
     q.set('flatLay.mode', 'ai.auto');
+    q.set('flatLay.size', sizeOf(p));
     if (p.prompt) q.set('flatLay.prompt', p.prompt);
   },
+  // No options at all in the spec, and none in their app either: a photo in, a pressed photo out.
   ironing: (_p, q) => q.set('ironing.mode', 'ai.auto'),
-  beautify: (p, q) => {
-    q.set('beautify.mode', `ai.${p.subject}`);
-    if (p.prompt) q.set('beautify.prompt', p.prompt);
-  },
-  recolor: (p, q) => {
-    q.set('recolor.mode', 'ai.auto');
-    if (p.color) q.set('recolor.color', p.color.slice(1));
-    if (p.part ?? p.prompt) q.set('recolor.prompt', (p.part ?? p.prompt)!);
-  },
-  retouch: (p, q) => {
-    q.set('retouch.mode', 'ai.auto');
-    if (p.prompt) q.set('retouch.prompt', p.prompt);
-  },
-  expand: (p, q) => {
+  // `beautify` takes a subject tuning and a seed. There is no prompt.
+  beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
+  // Widening the frame is the whole point, so this one must not keep the original size.
+  expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');
-    if (p.prompt) q.set('expand.prompt', p.prompt);
+    q.set('outputSize', 'auto');
   },
 };
 
@@ -104,30 +116,21 @@ export class PhotoroomProvider extends BaseProvider {
       }
       case 'PRODUCT_SHOT': {
         const p = this.params(input, 'PRODUCT_SHOT');
-        MODE_FIELDS[p.mode](p, q);
-        // The frame the vendor renders at. `expand` is the one mode that must
-        // NOT keep the original size — widening the frame is the whole point.
-        if (p.mode === 'expand') q.set('outputSize', 'auto');
-        q.set('size', PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD');
+        const fields = MODE_FIELDS[p.mode];
+        // A mode with no mapping is one whose parameters we have not confirmed.
+        // Refusing here is free; sending a request the vendor half-understands
+        // is not, and the customer pays for the half.
+        if (!fields) throw new ProviderError('INVALID_INPUT', `${this.key} cannot do "${p.mode}" yet`, this.key);
+        fields(p, q, input.files);
         const shadow = SHADOW_STYLES[p.shadow].mode;
         if (shadow) q.set('shadow.mode', shadow);
-        // More angles of the same product: the cheapest quality lever we have,
-        // and the reason a drifted result asks for another photo instead of a refund.
-        for (const [i, name] of Object.keys(input.files)
-          .filter((n) => n.startsWith('angleKeys['))
-          .sort()
-          .entries())
-          q.append(`referenceImages[${i}]`, input.files[name]!.url);
-        // Their own model, for a workspace that saved one.
-        const modelPhoto = input.files.modelPhotoKey?.url;
-        if (p.mode === 'on_model' && modelPhoto) q.set('virtualModel.model', modelPhoto);
         break;
       }
       default:
         return this.unsupported(input.capability);
     }
 
-    opts.onProgress?.('Photoroom is editing', 30);
+    opts.onProgress?.('Editing your photo', 30);
     const res = await fetch(`https://image-api.photoroom.com/v2/edit?${q.toString()}`, {
       headers: { 'x-api-key': this.apiKey, accept: 'image/png, application/json' },
       signal: AbortSignal.timeout(opts.timeoutMs),

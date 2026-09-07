@@ -30,7 +30,7 @@ export class GenerationController {
   @ApiOperation({ summary: 'What a generation would cost, and the balance after' })
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
   quote(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() query: QuoteQueryDto) {
-    return this.generations.quote(workspaceId, query.capability, query.costCode);
+    return this.generations.quote(workspaceId, query.capability, query.costCode, query.quantity);
   }
 
   @Post()

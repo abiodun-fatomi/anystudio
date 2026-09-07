@@ -44,6 +44,7 @@ export const TYPE_OF: Record<ProviderCapability, Exclude<LibraryType, 'all'>> = 
   UPSCALE: 'image',
   COLLAGE: 'image',
   PRODUCT_SHOT: 'image',
+  BATCH: 'image',
   IMAGE_TO_VIDEO: 'video',
   VIDEO_STITCH: 'video',
   DUB: 'video',

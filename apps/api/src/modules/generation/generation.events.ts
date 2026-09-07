@@ -14,7 +14,7 @@
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import type Redis from 'ioredis';
-import { generationChannel, type GenerationEvent, type GenerationStage } from '@anystudio/shared';
+import { STAGE_FALLBACK, generationChannel, inOurVoice, type GenerationEvent, type GenerationStage } from '@anystudio/shared';
 import { createRedis } from '../../../config/redis';
 import { logger } from '../../../config/logger';
 
@@ -54,7 +54,12 @@ export class GenerationEvents implements OnModuleDestroy {
       where: { id: generationId, status: { in: ['QUEUED', 'RUNNING'] } },
       data: { stage, progress: Math.max(0, Math.min(100, Math.round(progress))) },
     });
-    await this.publish({ type: 'stage', generationId, stage, progress, detail, at: new Date().toISOString() });
+    // Whose studio it is. An adapter that names its vendor — or echoes a
+    // vendor's own status string — is replaced here rather than shown, so a
+    // merchant never learns which supplier had the GPU this morning.
+    const said = inOurVoice(detail, STAGE_FALLBACK[stage] ?? 'Working on it');
+    if (detail && said !== detail) logger.debug({ generationId, stage, detail }, 'a progress line named a vendor; said it in our own voice instead');
+    await this.publish({ type: 'stage', generationId, stage, progress, detail: said, at: new Date().toISOString() });
   }
 
   async publish(event: GenerationEvent): Promise<void> {

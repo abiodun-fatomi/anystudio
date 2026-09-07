@@ -1375,3 +1375,40 @@
   font-size: var(--t-1);
   color: var(--ink-soft);
 }
+
+/* ---- a whole folder at once ----
+   The gesture a merchant already knows from their desktop: drag the shoot in. */
+.folderDrop {
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  padding: var(--s-3);
+  margin-bottom: var(--s-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  text-align: center;
+  background: var(--surface-2);
+}
+.folderDrop[data-over] {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--surface);
+}
+.folderDrop strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+.folderDrop span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}
+.folderDrop button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

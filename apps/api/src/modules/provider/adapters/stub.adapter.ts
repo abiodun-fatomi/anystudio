@@ -38,7 +38,7 @@ export class StubProvider extends BaseProvider {
     if (behaviour.startsWith('slow:')) await new Promise((r) => setTimeout(r, Number(behaviour.slice(5))));
     if (behaviour === 'hang') await new Promise(() => undefined);
 
-    opts.onProgress?.('stub working', 50);
+    opts.onProgress?.('Working', 50);
     const jobId = `stub-${input.generationId.slice(0, 8)}`;
 
     switch (input.capability) {

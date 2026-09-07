@@ -16,4 +16,5 @@ export * from './generation/copy';
 export * from './generation/presenters';
 export * from './generation/presets';
 export * from './generation/product-shots';
+export * from './generation/voice';
 export * from './generation/languages';

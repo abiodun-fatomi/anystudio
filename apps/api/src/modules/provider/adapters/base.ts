@@ -17,6 +17,7 @@ export const EXPECTED_MS: Record<Capability, number> = {
   UPSCALE: 15_000,
   COLLAGE: 20_000,
   PRODUCT_SHOT: 25_000,
+  BATCH: 1_000, // no vendor call of its own; the children do the work
   IMAGE_TO_VIDEO: 150_000,
   VIDEO_STITCH: 30_000,
   TEXT_GENERATE: 6_000,
