@@ -121,15 +121,53 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       ctx.log.warn({ pass: attempt, score: report.score, avoiding: disappointed }, 'product not kept; asking someone else, with a stricter prompt');
       await ctx.stage('generating', 30, 'the first try changed your product — trying again');
     } else {
-      throw new ProviderError(
-        'LOW_QUALITY',
-        `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts and it could not be found in the scene`,
-        result.providerKey,
-        {
-          providerJobId: result.providerJobId,
-          raw: report,
-        },
+      /**
+       * Two different models both redrew the product. Refunding is honest,
+       * but it leaves a seller with a photo and no picture — and we are one
+       * call away from a good one.
+       *
+       * BACKGROUND_REPLACE cannot get this wrong. It is a cutout-and-
+       * composite service, not a model that reimagines the frame: the
+       * seller's own pixels come back untouched and only what is behind
+       * them changes, with a real contact shadow and the lighting matched.
+       * It is a narrower answer than the scene they asked for — no hands
+       * holding the bottle, no depth behind it — but it is their product,
+       * on the surface they described, and it is a picture they can post.
+       *
+       * This is most likely to fire on a photo where the product fills the
+       * frame: `origin` in the log will show it, and there is nowhere for a
+       * model to put a scene without shrinking and re-drawing the product.
+       */
+      ctx.log.warn(
+        { pass: attempt, score: report.score, origin: report.origin },
+        'no model kept the product; falling back to a background replace, which cannot redraw it',
       );
+      await ctx.stage('composing', 58, 'keeping your product exactly and rebuilding only what is behind it');
+      try {
+        const safe = await ctx.callCapability(
+          'BACKGROUND_REPLACE',
+          {
+            generationId: ctx.row.id,
+            workspaceId: ctx.row.workspaceId,
+            params: { sourceKey: p.sourceKey, prompt: p.prompt, shadow: true, relight: true, aspect: p.aspect },
+            files: ctx.files,
+          },
+          { timeoutMs: 90_000, signal: ctx.signal },
+        );
+        // `composited: false` on purpose: the vendor did the compositing in
+        // its own frame, so the mask's position in OUR source frame is not
+        // where the product is now. The crops find it by sharpness instead.
+        picked = { bytes: await artifactBytes(safe), result: safe, score: report.score, composited: false, placed: null };
+        ctx.log.info({ providerKey: safe.providerKey }, 'background replaced instead; the product is the seller’s own pixels');
+      } catch (err) {
+        ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'the background replace failed too; refusing and refunding');
+        throw new ProviderError(
+          'LOW_QUALITY',
+          `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts, and the background-replace fallback failed`,
+          result.providerKey,
+          { providerJobId: result.providerJobId, raw: report },
+        );
+      }
     }
   }
   if (!picked) throw new ProviderError('RETRYABLE', 'no image produced', 'image-pipeline');
