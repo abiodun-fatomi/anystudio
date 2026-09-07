@@ -1412,3 +1412,252 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---- all tools ----
+   The door out of the strip. Fifteen tools in a flat row was a wall; six in
+   the strip and the rest one tap away is a menu. This sheet is what opens.
+
+   It is a sheet on a phone (rises from the bottom, thumb-reachable, the
+   search box under the thumb rather than at the top of a tall screen) and a
+   centred dialog on a desktop. Same markup, two shapes. */
+.toolBtn[data-more] {
+  color: var(--accent);
+}
+.toolBtn[data-more]:hover {
+  background: var(--accent-wash);
+}
+
+.sheetWrap {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: grid;
+  align-items: end;
+  justify-items: center;
+}
+@media (min-width: 640px) {
+  .sheetWrap {
+    align-items: center;
+    padding: var(--s-5);
+  }
+}
+
+/* A button, not a div: closing by tapping away has to work for a keyboard
+   and a screen reader too, and it is the last stop in the tab order. */
+.sheetScrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(12, 10, 16, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  cursor: pointer;
+  animation: sheetFade var(--dur-fast) var(--ease);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  max-width: 720px;
+  /* Never taller than the screen, and never so short that two groups cannot
+     be seen at once — the point is to show the shape of the studio. */
+  max-height: min(78vh, 640px);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  animation: sheetRise var(--dur) var(--ease);
+}
+@media (min-width: 640px) {
+  .sheet {
+    border-radius: var(--r-xl);
+    animation: sheetPop var(--dur-fast) var(--ease);
+  }
+}
+
+.sheetHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+/* Focused on open: the fastest route through fifteen tools is typing. */
+.sheetSearch {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: var(--t-3);
+  color: var(--ink);
+}
+.sheetSearch::placeholder {
+  color: var(--muted);
+}
+.sheetSearch:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.sheetClose {
+  display: grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.sheetClose:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.sheetClose:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sheetBody {
+  display: grid;
+  align-content: start;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.sheetEmpty {
+  margin: 0;
+  padding: var(--s-5) var(--s-3);
+  text-align: center;
+  font-size: var(--t-2);
+  color: var(--muted);
+  line-height: var(--lh-body);
+}
+
+/* The group heading carries a sentence, not just a word: "Photo" tells a
+   merchant nothing they did not already guess. */
+.sheetGroup {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.sheetGroup strong {
+  font-size: var(--t-1);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.sheetGroup span {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+
+.sheetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s-2);
+}
+@media (max-width: 480px) {
+  .sheetGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A card, not a menu row: the blurb is the point. Someone who does not know
+   what "Merchant shots" means reads the line under it and does. */
+.sheetCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1.5px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.sheetCard:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.sheetCard:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.sheetCard[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+/* Shown, not hidden. Someone hunting for a tool should find it and learn why
+   it is waiting on a photo, not conclude the studio cannot do it. */
+.sheetCard:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sheetIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  color: var(--accent);
+}
+.sheetCard:disabled .sheetIcon {
+  color: var(--muted);
+}
+.sheetText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.sheetText strong {
+  font-size: var(--t-3);
+  font-weight: 600;
+  color: var(--ink);
+}
+.sheetText span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+@keyframes sheetFade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheetRise {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+@keyframes sheetPop {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+}

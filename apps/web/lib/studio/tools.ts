@@ -1327,3 +1327,100 @@ export const PLATFORM_OPTIONS = [
   { id: 'facebook', label: 'Facebook' },
   { id: 'x', label: 'X' },
 ];
+
+// ---------------------------------------------------------------------------
+// FINDING A TOOL
+//
+// Fifteen icons in one strip is a wall. A merchant does not scan a toolbar
+// looking for "Restyle" — they arrive knowing what they want ("put it on a
+// model", "get the wrinkles out", "do all forty") and need the shortest path
+// from that thought to that button.
+//
+// So: grouped by what comes OUT, searched by the words a merchant would use,
+// and each one carries a sentence saying what it is for. The strip keeps only
+// what is reachable right now; everything else lives one tap away.
+// ---------------------------------------------------------------------------
+
+export const TOOL_GROUPS = {
+  photo: { label: 'Photos', note: 'Make one picture better, or make a new one from it.' },
+  video: { label: 'Video', note: 'Reels, ads, and putting new words in someone’s mouth.' },
+  sound: { label: 'Sound', note: 'A song for your Status, or a voice reading your script.' },
+  words: { label: 'Words', note: 'The listing, the caption, the hashtags.' },
+  bulk: { label: 'The whole shoot', note: 'Forty photos at once, not one at a time.' },
+} as const;
+export type ToolGroup = keyof typeof TOOL_GROUPS;
+
+/**
+ * What each tool is for, in a merchant's words, and the words they would
+ * search with. `keywords` exists because nobody types "ghost mannequin" —
+ * they type "mannequin", or "no model", or "hanger".
+ */
+export const TOOL_META: Record<ToolId, { group: ToolGroup; blurb: string; keywords: string }> = {
+  shots: {
+    group: 'photo',
+    blurb: 'On a model, ghost mannequin, flat lay, pressed, studio.',
+    keywords: 'model mannequin hanger clothes dress fashion wear worn flat lay iron wrinkle crease press studio beautify expand widen apparel okrika thrift',
+  },
+  scene: {
+    group: 'photo',
+    blurb: 'Your product somewhere else — a counter, a market, a studio.',
+    keywords: 'scene background place setting staging lifestyle marble wood table',
+  },
+  background: { group: 'photo', blurb: 'Swap what is behind it, with a real shadow.', keywords: 'background backdrop behind replace plain white shadow' },
+  cutout: {
+    group: 'photo',
+    blurb: 'The product on its own, on transparency or a colour.',
+    keywords: 'cut out cutout remove background transparent png isolate',
+  },
+  enhance: { group: 'photo', blurb: 'Sharper and bigger, for print or a big screen.', keywords: 'enhance upscale sharpen bigger resolution quality blurry' },
+  restyle: { group: 'photo', blurb: 'The same product, a different look.', keywords: 'restyle style look vibe recolour mood' },
+  collage: {
+    group: 'photo',
+    blurb: 'Several photos in one — a set, a range, before and after.',
+    keywords: 'collage grid several many multiple before after side by side montage',
+  },
+  flyer: {
+    group: 'photo',
+    blurb: 'A poster for an event or an offer, from your photo or from nothing.',
+    keywords: 'flyer poster invite birthday party sale promo advert banner story',
+  },
+  video: {
+    group: 'video',
+    blurb: 'A reel from one photo, or a multi-shot ad with a presenter.',
+    keywords: 'video reel ad advert clip motion animate presenter ugc tiktok shorts',
+  },
+  lipsync: { group: 'video', blurb: 'New words in the same mouth.', keywords: 'lipsync lip sync mouth dub speak talking' },
+  translate: {
+    group: 'video',
+    blurb: 'The same video, spoken in another language.',
+    keywords: 'translate dub language yoruba igbo hausa french spanish foreign',
+  },
+  music: { group: 'sound', blurb: 'A song about your shop, in a style you pick.', keywords: 'music song jingle beat afrobeats audio track sing' },
+  voice: { group: 'sound', blurb: 'A script read aloud, in a voice you choose.', keywords: 'voice voiceover narration read speak audio announcer' },
+  copy: { group: 'words', blurb: 'The description, the captions and the hashtags.', keywords: 'copy write listing description caption hashtag text words seo' },
+  batch: {
+    group: 'bulk',
+    blurb: 'One edit, up to a hundred photos, one price per photo.',
+    keywords: 'batch bulk many all folder catalogue forty everything at once',
+  },
+};
+
+/** Tools in a group, in the order the strip and the sheet show them. */
+export const toolsIn = (group: ToolGroup): Tool[] => TOOLS.filter((t) => TOOL_META[t.id].group === group);
+
+/**
+ * Tools matching what someone typed.
+ *
+ * Matched against the name, the sentence and the keywords, so "wrinkle"
+ * finds the merchant shots and "yoruba" finds Translate. An empty query
+ * returns everything, which is what the sheet opens on.
+ */
+export function searchTools(query: string): Tool[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return TOOLS;
+  const words = q.split(/\s+/);
+  return TOOLS.filter((t) => {
+    const hay = `${t.label} ${t.short} ${TOOL_META[t.id].blurb} ${TOOL_META[t.id].keywords}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
