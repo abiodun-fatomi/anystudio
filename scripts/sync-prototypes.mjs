@@ -15,6 +15,7 @@
  *
  * Run after editing anything in design/:   node scripts/sync-prototypes.mjs
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,18 +65,43 @@ function rewriteAssets(html) {
 }
 
 /**
- * Every /shots/ file the pages ask for has to actually be in public/.
+ * Every /shots/ file the pages ask for has to actually be in public/ — and
+ * in GIT.
  *
- * A missing one is invisible here and a broken image box on the landing
- * page, which is the worst place to find out. This warns rather than
- * throws, because a picture that has not been dropped in yet should not
- * stop someone editing copy — but it says exactly what is missing.
+ * "On disk" was the only thing this checked, and on disk is not what gets
+ * deployed. A commit repointed the hero sheet, the scroll-scrub, the
+ * before/after slider, the six-up and the sign-in layout at /shots/hat-*
+ * while the nine hat files sat staged but uncommitted. Every check here
+ * passed, every page rendered locally, and the deployed site came back with
+ * gradient placeholders where almost all of its photography should be.
+ *
+ * So the untracked case is now its own warning, in its own words: the file
+ * is right there, which is exactly why nobody looks for it.
+ *
+ * Both warn rather than throw. A picture that has not been dropped in yet
+ * should not stop someone editing copy — but neither should go unsaid.
  */
 const missingShots = new Set();
+const untrackedShots = new Set();
+/** What git has under apps/web/public/shots, or null outside a work tree. */
+const trackedShots = (() => {
+  try {
+    return new Set(
+      execFileSync('git', ['ls-files', '--', 'apps/web/public/shots'], { cwd: root, encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .map((p) => p.slice(p.lastIndexOf('/') + 1)),
+    );
+  } catch {
+    return null; // not a checkout, or no git — the on-disk check still runs
+  }
+})();
+
 function checkShotsExist(html) {
   for (const m of html.matchAll(/\/shots\/([A-Za-z0-9._-]+)/g)) {
     const name = m[1];
     if (!existsSync(resolve(pub, 'shots', name))) missingShots.add(name);
+    else if (trackedShots && !trackedShots.has(name)) untrackedShots.add(name);
   }
 }
 
@@ -359,5 +385,14 @@ if (missingShots.size > 0) {
     `\n⚠  ${missingShots.size} picture(s) referenced by the pages are not in apps/web/public/shots/:\n` +
       [...missingShots].map((n) => `     ${n}`).join('\n') +
       `\n   The pages will render with empty image boxes until those files are there.\n`,
+  );
+}
+
+if (untrackedShots.size > 0) {
+  console.warn(
+    `\n⚠  ${untrackedShots.size} picture(s) are in apps/web/public/shots/ but NOT in git:\n` +
+      [...untrackedShots].map((n) => `     ${n}`).join('\n') +
+      `\n   They will look right on this machine and be missing everywhere else.\n` +
+      `   git add apps/web/public/shots\n`,
   );
 }

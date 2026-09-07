@@ -3,7 +3,33 @@
  * and never block the request that already succeeded.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { QueueService } from './queue.service';
+import { QueueService, isFinished } from './queue.service';
+
+describe('which queue jobs are tombstones', () => {
+  /**
+   * The bug this decides: a generation is enqueued under its own id more
+   * than once by design — an ad's parent plans, then assembles; a retry runs
+   * the same row again — and BullMQ answers an add whose id already exists
+   * by returning the old job and creating nothing. A finished job therefore
+   * has to be cleared out of the way first.
+   */
+  it('counts a job that has finished, in either direction', () => {
+    expect(isFinished('completed')).toBe(true);
+    expect(isFinished('failed')).toBe(true);
+  });
+
+  it('never counts one that is still queued or running', () => {
+    // Removing one of these would lose queued work or orphan a live job —
+    // and these are the duplicates the shared job id exists to prevent.
+    for (const live of ['waiting', 'waiting-children', 'delayed', 'active', 'prioritized', 'paused']) {
+      expect(isFinished(live), `"${live}" is live work, not a tombstone`).toBe(false);
+    }
+  });
+
+  it('does not count a job that has already vanished', () => {
+    expect(isFinished('unknown')).toBe(false);
+  });
+});
 
 describe('QueueService', () => {
   const saved = process.env.REDIS_URL;

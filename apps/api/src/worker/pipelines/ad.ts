@@ -158,7 +158,11 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
     t = clip.durationMs;
   }
   for (const [i, c] of children.entries()) {
-    const durationMs = (c.input as { durationSec?: number }).durationSec ? (c.input as { durationSec: number }).durationSec * 1000 : 5000;
+    // What the shot actually is, not what we asked for. A vendor whose grid
+    // does not include our length gives back a different one (wan-2.5 has no
+    // 8), and a caption timed against the plan would then drift further out
+    // of step with every shot that follows it.
+    const durationMs = videoDurationMs(c) ?? ((c.input as { durationSec?: number }).durationSec ?? 5) * 1000;
     const text = !clip && i === 0 && plan?.hook ? plan.hook : (plan?.shots[i]?.caption ?? '');
     if (text) captions.push({ text, fromMs: t + 300, toMs: t + durationMs - 300 });
     t += durationMs;
@@ -194,6 +198,13 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
 function videoKey(child: Generation): string | null {
   const outputs = (child.outputs as Array<{ role: string; key: string }> | null) ?? [];
   return outputs.find((o) => o.role === 'video')?.key ?? null;
+}
+
+/** How long the shot came back, when the adapter that made it said so. */
+function videoDurationMs(child: Generation): number | null {
+  const outputs = (child.outputs as Array<{ role: string; durationMs?: number }> | null) ?? [];
+  const d = outputs.find((o) => o.role === 'video')?.durationMs;
+  return typeof d === 'number' && d > 0 ? d : null;
 }
 
 /** "8, 8, 8 and 5" */
