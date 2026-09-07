@@ -7,6 +7,6 @@
     "paths": {},
     "strictPropertyInitialization": false
   },
-  "include": ["src/**/*.ts", "config/**/*.ts"],
+  "include": ["src/**/*.ts", "config/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

@@ -97,9 +97,33 @@ export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
  * until someone has run them against a live key and seen a picture come back.
  * Flipping one on is a one-word change here.
  */
+/**
+ * Modes where the product is meant to come back the same SHAPE it went in.
+ *
+ * This decides whether the fidelity check can refuse a result, and getting it
+ * wrong is expensive in both directions.
+ *
+ * Press it and Make it studio hand back the same garment in the same pose
+ * with the creases gone or the light fixed — a product that moved, changed
+ * colour or grew a new label there is a failure, and the check catches it.
+ *
+ * On a model, Ghost mannequin and Flat lay are the opposite: the whole point
+ * is that the garment is now draped on a body, inflated to a torso, or laid
+ * out square. The pixels SHOULD be different. Measuring those against the
+ * original and refusing what does not match would reject the good ones —
+ * exactly the shots a merchant came here for. They are still measured, and
+ * the score is logged, but it never refuses.
+ *
+ * Show more room keeps the original pixels and adds canvas around them, so
+ * the check finds the product where it was pushed to and judges it there.
+ */
+export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'recolor', 'retouch'];
+/** Whether a refusal is fair for this mode, or would throw away a correct picture. */
+export const judgesShape = (mode: ProductMode): boolean => KEEPS_GEOMETRY.includes(mode);
+
 export const OFFERED_PRODUCT_MODES = PRODUCT_MODE_KEYS.filter((k) => PRODUCT_MODES[k].verified);
 export const productMode = (k: string | null | undefined) => (k && k in PRODUCT_MODES ? PRODUCT_MODES[k as ProductMode] : undefined);
-/** What a mode costs. A merchant sees this before anything is charged. */
+/** What a mode costs, before size is taken into account. */
 export const productModeCostCode = (k: string | null | undefined): string => productMode(k)?.costCode ?? 'image.product_shot';
 
 /**
@@ -128,6 +152,49 @@ export const MODEL_PRESETS = [
   'fiona',
 ] as const;
 export type ModelPreset = (typeof MODEL_PRESETS)[number];
+
+/**
+ * How big the picture comes back.
+ *
+ * The vendor calls these standard, advanced and premium, which tells a seller
+ * nothing and reads like a sales page. What they actually mean is roughly 1K,
+ * 2K and 4K on the long side — so they are named here for what a merchant is
+ * going to DO with the picture, and the resolution is stated rather than
+ * implied. Bigger costs more and takes longer; a Status post does not want
+ * either, which is why the default is the small one.
+ *
+ * Only the on-a-model shot takes this. The other modes have no such parameter
+ * in the vendor's specification, and inventing one for them would send a key
+ * nothing reads.
+ */
+export const SHOT_SIZES = {
+  posting: { label: 'For posting', note: 'About 1K wide. Right for Status, Instagram and WhatsApp.', vendor: 'standard' },
+  listing: { label: 'For listing', note: 'About 2K wide. Right for a marketplace listing or a small print.', vendor: 'advanced' },
+  printing: { label: 'For printing', note: 'About 4K wide. Right for a banner or a poster. Slowest.', vendor: 'premium' },
+} as const;
+export type ShotSize = keyof typeof SHOT_SIZES;
+export const SHOT_SIZE_KEYS = Object.keys(SHOT_SIZES) as ShotSize[];
+/** Which modes the vendor will accept a size on. */
+export const TAKES_SHOT_SIZE: readonly ProductMode[] = ['on_model'];
+
+/**
+ * What a shot costs, all in.
+ *
+ * A 4K render is more of the vendor's work than a 1K one, so it cannot be the
+ * same price, and the difference is expressed as its own cost code rather
+ * than as arithmetic here: every price in this product lives in one table an
+ * operator can change without a deploy, and a multiplier hidden in code would
+ * be the one price they could not.
+ *
+ * Only the on-a-model shot has sizes, so only it has the extra codes.
+ */
+export function productShotCostCode(mode: string | null | undefined, shotSize?: string | null): string {
+  const base = productModeCostCode(mode);
+  if (!mode || !(TAKES_SHOT_SIZE as readonly string[]).includes(mode)) return base;
+  if (shotSize === 'listing') return `${base}.2k`;
+  if (shotSize === 'printing') return `${base}.4k`;
+  return base;
+}
 
 /** Where the shot is taken. 'random' lets the vendor choose, which is the right default for someone in a hurry. */
 export const MODEL_SCENES = [

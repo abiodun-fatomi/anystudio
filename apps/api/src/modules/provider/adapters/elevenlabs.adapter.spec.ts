@@ -3,6 +3,10 @@ import { splitSections, styleWords } from './elevenlabs.adapter';
 import { cutPreview } from '../../../worker/pipelines/music';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { HAS_FFMPEG } from '../../../test/ffmpeg';
+
+/** These make real audio and read real durations; without ffmpeg there is nothing to make it with. */
+const ffDescribe = HAS_FFMPEG ? describe : describe.skip;
 
 const exec = promisify(execFile);
 
@@ -28,7 +32,7 @@ describe('style words', () => {
   });
 });
 
-describe('preview cut', () => {
+ffDescribe('preview cut', () => {
   it('cuts the first seconds of a track to MP3 and reports the full length', async () => {
     // Six seconds of tone, so the preview is shorter than the whole.
     const { stdout } = await exec(

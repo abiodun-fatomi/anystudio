@@ -23,6 +23,7 @@ import { Button, EmptyState, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { SourcePane } from './SourcePane';
 import { ToolPanel } from './ToolPanel';
+import { ToolSheet } from './ToolSheet';
 import { Lightbox } from './Lightbox';
 import { ResultCard } from './ResultCard';
 import styles from './studio.module.css';
@@ -34,6 +35,11 @@ export default function StudioPage() {
     </Suspense>
   );
 }
+
+/** How many fit in the strip before it becomes a wall again. */
+const STRIP_SIZE = 6;
+/** What a merchant on their first day is most likely to want. */
+const STRIP_DEFAULT: ToolId[] = ['shots', 'scene', 'batch', 'video', 'copy', 'collage'];
 
 function Studio() {
   const { workspace, balance, postpaid, paused } = useApp();
@@ -67,6 +73,34 @@ function Studio() {
     }
   };
   const [viewer, setViewer] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  /**
+   * The strip shows what this person actually reaches for, most recent first,
+   * padded with sensible defaults for someone on their first day. Kept in the
+   * browser: it is a convenience, not something worth a row in the database.
+   */
+  const [recent, setRecent] = useState<ToolId[]>([]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('anystudio:recent-tools') ?? '[]') as unknown;
+      if (Array.isArray(saved)) setRecent(saved.filter((id): id is ToolId => TOOLS.some((t) => t.id === id)).slice(0, STRIP_SIZE));
+    } catch {
+      /* a fresh browser is not an error */
+    }
+  }, []);
+  const strip = useMemo(() => {
+    const seen = new Set<ToolId>();
+    const out: Tool[] = [];
+    for (const id of [...recent, ...STRIP_DEFAULT]) {
+      if (seen.has(id)) continue;
+      const t = TOOLS.find((x) => x.id === id);
+      if (!t) continue;
+      seen.add(id);
+      out.push(t);
+      if (out.length === STRIP_SIZE) break;
+    }
+    return out;
+  }, [recent]);
   const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
   const [unlockPrice, setUnlockPrice] = useState<number | null>(null);
   useEffect(() => {
@@ -110,6 +144,31 @@ function Studio() {
       router.replace(`/studio?${q.toString()}`, { scroll: false });
     },
     [params, router],
+  );
+
+  /**
+   * Choosing a tool, and remembering that you did.
+   *
+   * The strip leads with what this person actually reaches for, so a seller
+   * who lives in Batch and Merchant shots stops walking past nine tools they
+   * never use. Kept on the device rather than the account: it is a habit, not
+   * a setting, and it should not need a round trip to be right.
+   */
+  const pickTool = useCallback(
+    (id: ToolId) => {
+      setSheet(false);
+      setUrl({ tool: id });
+      setRecent((was) => {
+        const next = [id, ...was.filter((x) => x !== id)].slice(0, STRIP_SIZE);
+        try {
+          localStorage.setItem('anystudio:recent-tools', JSON.stringify(next));
+        } catch {
+          /* a private window, or storage that is full: the strip just forgets. */
+        }
+        return next;
+      });
+    },
+    [setUrl],
   );
 
   // Resolve the source key to something the canvas can draw.
@@ -355,14 +414,16 @@ function Studio() {
               onClose={() => setViewer(false)}
             />
           )}
+          {/* Six tools you can reach for, and a door to the other nine. The
+              strip used to carry all fifteen, which is a wall, not a menu. */}
           <div className={styles.strip} role="toolbar" aria-label="Tools">
-            {TOOLS.map((t) => (
+            {strip.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 className={styles.toolBtn}
                 aria-pressed={t.id === tool.id}
-                onClick={() => setUrl({ tool: t.id })}
+                onClick={() => pickTool(t.id)}
                 disabled={t.needsSource && !sourceKey}
                 title={t.needsSource && !sourceKey ? 'Add a photo first' : t.label}
               >
@@ -370,6 +431,10 @@ function Studio() {
                 <span>{t.short}</span>
               </button>
             ))}
+            <button type="button" className={styles.toolBtn} data-more onClick={() => setSheet(true)} title="Everything the studio can do">
+              <Icon.menu />
+              <span>All tools</span>
+            </button>
           </div>
         </section>
 
@@ -383,6 +448,8 @@ function Studio() {
           onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
         />
       </div>
+
+      {sheet && <ToolSheet current={tool.id} hasSource={Boolean(sourceKey)} onPick={pickTool} onClose={() => setSheet(false)} />}
 
       <section id="outputs" className={styles.outputs} aria-label="Results">
         <div className={styles.outputsHead}>

@@ -7,6 +7,8 @@
  * refused here instead, before the request leaves the browser, which is the
  * cheapest error handling there is.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_COST_CODE,
@@ -14,8 +16,13 @@ import {
   PRODUCT_MODES,
   PRODUCT_MODE_KEYS,
   QUEUES,
+  SHOT_SIZES,
+  SHOT_SIZE_KEYS,
+  TAKES_SHOT_SIZE,
+  batchUnitCostCode,
   parseCapabilityParams,
   productModeCostCode,
+  productShotCostCode,
   queueFor,
 } from '@anystudio/shared';
 
@@ -123,5 +130,78 @@ describe('only offering what the vendor documented', () => {
       expect(m.note.length, k).toBeGreaterThan(0);
       expect(productModeCostCode(k)).toMatch(/^image\./);
     }
+  });
+});
+
+/**
+ * Who decides what a shot costs.
+ *
+ * The batch quantity is derived on the server with a comment saying why —
+ * "never from the client, or forty premium renders would cost one". The same
+ * hole was open one line above it: a merchant shot took whatever cost code
+ * the request carried, so "on a model, for printing" could be billed as a
+ * press. These are the tests that keep it shut.
+ */
+describe('what a merchant shot costs', () => {
+  it('charges for the shot that was asked for, not the cheapest one', () => {
+    expect(productShotCostCode('on_model')).toBe('image.on_model');
+    expect(productShotCostCode('ironing')).toBe('image.product_shot');
+    // A press is not a model shot however the request is dressed up.
+    expect(productShotCostCode('ironing', 'printing')).toBe('image.product_shot');
+  });
+
+  it('charges more for a bigger render, because it is more of the vendor’s work', () => {
+    expect(productShotCostCode('on_model', 'posting')).toBe('image.on_model');
+    expect(productShotCostCode('on_model', 'listing')).toBe('image.on_model.2k');
+    expect(productShotCostCode('on_model', 'printing')).toBe('image.on_model.4k');
+  });
+
+  it('falls back to the plain shot for anything it does not recognise', () => {
+    expect(productShotCostCode(undefined)).toBe('image.product_shot');
+    expect(productShotCostCode('made-up-mode')).toBe('image.product_shot');
+    expect(productShotCostCode('on_model', 'made-up-size')).toBe('image.on_model');
+  });
+
+  it('prices a batch of shots by the same rule as one', () => {
+    expect(batchUnitCostCode('PRODUCT_SHOT', { mode: 'on_model', shotSize: 'printing' })).toBe('image.on_model.4k');
+    expect(batchUnitCostCode('PRODUCT_SHOT', { mode: 'ironing' })).toBe('image.product_shot');
+  });
+
+  /**
+   * Read from the seed's own source rather than imported from it: importing
+   * the seed pulls in a database client, and the thing worth checking is the
+   * file an operator actually edits.
+   */
+  it('has a price seeded for every code it can produce', () => {
+    const seed = readFileSync(join(__dirname, '../../../../../packages/db/prisma/seed.ts'), 'utf8');
+    const seeded = new Set([...seed.matchAll(/code:\s*'([^']+)'/g)].map((m) => m[1]!));
+    expect(seeded.size, 'the seed scanner found no cost codes — the pattern has drifted').toBeGreaterThan(10);
+    for (const mode of OFFERED_PRODUCT_MODES)
+      for (const size of [undefined, ...SHOT_SIZE_KEYS]) {
+        const code = productShotCostCode(mode, size);
+        expect(seeded.has(code), `${mode} at ${size ?? 'default'} size wants "${code}", which nothing seeds`).toBe(true);
+      }
+  });
+});
+
+describe('the sizes a merchant is offered', () => {
+  it('names them for what the picture is for, never for a sales tier', () => {
+    for (const k of SHOT_SIZE_KEYS) {
+      expect(SHOT_SIZES[k].label).not.toMatch(/standard|advanced|premium/i);
+      // And says what it actually means, in numbers.
+      expect(SHOT_SIZES[k].note).toMatch(/\d/);
+    }
+  });
+
+  it('sends the vendor’s own word for it, not ours', () => {
+    expect(SHOT_SIZES.posting.vendor).toBe('standard');
+    expect(SHOT_SIZES.listing.vendor).toBe('advanced');
+    expect(SHOT_SIZES.printing.vendor).toBe('premium');
+  });
+
+  it('offers it only where the vendor documents it', () => {
+    // Sending it on a mode with no such parameter would send a key nothing
+    // reads — the class of mistake that put five wrong names in the adapter.
+    expect([...TAKES_SHOT_SIZE]).toEqual(['on_model']);
   });
 });

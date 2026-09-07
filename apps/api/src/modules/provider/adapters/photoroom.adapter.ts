@@ -10,6 +10,7 @@ import {
   PRODUCT_SIZE_BY_ASPECT,
   ProviderError,
   SHADOW_STYLES,
+  SHOT_SIZES,
   type Capability,
   type CapabilityParams,
   type ProviderInput,
@@ -52,6 +53,9 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('virtualModel.scene', p.scene ?? 'random');
     q.set('virtualModel.pose', p.pose ?? 'random');
     q.set('virtualModel.size', sizeOf(p));
+    // Roughly 1K, 2K or 4K on the long side. The only mode with this
+    // parameter; sending it elsewhere would send a key nothing reads.
+    q.set('virtualModel.quality', SHOT_SIZES[p.shotSize].vendor);
     if (p.prompt) q.set('virtualModel.prompt', p.prompt);
     // The only place the vendor accepts more angles of the product. Elsewhere
     // the extra photos are ours to keep for a retry, not the vendor's to read.

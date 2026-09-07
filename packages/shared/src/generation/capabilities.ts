@@ -19,15 +19,17 @@
 
 import { z } from 'zod';
 import {
-  productModeCostCode,
+  productShotCostCode,
   MODEL_POSES,
   MODEL_PRESETS,
   MODEL_SCENES,
   PRODUCT_MODE_KEYS,
   PRODUCT_REFERENCE_ANGLES,
   SHADOW_STYLES,
+  SHOT_SIZE_KEYS,
   type ProductMode,
   type ShadowStyle,
+  type ShotSize,
 } from './product-shots';
 
 export const CAPABILITIES = [
@@ -352,6 +354,12 @@ export const capabilityParams = {
       part: z.string().max(120).optional(),
       /** beautify: the vendor tunes differently for food and for cars. */
       subject: z.enum(['auto', 'food', 'car']).default('auto'),
+      /**
+       * How big the picture comes back — roughly 1K, 2K or 4K. Only the
+       * on-a-model shot takes it; elsewhere it is ignored rather than sent,
+       * because the vendor has no such parameter on the other modes.
+       */
+      shotSize: z.enum(SHOT_SIZE_KEYS as [ShotSize, ...ShotSize[]]).default('posting'),
       shadow: z.enum(Object.keys(SHADOW_STYLES) as [ShadowStyle, ...ShadowStyle[]]).default('soft'),
       sizes: z.array(z.enum(Object.keys(EXPORT_SIZES) as [ExportSize, ...ExportSize[]])).default(['feed_square', 'story']),
       price: z.string().max(40).optional(),
@@ -676,7 +684,8 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
  * price of forty presses.
  */
 export function batchUnitCostCode(of: Capability, params: Record<string, unknown>): string {
-  if (of === 'PRODUCT_SHOT') return productModeCostCode(typeof params.mode === 'string' ? params.mode : undefined);
+  if (of === 'PRODUCT_SHOT')
+    return productShotCostCode(typeof params.mode === 'string' ? params.mode : undefined, typeof params.shotSize === 'string' ? params.shotSize : undefined);
   return DEFAULT_COST_CODE[of];
 }
 

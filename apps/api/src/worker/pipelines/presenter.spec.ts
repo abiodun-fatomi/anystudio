@@ -3,6 +3,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { renderPresenter, wantsPresenter } from './presenter';
 import type { PipelineContext } from './index';
+import { HAS_FFMPEG } from '../../test/ffmpeg';
+
+/** These make real audio and read real durations; without ffmpeg there is nothing to make it with. */
+const ffIt = HAS_FFMPEG ? it : it.skip;
 
 const exec = promisify(execFile);
 
@@ -61,7 +65,7 @@ describe('a presenter on camera', () => {
     expect(wantsPresenter(base)).toBe(false);
   });
 
-  it('records the script in the chosen voice, films the stock look with that audio, and stores both', async () => {
+  ffIt('records the script in the chosen voice, films the stock look with that audio, and stores both', async () => {
     const audio = await tone(3);
     const lab = {
       key: 'heygen:translate',
@@ -103,7 +107,7 @@ describe('a presenter on camera', () => {
     expect(out.costMinor).toBe(105);
   });
 
-  it('refuses another workspace’s voice, a photo without consent, and an unknown presenter', async () => {
+  ffIt('refuses another workspace’s voice, a photo without consent, and an unknown presenter', async () => {
     const audio = await tone(1);
     const lab = { key: 'heygen:translate', talkingVideo: vi.fn(), presenterCostMinor: () => 0 };
     const other = { key: 'mine:x', active: true, kind: 'CLONE', workspaceId: 'ws-2', providerKey: 'elevenlabs:tts', providerVoiceId: 'v', language: 'en' };

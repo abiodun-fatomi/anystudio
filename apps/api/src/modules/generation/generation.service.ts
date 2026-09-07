@@ -50,6 +50,7 @@ import {
   type ProviderErrorKind,
   adPlan,
   batchUnitCostCode,
+  productShotCostCode,
 } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { GenerationHooks } from './generation.hooks';
@@ -154,16 +155,22 @@ export class GenerationService {
     // A song in their own voice is priced above the client's say-so: the extra vendor work is real whatever the request claimed.
     // An ad with a presenter talking to camera is priced above the plain ad; the server decides, whatever the client sent.
     const withPresenter = req.capability === 'IMAGE_TO_VIDEO' && shots > 1 && params.format === 'ugc' && Boolean(params.presenter);
+    // A merchant shot is priced by what was actually asked for, from the params
+    // the server just validated — not from a cost code the client chose. The
+    // same reasoning as the batch quantity below: a request that says "on a
+    // model, 4K" and "charge me for a press" must be charged for the first.
     const costCode =
       req.capability === 'BATCH'
         ? batchUnitCostCode(params.of as Capability, (params.params ?? {}) as Record<string, unknown>)
-        : req.capability === 'MUSIC' && params.singer === 'me'
-          ? MUSIC_MY_VOICE_COST_CODE
-          : withPresenter && adPlan(shots)
-            ? presenterCostCode(adPlan(shots)!.costCode)
-            : (req.costCode ??
-              adPlan(shots)?.costCode ??
-              (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
+        : req.capability === 'PRODUCT_SHOT'
+          ? productShotCostCode(params.mode as string, params.shotSize as string)
+          : req.capability === 'MUSIC' && params.singer === 'me'
+            ? MUSIC_MY_VOICE_COST_CODE
+            : withPresenter && adPlan(shots)
+              ? presenterCostCode(adPlan(shots)!.costCode)
+              : (req.costCode ??
+                adPlan(shots)?.costCode ??
+                (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
