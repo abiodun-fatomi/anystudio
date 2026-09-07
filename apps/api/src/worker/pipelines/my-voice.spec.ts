@@ -7,6 +7,11 @@ import { join } from 'node:path';
 import { ProviderError } from '@anystudio/shared';
 import { mix, singInMyVoice } from './my-voice';
 import type { PipelineContext } from './index';
+import { HAS_FFMPEG } from '../../test/ffmpeg';
+
+/** These make real audio and read real durations; without ffmpeg there is nothing to make it with. */
+const ffIt = HAS_FFMPEG ? it : it.skip;
+const ffDescribe = HAS_FFMPEG ? describe : describe.skip;
 
 const exec = promisify(execFile);
 
@@ -61,7 +66,7 @@ describe('singing in their own voice', () => {
     expect(out.reason).toMatch(/stems/);
   });
 
-  it('mixes the converted vocal over the instrumental when every step works', async () => {
+  ffIt('mixes the converted vocal over the instrumental when every step works', async () => {
     const [inst, voc] = await Promise.all([tone(220), tone(880)]);
     const lab = {
       separateStems: vi.fn(async () => ({ vocals: voc, instrumental: inst, mime: 'audio/mpeg' })),
@@ -76,7 +81,7 @@ describe('singing in their own voice', () => {
   });
 });
 
-describe('mix', () => {
+ffDescribe('mix', () => {
   it('produces an MP3 as long as the instrumental', async () => {
     const [inst, voc] = await Promise.all([tone(220, 3), tone(880, 1)]);
     const out = await mix(inst, voc);
