@@ -33,6 +33,9 @@ import sharp from 'sharp';
 import { OFFERED_PRODUCT_MODES, PRODUCT_MODES, parseCapabilityParams, type ProductMode, type ProviderInput } from '@anystudio/shared';
 import { PhotoroomProvider } from '../src/modules/provider/adapters/photoroom.adapter';
 
+/** How many times to give the vendor the benefit of the doubt on a 5xx, as the runner does. */
+const RETRIES = 3;
+
 /** A public product photo, so the script does something useful with no arguments. */
 const SAMPLE = 'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=1200&q=80';
 
@@ -124,25 +127,43 @@ async function main(): Promise<void> {
     };
 
     const started = Date.now();
-    try {
-      const result = await provider.generate(input, { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) });
-      const bytes = result.artifacts[0]?.bytes;
-      if (!bytes) throw new Error('no bytes came back');
-      const meta = await sharp(bytes).metadata();
-      const file = join(out, `${mode}.png`);
-      await writeFile(file, bytes);
-      good++;
-      console.log(`✓ ${label.padEnd(18)} ${meta.width}×${meta.height}  ${(bytes.length / 1024).toFixed(0)} KB  ${Date.now() - started}ms  → ${file}`);
-    } catch (err) {
-      // The vendor's own words, in full: this is the whole point of the run.
-      const message = err instanceof Error ? err.message : String(err);
-      console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms\n    ${message}\n`);
-      // Every mode will fail the same way and none of them will be about the
-      // adapter, so say what it is once and stop burning the wall clock.
-      if (/HTTP 401|could not be authenticated/i.test(message)) {
-        console.log('    The key was rejected, so every mode below would fail the same way.');
-        console.log('    Photoroom API dashboard → API keys → Create API key. Nothing was charged.\n');
-        process.exit(2);
+    // The runner retries a 5xx in production, so a script that does not will
+    // report a vendor having a bad minute as a broken adapter. It says how
+    // many attempts it took, because "worked on the third try" is the useful
+    // answer and "worked" would hide it.
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        const result = await provider.generate(input, { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) });
+        const bytes = result.artifacts[0]?.bytes;
+        if (!bytes) throw new Error('no bytes came back');
+        const meta = await sharp(bytes).metadata();
+        const file = join(out, `${mode}.png`);
+        await writeFile(file, bytes);
+        good++;
+        const tries = attempt > 1 ? `  (${attempt} tries)` : '';
+        console.log(`✓ ${label.padEnd(18)} ${meta.width}×${meta.height}  ${(bytes.length / 1024).toFixed(0)} KB  ${Date.now() - started}ms${tries}  → ${file}`);
+        break;
+      } catch (err) {
+        // The vendor's own words, in full: this is the whole point of the run.
+        const message = err instanceof Error ? err.message : String(err);
+        // A 5xx is the vendor's failure, not a rejected parameter. Give it the
+        // same benefit of the doubt the runner does before calling it broken.
+        if (/HTTP 5\d\d/.test(message) && attempt < RETRIES) {
+          console.log(`… ${label.padEnd(18)} attempt ${attempt} hit a vendor error; trying again`);
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms  (${attempt} ${attempt === 1 ? 'try' : 'tries'})\n    ${message}\n`);
+        // Every mode will fail the same way and none of them will be about the
+        // adapter, so say what it is once and stop burning the wall clock.
+        if (/HTTP 401|could not be authenticated/i.test(message)) {
+          console.log('    The key was rejected, so every mode below would fail the same way.');
+          console.log('    Photoroom API dashboard → API keys → Create API key. Nothing was charged.\n');
+          process.exit(2);
+        }
+        break;
       }
     }
   }

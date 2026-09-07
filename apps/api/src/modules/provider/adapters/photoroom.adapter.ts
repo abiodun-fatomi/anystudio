@@ -107,16 +107,25 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
   /**
    * `beautify` takes a subject tuning and a seed. There is no prompt.
    *
-   * And it is the one exception to the rule above, which we learned by
-   * breaking it: asked to keep the background it answers HTTP 500, "An error
-   * occurred during Subject Beautifier processing". The name is the reason —
-   * it beautifies the SUBJECT, so it has to know which pixels those are, and
-   * the cutout is how it finds out. Setting removeBackground=false here does
-   * not preserve a background, it fails the generation.
+   * IT IS THE FLAKY ONE. Three live runs of the same request: one picture,
+   * two HTTP 500s reading "An error occurred during Subject Beautifier
+   * processing". A 500 is the vendor's own failure, not a rejected parameter,
+   * and the identical request succeeding once rules out the request.
    *
-   * So the mode keeps the default and the honesty moved to its description
-   * instead: it now says the product comes back on a clean ground, because
-   * that is what a merchant is going to get.
+   * (An earlier note here blamed `removeBackground`, on the strength of one
+   * failure that happened to follow that change. Removing it again produced
+   * the same 500. That was a coincidence read as a cause, which is the
+   * cheapest kind of wrong explanation to write and the most expensive to
+   * inherit.)
+   *
+   * Nothing to do in the adapter: the runner classifies 5xx as RETRYABLE,
+   * requeues with a delay, and refunds when the attempts are gone — which is
+   * the right handling for a vendor having a bad minute. Worth watching in
+   * production, and worth demoting the mode if the success rate stays this
+   * poor.
+   *
+   * It does come back cut out, which is real and confirmed from the one that
+   * worked. The mode's description says so.
    */
   beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
   // Widening the frame is the whole point, so this one must not keep the original size.
