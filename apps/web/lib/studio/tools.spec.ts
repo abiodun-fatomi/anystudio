@@ -87,10 +87,15 @@ function audit(t: Tool): Finding[] {
 const say = (f: Finding[]) => f.map((x) => `${x.tool} → ${x.capability}: ${x.problem}`).join('\n');
 
 describe('every studio tool, against the schema it sends to', () => {
-  it.each(TOOLS.map((t) => [t.id, t] as const))('%s', (_id, tool) => {
-    const findings = audit(tool);
-    expect(say(findings), `\n${say(findings)}\n`).toBe('');
-  });
+  // A plain loop rather than it.each: one named test per tool, so a failure
+  // says WHICH tool broke in its own line, and the tuple typing that made
+  // this file fragile is gone.
+  for (const tool of TOOLS) {
+    it(`${tool.id} sends only what its capability accepts`, () => {
+      const findings = audit(tool);
+      expect(say(findings), `\n${say(findings)}\n`).toBe('');
+    });
+  }
 });
 
 describe('the audit itself', () => {
