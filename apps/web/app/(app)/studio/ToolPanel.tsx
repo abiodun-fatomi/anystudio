@@ -16,8 +16,8 @@ import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } fro
 import {
   PRESENTERS,
   PRESET_GROUPS,
+  OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
-  PRODUCT_MODE_KEYS,
   acceptsSourceKey,
   presetsIn,
   type PhotoPreset,
@@ -667,7 +667,7 @@ function ModesField({ field, value, onChange }: { field: Extract<Field, { kind: 
     <div>
       <span className={styles.fieldLabel}>{field.label}</span>
       <div className={styles.modes} role="radiogroup" aria-label={field.label}>
-        {PRODUCT_MODE_KEYS.map((k) => {
+        {OFFERED_PRODUCT_MODES.map((k) => {
           const m = PRODUCT_MODES[k];
           return (
             <button key={k} type="button" role="radio" aria-checked={value === k} className={styles.mode} onClick={() => onChange(k)} title={m.hint}>

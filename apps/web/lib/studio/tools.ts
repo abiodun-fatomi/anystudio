@@ -604,7 +604,10 @@ export const TOOLS: Tool[] = [
         kind: 'angles',
         label: 'More angles of the same item',
         max: PRODUCT_REFERENCE_ANGLES.max,
-        hint: 'Optional, and the best way to keep your product exact. The back, the label, a close-up.',
+        hint: 'Optional, and the best way to keep your item exact on a model. The back, the label, a close-up.',
+        // The vendor reads extra angles only for the on-a-model shot. Offering
+        // them elsewhere would be asking for uploads nothing will look at.
+        showIf: (v) => v.mode === 'on_model',
       },
       {
         key: 'shadow',

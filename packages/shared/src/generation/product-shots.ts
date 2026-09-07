@@ -25,6 +25,7 @@ export const PRODUCT_MODES = {
     forClothes: true,
     /** Priced above the rest: it is the shot a merchant would otherwise pay a model and a photographer for. */
     costCode: 'image.on_model',
+    verified: true,
   },
   ghost_mannequin: {
     label: 'Ghost mannequin',
@@ -32,6 +33,7 @@ export const PRODUCT_MODES = {
     hint: 'The catalogue look every marketplace prefers for clothing.',
     forClothes: true,
     costCode: 'image.product_shot',
+    verified: true,
   },
   flat_lay: {
     label: 'Flat lay',
@@ -39,6 +41,7 @@ export const PRODUCT_MODES = {
     hint: 'Tidies a photo taken on a bed or a floor.',
     forClothes: true,
     costCode: 'image.product_shot',
+    verified: true,
   },
   ironing: {
     label: 'Press it',
@@ -46,6 +49,7 @@ export const PRODUCT_MODES = {
     hint: 'For anything photographed straight out of a bag.',
     forClothes: true,
     costCode: 'image.product_shot',
+    verified: true,
   },
   beautify: {
     label: 'Make it studio',
@@ -53,6 +57,7 @@ export const PRODUCT_MODES = {
     hint: 'Lighting, colour and sharpness, without changing the product.',
     forClothes: false,
     costCode: 'image.product_shot',
+    verified: true,
   },
   recolor: {
     label: 'Another colour',
@@ -60,6 +65,7 @@ export const PRODUCT_MODES = {
     hint: 'Say which part, or leave it and the whole item changes.',
     forClothes: false,
     costCode: 'image.product_shot',
+    verified: false,
   },
   retouch: {
     label: 'Remove something',
@@ -67,6 +73,7 @@ export const PRODUCT_MODES = {
     hint: 'Say what should go.',
     forClothes: false,
     costCode: 'image.product_shot',
+    verified: false,
   },
   expand: {
     label: 'Show more room',
@@ -74,10 +81,23 @@ export const PRODUCT_MODES = {
     hint: 'For a photo cropped too tight for a Status or a banner.',
     forClothes: false,
     costCode: 'image.product_shot',
+    verified: true,
   },
 } as const;
 export type ProductMode = keyof typeof PRODUCT_MODES;
 export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
+
+/**
+ * The modes the studio actually offers.
+ *
+ * `verified: false` means the mode is written but its parameters are NOT in
+ * the vendor's published API specification — they were inferred from the
+ * app's own tool list, which is a guess, and a guess that reaches a paid
+ * endpoint costs a customer credits to discover. Those stay out of the studio
+ * until someone has run them against a live key and seen a picture come back.
+ * Flipping one on is a one-word change here.
+ */
+export const OFFERED_PRODUCT_MODES = PRODUCT_MODE_KEYS.filter((k) => PRODUCT_MODES[k].verified);
 export const productMode = (k: string | null | undefined) => (k && k in PRODUCT_MODES ? PRODUCT_MODES[k as ProductMode] : undefined);
 /** What a mode costs. A merchant sees this before anything is charged. */
 export const productModeCostCode = (k: string | null | undefined): string => productMode(k)?.costCode ?? 'image.product_shot';
