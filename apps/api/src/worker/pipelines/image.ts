@@ -25,7 +25,7 @@
 import sharp, { type OverlayOptions } from 'sharp';
 import { EXPORT_SIZES, ProviderError, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
-import { FIDELITY, fidelity } from './fidelity';
+import { FIDELITY, fidelity, shifted } from './fidelity';
 import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 
@@ -83,7 +83,18 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
     } else if (report.score >= FIDELITY.composite || (attempt === 2 && found)) {
       const same = await sameFrame(source, bytes);
-      if (same && report.score >= FIDELITY.composite) {
+      // A frame of the same SHAPE is not the same framing. Models very often
+      // hand a square photo back square and have still slid the product
+      // across it — and laying the original back at its SOURCE coordinates
+      // then leaves the model's own version of it still in shot, a little to
+      // one side. Two overlapping products read as one deformed product,
+      // which is exactly what a merchant reported after choosing a single
+      // background. So where it ENDED UP decides how it goes back, and the
+      // whole-frame overlay is kept for the case it is actually right for:
+      // a product that never moved, where laying the original over the top
+      // preserves its edges exactly.
+      const moved = !report.origin || !report.placed || shifted(report.origin, report.placed);
+      if (same && !moved && report.score >= FIDELITY.composite) {
         picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true, placed: null };
         ctx.log.info({ attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
       } else if (found) {
