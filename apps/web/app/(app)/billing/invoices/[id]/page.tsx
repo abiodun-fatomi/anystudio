@@ -133,54 +133,60 @@ export default function InvoicePage() {
           {inv.billTo?.taxId && <div className={styles.quiet}>Tax ID {inv.billTo.taxId}</div>}
         </section>
 
-        <table className={styles.lines}>
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th className={styles.num}>Made</th>
-              <th className={styles.num}>Credits</th>
-              <th className={styles.num}>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inv.lines.map((l) => (
-              <tr key={l.costCode}>
-                <td>
-                  {l.label}
-                  <span className={styles.code}>{l.costCode}</span>
-                </td>
-                <td className={styles.num}>{l.requests.toLocaleString()}</td>
-                <td className={styles.num}>{l.credits.toLocaleString()}</td>
-                <td className={styles.num}>{moneyMinor(l.amountMinor, inv.currency)}</td>
-              </tr>
-            ))}
-            {inv.lines.length === 0 && (
+        {/* A table cannot shrink below its own content, and three of these
+            columns are nowrap money. On a phone it used to widen the page
+            rather than the table. It scrolls inside its own box now — the
+            same guard the shared table primitive already has. */}
+        <div className={styles.linesWrap}>
+          <table className={styles.lines}>
+            <thead>
               <tr>
-                <td colSpan={4} className={styles.quiet}>
-                  Nothing was used in this period.
-                </td>
+                <th>Description</th>
+                <th className={styles.num}>Made</th>
+                <th className={styles.num}>Credits</th>
+                <th className={styles.num}>Amount</th>
               </tr>
-            )}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={3}>
-                Usage · {inv.credits.toLocaleString()} credits at {moneyMinor(inv.per100Minor, inv.currency)} per 100
-              </td>
-              <td className={styles.num}>{moneyMinor(inv.usageMinor, inv.currency)}</td>
-            </tr>
-            {inv.minimumMinor > 0 && (
+            </thead>
+            <tbody>
+              {inv.lines.map((l) => (
+                <tr key={l.costCode}>
+                  <td>
+                    {l.label}
+                    <span className={styles.code}>{l.costCode}</span>
+                  </td>
+                  <td className={styles.num}>{l.requests.toLocaleString()}</td>
+                  <td className={styles.num}>{l.credits.toLocaleString()}</td>
+                  <td className={styles.num}>{moneyMinor(l.amountMinor, inv.currency)}</td>
+                </tr>
+              ))}
+              {inv.lines.length === 0 && (
+                <tr>
+                  <td colSpan={4} className={styles.quiet}>
+                    Nothing was used in this period.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
               <tr>
-                <td colSpan={3}>Monthly minimum</td>
-                <td className={styles.num}>{moneyMinor(inv.minimumMinor, inv.currency)}</td>
+                <td colSpan={3}>
+                  Usage · {inv.credits.toLocaleString()} credits at {moneyMinor(inv.per100Minor, inv.currency)} per 100
+                </td>
+                <td className={styles.num}>{moneyMinor(inv.usageMinor, inv.currency)}</td>
               </tr>
-            )}
-            <tr className={styles.total}>
-              <td colSpan={3}>Total due</td>
-              <td className={styles.num}>{moneyMinor(inv.totalMinor, inv.currency)}</td>
-            </tr>
-          </tfoot>
-        </table>
+              {inv.minimumMinor > 0 && (
+                <tr>
+                  <td colSpan={3}>Monthly minimum</td>
+                  <td className={styles.num}>{moneyMinor(inv.minimumMinor, inv.currency)}</td>
+                </tr>
+              )}
+              <tr className={styles.total}>
+                <td colSpan={3}>Total due</td>
+                <td className={styles.num}>{moneyMinor(inv.totalMinor, inv.currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
 
         <footer className={styles.foot}>
           {inv.status === 'PAID' ? (

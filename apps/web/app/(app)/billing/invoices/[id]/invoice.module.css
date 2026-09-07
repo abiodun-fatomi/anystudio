@@ -184,3 +184,13 @@
     max-width: none;
   }
 }
+
+/* A table cannot shrink below its own content, and three of these columns are
+   nowrap money — "₦1,250,000.00" alone is most of a phone's width. It scrolls
+   inside its own box rather than widening the invoice. */
+.linesWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-inline: calc(var(--s-2) * -1);
+  padding-inline: var(--s-2);
+}

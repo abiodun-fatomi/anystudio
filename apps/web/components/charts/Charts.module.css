@@ -25,9 +25,12 @@
   gap: var(--s-3);
   flex-wrap: wrap;
 }
+/* Wraps: a third series, or one with a long name, otherwise pushes the
+   chart card wider than the phone it is on. */
 .legend {
   display: flex;
-  gap: var(--s-3);
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
   font-size: var(--t-1);
   color: var(--muted);
 }
@@ -67,8 +70,11 @@
   outline: 2.5px solid var(--accent);
   outline-offset: 2px;
 }
+/* The tooltip is positioned against this, so this is where it gets clipped —
+   locally, rather than becoming a scrollbar on the whole document. */
 .plot {
   position: relative;
+  overflow-x: clip;
 }
 .svg {
   width: 100%;
@@ -95,6 +101,11 @@
 .bar {
   transition: opacity var(--dur-fast) var(--ease);
 }
+/* The tooltip follows the hovered day, so on the last day of a 30-day chart
+   it sits at ~98% and, being nowrap and half-translated, hangs past the right
+   edge. On a phone that used to drag the whole page sideways. It is kept
+   inside its own plot now: it wraps rather than growing without limit, and
+   the margins stop the translated half from leaving either edge. */
 .tip {
   position: absolute;
   top: 0;
@@ -106,7 +117,9 @@
   color: var(--paper);
   border-radius: var(--r-sm);
   font-size: var(--t-1);
-  white-space: nowrap;
+  max-width: min(240px, 88%);
+  white-space: normal;
+  overflow-wrap: anywhere;
   pointer-events: none;
   box-shadow: var(--frame-shadow);
   z-index: 2;
