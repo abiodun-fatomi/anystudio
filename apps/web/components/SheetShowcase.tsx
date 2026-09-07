@@ -12,13 +12,16 @@ import { useRef, useState } from 'react';
 import styles from '@/app/(auth)/auth.module.css';
 
 const FRAMES = [
-  { n: '02', src: '/shots/ravi-1.webp', art: 'linear-gradient(160deg,#FF9E6D,#D6006E 78%)', nm: 'Ravi', pr: '₦4,500' },
-  { n: '03', src: '/shots/ravi-2.webp', art: 'linear-gradient(200deg,#1E2A4A,#00808F 90%)', nm: 'Ravi', pr: '₦4,500' },
-  // One sheet, one product. A handbag and a trainer under a heading that
-  // reads "Sheet 001 · Ravi Hair Oil" demonstrated the exact thing this
-  // product promises never to do.
-  { n: '04', src: '/shots/edit-white.webp', art: 'linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)', nm: 'Ravi', pr: '₦4,500' },
-  { n: '05', src: '/shots/edit-sand.webp', art: 'linear-gradient(20deg,#43261C,#FF9E6D 130%)', nm: 'Ravi', pr: '₦4,500' },
+  { n: '02', src: '/shots/hat-peach.webp', art: 'linear-gradient(160deg,#FF9E6D,#D6006E 78%)', nm: 'Ládé Hats', pr: '₦9,500' },
+  { n: '03', src: '/shots/hat-teal.webp', art: 'linear-gradient(200deg,#1E2A4A,#00808F 90%)', nm: 'Ládé Hats', pr: '₦9,500' },
+  // One sheet, one product, one PHOTO. A handbag and a trainer under a
+  // heading naming a single product demonstrated the exact thing this
+  // product promises never to do — and swapping them for other hair-oil
+  // shots was not enough, because those shots were each generated
+  // separately and carried different printed labels. Every frame here is
+  // the same hat: one source photo, the rest derived from it.
+  { n: '04', src: '/shots/hat-white.webp', art: 'linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)', nm: 'Ládé Hats', pr: '₦9,500' },
+  { n: '05', src: '/shots/hat-sand.webp', art: 'linear-gradient(20deg,#43261C,#FF9E6D 130%)', nm: 'Ládé Hats', pr: '₦9,500' },
 ] as const;
 
 export function SheetShowcase() {
@@ -29,13 +32,13 @@ export function SheetShowcase() {
   return (
     <div className={styles.sheet} aria-label="Example product sheet">
       <div className={styles.sheetBar}>
-        <span className="mono">Sheet 001 · Ravi Hair Oil</span>
+        <span className="mono">Sheet 001 · Ládé Hats</span>
         <span className="mono">6 frames</span>
       </div>
       <div className={styles.grid}>
         <div className={`${styles.frame} ${styles.src}`}>
           <div className={styles.art} style={{ background: 'linear-gradient(150deg,#b9a998,#6f6257)' }} />
-          <img className={styles.ph} alt="" src="/shots/source.webp" loading="eager" />
+          <img className={styles.ph} alt="" src="/shots/hat-source.webp" loading="eager" />
           <span className={styles.fnum}>01</span>
           <span className={styles.badge}>Their photo</span>
         </div>
@@ -55,7 +58,7 @@ export function SheetShowcase() {
 
         <div className={`${styles.frame} ${playing ? styles.playing : ''}`}>
           <div className={styles.art} style={{ background: 'linear-gradient(140deg,#2B1B33,#D6006E 120%)' }} />
-          <img className={styles.ph} alt="" src="/shots/reel-poster.webp" loading="eager" />
+          <img className={styles.ph} alt="" src="/shots/hat-peach.webp" loading="eager" />
           {!videoFailed && (
             <video
               ref={video}
@@ -72,7 +75,7 @@ export function SheetShowcase() {
                 setPlaying(false);
               }}
             >
-              <source src="/shots/reel.mp4" type="video/mp4" />
+              <source src="/shots/hat-reel.mp4" type="video/mp4" />
             </video>
           )}
           <span className={styles.scrim} />
