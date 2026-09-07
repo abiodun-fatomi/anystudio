@@ -50,6 +50,8 @@ const MAX_CARDS = 30;
 export function useGenerations() {
   const { workspace, spend, setBalance, refreshBalance } = useApp();
   const [cards, setCards] = useState<GenerationCard[]>([]);
+  /** True when history had more than the panel keeps; the panel says so rather than implying it is everything. */
+  const [moreInLibrary, setMoreInLibrary] = useState(false);
   const streams = useRef(new Map<string, EventSource>());
 
   const patch = useCallback((clientKey: string, fn: (c: GenerationCard) => GenerationCard) => {
@@ -292,11 +294,21 @@ export function useGenerations() {
     [cards, workspace.id, spend, setBalance, refreshBalance, editText],
   );
 
-  /** Recent history on load, so a returning tab sees what it made. */
+  /**
+   * Recent history on load, so a returning tab sees what it made.
+   *
+   * This kept twelve. The server sends fifty by default and the panel
+   * holds MAX_CARDS, so twelve was an under-fill with no reason behind
+   * it — and the reason it mattered is that the filter chips count what
+   * is on screen and label it "All". A merchant with forty generations
+   * read "All 12", checked their Library, and found everything there.
+   * Fill the panel, and say plainly when there is more.
+   */
   const hydrate = useCallback(async () => {
     try {
       const rows = await api.generations.history(workspace.id);
-      const recent = rows.slice(0, 12);
+      const recent = rows.slice(0, MAX_CARDS);
+      setMoreInLibrary(rows.length > recent.length);
       const fromRow = (g: GenerationRow): GenerationCard => ({
         clientKey: g.id,
         id: g.id,
@@ -347,7 +359,7 @@ export function useGenerations() {
     [cards, workspace.id, spend, patch, refreshBalance],
   );
 
-  return { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock };
+  return { cards, moreInLibrary, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock };
 }
 
 export function toolFor(capability: string): string {

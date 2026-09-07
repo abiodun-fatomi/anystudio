@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api, ApiError, type ActivityRow, type SessionRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
-import { Badge, Button, ConfirmDialog, Dialog, Input, Pager, useCursorPages, Skeleton, useToast, PasswordInput, LoadError } from '@/components/ui';
+import { Badge, Button, CodeInput, ConfirmDialog, Dialog, Pager, useCursorPages, Skeleton, useToast, PasswordInput, LoadError } from '@/components/ui';
 import { useProfile, fieldErrors } from '../useProfile';
 import { ReauthField, type ReauthValue } from '../ReauthField';
 import styles from '../settings.module.css';
@@ -507,13 +507,13 @@ export default function SecurityPage() {
                 <code className={styles.secret}>{enrol.secret.replace(/(.{4})/g, '$1 ').trim()}</code>
               </div>
             </div>
-            <Input
+            <CodeInput
               label="The six-digit code the app shows"
-              inputMode="numeric"
-              autoComplete="one-time-code"
+              accepts="totp"
+
               placeholder="123456"
               value={enrolCode}
-              onChange={(e) => setEnrolCode(e.target.value)}
+              onValueChange={setEnrolCode}
               error={enrolErr}
               autoFocus
             />
@@ -575,12 +575,12 @@ export default function SecurityPage() {
               error={disableErr.currentPassword}
             />
           )}
-          <Input
+          <CodeInput
             label="Code from the app, or a recovery code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
+            accepts="either"
+
             value={disable.code ?? ''}
-            onChange={(e) => setDisable((d) => ({ ...d, code: e.target.value }))}
+            onValueChange={(v) => setDisable((d) => ({ ...d, code: v }))}
             error={disableErr.code}
           />
         </div>
@@ -602,12 +602,12 @@ export default function SecurityPage() {
           </>
         }
       >
-        <Input
+        <CodeInput
           label="Code from your authenticator app"
-          inputMode="numeric"
-          autoComplete="one-time-code"
+          accepts="either"
+
           value={regenCode}
-          onChange={(e) => setRegenCode(e.target.value)}
+          onValueChange={setRegenCode}
           autoFocus
         />
       </Dialog>

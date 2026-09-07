@@ -11,6 +11,7 @@
  * session survives a refresh and can be handed to someone else. Everything
  * the cards know comes from useGenerations; this file only arranges it.
  */
+import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
@@ -117,7 +118,7 @@ function Studio() {
     }
     return out;
   }, [recent]);
-  const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
+  const { cards, moreInLibrary, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
   /**
    * Sifting the results, once there are enough to sift.
    *
@@ -531,6 +532,14 @@ function Studio() {
               );
             })}
           </div>
+        )}
+        {/* "All" counts what is on screen. When history had more than the
+            panel keeps, saying "All 30" would be a claim the Library
+            immediately contradicts — so point at it instead. */}
+        {moreInLibrary && (
+          <p className="mono" style={{ margin: '0 0 var(--s-3)', fontSize: 12, color: 'var(--muted)' }}>
+            Your most recent {cards.length} · <Link href="/library">everything you have made is in your library</Link>
+          </p>
         )}
         {shown.length === 0 ? (
           <EmptyState
