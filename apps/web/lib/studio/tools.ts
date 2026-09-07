@@ -32,6 +32,8 @@ import {
   SHOT_SIZES,
   SHOT_SIZE_KEYS,
   TAKES_SHOT_SIZE,
+  TEXT_KINDS,
+  TEXT_KIND_KEYS,
   OFFERED_PRODUCT_MODES,
   presenterCostCode,
 } from '@anystudio/shared';
@@ -610,25 +612,24 @@ export const TOOLS: Tool[] = [
         showIf: (v) => TAKES_SHOT_SIZE.includes(v.mode as never),
       },
       {
-        key: 'color',
-        kind: 'text',
-        label: 'The colour',
-        placeholder: '#C8102E',
-        maxLength: 7,
-        required: true,
-        hint: 'A hex colour, like #C8102E.',
-        showIf: (v) => v.mode === 'recolor',
+        // Named for the thing, not the category: "added on top" is what a
+        // supplier's watermark is, and nobody thinks of it as artificial text.
+        key: 'textKind',
+        kind: 'segment',
+        label: 'Which writing?',
+        options: TEXT_KIND_KEYS.map((k) => ({ id: k, label: TEXT_KINDS[k].label, note: TEXT_KINDS[k].note })),
+        showIf: (v) => v.mode === 'text_removal',
       },
-      { key: 'part', kind: 'text', label: 'Which part', placeholder: 'Only the sleeves', maxLength: 120, showIf: (v) => v.mode === 'recolor' },
       {
         key: 'prompt',
         kind: 'text',
-        label: 'What should go?',
-        placeholder: 'The hand holding it',
+        label: 'What should be different?',
+        placeholder: 'Remove the hanger',
         rows: 2,
         maxLength: 600,
         required: true,
-        showIf: (v) => v.mode === 'retouch',
+        hint: 'One change at a time works better than a list.',
+        showIf: (v) => v.mode === 'edit',
       },
       {
         key: 'subject',
@@ -759,6 +760,25 @@ export const TOOLS: Tool[] = [
         showIf: (v) => v.mode === 'beautify',
       },
       {
+        key: 'textKind',
+        kind: 'segment',
+        label: 'Which writing?',
+        options: TEXT_KIND_KEYS.map((k) => ({ id: k, label: TEXT_KINDS[k].label, note: TEXT_KINDS[k].note })),
+        showIf: (v) => v.mode === 'text_removal',
+      },
+      {
+        // One instruction for the whole folder: "remove the hanger" across
+        // forty hanger shots is the case this exists for.
+        key: 'prompt',
+        kind: 'text',
+        label: 'What should be different in all of them?',
+        placeholder: 'Remove the hanger',
+        rows: 2,
+        maxLength: 600,
+        required: true,
+        showIf: (v) => v.mode === 'edit',
+      },
+      {
         key: 'shadow',
         kind: 'segment',
         label: 'Shadow',
@@ -782,12 +802,13 @@ export const TOOLS: Tool[] = [
       model: 'random',
       scene: 'random',
       subject: 'auto',
+      textKind: 'artificial',
       shadow: 'soft',
       aspect: '1:1',
       sizes: ['feed_square'],
     },
     // Every setting except the photo list belongs to the child, not the batch.
-    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes', 'brand'],
+    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes', 'brand', 'textKind', 'prompt'],
     assemble: (p) => {
       const sourceKeys = Array.isArray(p.sourceKeys) ? (p.sourceKeys as string[]).filter(Boolean) : [];
       const params: Record<string, unknown> = {
@@ -801,6 +822,8 @@ export const TOOLS: Tool[] = [
         if (p.model && p.model !== 'random') params.model = p.model;
         if (p.scene) params.scene = p.scene;
       }
+      if (p.mode === 'text_removal') params.textKind = p.textKind;
+      if (p.mode === 'edit') params.prompt = p.prompt;
       // The badge choice rides down to every child, so the whole shoot agrees.
       if (p.brand) params.brand = p.brand;
       return { of: 'PRODUCT_SHOT', sourceKeys, params };

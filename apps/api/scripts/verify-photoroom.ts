@@ -105,8 +105,8 @@ async function main(): Promise<void> {
             angleKeys: angles.map((_, i) => `verify/angle-${i}.jpg`),
           }
         : {}),
-      ...(mode === 'recolor' ? { color: '#C8102E' } : {}),
-      ...(mode === 'retouch' ? { prompt: 'remove the price tag' } : {}),
+      ...(mode === 'text_removal' ? { textKind: 'artificial' } : {}),
+      ...(mode === 'edit' ? { prompt: 'remove the hanger' } : {}),
     });
     if (!parsed.ok) {
       console.log(`✗ ${label.padEnd(18)} the schema refused it: ${JSON.stringify(parsed.issues)}`);

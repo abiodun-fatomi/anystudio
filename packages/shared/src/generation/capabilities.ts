@@ -27,9 +27,11 @@ import {
   PRODUCT_REFERENCE_ANGLES,
   SHADOW_STYLES,
   SHOT_SIZE_KEYS,
+  TEXT_KIND_KEYS,
   type ProductMode,
   type ShadowStyle,
   type ShotSize,
+  type TextKind,
 } from './product-shots';
 
 export const CAPABILITIES = [
@@ -346,12 +348,8 @@ export const capabilityParams = {
       modelPhotoKey: objectKey.optional(),
       scene: z.string().max(40).optional(),
       pose: z.string().max(40).optional(),
-      /** recolor: the colour, and optionally which part of the item. */
-      color: z
-        .string()
-        .regex(/^#[0-9a-fA-F]{6}$/)
-        .optional(),
-      part: z.string().max(120).optional(),
+      /** text_removal: which writing goes — what was added on top, what was really there, or both. */
+      textKind: z.enum(TEXT_KIND_KEYS as [TextKind, ...TextKind[]]).default('artificial'),
       /** beautify: the vendor tunes differently for food and for cars. */
       subject: z.enum(['auto', 'food', 'car']).default('auto'),
       /**
@@ -368,8 +366,10 @@ export const capabilityParams = {
     })
     .superRefine((v, ctx) => {
       const fail = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-      if (v.mode === 'recolor' && !v.color) fail('color', 'Pick the colour you want it in.');
-      if (v.mode === 'retouch' && !v.prompt?.trim()) fail('prompt', 'Say what should be removed.');
+      // The prompt is optional on every mode but this one, where it IS the
+      // instruction: a described edit with nothing described is a paid call
+      // that can only come back unchanged.
+      if (v.mode === 'edit' && !v.prompt?.trim()) fail('prompt', 'Say what you want changed.');
       if (v.mode === 'on_model' && v.model === 'custom' && !v.modelPhotoKey) fail('modelPhotoKey', 'Add a photo of the person who should wear it.');
       if (v.mode === 'on_model' && v.model && v.model !== 'custom' && !(MODEL_PRESETS as readonly string[]).includes(v.model))
         fail('model', `We do not have a model called "${v.model}".`);
