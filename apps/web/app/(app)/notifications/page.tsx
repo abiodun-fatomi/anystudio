@@ -12,6 +12,8 @@ import styles from './notifications.module.css';
 export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [items, setItems] = useState<NotificationItem[] | null>(null);
+  /** What the API said when it refused, so the page can show it rather than a shrug. */
+  const [failed, setFailed] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   const [more, setMore] = useState(false);
@@ -19,6 +21,7 @@ export default function NotificationsPage() {
   const load = useCallback(
     async (after?: string) => {
       try {
+        setFailed(null);
         const r = await api.notifications.list({ take: 40, cursor: after, unread: filter === 'unread' });
         // An older API answers with a bare array and no counts; an empty
         // inbox is never a reason to fail the page.
@@ -26,8 +29,11 @@ export default function NotificationsPage() {
         setItems((cur) => (after && cur ? [...cur, ...rows] : rows));
         setCursor(typeof r?.nextCursor === 'string' ? r.nextCursor : null);
         setUnread(typeof r?.unread === 'number' ? r.unread : rows.filter((n) => !n.read).length);
-      } catch {
-        setItems([]);
+      } catch (err) {
+        // Not an empty inbox — a request that did not come back. Saying
+        // "Quiet for now" here told a merchant their work had vanished.
+        setItems(null);
+        setFailed(err instanceof Error ? err.message : 'Could not load them.');
       } finally {
         setMore(false);
       }
@@ -82,7 +88,18 @@ export default function NotificationsPage() {
           ]}
         />
       </div>
-      {items === null ? (
+      {failed ? (
+        <EmptyState
+          icon={<Icon.bell />}
+          title="Could not load your notifications"
+          body={`${failed} Nothing has been lost — this page could not reach the server.`}
+          actions={
+            <Button variant="subtle" onClick={() => void load()}>
+              Try again
+            </Button>
+          }
+        />
+      ) : items === null ? (
         <div style={{ display: 'grid', gap: 'var(--s-2)' }}>
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} height={64} />

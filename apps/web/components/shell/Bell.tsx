@@ -18,6 +18,17 @@ const POLL_MS = 60_000;
 export function Bell() {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
+  /**
+   * A LIST THAT FAILED IS NOT AN EMPTY LIST.
+   *
+   * This used to catch and set an empty array, so a badge reading 47 and a
+   * panel reading "Nothing yet" could sit on screen together and neither was
+   * lying about what it knew — the panel simply had no way to say "I could
+   * not ask". That is worse than an error: it tells a merchant their work
+   * vanished, and it makes the real fault invisible to anyone trying to find
+   * it. The message the API actually gave is kept and shown.
+   */
+  const [failed, setFailed] = useState<string | null>(null);
   const [opened, setOpened] = useState(false);
 
   const refreshCount = useCallback(() => {
@@ -27,6 +38,7 @@ export function Bell() {
       .catch(() => undefined);
   }, []);
   const load = useCallback(() => {
+    setFailed(null);
     api.notifications
       .list({ take: 10 })
       .then((r) => {
@@ -34,7 +46,10 @@ export function Bell() {
         setItems(Array.isArray(r?.items) ? r.items : []);
         setUnread(r?.unread ?? 0);
       })
-      .catch(() => setItems([]));
+      .catch((err: unknown) => {
+        setItems(null);
+        setFailed(err instanceof Error ? err.message : 'Could not load them.');
+      });
   }, []);
 
   useEffect(() => {
@@ -102,14 +117,29 @@ export function Bell() {
               </Button>
             )}
           </div>
-          {items === null ? (
+          {failed ? (
+            <div className={styles.empty}>
+              <strong>Could not load these.</strong>
+              <span className={styles.why}>{failed}</span>
+              <Button variant="link" size="sm" onClick={load}>
+                Try again
+              </Button>
+            </div>
+          ) : items === null ? (
             <div className={styles.list}>
               {[0, 1, 2].map((i) => (
                 <Skeleton key={i} height={56} />
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className={styles.empty}>Nothing yet. When something you made is ready, or credits land, it shows here.</div>
+            <div className={styles.empty}>
+              {/* The count and the list come from one request, so a badge
+                  cannot outlive the list behind it — but if the two ever
+                  disagree again, say so rather than showing a bare "nothing". */}
+              {unread > 0
+                ? `${unread} unread, but none of them came back. Try again in a moment, or open the full list.`
+                : 'Nothing yet. When something you made is ready, or credits land, it shows here.'}
+            </div>
           ) : (
             <div className={styles.list} role="list">
               {items.map((n) => (

@@ -123,3 +123,17 @@
   font-size: var(--t-2);
   font-weight: 600;
 }
+
+/* An error is not an empty list. The reason the API gave, kept and shown,
+   because a bell reading 47 over a panel reading "nothing yet" tells a
+   merchant their work vanished and tells whoever has to fix it nothing. */
+.empty {
+  display: grid;
+  gap: var(--s-1);
+  justify-items: start;
+}
+.why {
+  color: var(--muted);
+  font-size: var(--t-1);
+  overflow-wrap: anywhere;
+}

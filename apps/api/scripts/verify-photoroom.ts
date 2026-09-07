@@ -147,6 +147,17 @@ async function main(): Promise<void> {
   const modes = (asked ? asked.split(',').map((m) => m.trim()) : OFFERED_PRODUCT_MODES) as ProductMode[];
 
   await mkdir(out, { recursive: true });
+  /**
+   * The output folder ignores itself.
+   *
+   * These are sandbox pictures with another company's watermark across them —
+   * evidence for one afternoon, regenerated whenever anyone re-runs the check,
+   * and megabytes of it. They kept turning up in Source Control asking to be
+   * committed, and no repo-level pattern can guess what someone will pass to
+   * --out. A folder that carries its own `.gitignore` does not need guessing.
+   */
+  await writeFile(join(out, '.gitignore'), '# Verification output — pictures, not source.\n*\n').catch(() => undefined);
+
   const [provider] = PhotoroomProvider.all(apiKey);
   if (!provider) throw new Error('no provider');
 

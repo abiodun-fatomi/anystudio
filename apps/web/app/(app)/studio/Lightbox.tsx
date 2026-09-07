@@ -88,11 +88,31 @@ export function Lightbox({ shots, startAt = 0, onClose }: { shots: Shot[]; start
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, step, go]);
+  /**
+   * Hold the page still, AND hold its place.
+   *
+   * `overflow: hidden` on the body stops the page behind scrolling, which is
+   * right — but the browser has nowhere to keep the scroll position of a
+   * document that is suddenly not scrollable, so it forgets it. Closing the
+   * viewer then dropped a merchant at the top of the studio, hunting for the
+   * result they had just been looking at, several screens down.
+   *
+   * So the position is taken before the lock and put back after it, in the
+   * same frame the lock is released, which is early enough that nothing
+   * repaints in between.
+   */
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const prevOverflow = document.body.style.overflow;
+    const prevScrollBehavior = document.documentElement.style.scrollBehavior;
+    const y = window.scrollY;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevOverflow;
+      // Smooth scrolling would animate the restore, which reads as the page
+      // sliding away from you rather than never having moved.
+      document.documentElement.style.scrollBehavior = 'auto';
+      window.scrollTo(0, y);
+      document.documentElement.style.scrollBehavior = prevScrollBehavior;
     };
   }, []);
 
