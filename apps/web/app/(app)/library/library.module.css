@@ -321,3 +321,15 @@ button.card:focus-visible {
   width: 100%;
   color: var(--accent);
 }
+
+/* The order toggle sits with the date chips but is not one of them: it does
+   not narrow anything, it turns the list around. Set apart so a thumb does
+   not reach for it expecting a filter. */
+.chip[data-sort] {
+  margin-left: auto;
+}
+@media (max-width: 560px) {
+  .chip[data-sort] {
+    margin-left: 0;
+  }
+}

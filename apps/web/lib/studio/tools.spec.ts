@@ -26,15 +26,26 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
-import { CAPABILITIES, acceptsSourceKey, capabilityFields, namesAVendor, parseCapabilityParams, type Capability } from '@anystudio/shared';
+import {
+  CAPABILITIES,
+  PRODUCT_REFERENCE_ANGLES,
+  REEL_BRIEF,
+  acceptsSourceKey,
+  capabilityFields,
+  namesAVendor,
+  parseCapabilityParams,
+  type Capability,
+} from '@anystudio/shared';
 import {
   TOOLS,
   TOOL_GROUPS,
   TOOL_META,
+  anglesWouldHelp,
   coerceParams,
   groupOfCapability,
   missingFor,
   searchTools,
+  toolById,
   toolsIn,
   type Tool,
   type ToolGroup,
@@ -260,5 +271,98 @@ describe('filtering what has been made', () => {
     // A row from a newer server than this build. It belongs to no group and
     // so is never filtered out — invisible is the one outcome to avoid.
     expect(groupOfCapability('SOMETHING_NEW')).toBeUndefined();
+  });
+});
+
+/**
+ * What to offer when a shot comes back wrong.
+ *
+ * "Try again" on a generation that could not keep the product is an offer to
+ * fail the same way for the same money. The fidelity check refuses precisely
+ * when the model returned something that is not the seller's item, and the
+ * one known remedy is more photos of it. So the card offers the remedy — but
+ * only where there is one, and a wrong offer here is worse than none: it
+ * spends a merchant's trust on advice that cannot work.
+ */
+describe('offering the fix that exists', () => {
+  const shots = toolById('shots');
+
+  it('offers more angles when a merchant shot could not keep the product', () => {
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: [] }, 'LOW_QUALITY')).toBe(true);
+  });
+
+  it('says nothing for a failure that more photos cannot fix', () => {
+    for (const kind of ['TIMEOUT', 'PROVIDER_DOWN', 'RATE_LIMITED', 'CONTENT_REJECTED', 'INVALID_INPUT', null, undefined])
+      expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: [] }, kind), String(kind)).toBe(false);
+  });
+
+  it('says nothing on the modes the vendor will not read angles for', () => {
+    // Offering them elsewhere asks for uploads nothing will look at, which is
+    // a worse failure than the one it is trying to fix.
+    for (const mode of ['ghost_mannequin', 'flat_lay', 'ironing', 'beautify', 'expand', 'text_removal'])
+      expect(anglesWouldHelp(shots, { mode, angleKeys: [] }, 'LOW_QUALITY'), mode).toBe(false);
+  });
+
+  it('stops asking once there is nothing left to ask for', () => {
+    const full = Array.from({ length: PRODUCT_REFERENCE_ANGLES.max }, (_, i) => `ws/a${i}.jpg`);
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: full }, 'LOW_QUALITY')).toBe(false);
+    // One short of the ceiling still has room.
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: full.slice(1) }, 'LOW_QUALITY')).toBe(true);
+  });
+
+  it('says nothing for a tool that has no angles at all', () => {
+    for (const id of ['copy', 'music', 'collage', 'video'] as const) expect(anglesWouldHelp(toolById(id), { mode: 'on_model' }, 'LOW_QUALITY'), id).toBe(false);
+  });
+});
+
+/**
+ * The words a reel is made from, and who wrote them.
+ *
+ * The format's direction was only ever a placeholder — grey, and gone the
+ * moment anyone typed a character — so a seller could use this tool without
+ * ever noticing the format was writing their reel. It is a choice now, and
+ * taking it shows the words rather than hinting at them.
+ *
+ * The switch is panel state only. That matters: the server fills a blank
+ * prompt from the format regardless, so if `brief` ever reached the API it
+ * would be a key nothing reads — the exact failure this repo has a whole
+ * audit for.
+ */
+describe('the words a reel is made from', () => {
+  const video = toolById('video');
+
+  it('starts on the format, so a photo and a tap is a whole request', () => {
+    expect(video.defaults.brief).toBe('format');
+    expect(missingFor(video, video.defaults)).toBeNull();
+  });
+
+  it('hides the box until someone takes the pen', () => {
+    const promptField = video.fields.find((f) => f.key === 'prompt')!;
+    expect(promptField.showIf?.({ brief: 'format' })).toBe(false);
+    expect(promptField.showIf?.({ brief: 'own' })).toBe(true);
+  });
+
+  it('quotes the chosen format back, so the words are read and not guessed at', () => {
+    const brief = video.fields.find((f) => f.key === 'brief') as Extract<(typeof video.fields)[number], { kind: 'segment' }>;
+    const note = brief.noteFor?.({ brief: 'format', format: 'price_drop' });
+    expect(note).toContain(REEL_BRIEF.price_drop);
+    // And says nothing when the seller is writing their own.
+    expect(brief.noteFor?.({ brief: 'own', format: 'price_drop' })).toBeUndefined();
+  });
+
+  it('never sends the switch itself', () => {
+    // It decides what the panel shows. The API has no such field, and a key
+    // nothing reads is the bug this file exists to catch.
+    for (const brief of ['format', 'own']) {
+      const sent = coerceParams(video, { ...video.defaults, brief, prompt: brief === 'own' ? 'hold on the label' : '' });
+      expect(Object.keys(sent), brief).not.toContain('brief');
+    }
+  });
+
+  it('sends the seller’s words when they wrote some, and nothing when they did not', () => {
+    expect(coerceParams(video, { ...video.defaults, brief: 'own', prompt: 'hold on the label' }).prompt).toBe('hold on the label');
+    // Blank goes as absent, and the server fills it from the format — the one
+    // place that decision is made.
+    expect(coerceParams(video, { ...video.defaults, brief: 'format' }).prompt).toBeUndefined();
   });
 });

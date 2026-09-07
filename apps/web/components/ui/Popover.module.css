@@ -82,7 +82,12 @@
   border-radius: var(--r-sm);
   font-size: var(--t-1);
   font-weight: 500;
-  white-space: nowrap;
+  /* A tooltip on a control near either edge used to hang outside the window.
+     The panel beside it was clamped in JS when the notification bell hit this;
+     the tooltip was left out. It wraps instead — cheaper and it cannot drift. */
+  max-width: min(220px, 70vw);
+  white-space: normal;
+  overflow-wrap: anywhere;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease);

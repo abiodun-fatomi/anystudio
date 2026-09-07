@@ -691,6 +691,9 @@ export interface LibraryProduct {
   lastAt: string;
   thumbUrl: string | null;
 }
+/** Newest first is what a merchant wants nine times in ten; oldest is for working forward through a catalogue. */
+export type LibrarySort = 'newest' | 'oldest';
+
 export interface LibraryQuery {
   q?: string;
   type?: LibraryType;
@@ -698,6 +701,7 @@ export interface LibraryQuery {
   favourite?: boolean;
   from?: string;
   to?: string;
+  sort?: LibrarySort;
   cursor?: string;
   take?: number;
 }

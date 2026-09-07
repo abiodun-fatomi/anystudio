@@ -47,10 +47,11 @@ describe('what a batch will accept', () => {
 
 describe('validating the settings once, before any credit moves', () => {
   it('refuses a folder whose settings the child capability would reject, and points at the field', () => {
-    // A recolour with no colour: forty children would each fail the same way.
-    const found = issues({ of: 'PRODUCT_SHOT', sourceKeys: photos(40), params: { mode: 'recolor' } });
+    // A described edit with nothing described: forty children would each fail
+    // the same way, so the batch fails once and free instead.
+    const found = issues({ of: 'PRODUCT_SHOT', sourceKeys: photos(40), params: { mode: 'edit' } });
     expect(Object.keys(found).some((k) => k.startsWith('params.'))).toBe(true);
-    expect(found['params.color']).toBeTruthy();
+    expect(found['params.prompt']).toBeTruthy();
   });
 
   it('refuses a model the vendor does not have, rather than paying forty times to find out', () => {

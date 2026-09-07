@@ -195,12 +195,24 @@ export class LibraryService {
     const tsquery = toTsQuery(q.q);
     if (tsquery)
       where.push(Prisma.sql`to_tsvector('simple', coalesce(g."searchText", '') || ' ' || coalesce(g.title, '')) @@ to_tsquery('simple', ${tsquery})`);
+    /**
+     * The cursor and the ordering are one decision, not two.
+     *
+     * Keyset pagination works by asking for rows PAST the last one seen, and
+     * "past" means the opposite thing in each direction. Flip the ORDER BY
+     * and leave the comparison alone and the second page of an oldest-first
+     * list is the same rows again, forever — a bug that looks like a loading
+     * problem and is really an arithmetic one. So both come from here.
+     */
+    const oldestFirst = q.sort === 'oldest';
     if (q.cursor) {
-      where.push(Prisma.sql`(g."createdAt", g.id) < (SELECT c."createdAt", c.id FROM generations c WHERE c.id = ${q.cursor}::uuid)`);
+      const seen = Prisma.sql`(SELECT c."createdAt", c.id FROM generations c WHERE c.id = ${q.cursor}::uuid)`;
+      where.push(oldestFirst ? Prisma.sql`(g."createdAt", g.id) > ${seen}` : Prisma.sql`(g."createdAt", g.id) < ${seen}`);
     }
+    const order = oldestFirst ? Prisma.sql`g."createdAt" ASC, g.id ASC` : Prisma.sql`g."createdAt" DESC, g.id DESC`;
     const rows = await this.db.$queryRaw<Array<{ id: string }>>`
       SELECT g.id FROM generations g WHERE ${Prisma.join(where, ' AND ')}
-      ORDER BY g."createdAt" DESC, g.id DESC LIMIT ${limit}`;
+      ORDER BY ${order} LIMIT ${limit}`;
     return rows.map((r) => r.id);
   }
 

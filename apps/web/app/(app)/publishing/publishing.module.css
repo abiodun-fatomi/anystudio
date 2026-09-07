@@ -25,7 +25,11 @@
 /* ---- platforms ---- */
 .platforms {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* min() rather than a bare 320px: auto-fit cannot shrink a track below a
+     fixed minimum, so on a 360px phone this column stayed 320px wide with
+     8px to spare — and broke the moment anything added padding. Connecting
+     Instagram is a first-run task, so it has to hold at 320px too. */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--s-4);
 }
 .platform {

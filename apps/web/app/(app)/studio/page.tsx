@@ -88,6 +88,8 @@ function Studio() {
   };
   const [viewer, setViewer] = useState(false);
   const [sheet, setSheet] = useState(false);
+  /** Bumped when a failed shot asks for more angles; the panel focuses that field. */
+  const [askAngles, setAskAngles] = useState(0);
   /**
    * The strip shows what this person actually reaches for, most recent first,
    * padded with sensible defaults for someone on their first day. Kept in the
@@ -376,6 +378,26 @@ function Studio() {
     [setUrl, sourceKey, toast],
   );
 
+  /**
+   * The fix for a shot that came back as a different product.
+   *
+   * The same restore as "Change something", plus the one thing that actually
+   * helps: it puts the cursor in the extra-photos field and says why. A
+   * merchant who has just lost a generation should not have to work out for
+   * themselves that the remedy is three feet down the panel.
+   */
+  const fix = useCallback(
+    (card: GenerationCard) => {
+      edit(card);
+      setAskAngles((n) => n + 1);
+      toast({
+        title: 'Show it the other side',
+        body: 'Add the back, the label or a close-up of the same item. That is what stops a model inventing one.',
+      });
+    },
+    [edit, toast],
+  );
+
   const useAsSource = useCallback(
     (key: string) => {
       setSourceMeta(null);
@@ -480,6 +502,7 @@ function Studio() {
           onChange={setValue}
           hasSource={Boolean(sourceKey)}
           sourceKey={sourceKey}
+          askAngles={askAngles}
           busy={busy}
           onGenerate={(q) => void generate(tool, toolValues, q.credits, sourceKey)}
         />
@@ -524,6 +547,7 @@ function Studio() {
                 onUseAsSource={useAsSource}
                 onSendToVideo={sendToVideo}
                 onAgain={again}
+                onFix={fix}
                 onEdit={edit}
                 onCancel={(k) => void cancel(k)}
                 onDismiss={dismiss}

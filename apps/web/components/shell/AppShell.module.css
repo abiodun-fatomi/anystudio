@@ -214,6 +214,10 @@ button.item {
 /* the bar+main column must be allowed to shrink, or a wide table widens the page */
 .body {
   min-width: 0;
+  /* And when something inside still manages it — a chart tooltip near the
+     right edge, a table of six-figure amounts — it is clipped here rather
+     than shifting the app. */
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -410,7 +414,11 @@ button.item {
 }
 @media (max-width: 767px) {
   .main {
-    padding: var(--s-4) var(--s-4) calc(var(--s-9) + env(safe-area-inset-bottom));
+    /* The bottom padding clears the tab bar AND the support button that
+       floats on its shoulder — 54px of it, at 64px up. Without the extra,
+       the last row of any list sits under the button, which on the pages
+       that put their actions on the right is exactly the row you wanted. */
+    padding: var(--s-4) var(--s-4) calc(var(--s-9) + 48px + env(safe-area-inset-bottom));
   }
 }
 

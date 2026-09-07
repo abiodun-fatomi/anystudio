@@ -11,6 +11,7 @@ import {
   ProviderError,
   SHADOW_STYLES,
   SHOT_SIZES,
+  TEXT_KINDS,
   type Capability,
   type CapabilityParams,
   type ProviderInput,
@@ -134,6 +135,29 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
    * worked. The mode's description says so.
    */
   beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
+  /**
+   * Taking someone else's writing off a photo.
+   *
+   * Half the pictures a reseller starts from arrive with a supplier's
+   * watermark or a stranger's phone number burned into them, so this is the
+   * step between having a photo and being able to post it. The background
+   * stays: the writing is the only thing that should leave.
+   */
+  text_removal: (p, q) => {
+    q.set('textRemoval.mode', TEXT_KINDS[p.textKind].vendor);
+    q.set('removeBackground', 'false');
+  },
+  /**
+   * The escape hatch, for the problem that is not on the list. The prompt is
+   * required by the schema here — it is the instruction, not a garnish, and a
+   * described edit with nothing described is a paid call that can only come
+   * back unchanged.
+   */
+  edit: (p, q) => {
+    q.set('editWithAI.mode', 'ai.auto');
+    q.set('editWithAI.prompt', p.prompt ?? '');
+    q.set('removeBackground', 'false');
+  },
   // Widening the frame is the whole point, so this one must not keep the original size.
   expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');

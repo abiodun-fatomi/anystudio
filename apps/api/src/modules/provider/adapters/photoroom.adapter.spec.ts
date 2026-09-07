@@ -52,6 +52,7 @@ const shot = (over: Record<string, unknown>) => ({
   aspect: '1:1',
   angleKeys: [],
   subject: 'auto',
+  textKind: 'artificial',
   shadow: 'soft',
   shotSize: 'posting',
   sizes: [],
@@ -196,10 +197,66 @@ describe('who asked for a cutout', () => {
   });
 });
 
+/**
+ * The two that replaced two ghosts.
+ *
+ * "Another colour" and "Remove something" sat here for weeks behind
+ * `verified: false`, waiting for a live run to confirm parameters that — it
+ * turns out — do not exist. There is no recolour and no retouch in the API at
+ * all; they are app features. Reading the whole specification instead of
+ * hunting for the two names found what IS there, and one of them is worth
+ * more to a reseller than either ghost: taking a supplier's watermark off a
+ * photo they were sent.
+ */
+describe('taking the writing off', () => {
+  it('asks for the kind of writing the merchant chose', async () => {
+    expect((await sent(shot({ mode: 'text_removal', textKind: 'artificial' }))).get('textRemoval.mode')).toBe('ai.artificial');
+    expect((await sent(shot({ mode: 'text_removal', textKind: 'natural' }))).get('textRemoval.mode')).toBe('ai.natural');
+    expect((await sent(shot({ mode: 'text_removal', textKind: 'all' }))).get('textRemoval.mode')).toBe('ai.all');
+  });
+
+  it('keeps the background, because only the writing was meant to go', async () => {
+    expect((await sent(shot({ mode: 'text_removal' }))).get('removeBackground')).toBe('false');
+  });
+
+  it('defaults to the writing somebody else added', async () => {
+    // The commonest case by far: a supplier's watermark on a photo the seller
+    // was sent. Removing a real shop sign is a choice, not a default.
+    expect((await sent(shot({ mode: 'text_removal' }))).get('textRemoval.mode')).toBe('ai.artificial');
+  });
+});
+
+describe('describing a change', () => {
+  it('sends the sentence as the instruction', async () => {
+    const q = await sent(shot({ mode: 'edit', prompt: 'remove the hanger' }));
+    expect(q.get('editWithAI.mode')).toBe('ai.auto');
+    expect(q.get('editWithAI.prompt')).toBe('remove the hanger');
+    expect(q.get('removeBackground')).toBe('false');
+  });
+
+  it('is refused before it is sent when nothing was described', async () => {
+    // Here the prompt IS the instruction, so an empty one is a paid call that
+    // can only come back unchanged. The schema stops it; this proves it.
+    const { parseCapabilityParams } = await import('@anystudio/shared');
+    const parsed = parseCapabilityParams('PRODUCT_SHOT', { sourceKey: 'ws/a.jpg', mode: 'edit' });
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(Object.keys(parsed.issues)).toContain('prompt');
+  });
+});
+
 describe('a mode we have not confirmed', () => {
   it('is refused rather than half-sent', async () => {
-    // recolor and retouch are `verified: false`: their parameters were never
-    // in the specification. A request the vendor half-understands still bills.
-    await expect(sent(shot({ mode: 'recolor', color: '#C8102E' }))).rejects.toThrow(/cannot do "recolor"/);
+    // Every offered mode now has a mapping, so this is tested against a name
+    // that is not a mode at all — the guard is for the NEXT one added to the
+    // catalogue before its parameters are known.
+    await expect(sent(shot({ mode: 'sketch' }))).rejects.toThrow(/cannot do "sketch"/);
+  });
+
+  it('has a mapping for every mode the studio offers', async () => {
+    const { OFFERED_PRODUCT_MODES } = await import('@anystudio/shared');
+    for (const mode of OFFERED_PRODUCT_MODES) {
+      const extra = mode === 'edit' ? { prompt: 'x' } : {};
+      await expect(sent(shot({ mode, ...extra })), mode).resolves.toBeTruthy();
+    }
   });
 });

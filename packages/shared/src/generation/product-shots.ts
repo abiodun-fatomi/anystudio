@@ -64,21 +64,37 @@ export const PRODUCT_MODES = {
     costCode: 'image.product_shot',
     verified: true,
   },
-  recolor: {
-    label: 'Another colour',
-    note: 'The same item in a colour you have in stock.',
-    hint: 'Say which part, or leave it and the whole item changes.',
+  /**
+   * The one a reseller needs most.
+   *
+   * Half the photos a Nigerian merchant starts from came from a supplier's
+   * catalogue or a WhatsApp broadcast, and arrive with somebody else's
+   * watermark, somebody else's price, or a phone number burned into the
+   * corner. There is no polite way to post that. Taking the writing off is
+   * not a nicety, it is the step between having a photo and being able to
+   * use it.
+   */
+  text_removal: {
+    label: 'Take the writing off',
+    note: 'Watermarks, prices and phone numbers someone else put on the photo.',
+    hint: 'Choose whether to remove writing added to the picture, writing that is really there, or both.',
     forClothes: false,
     costCode: 'image.product_shot',
-    verified: false,
+    verified: true,
   },
-  retouch: {
-    label: 'Remove something',
-    note: 'A hand, a hanger, a price tag, a stray object.',
-    hint: 'Say what should go.',
+  /**
+   * The escape hatch. Every catalogue of named modes eventually meets a
+   * merchant whose problem is not on the list — a hand in the frame, a
+   * hanger, a crease in the wrong place — and the answer should be a
+   * sentence, not a shrug.
+   */
+  edit: {
+    label: 'Describe a change',
+    note: 'Say what you want different and it is done.',
+    hint: '"Remove the hanger", "make the shoes black", "take out the person on the left".',
     forClothes: false,
     costCode: 'image.product_shot',
-    verified: false,
+    verified: true,
   },
   expand: {
     label: 'Show more room',
@@ -122,7 +138,7 @@ export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
  * Show more room keeps the original pixels and adds canvas around them, so
  * the check finds the product where it was pushed to and judges it there.
  */
-export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'recolor', 'retouch'];
+export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'text_removal', 'edit'];
 /** Whether a refusal is fair for this mode, or would throw away a correct picture. */
 export const judgesShape = (mode: ProductMode): boolean => KEEPS_GEOMETRY.includes(mode);
 
@@ -266,6 +282,23 @@ export const PRODUCT_SIZE_BY_ASPECT: Record<string, string> = {
   '9:16': 'PORTRAIT_HD_16_9',
   '16:9': 'LANDSCAPE_HD_16_9',
 };
+
+/**
+ * What kind of writing to take off.
+ *
+ * The distinction is the vendor's and it is a real one. A supplier's
+ * watermark was ADDED to the picture and should always go. The name on the
+ * shop sign behind the product is part of the photograph, and removing it
+ * may be exactly right (a rival's signage) or exactly wrong (the seller's
+ * own). So it is a choice, phrased as the thing rather than the category.
+ */
+export const TEXT_KINDS = {
+  artificial: { label: 'Added on top', note: 'Watermarks, prices, phone numbers — writing put onto the photo afterwards.', vendor: 'ai.artificial' },
+  natural: { label: 'In the picture', note: 'Signs, labels and packaging that were really there when it was taken.', vendor: 'ai.natural' },
+  all: { label: 'Everything', note: 'Both kinds. Check the result — a label you wanted may go with it.', vendor: 'ai.all' },
+} as const;
+export type TextKind = keyof typeof TEXT_KINDS;
+export const TEXT_KIND_KEYS = Object.keys(TEXT_KINDS) as TextKind[];
 
 /**
  * How many reference photos of the same product help.

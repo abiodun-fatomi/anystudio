@@ -47,25 +47,33 @@ describe('PRODUCT_SHOT params', () => {
     expect(p.angleKeys).toEqual([]);
   });
 
-  it('accepts every mode with only a photo, except the three that genuinely need a word', () => {
-    const needSomething = new Set(['recolor', 'retouch']);
+  it('accepts every mode with only a photo, except the one that genuinely needs a word', () => {
+    // A described edit is the exception on purpose: there, the sentence IS
+    // the instruction, and an empty one is a paid call that can only come
+    // back unchanged. Everywhere else a photo is enough — words are for
+    // steering, never a toll gate.
+    const needSomething = new Set(['edit']);
     for (const mode of PRODUCT_MODE_KEYS) {
       const r = parse({ ...base, mode });
       expect(r.ok, `${mode} with just a photo`).toBe(needSomething.has(mode) ? false : true);
     }
   });
 
-  it('refuses a recolour with no colour, and names the field', () => {
-    expect(issues({ ...base, mode: 'recolor' })).toHaveProperty('color');
-    expect(parse({ ...base, mode: 'recolor', color: '#C8102E' }).ok).toBe(true);
-    // A colour that is not a colour is caught by the shape, not by the vendor.
-    expect(issues({ ...base, mode: 'recolor', color: 'red' })).toHaveProperty('color');
+  it('refuses a described edit that describes nothing, and names the field', () => {
+    expect(issues({ ...base, mode: 'edit' })).toHaveProperty('prompt');
+    expect(parse({ ...base, mode: 'edit', prompt: 'remove the hanger' }).ok).toBe(true);
+    // Whitespace is not an instruction.
+    expect(issues({ ...base, mode: 'edit', prompt: '   ' })).toHaveProperty('prompt');
   });
 
-  it('refuses a removal that does not say what to remove', () => {
-    expect(issues({ ...base, mode: 'retouch' })).toHaveProperty('prompt');
-    expect(issues({ ...base, mode: 'retouch', prompt: '   ' })).toHaveProperty('prompt');
-    expect(parse({ ...base, mode: 'retouch', prompt: 'the hand holding it' }).ok).toBe(true);
+  it('takes a photo alone for the writing, and defaults to what someone else added', () => {
+    const r = parse({ ...base, mode: 'text_removal' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.params.textKind).toBe('artificial');
+    // The other two kinds are choices, not defaults: removing a real shop
+    // sign may be exactly right or exactly wrong.
+    for (const kind of ['natural', 'all']) expect(parse({ ...base, mode: 'text_removal', textKind: kind }).ok, kind).toBe(true);
+    expect(issues({ ...base, mode: 'text_removal', textKind: 'everything' })).toHaveProperty('textKind');
   });
 
   it('refuses a custom model with no photo of the person', () => {
@@ -121,13 +129,26 @@ describe('only offering what the vendor documented', () => {
     expect(OFFERED_PRODUCT_MODES).toContain('ghost_mannequin');
     expect(OFFERED_PRODUCT_MODES).toContain('flat_lay');
     expect(OFFERED_PRODUCT_MODES).toContain('ironing');
-    // Not in the published spec: written, switched off, one word from being on.
-    expect(OFFERED_PRODUCT_MODES).not.toContain('recolor');
-    expect(OFFERED_PRODUCT_MODES).not.toContain('retouch');
   });
 
-  it('still parses an unoffered mode, so turning one on needs no schema change', () => {
-    expect(parse({ ...base, mode: 'recolor', color: '#C8102E' }).ok).toBe(true);
+  /**
+   * "Another colour" and "Remove something" lived here for weeks behind
+   * `verified: false`, waiting for a live run to confirm parameters that do
+   * not exist: there is no recolour and no retouch anywhere in the API. They
+   * are app features. Reading the whole specification, rather than hunting
+   * for two names, found what IS there — and taking a supplier's watermark
+   * off a photo is worth more to a reseller than either ghost was.
+   */
+  it('offers nothing the vendor cannot actually do', () => {
+    for (const gone of ['recolor', 'retouch']) expect(PRODUCT_MODE_KEYS, `${gone} is not in the API`).not.toContain(gone);
+    expect(OFFERED_PRODUCT_MODES).toContain('text_removal');
+    expect(OFFERED_PRODUCT_MODES).toContain('edit');
+  });
+
+  it('keeps every mode in the catalogue offered, now that none are guesses', () => {
+    // The flag stays for the next mode written ahead of its parameters; it
+    // just has nothing to hide today.
+    expect([...OFFERED_PRODUCT_MODES].sort()).toEqual([...PRODUCT_MODE_KEYS].sort());
   });
 
   it('gives every offered mode a price and a name a merchant would use', () => {

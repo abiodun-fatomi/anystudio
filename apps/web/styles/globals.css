@@ -8,6 +8,16 @@
 html,
 body {
   height: 100%;
+  /* NOTHING SHIFTS THE PAGE SIDEWAYS.
+     Every multi-column layout here collapses properly on a phone, and the
+     page still drifted left and right — because one absolutely positioned
+     tooltip, or one table a few pixels too wide, becomes a horizontal scroll
+     for the WHOLE document, and then every screen reads as broken. This is
+     the backstop: an element that overflows is clipped where it happens
+     instead of dragging the app with it. `clip` rather than `hidden`, so it
+     does not silently turn ancestors into scroll containers and break the
+     sticky canvas and rail. */
+  overflow-x: clip;
 }
 body {
   margin: 0;

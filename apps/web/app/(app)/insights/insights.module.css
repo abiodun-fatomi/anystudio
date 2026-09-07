@@ -6,7 +6,9 @@
 }
 .two {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* See publishing: a fixed 320px minimum cannot shrink, and this file had
+     no narrow-screen query at all. */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--s-4);
   margin-top: var(--s-4);
 }

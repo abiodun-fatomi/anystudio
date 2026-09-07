@@ -17,7 +17,9 @@ import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import {
   BRAND_OFF,
+  PHOTO_PRESETS,
   PRESENTERS,
+  PRESETS_INLINE,
   PRESET_GROUPS,
   OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
@@ -33,6 +35,7 @@ import {
 } from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
+import { PresetSheet } from './PresetSheet';
 import styles from './studio.module.css';
 
 const BUTTON_LABEL: Record<string, string> = {
@@ -56,6 +59,7 @@ export function ToolPanel({
   onChange,
   hasSource,
   sourceKey,
+  askAngles,
   onGenerate,
   busy,
 }: {
@@ -65,6 +69,12 @@ export function ToolPanel({
   hasSource: boolean;
   /** The photo on the canvas, for the ideas the copy model proposes. */
   sourceKey?: string | null;
+  /**
+   * Bumped when a failed shot has just asked for more reference photos. The
+   * panel scrolls that field into view and rings it, so the remedy is where
+   * the eye already is rather than three feet down a form.
+   */
+  askAngles?: number;
   onGenerate: (quote: Quote) => void;
   busy: boolean;
 }) {
@@ -99,6 +109,17 @@ export function ToolPanel({
       live = false;
     };
   }, [workspace.id]);
+  const angles = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!askAngles) return;
+    const el = angles.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.setAttribute('data-asking', '');
+    const t = setTimeout(() => el.removeAttribute('data-asking'), 2400);
+    return () => clearTimeout(t);
+  }, [askAngles]);
+
   const costCode = tool.costCodeFor?.(values);
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
@@ -147,16 +168,18 @@ export function ToolPanel({
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
                 <Fragment key={f.key}>
-                  <FieldControl
-                    field={f}
-                    value={values[f.key]}
-                    values={values}
-                    brandKit={brandKit}
-                    onChange={(v) => onChange(f.key, v)}
-                    onFill={(params) => {
-                      for (const [k, v] of Object.entries(params)) onChange(k, v);
-                    }}
-                  />
+                  <div ref={f.kind === 'angles' ? angles : undefined} className={f.kind === 'angles' ? styles.anglesAnchor : undefined}>
+                    <FieldControl
+                      field={f}
+                      value={values[f.key]}
+                      values={values}
+                      brandKit={brandKit}
+                      onChange={(v) => onChange(f.key, v)}
+                      onFill={(params) => {
+                        for (const [k, v] of Object.entries(params)) onChange(k, v);
+                      }}
+                    />
+                  </div>
                   {tool.ideas && tool.ideas.under === f.key && (
                     <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
                   )}
@@ -711,7 +734,9 @@ function PresetsField({
   onChange: (v: unknown) => void;
   onFill: (params: Record<string, unknown>) => void;
 }) {
+  const [all, setAll] = useState(false);
   const pick = (p: PhotoPreset) => {
+    setAll(false);
     if (value === p.key) {
       onChange('');
       return;
@@ -719,6 +744,18 @@ function PresetsField({
     onChange(p.key);
     onFill(p.params);
   };
+  /**
+   * The chosen look is always shown, even when it lives past the cut. Hiding
+   * what someone just picked is how a control loses their trust: they tap
+   * "Owambe", the panel closes, and their choice is nowhere on screen.
+   */
+  const shownIn = (g: PresetGroup): PhotoPreset[] => {
+    const list = presetsIn(g);
+    const head = list.slice(0, PRESETS_INLINE);
+    const chosen = list.find((p) => p.key === value);
+    return chosen && !head.includes(chosen) ? [...head.slice(0, PRESETS_INLINE - 1), chosen] : head;
+  };
+  const hidden = PHOTO_PRESETS.length - (Object.keys(PRESET_GROUPS) as PresetGroup[]).reduce((n, g) => n + shownIn(g).length, 0);
   return (
     <div>
       <span className={styles.fieldLabel}>{field.label}</span>
@@ -730,7 +767,7 @@ function PresetsField({
               <span>{PRESET_GROUPS[g].note}</span>
             </div>
             <div className={styles.presetRow} role="radiogroup" aria-label={PRESET_GROUPS[g].label}>
-              {presetsIn(g).map((p) => (
+              {shownIn(g).map((p) => (
                 <button
                   key={p.key}
                   type="button"
@@ -762,6 +799,13 @@ function PresetsField({
           </div>
         ))}
       </div>
+      {hidden > 0 && (
+        <button type="button" className={styles.seeMore} onClick={() => setAll(true)}>
+          See all {PHOTO_PRESETS.length} looks
+          <Icon.chevron width={14} height={14} />
+        </button>
+      )}
+      {all && <PresetSheet current={value || null} onPick={pick} onClose={() => setAll(false)} />}
       {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
     </div>
   );
@@ -1008,7 +1052,7 @@ function FieldControl({
           <div>
             <Input
               label={field.label}
-              placeholder={field.placeholder}
+              placeholder={field.placeholderFor?.(values) ?? field.placeholder}
               hint={field.hint}
               maxLength={field.maxLength}
               value={String(value ?? '')}
@@ -1028,7 +1072,7 @@ function FieldControl({
       return field.rows ? (
         <Textarea
           label={field.label}
-          placeholder={field.placeholder}
+          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
           hint={field.hint}
           rows={field.rows}
           maxLength={field.maxLength}
@@ -1040,7 +1084,7 @@ function FieldControl({
       ) : (
         <Input
           label={field.label}
-          placeholder={field.placeholder}
+          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
           hint={field.hint}
           maxLength={field.maxLength}
           value={String(value ?? '')}
@@ -1052,11 +1096,30 @@ function FieldControl({
       const chosen = String(value ?? field.options[0]!.id);
       // A note under the control, not a tooltip on it: the sentence that says
       // what the choice means is worth more than the word on the button.
-      const note = field.options.find((o) => o.id === chosen)?.note;
+      const note = field.noteFor?.(values) ?? field.options.find((o) => o.id === chosen)?.note;
+      /**
+       * A shape drawn at its own proportions, rather than five ratios a
+       * seller has to do arithmetic on. "9:16" is a photographer's word; a
+       * tall rectangle is not a word at all, and the sentence underneath
+       * says where the picture is actually going.
+       */
+      const items = field.options.map((o) =>
+        o.ratio
+          ? {
+              id: o.id,
+              label: (
+                <span className={styles.ratioItem}>
+                  <span className={styles.ratioBox} style={{ width: o.ratio[0], height: o.ratio[1] }} aria-hidden="true" />
+                  {o.label}
+                </span>
+              ),
+            }
+          : { id: o.id, label: o.label },
+      );
       return (
         <div>
           <span className={styles.fieldLabel}>{field.label}</span>
-          <SegmentedControl label={field.label} value={chosen} onChange={onChange} items={field.options} />
+          <SegmentedControl label={field.label} value={chosen} onChange={onChange} items={items} />
           {note && <p className={styles.fieldNote}>{note}</p>}
         </div>
       );

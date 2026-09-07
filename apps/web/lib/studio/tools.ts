@@ -9,11 +9,13 @@
  */
 import {
   ASPECTS,
+  ASPECT_USE,
   COLLAGE_LAYOUTS,
   COLLAGE_MAX_PHOTOS,
   COLLAGE_MIN_PHOTOS,
   EXPORT_SIZES,
   PIPELINE_WRITTEN_KEYS,
+  type AdFormat,
   type Capability,
   type CollageLayout,
   type ExportSize,
@@ -24,6 +26,7 @@ import {
   MODEL_PRESETS,
   MODEL_SCENES,
   PRODUCT_REFERENCE_ANGLES,
+  REEL_BRIEF,
   preset,
   presetCapability,
   productMode,
@@ -32,6 +35,8 @@ import {
   SHOT_SIZES,
   SHOT_SIZE_KEYS,
   TAKES_SHOT_SIZE,
+  TEXT_KINDS,
+  TEXT_KIND_KEYS,
   OFFERED_PRODUCT_MODES,
   presenterCostCode,
 } from '@anystudio/shared';
@@ -64,11 +69,21 @@ export type Field =
       maxLength?: number;
       rows?: number;
       required?: boolean;
+      /** A placeholder that follows another control — the format's own direction, so the box shows what blank means. */
+      placeholderFor?: (values: Record<string, unknown>) => string | undefined;
       /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
       suggestions?: string[];
     }
   /** `note` on an option is the sentence shown under the control once it is chosen. */
-  | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string; note?: string }> }
+  | {
+      key: string;
+      kind: 'segment';
+      label: string;
+      /** `ratio` draws the shape itself on the button — five aspect numbers are arithmetic; a rectangle is not. */
+      options: Array<{ id: string; label: string; note?: string; ratio?: [number, number] }>;
+      /** A note that depends on the other controls — the chosen format's own words, quoted back. */
+      noteFor?: (values: Record<string, unknown>) => string | undefined;
+    }
   /**
    * One switch for "put my shop on this one", with a sentence under it naming
    * exactly what will be stamped. The fine-grained settings live on the Brand
@@ -216,7 +231,12 @@ export const TOOLS: Tool[] = [
         key: 'aspect',
         kind: 'segment',
         label: 'Shape',
-        options: ASPECTS.map((a) => ({ id: a, label: a })),
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
         showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
       },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
@@ -263,7 +283,17 @@ export const TOOLS: Tool[] = [
     narrative: { ...IMAGE_STAGES, generating: 'Building the new background' },
     fields: [
       { key: 'prompt', kind: 'text', label: 'New background', placeholder: 'Plain warm beige studio backdrop', rows: 2, maxLength: 400, required: true },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'shadow', kind: 'switch', label: 'Natural shadow', hint: 'A soft contact shadow so it sits on the surface' },
       { key: 'relight', kind: 'switch', label: 'Match the lighting' },
     ],
@@ -333,7 +363,17 @@ export const TOOLS: Tool[] = [
         required: true,
         hint: 'For a personal photo or a flyer you already have. The whole image can change.',
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
     ],
     defaults: { preserveProduct: false, aspect: '1:1', sizes: ['feed_square', 'story'], brand: { showPrice: false, showBusinessName: false } },
@@ -610,25 +650,24 @@ export const TOOLS: Tool[] = [
         showIf: (v) => TAKES_SHOT_SIZE.includes(v.mode as never),
       },
       {
-        key: 'color',
-        kind: 'text',
-        label: 'The colour',
-        placeholder: '#C8102E',
-        maxLength: 7,
-        required: true,
-        hint: 'A hex colour, like #C8102E.',
-        showIf: (v) => v.mode === 'recolor',
+        // Named for the thing, not the category: "added on top" is what a
+        // supplier's watermark is, and nobody thinks of it as artificial text.
+        key: 'textKind',
+        kind: 'segment',
+        label: 'Which writing?',
+        options: TEXT_KIND_KEYS.map((k) => ({ id: k, label: TEXT_KINDS[k].label, note: TEXT_KINDS[k].note })),
+        showIf: (v) => v.mode === 'text_removal',
       },
-      { key: 'part', kind: 'text', label: 'Which part', placeholder: 'Only the sleeves', maxLength: 120, showIf: (v) => v.mode === 'recolor' },
       {
         key: 'prompt',
         kind: 'text',
-        label: 'What should go?',
-        placeholder: 'The hand holding it',
+        label: 'What should be different?',
+        placeholder: 'Remove the hanger',
         rows: 2,
         maxLength: 600,
         required: true,
-        showIf: (v) => v.mode === 'retouch',
+        hint: 'One change at a time works better than a list.',
+        showIf: (v) => v.mode === 'edit',
       },
       {
         key: 'subject',
@@ -672,7 +711,17 @@ export const TOOLS: Tool[] = [
           { id: 'none', label: 'None' },
         ],
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
@@ -759,6 +808,25 @@ export const TOOLS: Tool[] = [
         showIf: (v) => v.mode === 'beautify',
       },
       {
+        key: 'textKind',
+        kind: 'segment',
+        label: 'Which writing?',
+        options: TEXT_KIND_KEYS.map((k) => ({ id: k, label: TEXT_KINDS[k].label, note: TEXT_KINDS[k].note })),
+        showIf: (v) => v.mode === 'text_removal',
+      },
+      {
+        // One instruction for the whole folder: "remove the hanger" across
+        // forty hanger shots is the case this exists for.
+        key: 'prompt',
+        kind: 'text',
+        label: 'What should be different in all of them?',
+        placeholder: 'Remove the hanger',
+        rows: 2,
+        maxLength: 600,
+        required: true,
+        showIf: (v) => v.mode === 'edit',
+      },
+      {
         key: 'shadow',
         kind: 'segment',
         label: 'Shadow',
@@ -769,7 +837,17 @@ export const TOOLS: Tool[] = [
           { id: 'none', label: 'None' },
         ],
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({
+          id: a,
+          label: a,
+          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
+          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
+        })),
+      },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       // The one place this matters most: forty pictures either all carry the
       // shop's name or none of them do, and doing it here is the difference
@@ -782,12 +860,13 @@ export const TOOLS: Tool[] = [
       model: 'random',
       scene: 'random',
       subject: 'auto',
+      textKind: 'artificial',
       shadow: 'soft',
       aspect: '1:1',
       sizes: ['feed_square'],
     },
     // Every setting except the photo list belongs to the child, not the batch.
-    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes', 'brand'],
+    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes', 'brand', 'textKind', 'prompt'],
     assemble: (p) => {
       const sourceKeys = Array.isArray(p.sourceKeys) ? (p.sourceKeys as string[]).filter(Boolean) : [];
       const params: Record<string, unknown> = {
@@ -801,6 +880,8 @@ export const TOOLS: Tool[] = [
         if (p.model && p.model !== 'random') params.model = p.model;
         if (p.scene) params.scene = p.scene;
       }
+      if (p.mode === 'text_removal') params.textKind = p.textKind;
+      if (p.mode === 'edit') params.prompt = p.prompt;
       // The badge choice rides down to every child, so the whole shoot agrees.
       if (p.brand) params.brand = p.brand;
       return { of: 'PRODUCT_SHOT', sourceKeys, params };
@@ -886,6 +967,7 @@ export const TOOLS: Tool[] = [
         key: 'format',
         kind: 'select',
         label: 'Ad format',
+        hintFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         options: [
           { value: 'reveal', label: 'Product reveal' },
           { value: 'benefits', label: 'Three benefits' },
@@ -896,14 +978,34 @@ export const TOOLS: Tool[] = [
         ],
       },
       {
+        /**
+         * The format's words were only ever a placeholder — grey, and gone
+         * the moment anyone typed a character. A seller could use this tool
+         * without ever noticing the format was writing their reel for them.
+         *
+         * So it is a choice now, and taking it shows the words: pick the
+         * format and read exactly what it will do, or take the pen. Panel
+         * state, never sent — the server fills a blank prompt from the
+         * format regardless, so this only decides what is on screen.
+         */
+        key: 'brief',
+        kind: 'segment',
+        label: 'The words',
+        options: [
+          { id: 'format', label: 'Use the format' },
+          { id: 'own', label: 'Write my own' },
+        ],
+        noteFor: (v) => (v.brief === 'own' ? undefined : `“${REEL_BRIEF[(v.format as AdFormat) ?? 'reveal']}”`),
+      },
+      {
         key: 'prompt',
         kind: 'text',
         label: 'What happens',
-        placeholder: 'The camera slowly pushes in as light sweeps across the fabric',
+        placeholderFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         rows: 3,
         maxLength: 600,
-        required: true,
-        hint: 'For an ad, this is your direction to the planner; each shot gets its own prompt.',
+        hint: 'Your words instead of the format’s. Leave it empty and the format decides anyway.',
+        showIf: (v) => v.brief === 'own',
       },
       { key: 'motion', kind: 'text', label: 'Camera', placeholder: 'slow push-in · orbit · tilt up · rack focus', maxLength: 200 },
       {
@@ -981,8 +1083,10 @@ export const TOOLS: Tool[] = [
         showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
       },
     ],
-    defaults: { shots: 1, format: 'reveal', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
-    localKeys: ['presenterKind'],
+    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
+    // `brief` decides what the panel shows, not what is sent: a blank prompt
+    // is filled from the format on the server either way.
+    localKeys: ['presenterKind', 'brief'],
     costCodeFor: (v) => {
       const plan = adPlan(Number(v.shots));
       if (!plan) return undefined;
@@ -1477,6 +1581,29 @@ const GROUP_BY_CAPABILITY: Partial<Record<Capability, ToolGroup>> = {
  * belongs to no group and is simply never filtered out.
  */
 export const groupOfCapability = (capability: string): ToolGroup | undefined => GROUP_BY_CAPABILITY[capability as Capability];
+
+/**
+ * When a shot comes back wrong, what actually helps.
+ *
+ * "Try again" on a generation that could not keep the product is an offer to
+ * fail the same way for the same money. The fidelity check refuses precisely
+ * when the model returned something that is not the seller's item, and the
+ * one thing known to fix that is more photos of it — the back of the bag,
+ * the label, a close-up. A live run bore this out: the same request with two
+ * reference images came back closer to the source than without.
+ *
+ * So: a low-quality failure on a tool that accepts angles is not offered a
+ * retry, it is offered the fix.
+ */
+export function anglesWouldHelp(tool: Tool, values: Record<string, unknown>, failureKind: string | null | undefined): boolean {
+  if (failureKind !== 'LOW_QUALITY') return false;
+  const field = tool.fields.find((f) => f.kind === 'angles');
+  if (!field || (field.showIf && !field.showIf(values))) return false;
+  // Already at the ceiling: there are no more photos to ask for, and asking
+  // anyway would be a dead end dressed as a remedy.
+  const have = Array.isArray(values[field.key]) ? (values[field.key] as unknown[]).length : 0;
+  return have < field.max;
+}
 
 /** Tools in a group, in the order the strip and the sheet show them. */
 export const toolsIn = (group: ToolGroup): Tool[] => TOOLS.filter((t) => TOOL_META[t.id].group === group);
