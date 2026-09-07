@@ -207,7 +207,16 @@ function Studio() {
         return;
       }
       const cardSource = ownsSource ? cardSourceFor(t, p) : (src ?? undefined);
-      const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
+      const r = await create({
+        toolId: t.id,
+        // The chosen look can decide the capability: a cut-out onto a colour
+        // is not the same request as a scene, and costs a fifth as much.
+        capability: t.capabilityFor?.(v) ?? t.capability,
+        params: p,
+        credits,
+        sourceKey: cardSource,
+        costCode: t.costCodeFor?.(p),
+      });
       setBusy(false);
       if (!r.ok) {
         if (r.status === 402)

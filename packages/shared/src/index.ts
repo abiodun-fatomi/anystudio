@@ -14,4 +14,5 @@ export * from './generation/capabilities';
 export * from './generation/providers';
 export * from './generation/copy';
 export * from './generation/presenters';
+export * from './generation/presets';
 export * from './generation/languages';

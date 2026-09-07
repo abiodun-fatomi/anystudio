@@ -13,7 +13,7 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
-import { PRESENTERS } from '@anystudio/shared';
+import { PRESENTERS, PRESET_GROUPS, presetsIn, type PhotoPreset, type PresetGroup } from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
@@ -48,11 +48,14 @@ export function ToolPanel({
   const { workspace, balance, postpaid } = useApp();
   const [quote, setQuote] = useState<Quote | null>(null);
   const costCode = tool.costCodeFor?.(values);
+  // A tool whose capability depends on the chosen look must quote the one it
+  // will actually send — otherwise "Plain white" shows the price of a scene.
+  const capability = tool.capabilityFor?.(values) ?? tool.capability;
   useEffect(() => {
     let live = true;
     setQuote(null);
     api.generations
-      .quote(workspace.id, tool.capability, costCode)
+      .quote(workspace.id, capability, costCode)
       .then((q) => {
         if (live) setQuote(q);
       })
@@ -60,7 +63,7 @@ export function ToolPanel({
     return () => {
       live = false;
     };
-  }, [workspace.id, tool.capability, costCode]);
+  }, [workspace.id, capability, costCode]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;
@@ -84,7 +87,15 @@ export function ToolPanel({
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
                 <Fragment key={f.key}>
-                  <FieldControl field={f} value={values[f.key]} values={values} onChange={(v) => onChange(f.key, v)} />
+                  <FieldControl
+                    field={f}
+                    value={values[f.key]}
+                    values={values}
+                    onChange={(v) => onChange(f.key, v)}
+                    onFill={(params) => {
+                      for (const [k, v] of Object.entries(params)) onChange(k, v);
+                    }}
+                  />
                   {tool.ideas && tool.ideas.under === f.key && (
                     <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
                   )}
@@ -547,6 +558,83 @@ function PhotoLabelsField({
   );
 }
 
+/**
+ * Looks as tiles. The tile IS the choice — a seller sees a blush studio, a
+ * wooden table, a market stall, and taps. Nothing is typed, and nothing is
+ * imagined from a sentence.
+ *
+ * Tapping fills the preset's params into the panel underneath, so the words
+ * are still there to edit and the ideas chips still work on top of them.
+ * Tapping the chosen tile again clears it and hands the seller the empty box
+ * back, which is the old behaviour and occasionally what someone wants.
+ */
+function PresetsField({
+  field,
+  value,
+  onChange,
+  onFill,
+}: {
+  field: Extract<Field, { kind: 'presets' }>;
+  value: string;
+  onChange: (v: unknown) => void;
+  onFill: (params: Record<string, unknown>) => void;
+}) {
+  const pick = (p: PhotoPreset) => {
+    if (value === p.key) {
+      onChange('');
+      return;
+    }
+    onChange(p.key);
+    onFill(p.params);
+  };
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.presetGroups}>
+        {(Object.keys(PRESET_GROUPS) as PresetGroup[]).map((g) => (
+          <div key={g}>
+            <div className={styles.presetGroupHead}>
+              <strong>{PRESET_GROUPS[g].label}</strong>
+              <span>{PRESET_GROUPS[g].note}</span>
+            </div>
+            <div className={styles.presetRow} role="radiogroup" aria-label={PRESET_GROUPS[g].label}>
+              {presetsIn(g).map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === p.key}
+                  className={styles.preset}
+                  onClick={() => pick(p)}
+                  title={`${p.name} — ${p.note}`}
+                >
+                  <span
+                    className={styles.presetSwatch}
+                    data-transparent={p.swatch.transparent || undefined}
+                    style={
+                      p.swatch.transparent
+                        ? undefined
+                        : {
+                            background:
+                              p.swatch.colors.length === 2 ? `linear-gradient(160deg, ${p.swatch.colors[0]}, ${p.swatch.colors[1]})` : p.swatch.colors[0],
+                          }
+                    }
+                  >
+                    {/* A stand-in for the seller's product, so a tile reads as a photo and not a colour chip. */}
+                    <span className={styles.presetProduct} data-ink={p.swatch.ink} />
+                  </span>
+                  <span className={styles.presetName}>{p.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
 /** An idea lands in the prompt, and its camera move in the camera field when that one is still empty. */
 function pickIdea(tool: Tool, values: Record<string, unknown>, idea: Idea, onChange: (key: string, value: unknown) => void) {
   if (!tool.ideas) return;
@@ -649,12 +737,15 @@ function FieldControl({
   value,
   values,
   onChange,
+  onFill,
 }: {
   field: Field;
   value: unknown;
   /** The whole panel, for the fields whose options or contents depend on another one. */
   values: Record<string, unknown>;
   onChange: (v: unknown) => void;
+  /** Write several fields at once — a preset filling in the look it stands for. */
+  onFill: (params: Record<string, unknown>) => void;
 }) {
   switch (field.kind) {
     case 'text':
@@ -732,6 +823,8 @@ function FieldControl({
         />
       );
     }
+    case 'presets':
+      return <PresetsField field={field} value={String(value ?? '')} onChange={onChange} onFill={onFill} />;
     case 'photos':
       return <PhotosField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
     case 'photoLabels':

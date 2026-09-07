@@ -19,6 +19,8 @@ import {
   type ExportSize,
   adPlan,
   collageLayoutsFor,
+  preset,
+  presetCapability,
   presenterCostCode,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
@@ -67,6 +69,12 @@ export type Field =
   | { key: string; kind: 'photos'; label: string; min: number; max: number; hint?: string }
   /** One line per photo picked, in the same order: "Before", "After", a colour, a size. */
   | { key: string; kind: 'photoLabels'; label: string; forKey: string; hint?: string }
+  /**
+   * Looks shown as tiles you tap, grouped. Tapping one fills the other
+   * fields from the preset — it is a first draft, not a lock, and every word
+   * it writes stays editable underneath.
+   */
+  | { key: string; kind: 'presets'; label: string; hint?: string }
   /** A box that must be ticked before the button works — permission for a real person's face and voice. */
   | { key: string; kind: 'consent'; label: string; hint?: string };
 
@@ -79,6 +87,14 @@ export interface Tool {
   short: string;
   icon: IconName;
   capability: Capability;
+  /**
+   * A tool whose capability depends on what was chosen. "Plain white" is a
+   * cut-out flattened onto a colour — no model, 2 credits, no drift — while
+   * "Market stall" is a scene a model builds. One tool, one button, and the
+   * seller never learns the difference; the quote and the request both follow
+   * this.
+   */
+  capabilityFor?: (values: Record<string, unknown>) => Capability;
   /** Needs a source photo on the canvas. Copy can work from a photo or from text alone. */
   needsSource: boolean;
   /** What to tell someone while they wait. The worker's own stage detail overrides this when present. */
@@ -129,9 +145,14 @@ export const TOOLS: Tool[] = [
     short: 'Scene',
     icon: 'studio',
     capability: 'IMAGE_EDIT',
+    capabilityFor: (v) => {
+      const chosen = preset(v.preset as string);
+      return chosen ? presetCapability(chosen) : 'IMAGE_EDIT';
+    },
     needsSource: true,
     narrative: IMAGE_STAGES,
     fields: [
+      { key: 'preset', kind: 'presets', label: 'Pick a look', hint: 'Tap one to start. You can change the words underneath afterwards.' },
       {
         key: 'prompt',
         kind: 'text',
@@ -141,14 +162,45 @@ export const TOOLS: Tool[] = [
         maxLength: 600,
         required: true,
         hint: 'Describe the surroundings. The product itself stays exactly as photographed.',
+        // A cut-out onto a flat colour has nothing to describe.
+        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
       },
-      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
-      { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
-      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '₦12,000', maxLength: 40 },
-      { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: ASPECTS.map((a) => ({ id: a, label: a })),
+        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+      },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
+      {
+        key: 'price',
+        kind: 'text',
+        label: 'Price on the image',
+        placeholder: '₦12,000',
+        maxLength: 40,
+        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+      },
+      {
+        key: 'businessName',
+        kind: 'text',
+        label: 'Business name on the image',
+        placeholder: 'Leave blank to use your brand kit',
+        maxLength: 80,
+        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+      },
     ],
     defaults: { preserveProduct: true, aspect: '1:1', sizes: ['feed_square', 'story'] },
     ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
+    localKeys: ['preset'],
+    // A cut-out takes a colour and nothing else; a scene takes everything but the colour.
+    assemble: (p) => {
+      const chosen = preset(p.preset as string);
+      if (chosen?.kind === 'cut') return { background: chosen.params.background };
+      const out = { ...p };
+      delete out.background;
+      return out;
+    },
   },
   {
     id: 'background',
