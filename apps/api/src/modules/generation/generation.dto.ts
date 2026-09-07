@@ -8,7 +8,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
-import { CAPABILITIES, type Capability } from '@anystudio/shared';
+import { BATCH_MAX, CAPABILITIES, type Capability } from '@anystudio/shared';
 
 export class CreateGenerationDto {
   @ApiProperty({ enum: CAPABILITIES })
@@ -57,6 +57,15 @@ export class QuoteQueryDto {
   @IsString()
   @MaxLength(60)
   costCode?: string;
+
+  /** How many photos this will be done to, so a batch can be priced before the button. */
+  @ApiPropertyOptional({ minimum: 1, maximum: BATCH_MAX })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(BATCH_MAX)
+  quantity?: number;
 }
 
 export class EditTextDto {

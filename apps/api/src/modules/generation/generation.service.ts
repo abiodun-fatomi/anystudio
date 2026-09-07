@@ -33,6 +33,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation } from '@prisma/client';
 import {
+  BATCH_MAX,
   COPY_FIELDS,
   CUSTOMER_MESSAGE,
   DEFAULT_COST_CODE,
@@ -48,6 +49,7 @@ import {
   type GenerationOutput,
   type ProviderErrorKind,
   adPlan,
+  batchUnitCostCode,
 } from '@anystudio/shared';
 import { EXPECTED_MS } from '../provider/adapters/base';
 import { GenerationHooks } from './generation.hooks';
@@ -148,20 +150,28 @@ export class GenerationService {
 
     // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
     const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
-    const kind = req.kind ?? (shots > 1 ? 'PARENT' : 'STANDALONE');
+    const kind = req.kind ?? (shots > 1 || req.capability === 'BATCH' ? 'PARENT' : 'STANDALONE');
     // A song in their own voice is priced above the client's say-so: the extra vendor work is real whatever the request claimed.
     // An ad with a presenter talking to camera is priced above the plain ad; the server decides, whatever the client sent.
     const withPresenter = req.capability === 'IMAGE_TO_VIDEO' && shots > 1 && params.format === 'ugc' && Boolean(params.presenter);
     const costCode =
-      req.capability === 'MUSIC' && params.singer === 'me'
-        ? MUSIC_MY_VOICE_COST_CODE
-        : withPresenter && adPlan(shots)
-          ? presenterCostCode(adPlan(shots)!.costCode)
-          : (req.costCode ??
-            adPlan(shots)?.costCode ??
-            (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
+      req.capability === 'BATCH'
+        ? batchUnitCostCode(params.of as Capability, (params.params ?? {}) as Record<string, unknown>)
+        : req.capability === 'MUSIC' && params.singer === 'me'
+          ? MUSIC_MY_VOICE_COST_CODE
+          : withPresenter && adPlan(shots)
+            ? presenterCostCode(adPlan(shots)!.costCode)
+            : (req.costCode ??
+              adPlan(shots)?.costCode ??
+              (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
+
+    // HOW MANY. A batch is one row holding one debit for every photo in it,
+    // and the count comes from the params the server just validated — never
+    // from the client, or forty premium renders would cost one.
+    const quantity = req.capability === 'BATCH' ? (params.sourceKeys as string[]).length : 1;
+    const credits = cost.credits * quantity;
 
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
@@ -181,7 +191,7 @@ export class GenerationService {
             parentId: req.parentId ?? null,
             clientKey: req.clientKey ?? null,
             costCode: cost.code,
-            credits: cost.credits,
+            credits,
             stage: 'queued',
             input: params as Prisma.InputJsonObject,
             channel: req.channel ?? 'WEB',
@@ -195,7 +205,7 @@ export class GenerationService {
         await this.ledger.debit(
           {
             walletId: wallet.id,
-            amount: cost.credits,
+            amount: credits,
             idempotencyKey: generationDebitKey(row.id),
             referenceId: row.id,
             reason: cost.label,
@@ -329,20 +339,24 @@ export class GenerationService {
     workspaceId: string,
     capability: Capability,
     costCode?: string,
+    /** How many photos this will be done to. A batch quotes its whole folder. */
+    quantity = 1,
   ): Promise<{ costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }> {
     const code = costCode ?? DEFAULT_COST_CODE[capability];
     const cost = await this.db.creditCost.findUnique({ where: { code } });
     if (!cost) throw new NotFoundError(`credit cost "${code}"`);
+    const each = cost.credits;
+    const total = each * Math.max(1, Math.min(quantity, BATCH_MAX));
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
     const balance = await this.ledger.balance(wallet.id);
     return {
       costCode: cost.code,
-      credits: cost.credits,
-      label: cost.label,
+      credits: total,
+      label: quantity > 1 ? `${cost.label} × ${quantity}` : cost.label,
       balance,
-      balanceAfter: balance - cost.credits,
-      expectedMs: EXPECTED_MS[capability],
+      balanceAfter: balance - total,
+      expectedMs: EXPECTED_MS[capability] * (capability === 'BATCH' ? Math.max(1, quantity) : 1),
     };
   }
 
@@ -429,6 +443,30 @@ export class GenerationService {
       where: { id, status: 'RUNNING' },
       data: { status: 'QUEUED', heartbeatAt: null, stage: 'queued', progress: 0, failureReason: reason.slice(0, 2000) },
     });
+  }
+
+  /**
+   * Give back the share of a batch that did not work.
+   *
+   * A folder of forty where three failed is not a failed generation — the
+   * merchant has thirty-seven pictures. Refusing the lot would throw away
+   * good work; keeping the whole fee would charge for pictures that do not
+   * exist. So the parent succeeds and hands back exactly the failed share,
+   * under its own idempotency key so a replayed assembly cannot pay twice.
+   */
+  async refundShare(row: Generation, credits: number, reason: string): Promise<void> {
+    const amount = Math.min(Math.max(Math.round(credits), 0), row.credits);
+    if (amount === 0) return;
+    const wallet = await this.db.wallet.findUnique({ where: { workspaceId: row.workspaceId } });
+    if (!wallet) return;
+    await this.ledger.refund({
+      walletId: wallet.id,
+      amount,
+      idempotencyKey: `${generationDebitKey(row.id)}:share`,
+      referenceId: row.id,
+      reason,
+    });
+    logger.info({ generationId: row.id, credits: amount, of: row.credits, reason }, 'refunded the share of a batch that failed');
   }
 
   /** Outputs are stored. The debit stands; there is nothing to refund. */

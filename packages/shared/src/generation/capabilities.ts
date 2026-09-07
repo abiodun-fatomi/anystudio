@@ -19,6 +19,7 @@
 
 import { z } from 'zod';
 import {
+  productModeCostCode,
   MODEL_POSES,
   MODEL_PRESETS,
   MODEL_SCENES,
@@ -38,6 +39,7 @@ export const CAPABILITIES = [
   'UPSCALE',
   'COLLAGE',
   'PRODUCT_SHOT',
+  'BATCH',
   'IMAGE_TO_VIDEO',
   'VIDEO_STITCH',
   'TEXT_GENERATE',
@@ -223,6 +225,18 @@ const brandOverrides = z
   })
   .optional();
 
+/**
+ * What can be done to a whole folder at once.
+ *
+ * Only the capabilities that take ONE photo and give back a picture. A song
+ * has no folder; a collage is already many photos in one; an ad is a plan.
+ */
+export const BATCHABLE = ['PRODUCT_SHOT', 'BACKGROUND_REMOVE', 'BACKGROUND_REPLACE', 'RELIGHT', 'UPSCALE', 'IMAGE_EDIT'] as const;
+export type BatchableCapability = (typeof BATCHABLE)[number];
+export const isBatchable = (c: string): c is BatchableCapability => (BATCHABLE as readonly string[]).includes(c);
+/** How many photos one batch may carry. The children are ordinary jobs, so the ceiling is patience, not throughput. */
+export const BATCH_MAX = 100;
+
 export const capabilityParams = {
   IMAGE_GENERATE: z.object({
     prompt: z.string().min(3).max(2000),
@@ -353,6 +367,38 @@ export const capabilityParams = {
         fail('model', `We do not have a model called "${v.model}".`);
       if (v.scene && !(MODEL_SCENES as readonly string[]).includes(v.scene)) fail('scene', `Unknown scene "${v.scene}".`);
       if (v.pose && !(MODEL_POSES as readonly string[]).includes(v.pose)) fail('pose', `Unknown pose "${v.pose}".`);
+    }),
+  /**
+   * The same thing, to all of them.
+   *
+   * A merchant does not have one photo, they have forty — a rail of dresses, a
+   * table of bags, a morning's shooting. Doing them one at a time is not a
+   * smaller version of the job, it is a different job, and it is the reason a
+   * studio gets abandoned halfway through a catalogue.
+   *
+   * A batch is a PARENT row holding the money and one CHILD per photo doing
+   * the work. That machinery already exists for multi-shot ads; this reuses
+   * it, minus the stitch at the end. The children run on the ordinary queues,
+   * so a batch of forty is forty normal jobs — it cannot starve anything and
+   * nothing has to be special-cased downstream.
+   *
+   * `params` is validated against `of`'s own schema before a credit moves, so
+   * a batch of forty with one bad setting fails free rather than forty times.
+   */
+  BATCH: z
+    .object({
+      /** What to do to each photo. */
+      of: z.enum(BATCHABLE as unknown as [BatchableCapability, ...BatchableCapability[]]),
+      sourceKeys: z.array(objectKey).min(2).max(BATCH_MAX),
+      /** The settings every photo gets. `sourceKey` is filled in per child. */
+      params: z.record(z.unknown()).default({}),
+    })
+    .superRefine((v, ctx) => {
+      // The child's own schema is the judge. A placeholder source stands in
+      // for the one each child will really get.
+      const probe = parseCapabilityParams(v.of, { ...v.params, sourceKey: v.sourceKeys[0] ?? 'ws/probe.jpg' });
+      if (probe.ok) return;
+      for (const [path, message] of Object.entries(probe.issues)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['params', ...path.split('.')], message });
     }),
   IMAGE_TO_VIDEO: z.object({
     sourceKey: objectKey,
@@ -611,6 +657,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   UPSCALE: 'image.upscale',
   COLLAGE: 'image.collage',
   PRODUCT_SHOT: 'image.product_shot', // on_model prices higher; the tool names the code
+  BATCH: 'image.product_shot', // a batch is priced per photo: this code times the count
   IMAGE_TO_VIDEO: 'video.reel', // a multi-shot ad prices itself under video.ad_15s / video.ad_30s
   VIDEO_STITCH: 'video.stitch',
   TEXT_GENERATE: 'text.description',
@@ -619,6 +666,19 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   DUB: 'video.translate',
   LIPSYNC: 'video.lipsync',
 };
+
+/**
+ * What one photo of a batch costs, and therefore what the batch costs.
+ *
+ * The server works this out from the params rather than trusting the client:
+ * a batch of forty on-a-model shots is forty times the on-a-model price, and
+ * a request that claimed otherwise would be forty premium renders for the
+ * price of forty presses.
+ */
+export function batchUnitCostCode(of: Capability, params: Record<string, unknown>): string {
+  if (of === 'PRODUCT_SHOT') return productModeCostCode(typeof params.mode === 'string' ? params.mode : undefined);
+  return DEFAULT_COST_CODE[of];
+}
 
 /** How much of a song is heard before paying, and what the rest costs. */
 export const MUSIC_PREVIEW_SEC = 30;

@@ -34,6 +34,7 @@ const CAPABILITY_WORD: Record<string, string> = {
   UPSCALE: 'enhanced photo',
   COLLAGE: 'collage',
   PRODUCT_SHOT: 'product shot',
+  BATCH: 'batch',
   IMAGE_TO_VIDEO: 'video',
   VIDEO_STITCH: 'ad',
   TEXT_GENERATE: 'listing copy',

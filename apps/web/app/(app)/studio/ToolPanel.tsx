@@ -60,6 +60,9 @@ export function ToolPanel({
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
   const capability = tool.capabilityFor?.(values) ?? tool.capability;
+  // A batch is priced per photo, so the quote has to know how many. The
+  // server works the same number out again from what it is actually sent.
+  const quantity = tool.quantityFor?.(values) ?? 1;
   // Some tools need the canvas photo only for some settings, and some
   // capabilities cannot take a photo at all. Both must be visible before the
   // button is pressed, never discovered in the result.
@@ -69,7 +72,7 @@ export function ToolPanel({
     let live = true;
     setQuote(null);
     api.generations
-      .quote(workspace.id, capability, costCode)
+      .quote(workspace.id, capability, costCode, quantity)
       .then((q) => {
         if (live) setQuote(q);
       })
@@ -77,7 +80,7 @@ export function ToolPanel({
     return () => {
       live = false;
     };
-  }, [workspace.id, capability, costCode]);
+  }, [workspace.id, capability, costCode, quantity]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;

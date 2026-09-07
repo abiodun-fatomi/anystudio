@@ -19,6 +19,7 @@ import {
   type ExportSize,
   adPlan,
   collageLayoutsFor,
+  BATCH_MAX,
   MODEL_POSES,
   MODEL_PRESETS,
   MODEL_SCENES,
@@ -27,12 +28,27 @@ import {
   presetCapability,
   productMode,
   productModeCostCode,
+  OFFERED_PRODUCT_MODES,
   presenterCostCode,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
 export type ToolId =
-  'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'collage' | 'shots' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
+  | 'scene'
+  | 'background'
+  | 'cutout'
+  | 'enhance'
+  | 'copy'
+  | 'video'
+  | 'flyer'
+  | 'collage'
+  | 'shots'
+  | 'batch'
+  | 'restyle'
+  | 'music'
+  | 'voice'
+  | 'translate'
+  | 'lipsync';
 
 export type Field =
   | {
@@ -105,6 +121,11 @@ export interface Tool {
    * this.
    */
   capabilityFor?: (values: Record<string, unknown>) => Capability;
+  /**
+   * How many units this will be charged for — a batch is one row priced per
+   * photo, so the panel must quote the folder rather than one picture.
+   */
+  quantityFor?: (values: Record<string, unknown>) => number;
   /** Needs a source photo on the canvas. Copy can work from a photo or from text alone. */
   needsSource: boolean;
   /**
@@ -644,6 +665,104 @@ export const TOOLS: Tool[] = [
       if (keys.length) out.angleKeys = keys;
       else delete out.angleKeys;
       return out;
+    },
+  },
+  {
+    id: 'batch',
+    label: 'A whole folder',
+    short: 'Batch',
+    icon: 'library',
+    capability: 'BATCH',
+    // It brings its own photos — a lot of them — so the canvas photo is not its source.
+    needsSource: false,
+    narrative: {
+      queued: 'Waiting for a slot',
+      routing: 'Starting your photos',
+      waiting: 'Working through them',
+      storing: 'Saving what came back',
+      done: 'Done',
+    },
+    // Priced per photo, under whatever the chosen shot costs. The server works
+    // the total out again from the photos it was actually given.
+    costCodeFor: (v) => productModeCostCode(v.mode as string),
+    quantityFor: (v) => countOf(v.sourceKeys),
+    fields: [
+      {
+        key: 'sourceKeys',
+        kind: 'photos',
+        label: 'The photos',
+        min: 2,
+        max: BATCH_MAX,
+        hint: `Up to ${BATCH_MAX} at a time. Add them from your library, or upload a folder's worth at once.`,
+      },
+      { key: 'mode', kind: 'modes', label: 'Do this to all of them' },
+      {
+        key: 'model',
+        kind: 'select',
+        label: 'Who wears them',
+        options: [{ value: 'random', label: 'Any model' }],
+        optionsFor: () => [{ value: 'random', label: 'Any model' }, ...MODEL_PRESETS.map((m) => ({ value: m, label: m[0]!.toUpperCase() + m.slice(1) }))],
+        showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        key: 'scene',
+        kind: 'select',
+        label: 'Where',
+        options: [{ value: 'random', label: 'Anywhere' }],
+        optionsFor: () => MODEL_SCENES.map((s) => ({ value: s, label: s === 'random' ? 'Anywhere' : s })),
+        showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        key: 'subject',
+        kind: 'segment',
+        label: 'What are they?',
+        options: [
+          { id: 'auto', label: 'Anything' },
+          { id: 'food', label: 'Food' },
+          { id: 'car', label: 'Vehicles' },
+        ],
+        showIf: (v) => v.mode === 'beautify',
+      },
+      {
+        key: 'shadow',
+        kind: 'segment',
+        label: 'Shadow',
+        options: [
+          { id: 'soft', label: 'Soft' },
+          { id: 'hard', label: 'Hard' },
+          { id: 'floating', label: 'Floating' },
+          { id: 'none', label: 'None' },
+        ],
+      },
+      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
+    ],
+    defaults: {
+      sourceKeys: [],
+      mode: OFFERED_PRODUCT_MODES[0] ?? 'ghost_mannequin',
+      model: 'random',
+      scene: 'random',
+      subject: 'auto',
+      shadow: 'soft',
+      aspect: '1:1',
+      sizes: ['feed_square'],
+    },
+    // Every setting except the photo list belongs to the child, not the batch.
+    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes'],
+    assemble: (p) => {
+      const sourceKeys = Array.isArray(p.sourceKeys) ? (p.sourceKeys as string[]).filter(Boolean) : [];
+      const params: Record<string, unknown> = {
+        mode: p.mode,
+        subject: p.subject,
+        shadow: p.shadow,
+        aspect: p.aspect,
+        sizes: p.sizes,
+      };
+      if (p.mode === 'on_model') {
+        if (p.model && p.model !== 'random') params.model = p.model;
+        if (p.scene) params.scene = p.scene;
+      }
+      return { of: 'PRODUCT_SHOT', sourceKeys, params };
     },
   },
   {

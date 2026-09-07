@@ -68,6 +68,7 @@ export const BUDGET_MS: Record<Capability, number> = {
   UPSCALE: 120_000,
   COLLAGE: 120_000,
   PRODUCT_SHOT: 120_000,
+  BATCH: 30 * 60_000, // a parent that waits on its children, holding no worker
   IMAGE_TO_VIDEO: 8 * 60_000,
   VIDEO_STITCH: 5 * 60_000,
   TEXT_GENERATE: 60_000,
