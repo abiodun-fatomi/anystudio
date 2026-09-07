@@ -33,8 +33,28 @@ export const FIDELITY = {
   keep: 0.86,
   /** Between: composite the original pixels back over the scene. Below: try again. */
   composite: 0.62,
-  /** Structure at or above this means the product was FOUND, even if changed; the original can be pasted where it is. */
-  locate: 0.35,
+  /**
+   * Structure at or above this means the product was really FOUND, and the
+   * original may be pasted where the match says it is.
+   *
+   * This was 0.35, which was not a match — it was a licence. Measured on
+   * fixtures: the same product moved into a reshaped frame correlates at
+   * 0.975, the same product recoloured and moved at 0.974, and a COMPLETELY
+   * DIFFERENT product — a green square where a striped disc used to be —
+   * still correlates at 0.379. So 0.35 admitted "found" for an object that
+   * was not the product, and the pipeline then pasted the seller's product
+   * at that imaginary place and size, over the model's own version of it.
+   *
+   * Two live generations from the same photo proved it: structure 0.429 and
+   * 0.563, and the located size disagreed between them by 45% (scale 0.53
+   * against 0.768). A real match does not wobble like that. A merchant saw
+   * the result as a bottle with somebody else's bottom half.
+   *
+   * 0.72 sits far above every false match observed and far below every true
+   * one, so a weak match now refuses — refunded, and explained — instead of
+   * shipping a mangled product.
+   */
+  locate: 0.72,
 } as const;
 
 export interface FidelityReport {
@@ -45,6 +65,36 @@ export interface FidelityReport {
   coverage: number;
   /** Where the product was found in the output, as fractions of its frame; null when nothing was judged. */
   placed: { x: number; y: number; w: number; h: number; scale: number } | null;
+  /**
+   * Where the product sat in the SOURCE, in the same centre-and-size
+   * fractions as `placed`. Reported so the caller can answer the question
+   * the score alone cannot: did the product stay put, or did the model move
+   * it? Those need opposite repairs, and getting it wrong leaves two
+   * products in one picture.
+   */
+  origin: { x: number; y: number; w: number; h: number } | null;
+}
+
+/** How far the product may drift before it counts as having moved. */
+export const MOVED = {
+  /** Centre, as a fraction of the frame. Half a percent is rounding; four is a different composition. */
+  centre: 0.035,
+  /** Size, as a fraction of itself. */
+  size: 0.08,
+} as const;
+
+/**
+ * Did the product end up somewhere other than where it started?
+ *
+ * A frame of the same SHAPE is not the same framing. A model handed a square
+ * photo hands a square one back and has still, very often, slid the product
+ * across it or drawn it smaller. That is a perfectly good picture — but the
+ * original pixels then have to go back where the product NOW is, not where
+ * it was, or the model's own version of it stays in shot alongside them.
+ */
+export function shifted(origin: { x: number; y: number; w: number; h: number }, placed: { x: number; y: number; w: number; h: number }): boolean {
+  if (Math.abs(origin.x - placed.x) > MOVED.centre || Math.abs(origin.y - placed.y) > MOVED.centre) return true;
+  return Math.abs(placed.w / Math.max(1e-6, origin.w) - 1) > MOVED.size || Math.abs(placed.h / Math.max(1e-6, origin.h) - 1) > MOVED.size;
 }
 
 /** The output is searched at this many pixels on its long side. */
@@ -70,7 +120,7 @@ interface Patch {
  * @param output   what the model produced, any size and any shape
  */
 export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uint8Array, output: Buffer | Uint8Array): Promise<FidelityReport> {
-  const none: FidelityReport = { score: 0, structure: 0, colour: 0, coverage: 0, placed: null };
+  const none: FidelityReport = { score: 0, structure: 0, colour: 0, coverage: 0, placed: null, origin: null };
   const srcMeta = await sharp(source).metadata();
   const sw = srcMeta.width ?? 0;
   const sh = srcMeta.height ?? 0;
@@ -96,12 +146,18 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
   const coverage = area / (sw * sh);
   if (maxX < 0 || area < 64) return { ...none, coverage: round(coverage) };
   const box = { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+  const origin = {
+    x: round((box.left + box.width / 2) / sw),
+    y: round((box.top + box.height / 2) / sh),
+    w: round(box.width / sw),
+    h: round(box.height / sh),
+  };
 
   // 2. The output, small, and the template at the size it would have if the frame were unchanged.
   const outMeta = await sharp(output).metadata();
   const ow = outMeta.width ?? 0;
   const oh = outMeta.height ?? 0;
-  if (!ow || !oh) return { ...none, coverage: round(coverage) };
+  if (!ow || !oh) return { ...none, coverage: round(coverage), origin };
   const k = SEARCH / Math.max(ow, oh);
   const OW = Math.max(8, Math.round(ow * k));
   const OH = Math.max(8, Math.round(oh * k));
@@ -129,7 +185,7 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
       }
     }
   }
-  if (!best) return { ...none, coverage: round(coverage) };
+  if (!best) return { ...none, coverage: round(coverage), origin };
   // Settle: the coarse pass steps by STRIDE and by ~10 % in scale; finish
   // with finer scales around the winner, each searched pixel by pixel nearby.
   const coarse = best;
@@ -174,6 +230,7 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
     colour: round(colour),
     coverage: round(coverage),
     placed: { x: round((x + patch.w / 2) / OW), y: round((y + patch.h / 2) / OH), w: round(patch.w / OW), h: round(patch.h / OH), scale: best.scale },
+    origin,
   };
 }
 
