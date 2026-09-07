@@ -109,9 +109,48 @@ export class WorkerSupervisor {
     // Stitching is ffmpeg here; that one really does need a core.
     const local = Number(process.env.WORKER_LOCAL_CONCURRENCY ?? 2);
 
+    /**
+     * WHICH queues this process serves — the setting that lets one image run
+     * as two differently-sized services.
+     *
+     * The three queues are not the same kind of work. `fast` and `heavy` are
+     * sockets waiting on a vendor: nearly free in memory, and they want lots
+     * of slots. `local` is ffmpeg on this box, and a single 30-second stitch
+     * peaks at hundreds of megabytes.
+     *
+     * Running both in one 512 MB process is what took the worker down
+     * mid-stitch, and it took every other generation in flight with it —
+     * because ffmpeg is a child, its memory never appeared in our rss, and
+     * nothing in the process could see the wall coming. It also forced the
+     * concurrency down for everyone: four shots of an ad now render two by
+     * two on a box sized for the encoder rather than for the waiting.
+     *
+     * WORKER_QUEUES splits them. Deploy the same image twice —
+     *   WORKER_QUEUES=media.fast,media.heavy   small box, many slots
+     *   WORKER_QUEUES=media.local              bigger box, one slot
+     * — and a stitch that overruns kills only the encoder's own service,
+     * where the sweeper refunds its one ad. Unset, every queue is served, so
+     * a single-service deployment behaves exactly as before.
+     */
+    const wanted = (process.env.WORKER_QUEUES ?? '')
+      .split(',')
+      .map((q) => q.trim())
+      .filter(Boolean);
+    const serves = (q: string) => wanted.length === 0 || wanted.includes(q);
+    const unknown = wanted.filter((q) => !Object.values(QUEUES).includes(q as (typeof QUEUES)[keyof typeof QUEUES]));
+    if (unknown.length) logger.warn({ unknown, known: Object.values(QUEUES) }, 'WORKER_QUEUES names a queue that does not exist; it will serve nothing');
+
     if (this.redis) {
-      this.workers = [this.consumer(QUEUES.fast, fast), this.consumer(QUEUES.heavy, heavy), this.consumer(QUEUES.local, local)];
-      logger.info({ fast, heavy, local }, 'queue consumers started');
+      this.workers = [
+        ...(serves(QUEUES.fast) ? [this.consumer(QUEUES.fast, fast)] : []),
+        ...(serves(QUEUES.heavy) ? [this.consumer(QUEUES.heavy, heavy)] : []),
+        ...(serves(QUEUES.local) ? [this.consumer(QUEUES.local, local)] : []),
+      ];
+      if (this.workers.length === 0) logger.error({ wanted }, 'WORKER_QUEUES matched no queue: this process will consume nothing');
+      logger.info(
+        { queues: this.workers.length, fast: serves(QUEUES.fast) ? fast : 0, heavy: serves(QUEUES.heavy) ? heavy : 0, local: serves(QUEUES.local) ? local : 0 },
+        'queue consumers started',
+      );
     } else {
       this.directMode = true;
       logger.warn('no REDIS_URL: the worker will run QUEUED rows straight from the database');
