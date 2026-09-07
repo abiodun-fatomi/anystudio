@@ -8,6 +8,7 @@
  */
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ENV_FILES } from '../config/env-files';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from '../config/database/prisma.module';
 import { RateLimitModule } from '../config/rate-limit/rate-limit.module';
@@ -48,7 +49,7 @@ import { WaitlistModule } from './modules/waitlist/waitlist.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ENV_FILES }),
     PrismaModule,
     MailModule,
     RateLimitModule,

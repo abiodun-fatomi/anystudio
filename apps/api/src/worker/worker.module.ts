@@ -7,6 +7,7 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ENV_FILES } from '../../config/env-files';
 import { PrismaModule } from '../../config/database/prisma.module';
 import { LedgerModule } from '../modules/ledger/ledger.module';
 import { GenerationModule } from '../modules/generation/generation.module';
@@ -28,7 +29,7 @@ import { RetentionModule } from '../modules/retention/retention.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ENV_FILES }),
     PrismaModule,
     MailModule,
     QueueModule,
