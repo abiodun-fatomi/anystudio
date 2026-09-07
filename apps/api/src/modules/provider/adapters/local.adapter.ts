@@ -165,7 +165,35 @@ function buildArgs(
 
   // Bound the output by the picture, never by the audio: a short voiceover must not cut the ad.
   args.push('-filter_complex', f.join(';'), '-map', '[vout]', '-map', '[aout]', '-t', (io.endStartSec + endCardSecs).toFixed(2));
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-profile:v', 'high', '-level', '4.1', '-pix_fmt', 'yuv420p', '-color_range', 'tv');
+  // x264's own default was `medium`, which is three to five times slower than
+  // `veryfast` at the same CRF — and the difference is a slightly larger file,
+  // not a visibly worse one. That trade is wrong here twice over: this runs on
+  // half a Render CPU, where it was minutes of the "Assembling your ad" wait a
+  // seller sits through; and the file's next stop is Instagram or TikTok, which
+  // re-encodes it on upload and throws our extra care away. Quality is CRF, and
+  // CRF has not moved.
+  //
+  // `-threads` is capped for the same reason sharp's pool is: x264 sizes its
+  // thread count from the CPUs it can SEE, which is the host's, and a 0.5-CPU
+  // container asked for eight threads spends its time context-switching.
+  args.push(
+    '-c:v',
+    'libx264',
+    '-preset',
+    process.env.STITCH_PRESET ?? 'veryfast',
+    '-crf',
+    '20',
+    '-threads',
+    process.env.STITCH_THREADS ?? '2',
+    '-profile:v',
+    'high',
+    '-level',
+    '4.1',
+    '-pix_fmt',
+    'yuv420p',
+    '-color_range',
+    'tv',
+  );
   args.push('-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', io.out);
   return args;
 }
