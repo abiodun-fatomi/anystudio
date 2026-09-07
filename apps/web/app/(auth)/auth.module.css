@@ -263,6 +263,24 @@
   border-radius: 2px;
   backdrop-filter: blur(4px);
 }
+/* The UGC frame's label. Top RIGHT, because the frame number already owns
+   the top left. It does not fade in with the reel badge: this frame is an
+   advert whether or not its clip is playing. */
+.ugc {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  z-index: 5;
+  font-family: var(--f-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(23, 19, 26, 0.55);
+  padding: 2px 6px;
+  border-radius: 2px;
+  backdrop-filter: blur(4px);
+}
 .live i {
   width: 4px;
   height: 4px;
