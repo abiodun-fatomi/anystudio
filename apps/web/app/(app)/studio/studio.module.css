@@ -428,10 +428,21 @@
 .panel {
   display: grid;
   gap: var(--s-4);
+  /* A grid track will not shrink below its content unless told to, and one
+     control a few pixels too wide is all it takes to make the panel wider
+     than its column. */
+  grid-template-columns: minmax(0, 1fr);
   position: sticky;
   top: calc(var(--bar-h) + var(--s-4));
   max-height: calc(100dvh - var(--bar-h) - var(--s-5) * 2);
   overflow-y: auto;
+  /* AND THE X AXIS, EXPLICITLY.
+     Setting overflow-y alone does not leave the other axis alone: CSS turns
+     `visible` into `auto` the moment one axis is scrollable, so asking for a
+     vertical scrollbar quietly granted a horizontal one too — and the panel
+     became something you could drag sideways, which is exactly the drift this
+     was meant to fix. `clip` refuses that outright. */
+  overflow-x: clip;
   /* Room for the scrollbar so the controls do not sit under it. */
   padding-right: var(--s-1);
   scrollbar-gutter: stable;
@@ -441,6 +452,7 @@
   .panel {
     max-height: none;
     overflow-y: visible;
+    overflow-x: clip;
     padding-right: 0;
   }
 }
@@ -1596,10 +1608,14 @@
 .sheetBody {
   display: grid;
   align-content: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-4);
   padding: var(--s-4);
   padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom));
   overflow-y: auto;
+  /* Same trap as the panel: asking for a vertical scrollbar grants a
+     horizontal one unless the other axis is named. */
+  overflow-x: clip;
   -webkit-overflow-scrolling: touch;
 }
 .sheetEmpty {
