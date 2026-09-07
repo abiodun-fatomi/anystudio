@@ -23,6 +23,7 @@
  *   … --out ./shots                            where the pictures land
  *   … --model-photo https://…/me.jpg           put it on a person of your own
  *   … --angles https://…/back.jpg,https://…/side.jpg   more views of the same item
+ *   … --batch 12                               what a folder of twelve does at once
  *
  * One vendor call per mode. Five modes is five of the month's images.
  */
@@ -43,6 +44,77 @@ const arg = (name: string, fallback = ''): string => {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? (process.argv[i + 1] ?? fallback) : fallback;
 };
+
+/**
+ * What a folder does to the vendor.
+ *
+ * A batch is one parent and one child per photo, and the children are
+ * ordinary jobs on the ordinary queue — six of them in flight at once by
+ * default. Every test behind that machinery is a mock, so the one thing
+ * nobody has ever seen is what happens when six real requests for the same
+ * key arrive together, twelve times over.
+ *
+ * That is the question only a live run answers: whether the vendor rate
+ * limits, how it says so, and whether the runner's handling of it is right.
+ * A 429 on child nine of forty is a merchant's afternoon.
+ *
+ * This does not test the parent/child machinery — that needs the worker and
+ * a database. It tests the half a mock cannot: the vendor under the load a
+ * real folder puts on it.
+ */
+async function batch(provider: PhotoroomProvider, url: string, mode: ProductMode, count: number, inFlight: number, out: string): Promise<void> {
+  console.log(`\nA folder of ${count}, ${inFlight} at a time — what the worker actually does.\n`);
+  const parsed = parseCapabilityParams('PRODUCT_SHOT', { sourceKey: 'verify/source.jpg', mode, aspect: '1:1' });
+  if (!parsed.ok) {
+    console.error(`the schema refused it: ${JSON.stringify(parsed.issues)}`);
+    process.exit(2);
+  }
+  const results: Array<{ i: number; ms: number; ok: boolean; note: string }> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= count) return;
+      const started = Date.now();
+      try {
+        const r = await provider.generate(
+          {
+            generationId: `verify-batch-${i}`,
+            workspaceId: 'verify',
+            capability: 'PRODUCT_SHOT',
+            params: parsed.params,
+            files: { sourceKey: { url, mime: 'image/jpeg' } },
+            config: {},
+          },
+          { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) },
+        );
+        const bytes = r.artifacts[0]?.bytes;
+        if (!bytes) throw new Error('no bytes came back');
+        results.push({ i, ms: Date.now() - started, ok: true, note: `${(bytes.length / 1024).toFixed(0)} KB` });
+        process.stdout.write('.');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ i, ms: Date.now() - started, ok: false, note: message });
+        // A rate limit is the finding. Say so loudly rather than as one dot.
+        process.stdout.write(/429|rate/i.test(message) ? 'R' : 'x');
+      }
+    }
+  };
+  const began = Date.now();
+  await Promise.all(Array.from({ length: Math.min(inFlight, count) }, worker));
+  const good = results.filter((r) => r.ok);
+  const limited = results.filter((r) => !r.ok && /429|rate/i.test(r.note));
+  const times = good.map((r) => r.ms).sort((a, b) => a - b);
+  console.log(`\n\n${good.length}/${count} came back.  wall clock ${((Date.now() - began) / 1000).toFixed(1)}s`);
+  if (times.length) console.log(`per photo: fastest ${times[0]}ms, middle ${times[Math.floor(times.length / 2)]}ms, slowest ${times[times.length - 1]}ms`);
+  if (limited.length) {
+    console.log(`\n${limited.length} were RATE LIMITED. A folder of forty would lose that share on the first pass.`);
+    console.log(`  ${limited[0]!.note}\n`);
+  }
+  for (const r of results.filter((x) => !x.ok && !/429|rate/i.test(x.note)).slice(0, 3)) console.log(`\nphoto ${r.i}: ${r.note}`);
+  console.log(`\nNothing was written to ${out} — this run is about the vendor, not the pictures.\n`);
+  process.exit(good.length === count ? 0 : 1);
+}
 
 async function main(): Promise<void> {
   const apiKey = process.env.PHOTOROOM_API_KEY;
@@ -77,6 +149,14 @@ async function main(): Promise<void> {
   await mkdir(out, { recursive: true });
   const [provider] = PhotoroomProvider.all(apiKey);
   if (!provider) throw new Error('no provider');
+
+  const howMany = Number(arg('batch') || 0);
+  if (howMany > 0) {
+    // The worker's own default, so the load matches production rather than
+    // whatever this script felt like.
+    const inFlight = Number(process.env.WORKER_FAST_CONCURRENCY ?? 6);
+    return batch(provider, url, (modes[0] ?? 'ghost_mannequin') as ProductMode, howMany, inFlight, out);
+  }
 
   console.log(`\nProduct photo: ${url}`);
   console.log(`Modes:         ${modes.join(', ')}`);
