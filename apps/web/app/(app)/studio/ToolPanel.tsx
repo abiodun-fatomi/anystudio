@@ -13,7 +13,16 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
-import { PRESENTERS, PRESET_GROUPS, PRODUCT_MODES, PRODUCT_MODE_KEYS, presetsIn, type PhotoPreset, type PresetGroup } from '@anystudio/shared';
+import {
+  PRESENTERS,
+  PRESET_GROUPS,
+  PRODUCT_MODES,
+  PRODUCT_MODE_KEYS,
+  acceptsSourceKey,
+  presetsIn,
+  type PhotoPreset,
+  type PresetGroup,
+} from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
@@ -51,6 +60,11 @@ export function ToolPanel({
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
   const capability = tool.capabilityFor?.(values) ?? tool.capability;
+  // Some tools need the canvas photo only for some settings, and some
+  // capabilities cannot take a photo at all. Both must be visible before the
+  // button is pressed, never discovered in the result.
+  const wantsSource = tool.needsSourceFor?.(values) ?? tool.needsSource;
+  const photoIgnored = hasSource && !acceptsSourceKey(capability) && !tool.fields.some((f) => f.kind === 'file' || f.kind === 'photos');
   useEffect(() => {
     let live = true;
     setQuote(null);
@@ -69,8 +83,8 @@ export function ToolPanel({
   const after = credits !== null && balance !== null ? balance - credits : null;
   const short = after !== null && after < 0;
   const missing = missingFor(tool, values);
-  const blocked = busy || !quote || short || (tool.needsSource && !hasSource) || Boolean(missing);
-  const why = !hasSource && tool.needsSource ? 'Add a photo first.' : (missing ?? (short ? 'Not enough credits.' : null));
+  const blocked = busy || !quote || short || (wantsSource && !hasSource) || Boolean(missing);
+  const why = !hasSource && wantsSource ? 'Add a photo first.' : (missing ?? (short ? 'Not enough credits.' : null));
   const label = BUTTON_LABEL[tool.id] ?? (tool.id === 'video' ? (Number(values.shots) > 1 ? 'Make the ad' : 'Make the reel') : 'Make it');
 
   return (
@@ -102,6 +116,12 @@ export function ToolPanel({
                 </Fragment>
               ))}
           </div>
+
+          {photoIgnored && (
+            <p className={styles.ignoredNote} role="status">
+              This makes a brand-new picture, so the photo on your canvas will not be in it.
+            </p>
+          )}
 
           <div className={styles.quote} data-short={short || undefined} aria-live="polite">
             <div className={styles.quoteRow}>

@@ -107,6 +107,11 @@ export interface Tool {
   capabilityFor?: (values: Record<string, unknown>) => Capability;
   /** Needs a source photo on the canvas. Copy can work from a photo or from text alone. */
   needsSource: boolean;
+  /**
+   * A tool that needs the canvas photo only for some settings — a flyer built
+   * FROM your photo needs one, a flyer drawn from a sentence does not.
+   */
+  needsSourceFor?: (values: Record<string, unknown>) => boolean;
   /** What to tell someone while they wait. The worker's own stage detail overrides this when present. */
   narrative: Record<string, string>;
   fields: ConditionalField[];
@@ -304,7 +309,11 @@ export const TOOLS: Tool[] = [
     short: 'Flyer',
     icon: 'today',
     capability: 'IMAGE_GENERATE',
+    // A flyer built from your photo is an EDIT of that photo; a flyer from a
+    // sentence is a new picture. Same tool, same button, different request.
+    capabilityFor: (v) => (v.useSource === 'new' ? 'IMAGE_GENERATE' : 'IMAGE_EDIT'),
     needsSource: false,
+    needsSourceFor: (v) => v.useSource !== 'new',
     narrative: {
       queued: 'Waiting for a slot',
       preparing: 'Reading your brief',
@@ -315,6 +324,15 @@ export const TOOLS: Tool[] = [
       done: 'Done',
     },
     fields: [
+      {
+        key: 'useSource',
+        kind: 'segment',
+        label: 'The picture',
+        options: [
+          { id: 'photo', label: 'Use my photo' },
+          { id: 'new', label: 'Draw a new one' },
+        ],
+      },
       {
         key: 'prompt',
         kind: 'text',
@@ -348,7 +366,23 @@ export const TOOLS: Tool[] = [
         ],
       },
     ],
-    defaults: { aspect: '9:16', count: 1, style: 'bold poster, big type, flat colour' },
+    defaults: { useSource: 'photo', aspect: '9:16', count: 1, style: 'bold poster, big type, flat colour', sizes: ['story', 'feed_portrait'] },
+    localKeys: ['useSource'],
+    assemble: (p) => {
+      if (p.useSource === 'new') {
+        const { sizes: _sizes, ...rest } = p;
+        return rest;
+      }
+      // The edit path: the style belongs in the prompt, and the person or
+      // product in the photo is held exactly as photographed.
+      const style = typeof p.style === 'string' && p.style ? ` Style: ${p.style}.` : '';
+      return {
+        prompt: `Design a flyer around the subject of this photo. ${String(p.prompt ?? '')}${style} Keep the person or product exactly as photographed; build the flyer around them.`,
+        preserveProduct: true,
+        aspect: p.aspect,
+        sizes: p.sizes,
+      };
+    },
   },
   {
     id: 'collage',
@@ -412,6 +446,28 @@ export const TOOLS: Tool[] = [
           { value: 'brand', label: 'Your brand colour' },
         ],
       },
+      {
+        key: 'fit',
+        kind: 'segment',
+        label: 'The photos',
+        options: [
+          { id: 'fit', label: 'Whole photo' },
+          { id: 'fill', label: 'Fill the tile' },
+        ],
+      },
+      {
+        key: 'focus',
+        kind: 'segment',
+        label: 'Crop from',
+        options: [
+          { id: 'auto', label: 'Find the subject' },
+          { id: 'top', label: 'Top' },
+          { id: 'centre', label: 'Middle' },
+          { id: 'bottom', label: 'Bottom' },
+        ],
+        // Only a filled tile crops; a whole photo has nothing to crop from.
+        showIf: (v) => v.fit === 'fill',
+      },
       { key: 'gap', kind: 'slider', label: 'Space between', min: 0, max: 40, step: 2, format: (v) => (v === 0 ? 'Edge to edge' : `${v}`) },
       { key: 'rounded', kind: 'switch', label: 'Rounded corners' },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
@@ -422,6 +478,8 @@ export const TOOLS: Tool[] = [
       sourceKeys: [],
       layout: 'auto',
       aspect: '1:1',
+      fit: 'fit',
+      focus: 'auto',
       gap: 14,
       background: '#FFFFFF',
       rounded: true,

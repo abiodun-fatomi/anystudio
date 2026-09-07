@@ -12,7 +12,8 @@
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf:deploy:development": "opennextjs-cloudflare build && wrangler deploy --env development",
     "cf:deploy:staging": "opennextjs-cloudflare build && wrangler deploy --env staging",
-    "cf:deploy:production": "opennextjs-cloudflare build && wrangler deploy --env production"
+    "cf:deploy:production": "opennextjs-cloudflare build && wrangler deploy --env production",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anystudio/shared": "workspace:*",
@@ -29,6 +30,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.6.0",
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.128.0",
+    "vitest": "^4.1.11"
   }
 }

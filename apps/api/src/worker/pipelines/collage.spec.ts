@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import sharp from 'sharp';
-import { autoLayout, collagePipeline, planCells, type Cell } from './collage';
+import { autoLayout, collagePipeline, kept, planCells, type Cell } from './collage';
 import { collageLayoutsFor, COLLAGE_LAYOUTS } from '@anystudio/shared';
 
 const W = 1440;
@@ -244,5 +244,62 @@ describe('collagePipeline', () => {
       stage: async () => undefined,
     };
     await expect(collagePipeline(ctx as never)).rejects.toThrow(/none of the photos/);
+  });
+});
+
+/**
+ * The bug a customer found: two portrait photos of her daughter, stacked one
+ * above the other in a tall frame, each cropped to about half.
+ *
+ * The old rule looked only at the count and the frame. It never looked at the
+ * photos, so it could not see that stacking two 2:3 portraits gives each of
+ * them a landscape tile and throws 40% away.
+ */
+describe('choosing a layout from the photos, not just the count', () => {
+  const PORTRAIT = 3000 / 4500; // 0.67 — a phone photo held upright
+  const LANDSCAPE = 4000 / 3000; // 1.33
+
+  it('keeps more of two portrait photos than the old count-only rule did', () => {
+    const frame = { w: 1080, h: 1920 }; // 9:16, the frame she used
+    const score = (layout: 'row' | 'stack') => {
+      const cells = planCells(layout, 2, frame.w, frame.h, 26);
+      return cells.reduce((s, c) => s + kept(PORTRAIT, c.w / c.h), 0) / cells.length;
+    };
+    const picked = autoLayout(2, '9:16', [PORTRAIT, PORTRAIT]);
+    // Whatever it picks, it must be the arrangement that keeps the most.
+    expect(score(picked as 'row' | 'stack')).toBeGreaterThanOrEqual(Math.max(score('row'), score('stack')) - 0.001);
+  });
+
+  it('puts two portrait photos side by side and two landscapes one above the other', () => {
+    // The NAME does not matter — for two photos a one-row grid and a row are
+    // the same rectangles. What matters is that portraits get portrait tiles.
+    const cellsFor = (ratios: number[], aspect: string) => {
+      const f = aspect === '1:1' ? { w: 1440, h: 1440 } : { w: 1080, h: 1920 };
+      return planCells(autoLayout(ratios.length, aspect, ratios), ratios.length, f.w, f.h, 20);
+    };
+    const [a, b] = cellsFor([PORTRAIT, PORTRAIT], '1:1');
+    expect(a!.y, 'two portraits should sit beside each other, not above').toBe(b!.y);
+    expect(a!.w / a!.h, 'each should get a portrait tile').toBeLessThan(1);
+
+    const [c, d] = cellsFor([LANDSCAPE, LANDSCAPE], '1:1');
+    expect(c!.x, 'two landscapes should sit above each other').toBe(d!.x);
+    expect(c!.w / c!.h, 'each should get a landscape tile').toBeGreaterThan(1);
+  });
+
+  it('never picks an arrangement that cannot hold the photos', () => {
+    for (let n = 2; n <= 9; n++)
+      for (const aspect of ['1:1', '9:16', '16:9', '4:5'])
+        expect(collageLayoutsFor(n), `${n} in ${aspect}`).toContain(autoLayout(n, aspect, Array(n).fill(PORTRAIT)));
+  });
+
+  it('falls back to the old rule when the photos have not been measured', () => {
+    expect(autoLayout(2, '9:16')).toBe('stack');
+    expect(autoLayout(4, '1:1')).toBe('grid');
+  });
+
+  it('scores a matching shape as lossless and a mismatched one as lossy', () => {
+    expect(kept(0.67, 0.67)).toBe(1);
+    expect(kept(0.67, 1.12)).toBeCloseTo(0.6, 1);
+    expect(kept(1, 0)).toBe(1); // a degenerate cell must not divide by zero
   });
 });

@@ -1363,3 +1363,15 @@
   border-color: var(--accent);
   background: var(--surface);
 }
+
+/* Said before the button, not discovered in the result: this tool will not
+   use the photo you are looking at. */
+.ignoredNote {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+}

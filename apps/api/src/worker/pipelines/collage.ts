@@ -21,7 +21,7 @@
  */
 
 import sharp, { type OverlayOptions } from 'sharp';
-import { EXPORT_SIZES, ProviderError, type CapabilityParams, type CollageLayout, type ProviderArtifact } from '@anystudio/shared';
+import { EXPORT_SIZES, ProviderError, collageLayoutsFor, type CapabilityParams, type CollageLayout, type ProviderArtifact } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { applyBrand } from './image';
 import { fetchBytes } from '../../modules/provider/adapters/http';
@@ -43,17 +43,50 @@ export interface Cell {
 }
 
 /**
- * Which layout an `auto` collage becomes. Two photos read best side by side
- * (or stacked, in a tall frame); three want a lead photo; four and nine fall
- * on an even grid; the awkward counts in between are a hero with the rest
- * underneath, which never leaves a hole in the corner.
+ * How much of a photo survives being cropped to fill a tile.
+ *
+ * A 2:3 portrait in a 1.1:1 tile keeps 60% of itself; the rest is thrown
+ * away, and if the subject is a face near the middle it is thrown away from
+ * the top and bottom. 1 means the shapes match and nothing is lost.
  */
-export function autoLayout(count: number, aspect: string): Exclude<CollageLayout, 'auto'> {
-  const tall = aspect === '9:16' || aspect === '4:5' || aspect === '3:4';
-  if (count === 2) return tall ? 'stack' : 'row';
-  if (count === 4 || count === 9) return 'grid';
-  if (count === 3) return tall ? 'hero' : 'row';
-  return 'hero';
+export const kept = (photo: number, cell: number): number => (photo <= 0 || cell <= 0 ? 1 : Math.min(photo, cell) / Math.max(photo, cell));
+
+/**
+ * Which layout an `auto` collage becomes.
+ *
+ * Chosen by measuring, not by counting. The old rule looked only at how many
+ * photos there were and whether the frame was tall, and it put two portrait
+ * photos in a tall frame ONE ABOVE THE OTHER — which gives each of them a
+ * landscape tile and crops 40% off a picture of a child. Now every layout
+ * that can hold this many photos is scored on how much of the actual photos
+ * it would keep, and the best one wins.
+ *
+ * `ratios` are the photos' own width/height. With none — a retry before the
+ * files are read — it falls back to the old count-and-frame rule.
+ */
+export function autoLayout(count: number, aspect: string, ratios: number[] = []): Exclude<CollageLayout, 'auto'> {
+  const frame = FRAME[aspect] ?? FRAME['1:1']!;
+  const candidates = (collageLayoutsFor(count) as CollageLayout[]).filter((l): l is Exclude<CollageLayout, 'auto'> => l !== 'auto' && l !== 'before_after');
+  if (candidates.length === 0) return 'grid';
+  if (ratios.length === 0) {
+    const tall = aspect === '9:16' || aspect === '4:5' || aspect === '3:4';
+    if (count === 2) return tall ? 'stack' : 'row';
+    if (count === 4 || count === 9) return 'grid';
+    if (count === 3) return tall ? 'hero' : 'row';
+    return 'hero';
+  }
+  let best = candidates[0]!;
+  let bestScore = -1;
+  for (const layout of candidates) {
+    const cells = planCells(layout, count, frame.w, frame.h, Math.round(frame.h * 0.014));
+    const score = cells.reduce((sum, c, i) => sum + kept(ratios[i] ?? ratios[0]!, c.w / c.h), 0) / cells.length;
+    // Ties go to the earlier candidate, which is the tidier arrangement.
+    if (score > bestScore + 0.001) {
+      bestScore = score;
+      best = layout;
+    }
+  }
+  return best;
 }
 
 /**
@@ -121,42 +154,61 @@ export const collagePipeline: Pipeline = async (ctx) => {
   const frame = FRAME[p.aspect] ?? FRAME['1:1']!;
   const { w: W, h: H } = frame;
   const gap = Math.round((p.gap / 1000) * Math.min(W, H));
-  const layout = p.layout === 'auto' ? autoLayout(p.sourceKeys.length, p.aspect) : p.layout;
-  const cells = planCells(layout, p.sourceKeys.length, W, H, gap);
-  const radius = p.rounded ? Math.round(Math.min(W, H) * 0.022) : 0;
+  const background = backgroundOf(p.background, ctx);
 
-  await ctx.stage('preparing', 10, `arranging ${p.sourceKeys.length} photos`);
+  await ctx.stage('preparing', 8, `reading ${p.sourceKeys.length} photos`);
 
-  // The photos, in the order they were picked. A photo that will not open is
-  // an empty tile: eight good pictures are worth more than a refund.
-  const overlays: OverlayOptions[] = [];
+  // READ FIRST, ARRANGE SECOND. The layout depends on the photos' own shapes,
+  // so nothing can be planned until they have been measured. A photo that
+  // will not open is an empty tile: eight good pictures beat a refund.
+  const loaded: Array<{ index: number; bytes: Uint8Array; ratio: number } | null> = [];
   let missing = 0;
-  for (const [i, cell] of cells.entries()) {
+  for (let i = 0; i < p.sourceKeys.length; i++) {
     const file = ctx.files[`sourceKeys[${i}]`];
     if (!file) {
       missing++;
+      loaded.push(null);
       continue;
     }
     try {
       const { bytes } = await fetchBytes('collage', file.url, 60_000);
-      const tile = await sharp(bytes)
-        .rotate() // honour the phone's EXIF orientation before anything is measured
-        .resize(cell.w, cell.h, { fit: 'cover', position: 'attention' })
-        .toBuffer();
-      overlays.push({ input: radius > 0 ? await round(tile, cell.w, cell.h, radius) : tile, left: cell.x, top: cell.y });
+      // .rotate() first: a phone photo's real shape is in its EXIF orientation,
+      // and measuring before honouring it gets every portrait backwards.
+      const upright = await sharp(bytes).rotate().toBuffer();
+      const meta = await sharp(upright).metadata();
+      loaded.push({ index: i, bytes: new Uint8Array(upright), ratio: (meta.width ?? 1) / (meta.height ?? 1) });
     } catch (err) {
       missing++;
+      loaded.push(null);
       ctx.log.warn({ err: err instanceof Error ? err.message : err, index: i }, 'a collage photo could not be read; leaving its tile empty');
     }
-    await ctx.stage('composing', 12 + Math.round(((i + 1) / cells.length) * 50), `placing photo ${i + 1} of ${cells.length}`);
   }
-  if (overlays.length === 0) throw new ProviderError('INVALID_INPUT', 'none of the photos could be read', 'collage');
+  if (loaded.every((l) => l === null)) throw new ProviderError('INVALID_INPUT', 'none of the photos could be read', 'collage');
+
+  const ratios = loaded.filter((l): l is NonNullable<typeof l> => l !== null).map((l) => l.ratio);
+  const layout = p.layout === 'auto' ? autoLayout(p.sourceKeys.length, p.aspect, ratios) : p.layout;
+  const cells = planCells(layout, p.sourceKeys.length, W, H, gap);
+  const radius = p.rounded ? Math.round(Math.min(W, H) * 0.022) : 0;
+  const position = p.focus === 'top' ? 'top' : p.focus === 'bottom' ? 'bottom' : p.focus === 'centre' ? 'centre' : sharp.strategy.attention;
+
+  const overlays: OverlayOptions[] = [];
+  for (const [i, cell] of cells.entries()) {
+    const photo = loaded[i];
+    if (!photo) continue;
+    // 'fit' keeps the whole picture and lets the ground show around it;
+    // 'fill' crops to the tile. Fitting is the default because losing the top
+    // of someone's head to a rectangle is not a design decision.
+    const tile = await sharp(photo.bytes)
+      .resize(cell.w, cell.h, p.fit === 'fill' ? { fit: 'cover', position } : { fit: 'contain', background })
+      .toBuffer();
+    overlays.push({ input: radius > 0 ? await round(tile, cell.w, cell.h, radius) : tile, left: cell.x, top: cell.y });
+    await ctx.stage('composing', 14 + Math.round(((i + 1) / cells.length) * 48), `placing photo ${i + 1} of ${cells.length}`);
+  }
 
   // The words over the photos, if any were typed.
   const captions = labelSvg(cells, p.labels, layout);
   if (captions) overlays.push({ input: Buffer.from(captions), left: 0, top: 0 });
 
-  const background = backgroundOf(p.background, ctx);
   const sheet = await sharp({ create: { width: W, height: H, channels: 4, background } })
     .composite(overlays)
     .png()
@@ -175,7 +227,10 @@ export const collagePipeline: Pipeline = async (ctx) => {
     artifacts.push({ bytes: new Uint8Array(bytes), mime: 'image/jpeg', role: 'variant', width: spec.width, height: spec.height, size });
   }
 
-  ctx.log.info({ layout, photos: p.sourceKeys.length, missing, aspect: p.aspect, sizes: p.sizes.length }, 'collage composed');
+  ctx.log.info(
+    { layout, chosen: p.layout, fit: p.fit, photos: p.sourceKeys.length, missing, aspect: p.aspect, ratios: ratios.map((r) => Math.round(r * 100) / 100) },
+    'collage composed',
+  );
   return { artifacts, providerKey: 'local:sharp', costMinor: 0 };
 };
 

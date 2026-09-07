@@ -273,6 +273,18 @@ export const capabilityParams = {
     aspect: z.enum(ASPECTS).default('1:1'),
     /** Space between the photos, as a share of the short side — 0 is edge to edge. */
     gap: z.number().int().min(0).max(48).default(14),
+    /**
+     * What happens when a photo and its tile are different shapes.
+     *
+     * 'fit' keeps the WHOLE photo and lets the background show around it.
+     * 'fill' crops to the tile's edges. Fit is the default because a collage
+     * is for showing photos, and a tall photo in a wide tile loses half its
+     * subject to a crop nobody asked for — which is exactly what this used to
+     * do, and why it now says so on the panel.
+     */
+    fit: z.enum(['fit', 'fill']).default('fit'),
+    /** Where a filled tile crops from. Ignored when fitting the whole photo. */
+    focus: z.enum(['auto', 'top', 'centre', 'bottom']).default('auto'),
     /** A hex colour behind the photos, or 'brand' for the brand kit's first colour. */
     background: z.union([z.literal('brand'), z.string().regex(/^#[0-9a-fA-F]{6}$/)]).default('#FFFFFF'),
     rounded: z.boolean().default(true),
@@ -546,6 +558,32 @@ export function withoutPipelineFields<T extends Record<string, unknown>>(params:
   const out = { ...params };
   for (const k of PIPELINE_WRITTEN_KEYS) delete out[k];
   return out;
+}
+
+/**
+ * Whether a capability can actually take the photo on the canvas.
+ *
+ * Derived from the schema rather than listed by hand, because a hand-kept
+ * list is exactly how a photo goes missing: IMAGE_GENERATE makes a picture
+ * from words alone, so a `sourceKey` attached to it is stripped by the parser
+ * without a word, and the customer is handed a stranger's face where they
+ * expected their own photo. That happened. The studio now asks this before
+ * attaching anything.
+ */
+/**
+ * The field names a capability actually accepts. Anything else sent with a
+ * request is stripped by the parser without complaint, so this is what the
+ * studio checks its own controls against.
+ */
+export function capabilityFields(capability: Capability): string[] {
+  let schema: z.ZodTypeAny = capabilityParams[capability];
+  // .refine()/.superRefine() wrap the object; the shape is underneath.
+  while (schema instanceof z.ZodEffects) schema = schema.innerType() as z.ZodTypeAny;
+  return schema instanceof z.ZodObject ? Object.keys(schema.shape as Record<string, unknown>) : [];
+}
+
+export function acceptsSourceKey(capability: Capability): boolean {
+  return capabilityFields(capability).includes('sourceKey');
 }
 
 export function parseCapabilityParams(
