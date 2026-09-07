@@ -106,16 +106,7 @@ export function SheetShowcase() {
           <div className={styles.art} style={{ background: 'linear-gradient(20deg,#43261C,#FF9E6D 130%)' }} />
           <img className={styles.ph} alt="The same toy held up to the camera, filmed the way a customer would" src="/shots/toy-ugc.webp" loading="eager" />
           {!ugcFailed && (
-            <video
-              className={styles.vd}
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              onError={() => setUgcFailed(true)}
-            >
+            <video className={styles.vd} autoPlay muted loop playsInline preload="metadata" disablePictureInPicture onError={() => setUgcFailed(true)}>
               <source src="/shots/toy-ugc.mp4" type="video/mp4" />
             </video>
           )}
