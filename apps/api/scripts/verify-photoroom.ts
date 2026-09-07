@@ -21,6 +21,8 @@
  *   … --url https://example.com/my-dress.jpg   a product of your own (any public URL)
  *   … --modes ghost_mannequin,on_model         just these
  *   … --out ./shots                            where the pictures land
+ *   … --model-photo https://…/me.jpg           put it on a person of your own
+ *   … --angles https://…/back.jpg,https://…/side.jpg   more views of the same item
  *
  * One vendor call per mode. Five modes is five of the month's images.
  */
@@ -30,6 +32,9 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { OFFERED_PRODUCT_MODES, PRODUCT_MODES, parseCapabilityParams, type ProductMode, type ProviderInput } from '@anystudio/shared';
 import { PhotoroomProvider } from '../src/modules/provider/adapters/photoroom.adapter';
+
+/** How many times to give the vendor the benefit of the doubt on a 5xx, as the runner does. */
+const RETRIES = 3;
 
 /** A public product photo, so the script does something useful with no arguments. */
 const SAMPLE = 'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=1200&q=80';
@@ -45,10 +50,28 @@ async function main(): Promise<void> {
     console.error('PHOTOROOM_API_KEY is not set. Put it in your shell, not in this file.\n  export PHOTOROOM_API_KEY=…');
     process.exit(2);
   }
+  // A placeholder copied out of an instruction is not a key, and finding that
+  // out from six identical 401s is a worse minute than finding it out here.
+  if (/^(paste|your|xxx|<|\.\.\.)/i.test(apiKey) || apiKey.length < 16) {
+    console.error(`PHOTOROOM_API_KEY does not look like a key (${apiKey.length} characters).`);
+    console.error('Copy the real one from the Photoroom API dashboard → API keys. It is not your app login.');
+    process.exit(2);
+  }
 
   const url = arg('url') || SAMPLE;
   const out = arg('out') || './photoroom-check';
   const asked = arg('modes');
+  // Two paths a mock can never exercise: a seller's own model, and the extra
+  // angles that stop a model inventing the back of the bag. Both need public
+  // URLs, because the vendor fetches them itself.
+  const modelPhoto = arg('model-photo');
+  const angles = (
+    arg('angles')
+      ? arg('angles')
+          .split(',')
+          .map((a) => a.trim())
+      : []
+  ).filter(Boolean);
   const modes = (asked ? asked.split(',').map((m) => m.trim()) : OFFERED_PRODUCT_MODES) as ProductMode[];
 
   await mkdir(out, { recursive: true });
@@ -57,6 +80,8 @@ async function main(): Promise<void> {
 
   console.log(`\nProduct photo: ${url}`);
   console.log(`Modes:         ${modes.join(', ')}`);
+  if (modelPhoto) console.log(`Model photo:   ${modelPhoto}`);
+  if (angles.length) console.log(`Extra angles:  ${angles.length}`);
   console.log(`This will use ${modes.length} of the month's images.\n`);
 
   let good = 0;
@@ -70,7 +95,16 @@ async function main(): Promise<void> {
       sourceKey: 'verify/source.jpg',
       mode,
       aspect: '1:1',
-      ...(mode === 'on_model' ? { model: 'avery', scene: 'studio', pose: 'standing', shotSize: 'posting' } : {}),
+      ...(mode === 'on_model'
+        ? {
+            model: modelPhoto ? 'custom' : 'avery',
+            ...(modelPhoto ? { modelPhotoKey: 'verify/model.jpg' } : {}),
+            scene: 'studio',
+            pose: 'standing',
+            shotSize: 'posting',
+            angleKeys: angles.map((_, i) => `verify/angle-${i}.jpg`),
+          }
+        : {}),
       ...(mode === 'recolor' ? { color: '#C8102E' } : {}),
       ...(mode === 'retouch' ? { prompt: 'remove the price tag' } : {}),
     });
@@ -84,24 +118,53 @@ async function main(): Promise<void> {
       workspaceId: 'verify',
       capability: 'PRODUCT_SHOT',
       params: parsed.params,
-      files: { sourceKey: { url, mime: 'image/jpeg' } },
+      files: {
+        sourceKey: { url, mime: 'image/jpeg' },
+        ...(modelPhoto ? { modelPhotoKey: { url: modelPhoto, mime: 'image/jpeg' } } : {}),
+        ...Object.fromEntries(angles.map((a, i) => [`angleKeys[${i}]`, { url: a, mime: 'image/jpeg' }])),
+      },
       config: {},
     };
 
     const started = Date.now();
-    try {
-      const result = await provider.generate(input, { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) });
-      const bytes = result.artifacts[0]?.bytes;
-      if (!bytes) throw new Error('no bytes came back');
-      const meta = await sharp(bytes).metadata();
-      const file = join(out, `${mode}.png`);
-      await writeFile(file, bytes);
-      good++;
-      console.log(`✓ ${label.padEnd(18)} ${meta.width}×${meta.height}  ${(bytes.length / 1024).toFixed(0)} KB  ${Date.now() - started}ms  → ${file}`);
-    } catch (err) {
-      // The vendor's own words, in full: this is the whole point of the run.
-      const message = err instanceof Error ? err.message : String(err);
-      console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms\n    ${message}\n`);
+    // The runner retries a 5xx in production, so a script that does not will
+    // report a vendor having a bad minute as a broken adapter. It says how
+    // many attempts it took, because "worked on the third try" is the useful
+    // answer and "worked" would hide it.
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        const result = await provider.generate(input, { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) });
+        const bytes = result.artifacts[0]?.bytes;
+        if (!bytes) throw new Error('no bytes came back');
+        const meta = await sharp(bytes).metadata();
+        const file = join(out, `${mode}.png`);
+        await writeFile(file, bytes);
+        good++;
+        const tries = attempt > 1 ? `  (${attempt} tries)` : '';
+        console.log(`✓ ${label.padEnd(18)} ${meta.width}×${meta.height}  ${(bytes.length / 1024).toFixed(0)} KB  ${Date.now() - started}ms${tries}  → ${file}`);
+        break;
+      } catch (err) {
+        // The vendor's own words, in full: this is the whole point of the run.
+        const message = err instanceof Error ? err.message : String(err);
+        // A 5xx is the vendor's failure, not a rejected parameter. Give it the
+        // same benefit of the doubt the runner does before calling it broken.
+        if (/HTTP 5\d\d/.test(message) && attempt < RETRIES) {
+          console.log(`… ${label.padEnd(18)} attempt ${attempt} hit a vendor error; trying again`);
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms  (${attempt} ${attempt === 1 ? 'try' : 'tries'})\n    ${message}\n`);
+        // Every mode will fail the same way and none of them will be about the
+        // adapter, so say what it is once and stop burning the wall clock.
+        if (/HTTP 401|could not be authenticated/i.test(message)) {
+          console.log('    The key was rejected, so every mode below would fail the same way.');
+          console.log('    Photoroom API dashboard → API keys → Create API key. Nothing was charged.\n');
+          process.exit(2);
+        }
+        break;
+      }
     }
   }
 

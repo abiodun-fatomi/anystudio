@@ -43,14 +43,38 @@ type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
 /** The per-feature frame name, for the modes whose size is set on themselves. */
 const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD';
 
+/**
+ * WHO ASKED FOR A CUTOUT.
+ *
+ * This endpoint's original job is background removal, so `removeBackground`
+ * defaults to TRUE and every mode is a cutout unless it says otherwise. A live
+ * run made that visible: "Press it" came back as pressed trousers floating on
+ * nothing, and "Make it studio" the same. Neither mode promises that. Press it
+ * says creases taken out of fabric; Make it studio says lighting, colour and
+ * sharpness "without changing the product". Deleting the room a merchant
+ * photographed their goods in is a bigger change than either advertised, and
+ * it is not recoverable — the background is gone.
+ *
+ * The rule, then: the studio already HAS a cutout tool. A mode that is not it
+ * does not silently become it. Only the two shapes whose vendor output is
+ * inherently isolated — a garment holding its own shape, a flat lay — keep the
+ * default.
+ */
 const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams, files: ProviderInput['files']) => void>> = {
   on_model: (p, q, files) => {
     q.set('virtualModel.mode', 'ai.auto');
-    // Their own saved model is an image URL; a preset is a name.
+    // A person wearing the garment IS the new background, so cutting the old
+    // one out first is both wasted work and, per the vendor, refused.
+    q.set('removeBackground', 'false');
+    // `model` and `scene` are objects, not strings: each is either a named
+    // preset or a photo of your own. The dotted query path is how the vendor
+    // spells a nested field, so it is `.preset.name`, never a bare value —
+    // sending the bare value is a 400 that says "must match a schema in anyOf".
     const photo = files.modelPhotoKey?.url;
-    if (photo) q.set('virtualModel.model', photo);
-    else if (p.model && p.model !== 'custom') q.set('virtualModel.model', p.model);
-    q.set('virtualModel.scene', p.scene ?? 'random');
+    if (photo) q.set('virtualModel.model.custom.imageUrl', photo);
+    else if (p.model && p.model !== 'custom') q.set('virtualModel.model.preset.name', p.model);
+    q.set('virtualModel.scene.preset.name', p.scene ?? 'random');
+    // Pose really is a plain string — the one flat field of the three.
     q.set('virtualModel.pose', p.pose ?? 'random');
     q.set('virtualModel.size', sizeOf(p));
     // Roughly 1K, 2K or 4K on the long side. The only mode with this
@@ -74,14 +98,44 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('flatLay.size', sizeOf(p));
     if (p.prompt) q.set('flatLay.prompt', p.prompt);
   },
-  // No options at all in the spec, and none in their app either: a photo in, a pressed photo out.
-  ironing: (_p, q) => q.set('ironing.mode', 'ai.auto'),
-  // `beautify` takes a subject tuning and a seed. There is no prompt.
+  // No options at all in the spec, and none in their app either: a photo in, a
+  // pressed photo out — and the room it was photographed in still behind it.
+  ironing: (_p, q) => {
+    q.set('ironing.mode', 'ai.auto');
+    q.set('removeBackground', 'false');
+  },
+  /**
+   * `beautify` takes a subject tuning and a seed. There is no prompt.
+   *
+   * IT IS THE FLAKY ONE. Three live runs of the same request: one picture,
+   * two HTTP 500s reading "An error occurred during Subject Beautifier
+   * processing". A 500 is the vendor's own failure, not a rejected parameter,
+   * and the identical request succeeding once rules out the request.
+   *
+   * (An earlier note here blamed `removeBackground`, on the strength of one
+   * failure that happened to follow that change. Removing it again produced
+   * the same 500. That was a coincidence read as a cause, which is the
+   * cheapest kind of wrong explanation to write and the most expensive to
+   * inherit.)
+   *
+   * Nothing to do in the adapter: the runner classifies 5xx as RETRYABLE,
+   * requeues with a delay, and refunds when the attempts are gone — which is
+   * the right handling for a vendor having a bad minute. Worth watching in
+   * production, and worth demoting the mode if the success rate stays this
+   * poor.
+   *
+   * It does come back cut out, which is real and confirmed from the one that
+   * worked. The mode's description says so.
+   */
   beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
   // Widening the frame is the whole point, so this one must not keep the original size.
   expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');
     q.set('outputSize', 'auto');
+    // The vendor refuses outright: "expand.mode will activate when
+    // `removeBackground` is set to false". Which is right — continuing the
+    // surroundings requires surroundings to continue.
+    q.set('removeBackground', 'false');
   },
 };
 
