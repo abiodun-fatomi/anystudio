@@ -14,8 +14,11 @@ import styles from '@/app/(auth)/auth.module.css';
 const FRAMES = [
   { n: '02', src: '/shots/ravi-1.webp', art: 'linear-gradient(160deg,#FF9E6D,#D6006E 78%)', nm: 'Ravi', pr: '₦4,500' },
   { n: '03', src: '/shots/ravi-2.webp', art: 'linear-gradient(200deg,#1E2A4A,#00808F 90%)', nm: 'Ravi', pr: '₦4,500' },
-  { n: '04', src: '/shots/bimbo.webp', art: 'linear-gradient(30deg,#F5D0A9,#C9455E 95%)', nm: 'Bimbo', pr: '₦18,000' },
-  { n: '05', src: '/shots/kicks.webp', art: 'linear-gradient(20deg,#43261C,#FF9E6D 130%)', nm: 'Kicks', pr: '₦32,000' },
+  // One sheet, one product. A handbag and a trainer under a heading that
+  // reads "Sheet 001 · Ravi Hair Oil" demonstrated the exact thing this
+  // product promises never to do.
+  { n: '04', src: '/shots/edit-white.webp', art: 'linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)', nm: 'Ravi', pr: '₦4,500' },
+  { n: '05', src: '/shots/edit-sand.webp', art: 'linear-gradient(20deg,#43261C,#FF9E6D 130%)', nm: 'Ravi', pr: '₦4,500' },
 ] as const;
 
 export function SheetShowcase() {
