@@ -137,7 +137,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 };
 
 /** The first image artifact's bytes, fetched if the vendor left them at a URL. */
-async function artifactBytes(result: ProviderResult): Promise<Uint8Array> {
+export async function artifactBytes(result: ProviderResult): Promise<Uint8Array> {
   const a = result.artifacts.find((x) => x.role === 'image') ?? result.artifacts[0];
   if (!a) throw new ProviderError('RETRYABLE', `${result.providerKey}: returned no image`, result.providerKey);
   if (a.bytes) return a.bytes;

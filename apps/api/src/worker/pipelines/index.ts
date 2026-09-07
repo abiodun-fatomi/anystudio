@@ -22,6 +22,7 @@ import { voiceoverPipeline } from './voiceover';
 import { dubPipeline } from './dub';
 import { lipsyncPipeline } from './lipsync';
 import { brandedImagePipeline } from './image';
+import { productShotPipeline } from './product-shot';
 import { collagePipeline } from './collage';
 import { batchPipeline } from './batch';
 import { adPipeline } from './ad';
@@ -92,6 +93,7 @@ export class Pipelines {
   private readonly byCapability: Partial<Record<Capability, Pipeline>> = {
     TEXT_GENERATE: copyPipeline,
     IMAGE_EDIT: brandedImagePipeline,
+    PRODUCT_SHOT: productShotPipeline,
     COLLAGE: collagePipeline,
     BATCH: batchPipeline,
     MUSIC: musicPipeline,

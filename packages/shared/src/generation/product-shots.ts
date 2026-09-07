@@ -97,6 +97,30 @@ export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
  * until someone has run them against a live key and seen a picture come back.
  * Flipping one on is a one-word change here.
  */
+/**
+ * Modes where the product is meant to come back the same SHAPE it went in.
+ *
+ * This decides whether the fidelity check can refuse a result, and getting it
+ * wrong is expensive in both directions.
+ *
+ * Press it and Make it studio hand back the same garment in the same pose
+ * with the creases gone or the light fixed — a product that moved, changed
+ * colour or grew a new label there is a failure, and the check catches it.
+ *
+ * On a model, Ghost mannequin and Flat lay are the opposite: the whole point
+ * is that the garment is now draped on a body, inflated to a torso, or laid
+ * out square. The pixels SHOULD be different. Measuring those against the
+ * original and refusing what does not match would reject the good ones —
+ * exactly the shots a merchant came here for. They are still measured, and
+ * the score is logged, but it never refuses.
+ *
+ * Show more room keeps the original pixels and adds canvas around them, so
+ * the check finds the product where it was pushed to and judges it there.
+ */
+export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'recolor', 'retouch'];
+/** Whether a refusal is fair for this mode, or would throw away a correct picture. */
+export const judgesShape = (mode: ProductMode): boolean => KEEPS_GEOMETRY.includes(mode);
+
 export const OFFERED_PRODUCT_MODES = PRODUCT_MODE_KEYS.filter((k) => PRODUCT_MODES[k].verified);
 export const productMode = (k: string | null | undefined) => (k && k in PRODUCT_MODES ? PRODUCT_MODES[k as ProductMode] : undefined);
 /** What a mode costs. A merchant sees this before anything is charged. */
