@@ -13,7 +13,7 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
-import { PRESENTERS, PRESET_GROUPS, presetsIn, type PhotoPreset, type PresetGroup } from '@anystudio/shared';
+import { PRESENTERS, PRESET_GROUPS, PRODUCT_MODES, PRODUCT_MODE_KEYS, presetsIn, type PhotoPreset, type PresetGroup } from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
@@ -635,6 +635,115 @@ function PresetsField({
   );
 }
 
+/**
+ * The merchant shots, as tiles with their own words on them.
+ *
+ * "On a model", "Ghost mannequin", "Press it" — a person selling clothes
+ * knows all three on sight. A dropdown of the same words would be shorter and
+ * worse: the tile can carry the sentence that says which one to reach for.
+ */
+function ModesField({ field, value, onChange }: { field: Extract<Field, { kind: 'modes' }>; value: string; onChange: (v: unknown) => void }) {
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.modes} role="radiogroup" aria-label={field.label}>
+        {PRODUCT_MODE_KEYS.map((k) => {
+          const m = PRODUCT_MODES[k];
+          return (
+            <button key={k} type="button" role="radio" aria-checked={value === k} className={styles.mode} onClick={() => onChange(k)} title={m.hint}>
+              <strong>{m.label}</strong>
+              <span>{m.note}</span>
+            </button>
+          );
+        })}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * More photos of the same product.
+ *
+ * This is the quality control that costs nothing: a model asked to keep a bag
+ * exact does far better when it has seen the back of it. Never required, and
+ * the copy says what each extra photo buys rather than just "add files".
+ */
+function AnglesField({ field, value, onChange }: { field: Extract<Field, { kind: 'angles' }>; value: string[]; onChange: (v: unknown) => void }) {
+  const { workspace } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const keys = value.filter(Boolean);
+  const joined = keys.join(',');
+  useEffect(() => {
+    const wanted = joined ? joined.split(',') : [];
+    if (!wanted.length) return;
+    let live = true;
+    api.media
+      .urls(workspace.id, wanted)
+      .then(({ urls: u }) => {
+        if (live) setUrls((prev) => ({ ...prev, ...u }));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, joined]);
+
+  const add = async (files: FileList | null) => {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!list.length) return;
+    setBusy(true);
+    const added: string[] = [];
+    for (const file of list) {
+      if (keys.length + added.length >= field.max) break;
+      try {
+        const asset = await uploadFile(workspace.id, file);
+        added.push(asset.key);
+        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
+        setUrls((prev) => ({ ...prev, ...u }));
+      } catch {
+        /* one bad file must not lose the others */
+      }
+    }
+    setBusy(false);
+    if (added.length) onChange([...keys, ...added]);
+  };
+
+  return (
+    <div>
+      <span className={styles.fieldLabel}>
+        {field.label}
+        <span className={styles.photoCount}>
+          {keys.length} of {field.max}
+        </span>
+      </span>
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void add(e.target.files).finally(() => (e.target.value = ''))} />
+      <div className={styles.photoGrid}>
+        <button type="button" className={styles.photoAdd} onClick={() => input.current?.click()} disabled={busy || keys.length >= field.max}>
+          <Icon.plus />
+          <span>{keys.length >= field.max ? 'Full' : busy ? 'Adding…' : 'Add'}</span>
+        </button>
+        {keys.map((k, i) => (
+          <button
+            key={k}
+            type="button"
+            className={styles.photoTile}
+            aria-pressed
+            onClick={() => onChange(keys.filter((x) => x !== k))}
+            title="Take this one out"
+          >
+            {urls[k] ? <img src={urls[k]} alt="" loading="lazy" /> : <span className={styles.photoBlank} />}
+            <span className={styles.photoNum}>{i + 1}</span>
+          </button>
+        ))}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
 /** An idea lands in the prompt, and its camera move in the camera field when that one is still empty. */
 function pickIdea(tool: Tool, values: Record<string, unknown>, idea: Idea, onChange: (key: string, value: unknown) => void) {
   if (!tool.ideas) return;
@@ -823,6 +932,10 @@ function FieldControl({
         />
       );
     }
+    case 'modes':
+      return <ModesField field={field} value={String(value ?? '')} onChange={onChange} />;
+    case 'angles':
+      return <AnglesField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
     case 'presets':
       return <PresetsField field={field} value={String(value ?? '')} onChange={onChange} onFill={onFill} />;
     case 'photos':

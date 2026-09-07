@@ -24,6 +24,8 @@ const CAPABILITY_BLURB: Record<Capability, string> = {
   RELIGHT: 'The product relit to match a described light.',
   UPSCALE: 'A sharper, larger version of an image.',
   COLLAGE: 'Several photos laid out in one picture — a grid, a lead photo with a strip, before and after — branded and exported in every size.',
+  PRODUCT_SHOT:
+    'The shot a merchant needs, by name: on a model, ghost mannequin, flat lay, pressed, studio, recoloured, retouched or widened. One call, seconds.',
   IMAGE_TO_VIDEO: 'A short reel from a photo, or a 15/30-second multi-shot ad with captions and an end card.',
   VIDEO_STITCH: 'Internal: assembling an ad from its shots.',
   TEXT_GENERATE: 'Product descriptions, captions per platform, hashtags, alt text and SEO copy, in the brand voice.',

@@ -18,6 +18,16 @@
  */
 
 import { z } from 'zod';
+import {
+  MODEL_POSES,
+  MODEL_PRESETS,
+  MODEL_SCENES,
+  PRODUCT_MODE_KEYS,
+  PRODUCT_REFERENCE_ANGLES,
+  SHADOW_STYLES,
+  type ProductMode,
+  type ShadowStyle,
+} from './product-shots';
 
 export const CAPABILITIES = [
   'IMAGE_GENERATE',
@@ -27,6 +37,7 @@ export const CAPABILITIES = [
   'RELIGHT',
   'UPSCALE',
   'COLLAGE',
+  'PRODUCT_SHOT',
   'IMAGE_TO_VIDEO',
   'VIDEO_STITCH',
   'TEXT_GENERATE',
@@ -272,6 +283,65 @@ export const capabilityParams = {
     businessName: z.string().max(80).optional(),
     brand: brandOverrides,
   }),
+  /**
+   * The shots a merchant needs, by name: on a model, ghost mannequin, flat
+   * lay, pressed, studio, another colour, remove something, show more room.
+   *
+   * ONE capability rather than eight, because all eight are the same vendor
+   * call with different fields — eight capabilities would be eight copies of
+   * one adapter branch and eight places for the same bug.
+   *
+   * SPEED. These are synchronous, seconds-long calls, so they belong on the
+   * fast queue. A shot that waits behind a four-minute video render is the
+   * bug we already fixed once.
+   *
+   * ERRORS. Every requirement a mode has is checked HERE, before a credit is
+   * spent — a recolour with no colour, a custom model with no photo, a
+   * removal with nothing named. A request that cannot succeed should fail
+   * free, in the browser, not after the vendor has been paid.
+   */
+  PRODUCT_SHOT: z
+    .object({
+      sourceKey: objectKey,
+      mode: z.enum(PRODUCT_MODE_KEYS as [ProductMode, ...ProductMode[]]),
+      /** Optional on every mode, always. Steering, never a toll gate. */
+      prompt: z.string().max(600).optional(),
+      aspect: z.enum(ASPECTS).default('1:1'),
+      /**
+       * More photos of the SAME product, from other angles. The single
+       * cheapest quality lever there is: a model given the back of the bag
+       * stops inventing one. Never required.
+       */
+      angleKeys: z.array(objectKey).max(PRODUCT_REFERENCE_ANGLES.max).default([]),
+      /** on_model: a MODEL_PRESETS key, or 'custom' with a photo of the person. */
+      model: z.string().max(40).optional(),
+      modelPhotoKey: objectKey.optional(),
+      scene: z.string().max(40).optional(),
+      pose: z.string().max(40).optional(),
+      /** recolor: the colour, and optionally which part of the item. */
+      color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .optional(),
+      part: z.string().max(120).optional(),
+      /** beautify: the vendor tunes differently for food and for cars. */
+      subject: z.enum(['auto', 'food', 'car']).default('auto'),
+      shadow: z.enum(Object.keys(SHADOW_STYLES) as [ShadowStyle, ...ShadowStyle[]]).default('soft'),
+      sizes: z.array(z.enum(Object.keys(EXPORT_SIZES) as [ExportSize, ...ExportSize[]])).default(['feed_square', 'story']),
+      price: z.string().max(40).optional(),
+      businessName: z.string().max(80).optional(),
+      brand: brandOverrides,
+    })
+    .superRefine((v, ctx) => {
+      const fail = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+      if (v.mode === 'recolor' && !v.color) fail('color', 'Pick the colour you want it in.');
+      if (v.mode === 'retouch' && !v.prompt?.trim()) fail('prompt', 'Say what should be removed.');
+      if (v.mode === 'on_model' && v.model === 'custom' && !v.modelPhotoKey) fail('modelPhotoKey', 'Add a photo of the person who should wear it.');
+      if (v.mode === 'on_model' && v.model && v.model !== 'custom' && !(MODEL_PRESETS as readonly string[]).includes(v.model))
+        fail('model', `We do not have a model called "${v.model}".`);
+      if (v.scene && !(MODEL_SCENES as readonly string[]).includes(v.scene)) fail('scene', `Unknown scene "${v.scene}".`);
+      if (v.pose && !(MODEL_POSES as readonly string[]).includes(v.pose)) fail('pose', `Unknown pose "${v.pose}".`);
+    }),
   IMAGE_TO_VIDEO: z.object({
     sourceKey: objectKey,
     prompt: z.string().min(3).max(2000),
@@ -502,6 +572,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   RELIGHT: 'image.relight',
   UPSCALE: 'image.upscale',
   COLLAGE: 'image.collage',
+  PRODUCT_SHOT: 'image.product_shot', // on_model prices higher; the tool names the code
   IMAGE_TO_VIDEO: 'video.reel', // a multi-shot ad prices itself under video.ad_15s / video.ad_30s
   VIDEO_STITCH: 'video.stitch',
   TEXT_GENERATE: 'text.description',

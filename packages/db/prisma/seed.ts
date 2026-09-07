@@ -39,6 +39,11 @@ const CREDIT_COSTS = [
   // Ours end to end — sharp on our own box, no vendor — so it is priced to be
   // used freely: a seller who makes a collage of every batch posts more often.
   { code: 'image.collage', credits: 2, label: 'Photo collage' },
+  // The merchant shots. One vendor call each, seconds long, ~$0.10 of vendor
+  // cost against ~$0.15 of credits — the same margin the scene tool runs at.
+  { code: 'image.product_shot', credits: 10, label: 'Product shot' },
+  // Priced above the rest because it replaces a model and a photographer.
+  { code: 'image.on_model', credits: 16, label: 'Worn by a model' },
   { code: 'text.description', credits: 2, label: 'Product description' },
   { code: 'text.caption', credits: 1, label: 'Social caption' },
   // A reel is 5–8 seconds of provider video. At launch pricing a credit is
@@ -341,6 +346,14 @@ const PROVIDERS: Array<{
 
   // ---- stitching is ours: ffmpeg in the worker, no vendor ----------------------
   { key: 'local:ffmpeg', capability: 'VIDEO_STITCH', priority: 10, costPerCall: 0, enabled: true, licenceNote: 'No third party involved.' },
+  {
+    key: 'photoroom:edit',
+    capability: 'PRODUCT_SHOT',
+    priority: 10,
+    costPerCall: 10,
+    enabled: true,
+    licenceNote: 'Photoroom Plus tier. Their own foundation model; output is ours to sell.',
+  },
 
   // ---- later phases: declared so the router knows they exist, disabled -------
   // ---- audio (Phase 10) --------------------------------------------------------

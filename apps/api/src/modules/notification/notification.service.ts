@@ -33,6 +33,7 @@ const CAPABILITY_WORD: Record<string, string> = {
   RELIGHT: 'relit photo',
   UPSCALE: 'enhanced photo',
   COLLAGE: 'collage',
+  PRODUCT_SHOT: 'product shot',
   IMAGE_TO_VIDEO: 'video',
   VIDEO_STITCH: 'ad',
   TEXT_GENERATE: 'listing copy',

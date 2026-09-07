@@ -19,14 +19,20 @@ import {
   type ExportSize,
   adPlan,
   collageLayoutsFor,
+  MODEL_POSES,
+  MODEL_PRESETS,
+  MODEL_SCENES,
+  PRODUCT_REFERENCE_ANGLES,
   preset,
   presetCapability,
+  productMode,
+  productModeCostCode,
   presenterCostCode,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
 export type ToolId =
-  'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'collage' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
+  'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'collage' | 'shots' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
 
 export type Field =
   | {
@@ -75,6 +81,10 @@ export type Field =
    * it writes stays editable underneath.
    */
   | { key: string; kind: 'presets'; label: string; hint?: string }
+  /** The merchant shots as tiles: on a model, ghost mannequin, flat lay, pressed. Named the way a merchant names them. */
+  | { key: string; kind: 'modes'; label: string; hint?: string }
+  /** Extra photos of the same product from other angles — the cheapest way to keep it exact. */
+  | { key: string; kind: 'angles'; label: string; max: number; hint?: string }
   /** A box that must be ticked before the button works — permission for a real person's face and voice. */
   | { key: string; kind: 'consent'; label: string; hint?: string };
 
@@ -431,6 +441,147 @@ export const TOOLS: Tool[] = [
       const out: Record<string, unknown> = { ...p, sourceKeys: keys, layout: fits.includes(layout) ? layout : 'auto' };
       if (labels.some((l) => l.length > 0)) out.labels = labels;
       else delete out.labels;
+      return out;
+    },
+  },
+  {
+    id: 'shots',
+    label: 'Merchant shots',
+    short: 'Shots',
+    icon: 'store',
+    capability: 'PRODUCT_SHOT',
+    needsSource: true,
+    narrative: {
+      queued: 'Waiting for a slot',
+      preparing: 'Reading your photo',
+      generating: 'Making the shot',
+      composing: 'Adding your name and price, cutting every size',
+      storing: 'Saving your images',
+      done: 'Done',
+    },
+    // Priced by what was asked for: a model wearing it costs more than a press.
+    costCodeFor: (v) => productModeCostCode(v.mode as string),
+    fields: [
+      { key: 'mode', kind: 'modes', label: 'What do you need?' },
+      {
+        key: 'model',
+        kind: 'select',
+        label: 'Who wears it',
+        options: [{ value: 'random', label: 'Any model' }],
+        optionsFor: () => [
+          { value: 'random', label: 'Any model' },
+          { value: 'custom', label: 'My own model (a photo)' },
+          ...MODEL_PRESETS.map((m) => ({ value: m, label: m[0]!.toUpperCase() + m.slice(1) })),
+        ],
+        showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        key: 'modelPhotoKey',
+        kind: 'file',
+        accept: 'image',
+        label: 'Photo of the person',
+        hint: 'One clear photo. Every item you shoot after this can use the same person.',
+        showIf: (v) => v.mode === 'on_model' && v.model === 'custom',
+      },
+      {
+        key: 'scene',
+        kind: 'select',
+        label: 'Where',
+        options: [{ value: 'random', label: 'Anywhere' }],
+        optionsFor: () => MODEL_SCENES.map((s) => ({ value: s, label: s === 'random' ? 'Anywhere' : s })),
+        showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        key: 'pose',
+        kind: 'select',
+        label: 'Pose',
+        options: [{ value: 'random', label: 'Any pose' }],
+        optionsFor: () => MODEL_POSES.map((s) => ({ value: s, label: s === 'random' ? 'Any pose' : s })),
+        showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        key: 'color',
+        kind: 'text',
+        label: 'The colour',
+        placeholder: '#C8102E',
+        maxLength: 7,
+        required: true,
+        hint: 'A hex colour, like #C8102E.',
+        showIf: (v) => v.mode === 'recolor',
+      },
+      { key: 'part', kind: 'text', label: 'Which part', placeholder: 'Only the sleeves', maxLength: 120, showIf: (v) => v.mode === 'recolor' },
+      {
+        key: 'prompt',
+        kind: 'text',
+        label: 'What should go?',
+        placeholder: 'The hand holding it',
+        rows: 2,
+        maxLength: 600,
+        required: true,
+        showIf: (v) => v.mode === 'retouch',
+      },
+      {
+        key: 'subject',
+        kind: 'segment',
+        label: 'What is it?',
+        options: [
+          { id: 'auto', label: 'Anything' },
+          { id: 'food', label: 'Food' },
+          { id: 'car', label: 'A vehicle' },
+        ],
+        showIf: (v) => v.mode === 'beautify',
+      },
+      {
+        key: 'prompt',
+        kind: 'text',
+        label: 'Anything to add?',
+        placeholder: 'Leave blank and we decide',
+        rows: 2,
+        maxLength: 600,
+        // Optional on every mode that does not require it. Words steer; they never gate.
+        showIf: (v) => !['retouch', 'recolor', 'ironing'].includes(String(v.mode ?? '')),
+      },
+      {
+        key: 'angleKeys',
+        kind: 'angles',
+        label: 'More angles of the same item',
+        max: PRODUCT_REFERENCE_ANGLES.max,
+        hint: 'Optional, and the best way to keep your product exact. The back, the label, a close-up.',
+      },
+      {
+        key: 'shadow',
+        kind: 'segment',
+        label: 'Shadow',
+        options: [
+          { id: 'soft', label: 'Soft' },
+          { id: 'hard', label: 'Hard' },
+          { id: 'floating', label: 'Floating' },
+          { id: 'none', label: 'None' },
+        ],
+      },
+      { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
+      { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
+    ],
+    defaults: {
+      mode: 'on_model',
+      model: 'random',
+      scene: 'random',
+      pose: 'random',
+      subject: 'auto',
+      shadow: 'soft',
+      aspect: '1:1',
+      angleKeys: [],
+      sizes: ['feed_square', 'story'],
+    },
+    assemble: (p) => {
+      const out = { ...p };
+      // 'random' is our word for "you choose"; the vendor's default is the field's absence.
+      if (out.model === 'random') delete out.model;
+      const keys = Array.isArray(out.angleKeys) ? (out.angleKeys as string[]).filter(Boolean) : [];
+      if (keys.length) out.angleKeys = keys;
+      else delete out.angleKeys;
       return out;
     },
   },
@@ -977,6 +1128,7 @@ export function missingFor(tool: Tool, values: Record<string, unknown>): string 
     if (f.kind === 'catalogue' && !String(v ?? '').trim()) return `Pick ${f.label.toLowerCase()}.`;
     if (f.kind === 'presenter' && !String(v ?? '').trim()) return 'Pick who talks to camera.';
     if (f.kind === 'consent' && v !== true) return 'Tick the permission box first.';
+    if (f.kind === 'modes' && !productMode(String(v ?? ''))) return 'Pick what you need first.';
     if (f.kind === 'photos') {
       const n = countOf(v);
       if (n < f.min) return n === 0 ? `Pick at least ${f.min} photos.` : `${f.min - n} more ${f.min - n === 1 ? 'photo' : 'photos'} to go.`;
