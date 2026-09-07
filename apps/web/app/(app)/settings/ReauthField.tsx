@@ -4,7 +4,7 @@
  * asked for follows the account: a password if there is one, otherwise a
  * code if two-step is on, otherwise nothing (the server accepts the session).
  */
-import { Input, PasswordInput } from '@/components/ui';
+import { CodeInput, PasswordInput } from '@/components/ui';
 import type { Profile } from '@/lib/api';
 
 export type ReauthValue = { currentPassword?: string; code?: string };
@@ -44,13 +44,12 @@ export function ReauthField({
   }
   if (kind === 'code') {
     return (
-      <Input
+      <CodeInput
         label="Code from your authenticator app"
-        inputMode="numeric"
-        autoComplete="one-time-code"
+        accepts="either"
         placeholder="123456"
         value={value.code ?? ''}
-        onChange={(e) => onChange({ ...value, code: e.target.value })}
+        onValueChange={(v) => onChange({ ...value, code: v })}
         error={errors?.code}
         hint="A recovery code works too."
         autoFocus={autoFocus}

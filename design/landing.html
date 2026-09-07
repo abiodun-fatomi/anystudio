@@ -578,6 +578,11 @@ header.nav{
 }
 .demo-row{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
 .demo-row.tall .frame{aspect-ratio:4/5}
+/* Six frames on three columns is two rows; at 4/5 each that panel is twice
+   as tall as the copy beside it. A square tile keeps the block balanced and
+   still shows the whole product. */
+.demo-row.six{grid-template-columns:repeat(3,1fr);gap:8px}
+.demo-row.six .frame{aspect-ratio:1}
 .demo-row .frame{opacity:1;transform:none}
 .copyblock{
   background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:20px;
@@ -1209,18 +1214,72 @@ figure{margin:0}
 .soon i{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:pulse 2.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 /* The phone, drawn rather than photographed — nothing to download, nothing to age. */
-.appshot{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:340px;margin-inline:auto}
-.appshot .scr{
-  border:1px solid var(--line);border-radius:14px;background:var(--surface-2);padding:10px;box-shadow:var(--frame-shadow);
-  display:flex;flex-direction:column;gap:8px
+/* A phone, drawn rather than photographed — no mockup asset to source, to
+   licence or to re-shoot every time the app's screen changes, and it takes
+   the theme with the rest of the page. Two abstract rounded rectangles said
+   "placeholder", which on a Coming Soon panel reads as nothing at all. */
+.appshot{max-width:264px;margin-inline:auto;position:relative}
+.phone{
+  position:relative;border-radius:34px;padding:9px;background:var(--ink);
+  box-shadow:var(--frame-shadow-lg);border:1px solid var(--line)
 }
-.appshot .scr:nth-child(2){transform:translateY(18px)}
-.appshot .bar{height:6px;border-radius:3px;background:var(--line-soft)}
-.appshot .bar.a{width:62%}
-.appshot .bar.b{width:40%}
-.appshot .ph{border-radius:8px;aspect-ratio:4/5;background:linear-gradient(150deg,var(--accent-wash),var(--cyan-wash));border:1px solid var(--line-soft)}
-.appshot .ph.two{background:linear-gradient(150deg,var(--cyan-wash),var(--accent-wash))}
-@media(prefers-reduced-motion:reduce){.tiles i,.soon i{animation:none}}
+/* The earpiece slot. */
+.phone::before{
+  content:"";position:absolute;left:50%;top:17px;transform:translateX(-50%);z-index:3;
+  width:64px;height:5px;border-radius:3px;background:color-mix(in srgb,var(--paper) 22%,transparent)
+}
+.screen{
+  border-radius:26px;overflow:hidden;background:var(--surface);aspect-ratio:9/19.2;
+  display:flex;flex-direction:column
+}
+.scr-top{
+  padding:26px 13px 9px;display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface-2);border-bottom:1px solid var(--line-soft)
+}
+.scr-top b{font-size:12px;font-weight:800;letter-spacing:-.01em}
+.scr-top .cr{font-family:var(--f-mono);font-size:9px;color:var(--accent);letter-spacing:.06em}
+.scr-body{padding:10px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
+/* What the seller sent, with the tools that act on it underneath. */
+.scr-hero{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--line-soft)}
+.scr-hero img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover}
+.scr-hero span{
+  position:absolute;left:6px;bottom:6px;font-family:var(--f-mono);font-size:7.5px;letter-spacing:.07em;
+  text-transform:uppercase;background:var(--ink);color:var(--paper);padding:3px 5px;border-radius:2px
+}
+.scr-tools{display:flex;gap:5px;flex-wrap:wrap}
+.scr-tools i{
+  font-style:normal;font-size:8.5px;font-weight:600;color:var(--ink-soft);padding:4px 6px;
+  border:1px solid var(--line);border-radius:3px;background:var(--surface-2)
+}
+.scr-tools i[data-on]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.scr-out{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.scr-out img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:5px}
+.scr-bar{
+  margin-top:auto;display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:8px 0 12px;border-top:1px solid var(--line-soft);background:var(--surface-2)
+}
+.scr-bar u{width:26px;height:3px;border-radius:2px;background:var(--line);text-decoration:none}
+.scr-bar u[data-on]{background:var(--ink)}
+/* The push that arrives while the reel renders — the app's whole argument. */
+.push{
+  position:absolute;left:-16px;right:-16px;bottom:34px;z-index:4;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+  box-shadow:var(--frame-shadow-lg);display:flex;gap:8px;align-items:center;
+  animation:pushIn 4.2s cubic-bezier(.2,.8,.3,1) infinite both
+}
+.push em{
+  font-style:normal;width:20px;height:20px;flex:none;border-radius:5px;background:var(--accent);
+  display:grid;place-items:center;color:var(--accent-ink);font-size:10px;font-weight:800
+}
+.push b{display:block;font-size:10.5px;font-weight:700;line-height:1.3}
+.push span{display:block;font-size:9.5px;color:var(--muted);line-height:1.35}
+@keyframes pushIn{
+  0%,6%{opacity:0;transform:translateY(10px) scale(.97)}
+  16%,78%{opacity:1;transform:none}
+  92%,100%{opacity:0;transform:translateY(-6px) scale(.99)}
+}
+@media(max-width:860px){.appshot{max-width:238px}}
+@media(prefers-reduced-motion:reduce){.tiles i,.soon i,.push{animation:none}}
 
 /* ============================================================
    CAPABILITIES — the grid that says what the thing does
@@ -1261,7 +1320,14 @@ figure{margin:0}
 @media(max-width:900px){.link:nth-child(3)::before{display:none}}
 @media(max-width:520px){.link + .link::before{display:none}}
 .link figure{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
-.link img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+.link img,.link video{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+/* The last step is the only one that is a video; say so, quietly. */
+.link .plays{position:relative}
+.link .plays::after{
+  content:"PLAYING";position:absolute;left:9px;top:9px;font-family:var(--f-mono);font-size:9.5px;
+  letter-spacing:.09em;padding:4px 7px;border-radius:2px;color:#fff;
+  background:color-mix(in srgb,#0B090D 62%,transparent);backdrop-filter:blur(6px)
+}
 .link .step{font-family:var(--f-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 0 5px}
 .link b{display:block;font-size:15.5px;font-weight:700;letter-spacing:-.01em}
 .link p{font-size:13.5px;color:var(--muted);line-height:1.55;margin-top:5px}
@@ -1408,10 +1474,10 @@ figure{margin:0}
 
           <div class="frame" data-i="5">
             <div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp">
+            <img class="ph" alt="The same bottle on a warm sand backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp">
             <span class="scrim"></span>
             <span class="fnum">06</span>
-            <div class="frame-tag"><span class="nm">Bimbo<br>Fabrics</span><span class="pr">₦18,000</span></div>
+            <div class="frame-tag"><span class="nm">Ravi<br>Hair Oil</span><span class="pr">₦4,500</span></div>
           </div>
 
         </div>
@@ -1479,17 +1545,17 @@ figure{margin:0}
           <div class="cell" data-slot="04">
           <div class="frame" data-s="3">
             <div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp">
+            <img class="ph" alt="The same bottle on a plain white sweep" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb_min.webp">
             <span class="scrim"></span>
-            <div class="frame-tag"><span class="nm">Bimbo</span><span class="pr">₦18,000</span></div>
+            <div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div>
           </div>
           </div>
           <div class="cell" data-slot="05">
           <div class="frame" data-s="4">
             <div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d_min.webp">
+            <img class="ph" alt="The same bottle on a warm sand backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp">
             <span class="scrim"></span>
-            <div class="frame-tag"><span class="nm">Kicks</span><span class="pr">₦32,000</span></div>
+            <div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div>
           </div>
           </div>
           <div class="cell" data-slot="06">
@@ -1528,10 +1594,13 @@ figure{margin:0}
         </ul>
       </div>
       <div class="demo-card">
-        <div class="demo-row tall">
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div><img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"><span class="scrim"></span><span class="fnum">01</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div><img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp"><span class="scrim"></span><span class="fnum">02</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div><img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d_min.webp"><span class="scrim"></span><span class="fnum">03</span><div class="frame-tag"><span class="nm">Kicks</span><span class="pr">₦32,000</span></div></div>
+        <div class="demo-row tall six">
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div><img class="ph" alt="The bottle on a peach studio backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"><span class="scrim"></span><span class="fnum">01</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div><img class="ph" alt="The same bottle on a teal backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp"><span class="scrim"></span><span class="fnum">02</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div><img class="ph" alt="The same bottle on a warm sand backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp"><span class="scrim"></span><span class="fnum">03</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)"></div><img class="ph" alt="The same bottle on a plain white sweep" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb_min.webp"><span class="scrim"></span><span class="fnum">04</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div><img class="ph" alt="The same bottle, cropped square for a feed post" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"><span class="scrim"></span><span class="fnum">05</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div><img class="ph" alt="The same bottle, cropped tall for a story" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp"><span class="scrim"></span><span class="fnum">06</span><div class="frame-tag"><span class="nm">Ravi</span><span class="pr">₦4,500</span></div></div>
         </div>
       </div>
     </div>
@@ -2072,7 +2141,12 @@ figure{margin:0}
         <p>On the surface you describe, checked against your original so the product stays yours.</p>
       </div>
       <div class="link">
-        <figure><img alt="The scene turned into a short vertical reel" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <figure class="plays">
+          <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+                 poster="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp" aria-label="The scene turned into a short vertical reel">
+            <source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4" type="video/mp4">
+          </video>
+        </figure>
         <p class="step">Step four</p><b>Into a reel</b>
         <p>Twelve seconds with a caption and a voice, ready for Status, Reels and TikTok.</p>
       </div>
@@ -2179,8 +2253,30 @@ figure{margin:0}
         </div>
       </div>
       <div class="appshot" aria-hidden="true">
-        <div class="scr"><span class="bar a"></span><span class="ph"></span><span class="bar b"></span></div>
-        <div class="scr"><span class="bar b"></span><span class="ph two"></span><span class="bar a"></span></div>
+        <div class="phone">
+          <div class="screen">
+            <div class="scr-top"><b>AnyStudio</b><span class="cr">840 cr</span></div>
+            <div class="scr-body">
+              <div class="scr-hero">
+                <img alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp" width="900" height="675" loading="lazy" decoding="async">
+                <span>Your photo</span>
+              </div>
+              <div class="scr-tools">
+                <i data-on>New scene</i><i>Cut out</i><i>Reel</i><i>Caption</i>
+              </div>
+              <div class="scr-out">
+                <img alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp" width="400" height="400" loading="lazy" decoding="async">
+                <img alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp" width="400" height="400" loading="lazy" decoding="async">
+                <img alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp" width="400" height="400" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <div class="scr-bar"><u data-on></u><u></u><u></u></div>
+          </div>
+        </div>
+        <div class="push">
+          <em>✓</em>
+          <span><b>Your reel is ready</b><span>Ravi Hair Oil · 12 seconds</span></span>
+        </div>
       </div>
     </div>
   </div>

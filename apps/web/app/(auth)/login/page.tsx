@@ -6,6 +6,7 @@
  */
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { PasswordControl } from '@/components/ui/Password';
+import { cleanCode } from '@/lib/auth-code';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { followHandoff } from '@/lib/handoff';
@@ -119,11 +120,18 @@ function LoginForm() {
           <input
             id="code"
             className="inp"
+            type="text"
             inputMode="numeric"
             autoComplete="one-time-code"
             pattern="[0-9]{6}"
+            maxLength={6}
+            spellCheck={false}
+            autoCapitalize="off"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            // The login challenge checks the authenticator secret and nothing
+            // else, so a letter here can never be right. Strip rather than
+            // let someone submit `063296jjj` and be told it did not match.
+            onChange={(e) => setCode(cleanCode(e.target.value, 'totp'))}
             autoFocus
             required
           />
