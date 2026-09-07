@@ -67,8 +67,9 @@ export class LocalProvider extends BaseProvider {
       // The end card starts where the last shot ends; that needs the real durations.
       const durations = await Promise.all(shotPaths.map((s) => probeDurationMs(s).catch(() => 5000)));
       const endStartSec = durations.reduce((a, b) => a + b, 0) / 1000;
+      const size = outputSize(p.aspect, await probeWidth(shotPaths[0]!));
       const out = join(dir, 'out.mp4');
-      const args = buildArgs(p, shotPaths, { musicPath, voPath, out, endStartSec });
+      const args = buildArgs(p, shotPaths, { musicPath, voPath, out, endStartSec, size });
       const started = Date.now();
       try {
         await exec('ffmpeg', args, { maxBuffer: 16 * 1024 * 1024, timeout: opts.timeoutMs, signal: opts.signal });
@@ -78,13 +79,12 @@ export class LocalProvider extends BaseProvider {
       }
       opts.onProgress?.('Finishing the file', 90);
       const bytes = await readFile(out);
-      const frame = FRAME[p.aspect];
       const durationMs = await probeDurationMs(out).catch(() => undefined);
       return {
         providerKey: this.key,
         costMinor: 0,
-        artifacts: [{ bytes: new Uint8Array(bytes), mime: 'video/mp4', role: 'video', width: frame.w, height: frame.h, durationMs }],
-        meta: { shots: shotPaths.length, encodeMs: Date.now() - started },
+        artifacts: [{ bytes: new Uint8Array(bytes), mime: 'video/mp4', role: 'video', width: size.w, height: size.h, durationMs }],
+        meta: { shots: shotPaths.length, encodeMs: Date.now() - started, width: size.w, height: size.h },
       };
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -98,9 +98,9 @@ const index = (name: string): number => Number(name.slice('shotKeys['.length, -1
 function buildArgs(
   p: CapabilityParams<'VIDEO_STITCH'>,
   shots: string[],
-  io: { musicPath?: string; voPath?: string; out: string; endStartSec: number },
+  io: { musicPath?: string; voPath?: string; out: string; endStartSec: number; size: { w: number; h: number } },
 ): string[] {
-  const { w, h } = FRAME[p.aspect];
+  const { w, h } = io.size;
   const args: string[] = ['-v', 'error', '-y'];
   for (const s of shots) args.push('-i', s);
   let audioIdx = shots.length;
@@ -165,7 +165,36 @@ function buildArgs(
 
   // Bound the output by the picture, never by the audio: a short voiceover must not cut the ad.
   args.push('-filter_complex', f.join(';'), '-map', '[vout]', '-map', '[aout]', '-t', (io.endStartSec + endCardSecs).toFixed(2));
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-profile:v', 'high', '-level', '4.1', '-pix_fmt', 'yuv420p', '-color_range', 'tv');
+  // x264's own default was `medium`, which is three to five times slower than
+  // `veryfast` at the same CRF — and the difference is a slightly larger file,
+  // not a visibly worse one. That trade is wrong here twice over: this runs on
+  // half a Render CPU, where it was minutes of the "Assembling your ad" wait a
+  // seller sits through; and the file's next stop is Instagram or TikTok, which
+  // re-encodes it on upload and throws our extra care away. Quality is CRF, and
+  // CRF has not moved.
+  //
+  // `-threads` is capped for the same reason sharp's pool is: x264 sizes its
+  // thread count from the CPUs it can SEE, which is the host's, and a 0.5-CPU
+  // container asked for eight threads spends its time context-switching.
+  args.push('-filter_complex_threads', process.env.STITCH_THREADS ?? '2');
+  args.push(
+    '-c:v',
+    'libx264',
+    '-preset',
+    process.env.STITCH_PRESET ?? 'veryfast',
+    '-crf',
+    '20',
+    '-threads',
+    process.env.STITCH_THREADS ?? '2',
+    '-profile:v',
+    'high',
+    '-level',
+    '4.1',
+    '-pix_fmt',
+    'yuv420p',
+    '-color_range',
+    'tv',
+  );
   args.push('-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', io.out);
   return args;
 }
@@ -178,4 +207,40 @@ function esc(text: string): string {
 async function probeDurationMs(path: string): Promise<number> {
   const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]);
   return Math.round(Number(stdout.trim()) * 1000);
+}
+
+/** The pixel width of a shot, or null when ffprobe cannot say. */
+async function probeWidth(path: string): Promise<number | null> {
+  try {
+    const { stdout } = await exec('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path]);
+    const w = Number(stdout.trim());
+    return Number.isFinite(w) && w > 0 ? w : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The size to encode the ad at.
+ *
+ * FRAME is the shape the ad is FOR, and it used to be the size as well —
+ * every stitch encoded 1080x1920 whatever it was handed. The vendors return
+ * 720p (see the provider rows), so that was an upscale: no detail gained,
+ * and measured on a four-shot 30-second ad it cost 27 seconds and a 637 MB
+ * ffmpeg against 6 seconds and 260 MB at the source size. On a 512 MB
+ * worker with Node already holding 165 MB, the 1080 encode does not fit,
+ * which is how an ad reached "Assembling your ad" and then took the whole
+ * process down with it.
+ *
+ * So the shape comes from the aspect and the SIZE comes from the material,
+ * capped at the frame. Hand it 1080p shots and it encodes 1080p; hand it
+ * 720p and it stops pretending. STITCH_MAX_WIDTH lowers the cap further on
+ * a small box, and raising the instance needs no code change at all.
+ */
+function outputSize(aspect: '9:16' | '1:1' | '16:9', sourceWidth: number | null): { w: number; h: number } {
+  const frame = FRAME[aspect];
+  const cap = Number(process.env.STITCH_MAX_WIDTH ?? frame.w);
+  const w = Math.max(360, Math.min(frame.w, cap, sourceWidth ?? frame.w));
+  const even = (n: number) => Math.round(n / 2) * 2;
+  return { w: even(w), h: even((w * frame.h) / frame.w) };
 }

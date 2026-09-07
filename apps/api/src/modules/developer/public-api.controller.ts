@@ -12,7 +12,13 @@
  *   GET  /api/v1/generations/:id
  *   POST /api/v1/generations/:id/cancel
  *   POST /api/v1/generations/:id/unlock  the rest of a song
- *   GET  /api/v1/audio/genres | voices | dub-languages
+ *   GET  /api/v1/catalogue/audio/genres | voices | dub-languages
+ *
+ * The audio catalogues sit under /catalogue because /audio/* is the STUDIO's,
+ * declared by AudioController for a session. Both controllers had claimed
+ * those three paths and AudioModule registers first, so an API key reaching
+ * /audio/genres met the session guard and was refused — these handlers had
+ * never once run. See routes.spec.ts, which now refuses a duplicate path.
  *
  * Every answer is the same envelope the portal gets; every error has a
  * `code` and, for a 400, `fields`. See docs/API.md.
@@ -113,21 +119,21 @@ export class PublicApiController {
     return this.audio.unlock(req.actor!, req.apiKey!.workspaceId, id, req);
   }
 
-  @Get('/audio/genres')
+  @Get('/catalogue/audio/genres')
   @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Music genres' })
   genres() {
     return this.audio.genres();
   }
 
-  @Get('/audio/voices')
+  @Get('/catalogue/audio/voices')
   @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Voices this environment can serve' })
   voices() {
     return this.audio.voices((k) => this.registry.get(k) !== undefined);
   }
 
-  @Get('/audio/dub-languages')
+  @Get('/catalogue/audio/dub-languages')
   @RequireScope('catalogue:read')
   @ApiOperation({ summary: 'Languages a video can be dubbed into' })
   dubLanguages() {

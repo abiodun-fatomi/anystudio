@@ -464,6 +464,31 @@ function Studio() {
                 <button type="button" onClick={() => setViewer(true)} aria-label="See the photo at full size" title="Full size">
                   <Icon.expand width={14} height={14} />
                 </button>
+                {/*
+                 * Take it off the canvas.
+                 *
+                 * There was no way to. The only X in the studio is the one on
+                 * a thumbnail in the strip, and that DELETES the photo from
+                 * the library — so someone who had simply picked the wrong
+                 * one, or who started from a catalogue product that never
+                 * appears in the strip at all, was stuck with it on the
+                 * canvas with nothing to click.
+                 *
+                 * This is the harmless half of that pair, and it says which
+                 * half it is: the photo stays in the library and in the
+                 * strip, and one click puts it back.
+                 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSourceMeta(null);
+                    setUrl({ source: null });
+                  }}
+                  aria-label="Take this photo off the canvas"
+                  title="Clear the canvas — the photo stays in your library"
+                >
+                  <Icon.x width={14} height={14} />
+                </button>
               </div>
             )}
           </div>
