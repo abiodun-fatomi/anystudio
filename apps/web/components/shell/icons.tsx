@@ -204,5 +204,14 @@ export const Icon = {
       <path d="M3 10h18M8 3v4m8-4v4" />
     </svg>
   ),
+  // Several photos in one frame — the tool strip's collage.
+  collage: (p: SVGProps<SVGSVGElement>) => (
+    <svg {...base(p)}>
+      <rect x="3" y="3" width="8" height="10" rx="1.5" />
+      <rect x="13" y="3" width="8" height="6" rx="1.5" />
+      <rect x="3" y="15" width="8" height="6" rx="1.5" />
+      <rect x="13" y="11" width="8" height="10" rx="1.5" />
+    </svg>
+  ),
 };
 export type IconName = keyof typeof Icon;

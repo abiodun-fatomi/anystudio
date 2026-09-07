@@ -36,6 +36,9 @@ const CREDIT_COSTS = [
   { code: 'image.bg_remove', credits: 2, label: 'Background removal' },
   { code: 'image.upscale', credits: 3, label: 'Upscale' },
   { code: 'image.relight', credits: 5, label: 'Relight and shadow' },
+  // Ours end to end — sharp on our own box, no vendor — so it is priced to be
+  // used freely: a seller who makes a collage of every batch posts more often.
+  { code: 'image.collage', credits: 2, label: 'Photo collage' },
   { code: 'text.description', credits: 2, label: 'Product description' },
   { code: 'text.caption', credits: 1, label: 'Social caption' },
   // A reel is 5–8 seconds of provider video. At launch pricing a credit is

@@ -7,8 +7,8 @@
  * error — the panel says what this would cost and offers the two ways to
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
-import { Fragment, useEffect, useRef, useState } from 'react';
-import { api, type DubLanguages, type Genre, type Idea, type IdeasOut, type Quote } from '@/lib/api';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { api, type DubLanguages, type Genre, type Idea, type IdeasOut, type MediaAssetRow, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
@@ -18,7 +18,14 @@ import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, 
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
 
-const BUTTON_LABEL: Record<string, string> = { copy: 'Write it', music: 'Make the song', voice: 'Record it', translate: 'Translate it', lipsync: 'Sync it' };
+const BUTTON_LABEL: Record<string, string> = {
+  copy: 'Write it',
+  music: 'Make the song',
+  voice: 'Record it',
+  translate: 'Translate it',
+  lipsync: 'Sync it',
+  collage: 'Put them together',
+};
 
 export function ToolPanel({
   tool,
@@ -77,7 +84,7 @@ export function ToolPanel({
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
                 <Fragment key={f.key}>
-                  <FieldControl field={f} value={values[f.key]} onChange={(v) => onChange(f.key, v)} />
+                  <FieldControl field={f} value={values[f.key]} values={values} onChange={(v) => onChange(f.key, v)} />
                   {tool.ideas && tool.ideas.under === f.key && (
                     <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
                   )}
@@ -353,6 +360,193 @@ function FileField({ field, value, onChange }: { field: Extract<Field, { kind: '
   );
 }
 
+/**
+ * Several photos, in the order they are tapped.
+ *
+ * The order is the whole point of the control: the number on a thumbnail is
+ * where that photo lands in the collage, so tapping is both "use this" and
+ * "put it here". Tapping a chosen photo again takes it out and closes the
+ * gap. New photos can be added from the device without leaving the panel —
+ * an upload goes straight to the end of the list, which is what someone
+ * photographing a batch expects.
+ */
+function PhotosField({ field, value, onChange }: { field: Extract<Field, { kind: 'photos' }>; value: string[]; onChange: (v: unknown) => void }) {
+  const { workspace } = useApp();
+  const [rows, setRows] = useState<MediaAssetRow[] | null>(null);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [pct, setPct] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const chosen = value.filter(Boolean);
+
+  const load = useCallback(async () => {
+    try {
+      const list = await api.media.list(workspace.id, { kind: 'SOURCE', take: 30 });
+      setRows(list);
+      if (list.length) {
+        const { urls: u } = await api.media.urls(
+          workspace.id,
+          list.map((r) => r.key),
+        );
+        setUrls((prev) => ({ ...prev, ...u }));
+      }
+    } catch {
+      setRows([]);
+    }
+  }, [workspace.id]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // A key that arrived without the strip having loaded it — a "do it again",
+  // a prefill — still needs a picture to show.
+  useEffect(() => {
+    const unknown = chosen.filter((k) => !urls[k]);
+    if (unknown.length === 0) return;
+    let live = true;
+    api.media
+      .urls(workspace.id, unknown)
+      .then(({ urls: u }) => {
+        if (live) setUrls((prev) => ({ ...prev, ...u }));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, chosen.join(','), urls]);
+
+  const toggle = (key: string) => {
+    const at = chosen.indexOf(key);
+    if (at >= 0) onChange(chosen.filter((k) => k !== key));
+    else if (chosen.length < field.max) onChange([...chosen, key]);
+  };
+
+  const upload = async (files: FileList | null) => {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith('image/') || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
+    if (list.length === 0) return;
+    setError(null);
+    const added: string[] = [];
+    for (const file of list) {
+      if (chosen.length + added.length >= field.max) break;
+      try {
+        setPct(0);
+        const asset = await uploadFile(workspace.id, file, (p) => setPct(p.pct));
+        added.push(asset.key);
+        setRows((r) => [asset, ...(r ?? []).filter((x) => x.id !== asset.id)]);
+        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
+        setUrls((prev) => ({ ...prev, ...u }));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Upload failed');
+      }
+    }
+    setPct(null);
+    if (added.length) onChange([...chosen, ...added]);
+  };
+
+  const full = chosen.length >= field.max;
+  return (
+    <div>
+      <span className={styles.fieldLabel}>
+        {field.label}
+        <span className={styles.photoCount}>
+          {chosen.length} of {field.max}
+          {chosen.length < field.min ? ` · ${field.min} minimum` : ''}
+        </span>
+      </span>
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void upload(e.target.files).finally(() => (e.target.value = ''))} />
+      {rows === null ? (
+        <Skeleton style={{ height: 132 }} />
+      ) : (
+        <div className={styles.photoGrid} role="group" aria-label={field.label}>
+          <button type="button" className={styles.photoAdd} onClick={() => input.current?.click()} disabled={pct !== null || full}>
+            {pct !== null ? <Progress value={pct} label="" /> : <Icon.plus />}
+            <span>{full ? 'Full' : pct !== null ? 'Adding…' : 'Add'}</span>
+          </button>
+          {rows.map((r) => {
+            const at = chosen.indexOf(r.key);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={styles.photoTile}
+                aria-pressed={at >= 0}
+                disabled={at < 0 && full}
+                onClick={() => toggle(r.key)}
+                title={at >= 0 ? `Photo ${at + 1} — tap to take it out` : full ? `${field.max} is the most that fits` : 'Add to the collage'}
+              >
+                {urls[r.key] ? <img src={urls[r.key]} alt="" loading="lazy" /> : <span className={styles.photoBlank} />}
+                {at >= 0 && <span className={styles.photoNum}>{at + 1}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <span className={styles.fieldHint}>{error ?? field.hint}</span>
+    </div>
+  );
+}
+
+/** One short line per photo picked, in the same order, each next to its thumbnail so there is no counting. */
+function PhotoLabelsField({
+  field,
+  value,
+  keys,
+  onChange,
+}: {
+  field: Extract<Field, { kind: 'photoLabels' }>;
+  value: string[];
+  keys: string[];
+  onChange: (v: unknown) => void;
+}) {
+  const { workspace } = useApp();
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  // The keys themselves, not the array's identity: the panel rebuilds this
+  // array on every keystroke, and refetching the same thumbnails each time
+  // would be a request per letter typed.
+  const joined = keys.join(',');
+  useEffect(() => {
+    const wanted = joined ? joined.split(',') : [];
+    if (wanted.length === 0) return;
+    let live = true;
+    api.media
+      .urls(workspace.id, wanted)
+      .then(({ urls: u }) => {
+        if (live) setUrls(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, joined]);
+  if (keys.length === 0) return null;
+  const set = (i: number, text: string) => {
+    const next = keys.map((_, n) => value[n] ?? '');
+    next[i] = text;
+    onChange(next);
+  };
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.photoLabels}>
+        {keys.map((k, i) => (
+          <label key={k} className={styles.photoLabelRow}>
+            {urls[k] ? <img src={urls[k]} alt="" /> : <span className={styles.photoBlank} />}
+            <input
+              type="text"
+              value={value[i] ?? ''}
+              maxLength={28}
+              placeholder={i === 0 ? 'Before' : i === 1 ? 'After' : `Photo ${i + 1}`}
+              onChange={(e) => set(i, e.target.value)}
+              aria-label={`Word on photo ${i + 1}`}
+            />
+          </label>
+        ))}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
 /** An idea lands in the prompt, and its camera move in the camera field when that one is still empty. */
 function pickIdea(tool: Tool, values: Record<string, unknown>, idea: Idea, onChange: (key: string, value: unknown) => void) {
   if (!tool.ideas) return;
@@ -450,7 +644,18 @@ function Ideas({ tool, values, sourceKey, onPick }: { tool: Tool; values: Record
   );
 }
 
-function FieldControl({ field, value, onChange }: { field: Field; value: unknown; onChange: (v: unknown) => void }) {
+function FieldControl({
+  field,
+  value,
+  values,
+  onChange,
+}: {
+  field: Field;
+  value: unknown;
+  /** The whole panel, for the fields whose options or contents depend on another one. */
+  values: Record<string, unknown>;
+  onChange: (v: unknown) => void;
+}) {
   switch (field.kind) {
     case 'text':
       if (field.suggestions && !field.rows) {
@@ -515,8 +720,29 @@ function FieldControl({ field, value, onChange }: { field: Field; value: unknown
           <SegmentedControl label={field.label} value={String(value ?? field.options[0]!.id)} onChange={onChange} items={field.options} />
         </div>
       );
-    case 'select':
-      return <Select label={field.label} options={field.options} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+    case 'select': {
+      const options = field.optionsFor?.(values) ?? field.options;
+      return (
+        <Select
+          label={field.label}
+          options={options.length ? options : field.options}
+          hint={field.hintFor?.(values)}
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
+    }
+    case 'photos':
+      return <PhotosField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
+    case 'photoLabels':
+      return (
+        <PhotoLabelsField
+          field={field}
+          value={Array.isArray(value) ? (value as string[]) : []}
+          keys={Array.isArray(values[field.forKey]) ? (values[field.forKey] as string[]) : []}
+          onChange={onChange}
+        />
+      );
     case 'switch':
       return <Switch label={field.label} hint={field.hint} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
     case 'slider':

@@ -7,10 +7,24 @@
  * a param is presented — a segmented control, a slider, a text box — not
  * whether it is valid. Adding a tool is adding an entry here.
  */
-import { ASPECTS, EXPORT_SIZES, PIPELINE_WRITTEN_KEYS, type Capability, type ExportSize, adPlan, presenterCostCode } from '@anystudio/shared';
+import {
+  ASPECTS,
+  COLLAGE_LAYOUTS,
+  COLLAGE_MAX_PHOTOS,
+  COLLAGE_MIN_PHOTOS,
+  EXPORT_SIZES,
+  PIPELINE_WRITTEN_KEYS,
+  type Capability,
+  type CollageLayout,
+  type ExportSize,
+  adPlan,
+  collageLayoutsFor,
+  presenterCostCode,
+} from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
-export type ToolId = 'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
+export type ToolId =
+  'scene' | 'background' | 'cutout' | 'enhance' | 'copy' | 'video' | 'flyer' | 'collage' | 'restyle' | 'music' | 'voice' | 'translate' | 'lipsync';
 
 export type Field =
   | {
@@ -26,7 +40,15 @@ export type Field =
       suggestions?: string[];
     }
   | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string }> }
-  | { key: string; kind: 'select'; label: string; options: Array<{ value: string; label: string }> }
+  /** `optionsFor` narrows the list to what the other values allow — the arrangements that can hold this many photos. */
+  | {
+      key: string;
+      kind: 'select';
+      label: string;
+      options: Array<{ value: string; label: string }>;
+      optionsFor?: (values: Record<string, unknown>) => Array<{ value: string; label: string }>;
+      hintFor?: (values: Record<string, unknown>) => string | undefined;
+    }
   | { key: string; kind: 'switch'; label: string; hint?: string }
   | { key: string; kind: 'sizes'; label: string }
   | { key: string; kind: 'platforms'; label: string }
@@ -37,6 +59,14 @@ export type Field =
   | { key: string; kind: 'file'; label: string; accept: 'video' | 'audio' | 'image'; hint?: string; required?: boolean }
   /** A face for a "filmed by a customer" ad, from the PRESENTERS catalogue. */
   | { key: string; kind: 'presenter'; label: string; hint?: string }
+  /**
+   * Several photos, in the order they are tapped — the param holds a list of
+   * storage keys. The order is the layout's order, so the numbers on the
+   * thumbnails are not decoration: the first photo is the one that leads.
+   */
+  | { key: string; kind: 'photos'; label: string; min: number; max: number; hint?: string }
+  /** One line per photo picked, in the same order: "Before", "After", a colour, a size. */
+  | { key: string; kind: 'photoLabels'; label: string; forKey: string; hint?: string }
   /** A box that must be ticked before the button works — permission for a real person's face and voice. */
   | { key: string; kind: 'consent'; label: string; hint?: string };
 
@@ -85,6 +115,9 @@ const IMAGE_STAGES = {
   storing: 'Saving your images',
   done: 'Done',
 };
+
+/** How many photos are in a `photos` field's value, whatever shape it arrived in. */
+const countOf = (v: unknown): number => (Array.isArray(v) ? v.filter((k) => typeof k === 'string' && k).length : 0);
 
 /** A presenter needs the customer-filmed format and an ad long enough to hold a testimonial and the product. */
 const canPresent = (v: Record<string, unknown>): boolean => v.format === 'ugc' && Number(v.shots ?? 1) > 1;
@@ -254,6 +287,100 @@ export const TOOLS: Tool[] = [
       },
     ],
     defaults: { aspect: '9:16', count: 1, style: 'bold poster, big type, flat colour' },
+  },
+  {
+    id: 'collage',
+    label: 'Photos in one',
+    short: 'Collage',
+    icon: 'collage',
+    capability: 'COLLAGE',
+    // It brings its own photos — several of them — so the canvas photo is not its source.
+    needsSource: false,
+    narrative: {
+      queued: 'Waiting for a slot',
+      preparing: 'Arranging your photos',
+      composing: 'Laying them out',
+      storing: 'Saving your collage',
+      done: 'Done',
+    },
+    fields: [
+      {
+        key: 'sourceKeys',
+        kind: 'photos',
+        label: 'Your photos',
+        min: COLLAGE_MIN_PHOTOS,
+        max: COLLAGE_MAX_PHOTOS,
+        hint: 'Tap in the order you want them. The first one leads.',
+      },
+      {
+        key: 'layout',
+        kind: 'select',
+        label: 'Arrangement',
+        // Only the arrangements that can hold what has been picked: a
+        // before-and-after with five photos is not a choice worth offering.
+        options: [{ value: 'auto', label: COLLAGE_LAYOUTS.auto.label }],
+        optionsFor: (v) =>
+          collageLayoutsFor(countOf(v.sourceKeys)).map((k) => ({ value: k, label: COLLAGE_LAYOUTS[k].label })) || [
+            { value: 'auto', label: COLLAGE_LAYOUTS.auto.label },
+          ],
+        hintFor: (v) => {
+          const key = String(v.layout ?? 'auto') as CollageLayout;
+          return COLLAGE_LAYOUTS[key]?.note;
+        },
+      },
+      {
+        key: 'aspect',
+        kind: 'segment',
+        label: 'Shape',
+        options: [
+          { id: '1:1', label: 'Square' },
+          { id: '4:5', label: 'Feed 4:5' },
+          { id: '9:16', label: 'Status 9:16' },
+        ],
+      },
+      { key: 'labels', kind: 'photoLabels', forKey: 'sourceKeys', label: 'A word on each photo', hint: 'Optional — leave any of them blank.' },
+      {
+        key: 'background',
+        kind: 'select',
+        label: 'Behind the photos',
+        options: [
+          { value: '#FFFFFF', label: 'White' },
+          { value: '#F6F1EA', label: 'Warm cream' },
+          { value: '#17131A', label: 'Near black' },
+          { value: 'brand', label: 'Your brand colour' },
+        ],
+      },
+      { key: 'gap', kind: 'slider', label: 'Space between', min: 0, max: 40, step: 2, format: (v) => (v === 0 ? 'Edge to edge' : `${v}`) },
+      { key: 'rounded', kind: 'switch', label: 'Rounded corners' },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '₦12,000', maxLength: 40 },
+      { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
+    ],
+    defaults: {
+      sourceKeys: [],
+      layout: 'auto',
+      aspect: '1:1',
+      gap: 14,
+      background: '#FFFFFF',
+      rounded: true,
+      labels: [],
+      sizes: ['feed_square', 'story'],
+    },
+    assemble: (p) => {
+      const keys = Array.isArray(p.sourceKeys) ? (p.sourceKeys as string[]).filter(Boolean) : [];
+      // An arrangement that no longer fits — two photos became four after
+      // "before and after" was chosen — quietly becomes the automatic one
+      // rather than being refused by the API.
+      const layout = String(p.layout ?? 'auto') as CollageLayout;
+      const fits = collageLayoutsFor(keys.length);
+      // Labels are per photo and positional: trim to the photos that exist,
+      // and send nothing at all when every one of them is blank.
+      const labels = (Array.isArray(p.labels) ? (p.labels as unknown[]) : []).slice(0, keys.length).map((l) => String(l ?? '').trim());
+      const out: Record<string, unknown> = { ...p, sourceKeys: keys, layout: fits.includes(layout) ? layout : 'auto' };
+      if (labels.some((l) => l.length > 0)) out.labels = labels;
+      else delete out.labels;
+      return out;
+    },
   },
   {
     id: 'copy',
@@ -752,6 +879,23 @@ export const TOOLS: Tool[] = [
 
 export const toolById = (id: string | null | undefined): Tool => TOOLS.find((t) => t.id === id) ?? TOOLS[0]!;
 
+/**
+ * A tool that carries its own source: the video it was given to translate,
+ * the several photos it was given to arrange. The canvas photo belongs to
+ * every OTHER tool, and must not be slipped into these ones' params.
+ */
+export const bringsItsOwnSource = (tool: Tool): boolean => tool.fields.some((f) => (f.kind === 'file' && f.key === 'sourceKey') || f.kind === 'photos');
+
+/** The photo a result card shows for a tool that brought several: the first one, which is the one that leads. */
+export const cardSourceFor = (tool: Tool, params: Record<string, unknown>): string | undefined => {
+  const photos = tool.fields.find((f) => f.kind === 'photos');
+  if (photos) {
+    const keys = params[photos.key];
+    return Array.isArray(keys) ? ((keys as string[]).find(Boolean) ?? undefined) : undefined;
+  }
+  return typeof params.sourceKey === 'string' ? params.sourceKey : undefined;
+};
+
 /** Segments and selects carry strings; some params are numbers. Coerce by the tool's defaults. */
 export function coerceParams(tool: Tool, values: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...tool.defaults, ...values };
@@ -781,6 +925,11 @@ export function missingFor(tool: Tool, values: Record<string, unknown>): string 
     if (f.kind === 'catalogue' && !String(v ?? '').trim()) return `Pick ${f.label.toLowerCase()}.`;
     if (f.kind === 'presenter' && !String(v ?? '').trim()) return 'Pick who talks to camera.';
     if (f.kind === 'consent' && v !== true) return 'Tick the permission box first.';
+    if (f.kind === 'photos') {
+      const n = countOf(v);
+      if (n < f.min) return n === 0 ? `Pick at least ${f.min} photos.` : `${f.min - n} more ${f.min - n === 1 ? 'photo' : 'photos'} to go.`;
+      if (n > f.max) return `That is ${n} photos — ${f.max} is the most that fits.`;
+    }
   }
   if (tool.id === 'lipsync' && values.mode === 'audio' && !String(values.audioKey ?? '').trim()) return 'Add the audio first.';
   if (tool.id === 'lipsync' && values.mode !== 'audio' && !String(values.script ?? '').trim()) return 'Write the script first.';
