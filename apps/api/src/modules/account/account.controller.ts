@@ -126,13 +126,28 @@ export class AccountController {
     return this.account.activity(actor, q);
   }
 
-  @Get('/notifications')
+  /**
+   * SETTINGS, not the bell.
+   *
+   * These two lived at `/me/notifications`, which is also where
+   * NotificationController serves the bell's list — two controllers, one
+   * URL, and Nest hands it to whichever module registered first. Account
+   * won, so every request for the notification LIST came back as
+   * `{ switches, emailMarketing, whatsappMarketing }`. The web client reads
+   * `items` off that, finds nothing, and renders an empty bell beside a
+   * badge of 58 — because `/me/notifications/unread` does NOT collide and
+   * was answering correctly the whole time.
+   *
+   * Renamed rather than nested: anything under `/me/notifications/…` now
+   * belongs to the bell, so the next route added there cannot repeat this.
+   */
+  @Get('/notification-settings')
   @ApiOperation({ summary: 'Notification switches and the current marketing choices' })
   notifications(@CurrentActor() actor: SessionActor) {
     return this.account.notifications(actor);
   }
 
-  @Put('/notifications')
+  @Put('/notification-settings')
   @ApiOperation({ summary: 'Save switches; marketing choices write consent rows with the exact wording' })
   updateNotifications(@CurrentActor() actor: SessionActor, @Body() body: NotificationsDto, @Req() req: Request) {
     return this.account.updateNotifications(actor, body, req);

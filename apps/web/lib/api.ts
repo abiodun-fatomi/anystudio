@@ -1336,13 +1336,13 @@ export const api = {
         'GET',
         `/me/security/activity?take=${opts.take ?? 20}${opts.cursor ? `&cursor=${opts.cursor}` : ''}`,
       ),
-    notifications: () => request<Notifications>('GET', '/me/notifications'),
+    notifications: () => request<Notifications>('GET', '/me/notification-settings'),
     updateNotifications: (body: {
       switches?: Partial<NotificationSwitches>;
       emailMarketing?: { granted: boolean; wording: string };
       whatsappMarketing?: { granted: boolean; wording: string };
       sourceUrl?: string;
-    }) => request<Notifications>('PUT', '/me/notifications', body),
+    }) => request<Notifications>('PUT', '/me/notification-settings', body),
     export: () => request<Record<string, unknown>>('GET', '/me/export'),
     requestDeletion: (reauth: Reauth) => request<{ status: 'scheduled'; deleteOn: string }>('POST', '/me/delete', { ...reauth, confirm: 'DELETE' }),
     cancelDeletion: () => request<{ status: 'kept' }>('POST', '/me/delete/cancel'),
