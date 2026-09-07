@@ -1002,13 +1002,19 @@ function FieldControl({
           optional={!field.required}
         />
       );
-    case 'segment':
+    case 'segment': {
+      const chosen = String(value ?? field.options[0]!.id);
+      // A note under the control, not a tooltip on it: the sentence that says
+      // what the choice means is worth more than the word on the button.
+      const note = field.options.find((o) => o.id === chosen)?.note;
       return (
         <div>
           <span className={styles.fieldLabel}>{field.label}</span>
-          <SegmentedControl label={field.label} value={String(value ?? field.options[0]!.id)} onChange={onChange} items={field.options} />
+          <SegmentedControl label={field.label} value={chosen} onChange={onChange} items={field.options} />
+          {note && <p className={styles.fieldNote}>{note}</p>}
         </div>
       );
+    }
     case 'select': {
       const options = field.optionsFor?.(values) ?? field.options;
       return (

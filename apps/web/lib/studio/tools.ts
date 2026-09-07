@@ -28,6 +28,10 @@ import {
   presetCapability,
   productMode,
   productModeCostCode,
+  productShotCostCode,
+  SHOT_SIZES,
+  SHOT_SIZE_KEYS,
+  TAKES_SHOT_SIZE,
   OFFERED_PRODUCT_MODES,
   presenterCostCode,
 } from '@anystudio/shared';
@@ -63,7 +67,8 @@ export type Field =
       /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
       suggestions?: string[];
     }
-  | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string }> }
+  /** `note` on an option is the sentence shown under the control once it is chosen. */
+  | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string; note?: string }> }
   /** `optionsFor` narrows the list to what the other values allow — the arrangements that can hold this many photos. */
   | {
       key: string;
@@ -538,8 +543,10 @@ export const TOOLS: Tool[] = [
       storing: 'Saving your images',
       done: 'Done',
     },
-    // Priced by what was asked for: a model wearing it costs more than a press.
-    costCodeFor: (v) => productModeCostCode(v.mode as string),
+    // Priced by what was asked for: a model wearing it costs more than a press,
+    // and a 4K render costs more than a 1K one. The server derives this again
+    // from the params it validated; this is only so the price shown is right.
+    costCodeFor: (v) => productShotCostCode(v.mode as string, v.shotSize as string),
     fields: [
       { key: 'mode', kind: 'modes', label: 'What do you need?' },
       {
@@ -577,6 +584,16 @@ export const TOOLS: Tool[] = [
         options: [{ value: 'random', label: 'Any pose' }],
         optionsFor: () => MODEL_POSES.map((s) => ({ value: s, label: s === 'random' ? 'Any pose' : s })),
         showIf: (v) => v.mode === 'on_model',
+      },
+      {
+        // Named for what the picture is FOR, because "Premium" tells a seller
+        // nothing and reads like a sales page. Bigger costs more and takes
+        // longer, so the smallest is the default: a Status post wants neither.
+        key: 'shotSize',
+        kind: 'segment',
+        label: 'What is it for?',
+        options: SHOT_SIZE_KEYS.map((k) => ({ id: k, label: SHOT_SIZES[k].label, note: SHOT_SIZES[k].note })),
+        showIf: (v) => TAKES_SHOT_SIZE.includes(v.mode as never),
       },
       {
         key: 'color',

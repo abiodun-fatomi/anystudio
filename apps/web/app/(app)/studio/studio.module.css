@@ -1661,3 +1661,12 @@
     opacity: 0;
   }
 }
+
+/* The sentence under a segmented control. The word on the button is a label;
+   this is what the choice actually means, and it is worth the two lines. */
+.fieldNote {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}

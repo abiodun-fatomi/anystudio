@@ -44,6 +44,12 @@ const CREDIT_COSTS = [
   { code: 'image.product_shot', credits: 10, label: 'Product shot' },
   // Priced above the rest because it replaces a model and a photographer.
   { code: 'image.on_model', credits: 16, label: 'Worn by a model' },
+  // The same shot, bigger. A merchant posting to Status wants the first one
+  // and should not pay for pixels WhatsApp is going to throw away; a seller
+  // printing a banner needs the last one and knows it. The vendor renders
+  // roughly 1K, 2K and 4K on the long side, so the prices step with the work.
+  { code: 'image.on_model.2k', credits: 24, label: 'Worn by a model, for listing' },
+  { code: 'image.on_model.4k', credits: 38, label: 'Worn by a model, for printing' },
   { code: 'text.description', credits: 2, label: 'Product description' },
   { code: 'text.caption', credits: 1, label: 'Social caption' },
   // A reel is 5–8 seconds of provider video. At launch pricing a credit is
