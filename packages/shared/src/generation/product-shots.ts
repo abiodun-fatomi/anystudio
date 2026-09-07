@@ -275,4 +275,7 @@ export const PRODUCT_SIZE_BY_ASPECT: Record<string, string> = {
  * that drifts is not a reason to refuse and refund — it is a reason to ask
  * the merchant for the back of the bag.
  */
-export const PRODUCT_REFERENCE_ANGLES = { max: 3, helpfulFrom: 1 } as const;
+// Four, because that is the vendor's own ceiling (`maxItems: 4`), and this is
+// the one place where taking all it will accept is straightforwardly better
+// for the merchant.
+export const PRODUCT_REFERENCE_ANGLES = { max: 4, helpfulFrom: 1 } as const;

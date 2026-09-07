@@ -15,6 +15,7 @@ import {
   OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
   PRODUCT_MODE_KEYS,
+  PRODUCT_REFERENCE_ANGLES,
   QUEUES,
   SHOT_SIZES,
   SHOT_SIZE_KEYS,
@@ -80,8 +81,14 @@ describe('PRODUCT_SHOT params', () => {
   });
 
   it('takes reference angles, up to the cap, and never requires them', () => {
-    expect(parse({ ...base, angleKeys: ['ws/b.jpg', 'ws/c.jpg'] }).ok).toBe(true);
-    expect(parse({ ...base, angleKeys: ['a/1.jpg', 'a/2.jpg', 'a/3.jpg', 'a/4.jpg'] }).ok).toBe(false);
+    // Derived from the cap rather than written out, because the cap is the
+    // vendor's and moved once already: it is four now, and a test that spells
+    // the number fails for the wrong reason when it moves again.
+    const at = (n: number) => Array.from({ length: n }, (_, i) => `a/${i}.jpg`);
+    const { max } = PRODUCT_REFERENCE_ANGLES;
+    expect(parse({ ...base, angleKeys: [] }).ok, 'never required').toBe(true);
+    expect(parse({ ...base, angleKeys: at(max) }).ok, `${max} is the cap`).toBe(true);
+    expect(parse({ ...base, angleKeys: at(max + 1) }).ok, 'one past the cap').toBe(false);
   });
 });
 

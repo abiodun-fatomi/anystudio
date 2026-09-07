@@ -83,10 +83,16 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     if (p.prompt) q.set('virtualModel.prompt', p.prompt);
     // The only place the vendor accepts more angles of the product. Elsewhere
     // the extra photos are ours to keep for a retry, not the vendor's to read.
-    for (const name of Object.keys(files)
+    //
+    // The array is INDEXED and each element is an OBJECT — the same shape as
+    // `model` and `scene` above, one level deeper. Repeating a bare
+    // `virtualModel.additionalProductImages` is refused outright: "was
+    // provided more than once, but can only be provided once". Indexing makes
+    // each key unique, which is what it is asking for.
+    const angles = Object.keys(files)
       .filter((n) => n.startsWith('angleKeys['))
-      .sort())
-      q.append('virtualModel.additionalProductImages', files[name]!.url);
+      .sort();
+    angles.forEach((name, i) => q.set(`virtualModel.additionalProductImages[${i}].imageUrl`, files[name]!.url));
   },
   ghost_mannequin: (p, q) => {
     q.set('ghostMannequin.mode', 'ai.auto');

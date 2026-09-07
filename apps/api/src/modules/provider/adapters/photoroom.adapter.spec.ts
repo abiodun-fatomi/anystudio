@@ -96,14 +96,37 @@ describe('putting a garment on a model', () => {
     expect(q.get('removeBackground')).toBe('false');
   });
 
-  it('passes every extra angle under one repeated field', async () => {
+  /**
+   * The third shape bug a live run found. An array here is INDEXED and each
+   * element is an OBJECT — one level deeper than `model` and `scene`, and the
+   * same lesson. Repeating the bare key is refused: "was provided more than
+   * once, but can only be provided once".
+   */
+  it('indexes every extra angle, and gives each one its own object', async () => {
     const q = await sent(shot({ mode: 'on_model', model: 'avery', angleKeys: ['ws/b.jpg', 'ws/c.jpg'] }), {
       'angleKeys[0]': { url: 'https://x/b.jpg', mime: 'image/jpeg' },
       'angleKeys[1]': { url: 'https://x/c.jpg', mime: 'image/jpeg' },
     });
-    // No brackets in the name: the spec calls it an array and multipart
-    // convention repeats the plain field.
-    expect(q.getAll('virtualModel.additionalProductImages')).toEqual(['https://x/b.jpg', 'https://x/c.jpg']);
+    expect(q.get('virtualModel.additionalProductImages[0].imageUrl')).toBe('https://x/b.jpg');
+    expect(q.get('virtualModel.additionalProductImages[1].imageUrl')).toBe('https://x/c.jpg');
+    // The form that was refused, in either of its plausible spellings.
+    expect(q.getAll('virtualModel.additionalProductImages')).toEqual([]);
+    expect(q.getAll('virtualModel.additionalProductImages[]')).toEqual([]);
+  });
+
+  it('keeps the angles in the order the merchant gave them', async () => {
+    // The first photo is the one whose result gets looked at, and a bag shot
+    // back-then-side is not the same brief as side-then-back.
+    const q = await sent(shot({ mode: 'on_model', model: 'avery', angleKeys: ['a', 'b', 'c'] }), {
+      'angleKeys[2]': { url: 'https://x/3.jpg', mime: 'image/jpeg' },
+      'angleKeys[0]': { url: 'https://x/1.jpg', mime: 'image/jpeg' },
+      'angleKeys[1]': { url: 'https://x/2.jpg', mime: 'image/jpeg' },
+    });
+    expect([0, 1, 2].map((i) => q.get(`virtualModel.additionalProductImages[${i}].imageUrl`))).toEqual([
+      'https://x/1.jpg',
+      'https://x/2.jpg',
+      'https://x/3.jpg',
+    ]);
   });
 
   it('asks for the size the merchant chose', async () => {
