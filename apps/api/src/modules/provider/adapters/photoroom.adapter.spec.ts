@@ -146,6 +146,24 @@ describe('the modes that work on the product itself', () => {
   });
 });
 
+/**
+ * The endpoint's original job is background removal, so every mode is a cutout
+ * unless it says otherwise. A live run showed what that means in practice:
+ * pressed trousers floating on nothing, which is not what "Press it" offers.
+ */
+describe('who asked for a cutout', () => {
+  it('keeps the room a merchant photographed their goods in', async () => {
+    for (const mode of ['ironing', 'beautify', 'expand', 'on_model'])
+      expect((await sent(shot({ mode, ...(mode === 'on_model' ? { model: 'avery' } : {}) }))).get('removeBackground'), mode).toBe('false');
+  });
+
+  it('leaves the two shapes that are isolated by nature alone', async () => {
+    // A garment holding its own shape and a flat lay come back cut out
+    // because that is what those shots ARE, not as a side effect.
+    for (const mode of ['ghost_mannequin', 'flat_lay']) expect((await sent(shot({ mode }))).get('removeBackground'), mode).toBeNull();
+  });
+});
+
 describe('a mode we have not confirmed', () => {
   it('is refused rather than half-sent', async () => {
     // recolor and retouch are `verified: false`: their parameters were never

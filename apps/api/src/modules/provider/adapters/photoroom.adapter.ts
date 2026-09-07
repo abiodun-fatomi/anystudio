@@ -43,6 +43,23 @@ type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
 /** The per-feature frame name, for the modes whose size is set on themselves. */
 const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD';
 
+/**
+ * WHO ASKED FOR A CUTOUT.
+ *
+ * This endpoint's original job is background removal, so `removeBackground`
+ * defaults to TRUE and every mode is a cutout unless it says otherwise. A live
+ * run made that visible: "Press it" came back as pressed trousers floating on
+ * nothing, and "Make it studio" the same. Neither mode promises that. Press it
+ * says creases taken out of fabric; Make it studio says lighting, colour and
+ * sharpness "without changing the product". Deleting the room a merchant
+ * photographed their goods in is a bigger change than either advertised, and
+ * it is not recoverable — the background is gone.
+ *
+ * The rule, then: the studio already HAS a cutout tool. A mode that is not it
+ * does not silently become it. Only the two shapes whose vendor output is
+ * inherently isolated — a garment holding its own shape, a flat lay — keep the
+ * default.
+ */
 const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams, files: ProviderInput['files']) => void>> = {
   on_model: (p, q, files) => {
     q.set('virtualModel.mode', 'ai.auto');
@@ -81,10 +98,17 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('flatLay.size', sizeOf(p));
     if (p.prompt) q.set('flatLay.prompt', p.prompt);
   },
-  // No options at all in the spec, and none in their app either: a photo in, a pressed photo out.
-  ironing: (_p, q) => q.set('ironing.mode', 'ai.auto'),
+  // No options at all in the spec, and none in their app either: a photo in, a
+  // pressed photo out — and the room it was photographed in still behind it.
+  ironing: (_p, q) => {
+    q.set('ironing.mode', 'ai.auto');
+    q.set('removeBackground', 'false');
+  },
   // `beautify` takes a subject tuning and a seed. There is no prompt.
-  beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
+  beautify: (p, q) => {
+    q.set('beautify.mode', `ai.${p.subject}`);
+    q.set('removeBackground', 'false');
+  },
   // Widening the frame is the whole point, so this one must not keep the original size.
   expand: (_p, q) => {
     q.set('expand.mode', 'ai.auto');
