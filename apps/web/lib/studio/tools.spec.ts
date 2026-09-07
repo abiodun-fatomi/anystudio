@@ -26,15 +26,25 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
-import { CAPABILITIES, acceptsSourceKey, capabilityFields, namesAVendor, parseCapabilityParams, type Capability } from '@anystudio/shared';
+import {
+  CAPABILITIES,
+  PRODUCT_REFERENCE_ANGLES,
+  acceptsSourceKey,
+  capabilityFields,
+  namesAVendor,
+  parseCapabilityParams,
+  type Capability,
+} from '@anystudio/shared';
 import {
   TOOLS,
   TOOL_GROUPS,
   TOOL_META,
+  anglesWouldHelp,
   coerceParams,
   groupOfCapability,
   missingFor,
   searchTools,
+  toolById,
   toolsIn,
   type Tool,
   type ToolGroup,
@@ -260,5 +270,46 @@ describe('filtering what has been made', () => {
     // A row from a newer server than this build. It belongs to no group and
     // so is never filtered out — invisible is the one outcome to avoid.
     expect(groupOfCapability('SOMETHING_NEW')).toBeUndefined();
+  });
+});
+
+/**
+ * What to offer when a shot comes back wrong.
+ *
+ * "Try again" on a generation that could not keep the product is an offer to
+ * fail the same way for the same money. The fidelity check refuses precisely
+ * when the model returned something that is not the seller's item, and the
+ * one known remedy is more photos of it. So the card offers the remedy — but
+ * only where there is one, and a wrong offer here is worse than none: it
+ * spends a merchant's trust on advice that cannot work.
+ */
+describe('offering the fix that exists', () => {
+  const shots = toolById('shots');
+
+  it('offers more angles when a merchant shot could not keep the product', () => {
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: [] }, 'LOW_QUALITY')).toBe(true);
+  });
+
+  it('says nothing for a failure that more photos cannot fix', () => {
+    for (const kind of ['TIMEOUT', 'PROVIDER_DOWN', 'RATE_LIMITED', 'CONTENT_REJECTED', 'INVALID_INPUT', null, undefined])
+      expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: [] }, kind), String(kind)).toBe(false);
+  });
+
+  it('says nothing on the modes the vendor will not read angles for', () => {
+    // Offering them elsewhere asks for uploads nothing will look at, which is
+    // a worse failure than the one it is trying to fix.
+    for (const mode of ['ghost_mannequin', 'flat_lay', 'ironing', 'beautify', 'expand', 'text_removal'])
+      expect(anglesWouldHelp(shots, { mode, angleKeys: [] }, 'LOW_QUALITY'), mode).toBe(false);
+  });
+
+  it('stops asking once there is nothing left to ask for', () => {
+    const full = Array.from({ length: PRODUCT_REFERENCE_ANGLES.max }, (_, i) => `ws/a${i}.jpg`);
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: full }, 'LOW_QUALITY')).toBe(false);
+    // One short of the ceiling still has room.
+    expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: full.slice(1) }, 'LOW_QUALITY')).toBe(true);
+  });
+
+  it('says nothing for a tool that has no angles at all', () => {
+    for (const id of ['copy', 'music', 'collage', 'video'] as const) expect(anglesWouldHelp(toolById(id), { mode: 'on_model' }, 'LOW_QUALITY'), id).toBe(false);
   });
 });

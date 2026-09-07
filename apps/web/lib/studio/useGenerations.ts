@@ -33,6 +33,13 @@ export interface GenerationCard {
   /** Signed URLs by key, fetched as outputs land. */
   urls: Record<string, string>;
   message?: string;
+  /**
+   * Our own category for why it failed — LOW_QUALITY, TIMEOUT, and so on.
+   * It names no vendor, and it is what decides which offer of help the card
+   * makes: "we could not keep your product" has a specific answer, and
+   * "try again" is not it.
+   */
+  failureKind?: string | null;
   params: Record<string, unknown>;
   sourceKey?: string;
   createdAt: number;
@@ -69,7 +76,16 @@ export function useGenerations() {
       try {
         const { generation: g, message } = await api.generations.get(workspace.id, id);
         const outputs = g.outputs ?? [];
-        patch(clientKey, (c) => ({ ...c, id: g.id, status: g.status, stage: (g.stage as GenerationStage) ?? c.stage, progress: g.progress, outputs, message }));
+        patch(clientKey, (c) => ({
+          ...c,
+          id: g.id,
+          status: g.status,
+          stage: (g.stage as GenerationStage) ?? c.stage,
+          progress: g.progress,
+          outputs,
+          message,
+          failureKind: g.failureKind,
+        }));
         await resolveUrls(
           clientKey,
           outputs.filter((o) => o.key).map((o) => o.key),

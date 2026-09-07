@@ -1851,3 +1851,26 @@
   outline: 2.5px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* The extra-photos field, when a failed shot has just pointed at it. A ring
+   that fades: enough to find, not enough to still be shouting a minute later. */
+.anglesAnchor {
+  border-radius: var(--r-md);
+  scroll-margin-top: calc(var(--bar-h) + var(--s-5));
+}
+.anglesAnchor[data-asking] {
+  animation: askAngles 2.4s var(--ease);
+}
+@keyframes askAngles {
+  0%,
+  70% {
+    box-shadow: 0 0 0 3px var(--accent-wash);
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+  }
+}

@@ -56,6 +56,7 @@ export function ToolPanel({
   onChange,
   hasSource,
   sourceKey,
+  askAngles,
   onGenerate,
   busy,
 }: {
@@ -65,6 +66,12 @@ export function ToolPanel({
   hasSource: boolean;
   /** The photo on the canvas, for the ideas the copy model proposes. */
   sourceKey?: string | null;
+  /**
+   * Bumped when a failed shot has just asked for more reference photos. The
+   * panel scrolls that field into view and rings it, so the remedy is where
+   * the eye already is rather than three feet down a form.
+   */
+  askAngles?: number;
   onGenerate: (quote: Quote) => void;
   busy: boolean;
 }) {
@@ -99,6 +106,17 @@ export function ToolPanel({
       live = false;
     };
   }, [workspace.id]);
+  const angles = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!askAngles) return;
+    const el = angles.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.setAttribute('data-asking', '');
+    const t = setTimeout(() => el.removeAttribute('data-asking'), 2400);
+    return () => clearTimeout(t);
+  }, [askAngles]);
+
   const costCode = tool.costCodeFor?.(values);
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
@@ -147,16 +165,18 @@ export function ToolPanel({
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
                 <Fragment key={f.key}>
-                  <FieldControl
-                    field={f}
-                    value={values[f.key]}
-                    values={values}
-                    brandKit={brandKit}
-                    onChange={(v) => onChange(f.key, v)}
-                    onFill={(params) => {
-                      for (const [k, v] of Object.entries(params)) onChange(k, v);
-                    }}
-                  />
+                  <div ref={f.kind === 'angles' ? angles : undefined} className={f.kind === 'angles' ? styles.anglesAnchor : undefined}>
+                    <FieldControl
+                      field={f}
+                      value={values[f.key]}
+                      values={values}
+                      brandKit={brandKit}
+                      onChange={(v) => onChange(f.key, v)}
+                      onFill={(params) => {
+                        for (const [k, v] of Object.entries(params)) onChange(k, v);
+                      }}
+                    />
+                  </div>
                   {tool.ideas && tool.ideas.under === f.key && (
                     <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
                   )}

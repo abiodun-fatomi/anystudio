@@ -1501,6 +1501,29 @@ const GROUP_BY_CAPABILITY: Partial<Record<Capability, ToolGroup>> = {
  */
 export const groupOfCapability = (capability: string): ToolGroup | undefined => GROUP_BY_CAPABILITY[capability as Capability];
 
+/**
+ * When a shot comes back wrong, what actually helps.
+ *
+ * "Try again" on a generation that could not keep the product is an offer to
+ * fail the same way for the same money. The fidelity check refuses precisely
+ * when the model returned something that is not the seller's item, and the
+ * one thing known to fix that is more photos of it — the back of the bag,
+ * the label, a close-up. A live run bore this out: the same request with two
+ * reference images came back closer to the source than without.
+ *
+ * So: a low-quality failure on a tool that accepts angles is not offered a
+ * retry, it is offered the fix.
+ */
+export function anglesWouldHelp(tool: Tool, values: Record<string, unknown>, failureKind: string | null | undefined): boolean {
+  if (failureKind !== 'LOW_QUALITY') return false;
+  const field = tool.fields.find((f) => f.kind === 'angles');
+  if (!field || (field.showIf && !field.showIf(values))) return false;
+  // Already at the ceiling: there are no more photos to ask for, and asking
+  // anyway would be a dead end dressed as a remedy.
+  const have = Array.isArray(values[field.key]) ? (values[field.key] as unknown[]).length : 0;
+  return have < field.max;
+}
+
 /** Tools in a group, in the order the strip and the sheet show them. */
 export const toolsIn = (group: ToolGroup): Tool[] => TOOLS.filter((t) => TOOL_META[t.id].group === group);
 

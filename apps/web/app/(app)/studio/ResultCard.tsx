@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { COPY_FIELDS } from '@anystudio/shared';
 import type { GenerationOutputRow } from '@/lib/api';
-import { toolById } from '@/lib/studio/tools';
+import { anglesWouldHelp, toolById } from '@/lib/studio/tools';
 import type { GenerationCard } from '@/lib/studio/useGenerations';
 import { Badge, Button, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -39,6 +39,7 @@ export function ResultCard({
   onUseAsSource,
   onSendToVideo,
   onAgain,
+  onFix,
   onEdit,
   onCancel,
   onDismiss,
@@ -52,6 +53,8 @@ export function ResultCard({
   onUseAsSource: (key: string) => void;
   onSendToVideo: (key: string) => void;
   onAgain: (card: GenerationCard) => void;
+  /** Put the settings back AND ask for the extra photos that fix a drifted product. */
+  onFix: (card: GenerationCard) => void;
   /** Put this result's settings back in the panel without making anything, so one thing can be changed first. */
   onEdit: (card: GenerationCard) => void;
   onCancel: (clientKey: string) => void;
@@ -97,6 +100,7 @@ export function ResultCard({
     return list;
   }, [main, variants, card.urls, card.outputs, tool.label]);
   const [viewAt, setViewAt] = useState<number | null>(null);
+  const fixable = card.status === 'FAILED' && anglesWouldHelp(tool, card.params, card.failureKind);
   const text = isAudio || isSpokenVideo ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
   const audioText = isAudio
     ? (card.outputs.find((o) => o.role === 'text')?.text as
@@ -135,18 +139,31 @@ export function ResultCard({
 
       {(card.status === 'FAILED' || card.status === 'CANCELLED') && (
         <div className={styles.fail}>
-          <strong>{card.status === 'CANCELLED' ? 'Cancelled' : 'That did not work'}</strong>
-          <span>{card.message ?? 'Something went wrong. Your credits are back.'}</span>
+          <strong>{card.status === 'CANCELLED' ? 'Cancelled' : fixable ? 'That came back as a different product' : 'That did not work'}</strong>
+          <span>
+            {fixable
+              ? 'The model changed your item instead of keeping it. Showing it the back, the label or a close-up is the thing that fixes this.'
+              : (card.message ?? 'Something went wrong. Your credits are back.')}
+          </span>
           {card.id && (
             <span className={styles.refunded}>
               <Icon.check width={14} height={14} /> {card.credits} credits returned
             </span>
           )}
           <span className={styles.failActions}>
+            {/* The one failure with a known remedy. Offering "try again" here
+                is offering to fail the same way for the same money; the
+                fidelity check refused because the model did not keep the
+                seller's product, and more photos of it is what fixes that. */}
+            {fixable && (
+              <Button size="sm" onClick={() => onFix(card)}>
+                Add more photos of it
+              </Button>
+            )}
             <Button variant="subtle" size="sm" onClick={() => onEdit(card)}>
               Change something
             </Button>
-            <Button size="sm" onClick={() => onAgain(card)}>
+            <Button variant={fixable ? 'ghost' : undefined} size="sm" onClick={() => onAgain(card)}>
               Try again
             </Button>
             <Button variant="ghost" size="sm" onClick={() => onDismiss(card.clientKey)}>
