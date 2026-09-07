@@ -332,13 +332,13 @@ const PROVIDERS: Array<{
 
   // ---- copy ------------------------------------------------------------------
   {
-    key: 'google:gemini-2.5-flash-lite',
+    key: 'google:gemini-3.5-flash-lite',
     capability: 'TEXT_GENERATE',
     priority: 10,
     costPerCall: 1,
     enabled: true,
-    config: { model: 'gemini-2.5-flash-lite' },
-    licenceNote: 'Gemini API paid tier; outputs owned by caller. Checked 2026-09-04.',
+    config: { model: 'gemini-3.5-flash-lite' },
+    licenceNote: 'Gemini API paid tier; outputs owned by caller. Model renamed 2026-09-07: 2.5-flash-lite now 404s for new callers.',
   },
   {
     key: 'anthropic:claude-haiku-4.5',

@@ -1104,8 +1104,18 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
    ============================================================ */
 .shots-lead{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:clamp(20px,3vw,36px);align-items:center;margin-bottom:28px}
 @media(max-width:760px){.shots-lead{grid-template-columns:1fr;gap:20px}}
+/* `figure` carries a UA margin of 1em 40px. Eighty pixels a side, on cards
+   in a four-up grid, is most of the column — it squeezed each shot to 190px
+   inside a 272px cell before anyone noticed. */
+figure{margin:0}
 .shots-src{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
-.shots-src img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover}
+/* `height:auto` is load-bearing, not tidiness. These images carry width and
+   height ATTRIBUTES so the browser can reserve their space before they load
+   — which is right — but an attribute height is a used height, and
+   `aspect-ratio` only computes a dimension that is missing. With both
+   present the picture rendered at its intrinsic 1200px tall in a 190px
+   column: a garment sliced into a ribbon. */
+.shots-src img{display:block;width:100%;height:auto;aspect-ratio:3/4;object-fit:cover}
 .shots-src .tag{
   position:absolute;left:8px;bottom:8px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
   background:var(--ink);color:var(--paper);padding:5px 8px;border-radius:3px
@@ -1118,7 +1128,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
   transition:transform .22s cubic-bezier(.2,.8,.3,1),box-shadow .22s,border-color .22s
 }
 .shot:hover{transform:translateY(-4px);box-shadow:var(--frame-shadow-lg);border-color:var(--ink)}
-.shot img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;background:var(--surface)}
+.shot img{display:block;width:100%;height:auto;aspect-ratio:3/4;object-fit:cover;background:var(--surface)}
 .shot figcaption{padding:13px 14px 15px;display:flex;flex-direction:column;gap:3px}
 .shot b{font-size:14.5px;font-weight:700}
 .shot span{font-size:13px;color:var(--muted);line-height:1.5}
@@ -1212,6 +1222,56 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
 .appshot .ph.two{background:linear-gradient(150deg,var(--cyan-wash),var(--accent-wash))}
 @media(prefers-reduced-motion:reduce){.tiles i,.soon i{animation:none}}
 
+/* ============================================================
+   CAPABILITIES — the grid that says what the thing does
+   ============================================================ */
+.caps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:1px solid var(--line-soft)}
+@media(max-width:900px){.caps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.caps{grid-template-columns:1fr}}
+.cap-i{
+  padding:26px 26px 30px;border-bottom:1px solid var(--line-soft);border-right:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:9px;transition:background .2s
+}
+.cap-i:nth-child(3n){border-right:0}
+@media(max-width:900px){.cap-i:nth-child(3n){border-right:1px solid var(--line-soft)}.cap-i:nth-child(2n){border-right:0}}
+@media(max-width:600px){.cap-i{border-right:0 !important;padding-inline:0}}
+.cap-i:hover{background:var(--surface)}
+.cap-i .ic{width:34px;height:34px;border-radius:4px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;margin-bottom:5px}
+.cap-i .ic svg{width:17px;height:17px;stroke:var(--ink);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.cap-i h4{font-size:16.5px;font-weight:700;letter-spacing:-.01em}
+.cap-i p{font-size:14.5px;color:var(--muted);line-height:1.6}
+.cap-i .n{font-family:var(--f-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-top:auto;padding-top:8px}
+
+/* ============================================================
+   CHAIN — what you make feeds the next thing
+   ============================================================ */
+/* Even columns, so every step's picture is the same size. Padding the items
+   instead of using a gap made the first and last cards wider than the two in
+   the middle — at a fixed aspect ratio that is two taller pictures and four
+   captions that no longer line up. */
+.chain{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:44px;align-items:start}
+@media(max-width:900px){.chain{grid-template-columns:repeat(2,minmax(0,1fr));gap:40px}}
+@media(max-width:520px){.chain{grid-template-columns:1fr;gap:30px}}
+.link{position:relative}
+/* The arrow sits in the gap between steps: drawn, so it needs no asset. */
+.link + .link::before{
+  content:"";position:absolute;left:-29px;top:24%;width:13px;height:13px;
+  border-top:1.6px solid var(--line);border-right:1.6px solid var(--line);transform:rotate(45deg)
+}
+@media(max-width:900px){.link:nth-child(3)::before{display:none}}
+@media(max-width:520px){.link + .link::before{display:none}}
+.link figure{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
+.link img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+.link .step{font-family:var(--f-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 0 5px}
+.link b{display:block;font-size:15.5px;font-weight:700;letter-spacing:-.01em}
+.link p{font-size:13.5px;color:var(--muted);line-height:1.55;margin-top:5px}
+
+.chain-note{
+  margin-top:28px;padding:18px 20px;border:1px solid var(--line);border-radius:6px;background:var(--surface);
+  display:flex;gap:14px;align-items:flex-start;font-size:14.5px;color:var(--ink-soft);line-height:1.6
+}
+.chain-note svg{width:18px;height:18px;flex:none;margin-top:2px;stroke:var(--accent);fill:none;stroke-width:1.8}
+
 .rv{opacity:0;transform:translateY(20px)}
 .rv.seen{opacity:1;transform:none;transition:opacity .6s cubic-bezier(.2,.8,.3,1),transform .6s cubic-bezier(.2,.8,.3,1)}
 @media(prefers-reduced-motion:reduce){
@@ -1236,6 +1296,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
       <a href="#how">How it works</a>
       <a href="#studio">The studio</a>
       <a href="#shots">Shots</a>
+      <a href="#chain">How it fits together</a>
       <a href="#reels">Video</a>
       <a href="#whatsapp">WhatsApp</a>
       <a href="#api">For platforms</a>
@@ -1922,36 +1983,104 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     <div class="sec-head rv">
       <div>
         <h2>Fifteen tools. One photo feeds all of them.</h2>
-        <p class="sec-lede">Not fifteen apps with fifteen logins and fifteen subscriptions. One library, one brand kit, one balance — and whatever you make can be sent straight into the next tool without downloading anything.</p>
+        <p class="sec-lede">Not fifteen apps with fifteen logins and fifteen subscriptions. One library, one brand kit, one balance — and every tool takes the output of the last one without you downloading anything.</p>
       </div>
     </div>
-    <div class="studio rv">
-      <div class="studio-col wide">
-        <span class="mono">Photos · 8</span>
-        <h4>Make one picture better, or make a new one from it.</h4>
-        <p>Put the product somewhere else, take the background away, put a real shadow under it, make it big enough to print, or lay six of them out as one set. The product itself is checked against your original every time.</p>
-        <div class="chips">
-          <b>Merchant shots</b><b>New scene</b><b>Replace background</b><b>Cut out</b><b>Enhance</b><b>Restyle</b><b>Collage</b><b>Flyer</b>
-        </div>
+    <div class="caps rv">
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+        <h4>Merchant shots</h4>
+        <p>On a model, ghost mannequin, flat lay, pressed, studio. Up to four reference angles so the back is not invented.</p>
+        <span class="n">Photos</span>
       </div>
-      <div class="studio-col">
-        <span class="mono">Video · 3</span>
-        <h4>Reels, ads, and new words in the same mouth.</h4>
-        <p>A reel from a single photo, a multi-shot ad with a presenter, or an existing clip re-voiced so the lips still match.</p>
-        <div class="chips"><b>Reels &amp; ads</b><b>Lip-sync</b><b>Dub</b></div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.4"/></svg></span>
+        <h4>New scene</h4>
+        <p>The product on a counter, in a market, on marble. Forty-two looks to start from, or your own words.</p>
+        <span class="n">Photos</span>
       </div>
-      <div class="studio-col alt">
-        <span class="mono">Sound · 2</span>
-        <h4>A song for your Status, or a voice reading your script.</h4>
-        <p>An original track in a style you pick — afrobeats, reggaeton, lo-fi, something quiet under a voice — or a narrator in the accent your buyers actually speak.</p>
-        <div class="chips"><b>Music</b><b>Voiceover</b></div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 13h7v7h-7z"/><path d="M13 4h7v7M4 13h7v7" stroke-dasharray="2.5 2.5"/></svg></span>
+        <h4>Background</h4>
+        <p>Swap what is behind it and keep a real contact shadow underneath, with the lighting matched.</p>
+        <span class="n">Photos</span>
       </div>
-      <div class="studio-col alt">
-        <span class="mono">Words · 1</span>
-        <h4>The listing, the caption, the hashtags.</h4>
-        <p>Written from the picture and your brand tone — three angles per post, hashtags ordered specific before broad, and no invented prices.</p>
-        <div class="chips"><b>Descriptions</b><b>Captions</b><b>Hashtags</b></div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8 8l12 10M8 16L20 6"/></svg></span>
+        <h4>Cut out</h4>
+        <p>The product on its own — transparent, or flattened onto a colour. Nothing is invented, so nothing can drift.</p>
+        <span class="n">Photos</span>
       </div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 14v6h6M20 10V4h-6"/><path d="M20 4l-7 7M4 20l7-7"/></svg></span>
+        <h4>Enhance</h4>
+        <p>Two or four times bigger and sharper, for a banner, a billboard or a print run.</p>
+        <span class="n">Photos</span>
+      </div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg></span>
+        <h4>Collage &amp; flyers</h4>
+        <p>Six photos as one set, a before and after, or a poster for an offer with the price on it.</p>
+        <span class="n">Photos</span>
+      </div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="M22 8l-6 4 6 4z"/></svg></span>
+        <h4>Reels &amp; ads</h4>
+        <p>Twelve seconds from one photo, or a multi-shot ad with a presenter reading your script.</p>
+        <span class="n">Video</span>
+      </div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 12s3-5 9-5 9 5 9 5-3 5-9 5-9-5-9-5z"/><path d="M9 12h6"/></svg></span>
+        <h4>Dub &amp; lip-sync</h4>
+        <p>The same clip in another language, with the mouth still matching the words.</p>
+        <span class="n">Video</span>
+      </div>
+      <div class="cap-i">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h9"/></svg></span>
+        <h4>Words &amp; sound</h4>
+        <p>The listing, three captions, the hashtags — and a voice or a song to carry them.</p>
+        <span class="n">Words &amp; sound</span>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ============================== CHAIN ============================== -->
+<section class="sec" id="chain">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>Nothing you make is a dead end.</h2>
+        <p class="sec-lede">Most tools hand you a file and stop. Here the picture you just made is the starting point for the
+        next thing, in one library — so a photo becomes a listing image, the listing image becomes a reel, and the reel
+        becomes a version that speaks Fran&ccedil;ais. You never download anything to feed it back in.</p>
+      </div>
+    </div>
+    <div class="chain rv">
+      <div class="link">
+        <figure><img alt="A product photographed at home on a phone" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <p class="step">Step one</p><b>Your photo</b>
+        <p>Taken on a table under a ceiling light. This is what a seller actually has.</p>
+      </div>
+      <div class="link">
+        <figure><img alt="The same product cut out onto plain white" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb_min.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <p class="step">Step two</p><b>Cut out</b>
+        <p>The product on its own. Two credits, seconds, and it cannot drift — nothing is invented.</p>
+      </div>
+      <div class="link">
+        <figure><img alt="The same product placed in a styled scene" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <p class="step">Step three</p><b>Into a scene</b>
+        <p>On the surface you describe, checked against your original so the product stays yours.</p>
+      </div>
+      <div class="link">
+        <figure><img alt="The scene turned into a short vertical reel" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <p class="step">Step four</p><b>Into a reel</b>
+        <p>Twelve seconds with a caption and a voice, ready for Status, Reels and TikTok.</p>
+      </div>
+    </div>
+    <div class="chain-note rv">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v6c0 4.5-3.4 7.3-8 8-4.6-.7-8-3.5-8-8V7z"/><path d="M9 12l2 2 4-4"/></svg>
+      <span>Every step is measured against the photo you started with. When a model changes the product rather than its
+      surroundings, your own pixels go back in — and when even that cannot be rescued, the credits do.</span>
     </div>
   </div>
 </section>

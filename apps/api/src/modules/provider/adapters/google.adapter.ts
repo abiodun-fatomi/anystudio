@@ -30,7 +30,10 @@ export interface GoogleCredentials {
 const KNOWN: Record<string, { capabilities: Capability[]; model: string }> = {
   'vertex:gemini-3-pro-image': { capabilities: ['IMAGE_EDIT', 'IMAGE_GENERATE', 'BACKGROUND_REPLACE', 'RELIGHT'], model: 'gemini-3-pro-image-preview' },
   'vertex:veo-3.1-fast': { capabilities: ['IMAGE_TO_VIDEO'], model: 'veo-3.1-fast-generate-preview' },
-  'google:gemini-2.5-flash-lite': { capabilities: ['TEXT_GENERATE'], model: 'gemini-2.5-flash-lite' },
+  // 2.5-flash-lite was retired for new callers mid-2026 — it answers 404 with
+  // "no longer available to new users ... use models/gemini-3.5-flash-lite",
+  // which is where this name comes from.
+  'google:gemini-3.5-flash-lite': { capabilities: ['TEXT_GENERATE'], model: 'gemini-3.5-flash-lite' },
   /** Cloud Text-to-Speech. Needs the service account (an API key for Generative Language does not open this door). */
   'google:tts': { capabilities: ['VOICEOVER'], model: 'en-NG-Standard-A' },
 };

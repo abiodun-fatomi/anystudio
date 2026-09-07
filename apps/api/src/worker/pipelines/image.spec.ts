@@ -95,7 +95,13 @@ vi.mock('../../modules/provider/adapters/http', () => ({
   fetchBytes: vi.fn(async () => ({ bytes: sourceBytes, mime: 'image/png' })),
 }));
 
-function ctxWith(opts: { output: Uint8Array; mask: Uint8Array | null; params?: Record<string, unknown> }) {
+function ctxWith(opts: {
+  output: Uint8Array;
+  mask: Uint8Array | null;
+  params?: Record<string, unknown>;
+  /** What BACKGROUND_REPLACE gives back when the edit models have both failed; null means it is down too. */
+  replaced?: Uint8Array | null;
+}) {
   const info = vi.fn();
   const warn = vi.fn();
   const callProvider = vi.fn(async () => ({
@@ -104,7 +110,11 @@ function ctxWith(opts: { output: Uint8Array; mask: Uint8Array | null; params?: R
     costMinor: 5,
     artifacts: [{ role: 'image', mime: 'image/png', bytes: opts.output }],
   }));
-  const callCapability = vi.fn(async () => {
+  const callCapability = vi.fn(async (capability: string) => {
+    if (capability === 'BACKGROUND_REPLACE') {
+      if (!opts.replaced) throw new Error('background replace is down');
+      return { providerKey: 'photoroom:edit', artifacts: [{ role: 'image', mime: 'image/png', bytes: opts.replaced }], costMinor: 10 };
+    }
     if (!opts.mask) throw new Error('background removal is down');
     return { providerKey: 'photoroom:edit', artifacts: [{ role: 'image', mime: 'image/png', bytes: opts.mask }], costMinor: 2 };
   });
@@ -225,18 +235,51 @@ const render = async (svg: string, w = SIZE, h = SIZE) =>
   );
 
 describe('a match too weak to be a location', () => {
-  it('refuses rather than pasting the product somewhere it was never found', async () => {
+  it('never pastes the product somewhere it was never found', async () => {
+    // A green square where a striped disc used to be: about 0.38, which the
+    // old threshold called "found" and pasted onto.
     sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
-    const { ctx, callProvider } = ctxWith({
-      // A green square where a striped disc used to be: about 0.38, which
-      // the old threshold called "found".
+    const { ctx, callProvider, callCapability } = ctxWith({
       output: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>`),
       mask: await render(stripes('#D6006E', 128, 128, 64)),
+      replaced: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/>${stripes('#D6006E', 128, 128, 64)}`),
+    });
+
+    await brandedImagePipeline(ctx);
+
+    // Two models asked, both refused on fidelity, and then the one path that
+    // cannot redraw a product.
+    expect(callProvider).toHaveBeenCalledTimes(2);
+    const asked = callCapability.mock.calls.map((c) => c[0]);
+    expect(asked).toContain('BACKGROUND_REPLACE');
+  });
+
+  it('sends the seller’s own words to the background replace, not a generic prompt', async () => {
+    sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
+    const { ctx, callCapability } = ctxWith({
+      output: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>`),
+      mask: await render(stripes('#D6006E', 128, 128, 64)),
+      replaced: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/>${stripes('#D6006E', 128, 128, 64)}`),
+    });
+
+    await brandedImagePipeline(ctx);
+
+    const call = callCapability.mock.calls.find((c) => c[0] === 'BACKGROUND_REPLACE')!;
+    const params = (call[1] as { params: Record<string, unknown> }).params;
+    expect(params.prompt).toBe('on a marble kitchen counter in soft morning light');
+    expect(params.sourceKey).toBe('ws-1/p.png');
+  });
+
+  it('refuses and refunds only when the background replace fails too', async () => {
+    sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
+    const { ctx, warn } = ctxWith({
+      output: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>`),
+      mask: await render(stripes('#D6006E', 128, 128, 64)),
+      replaced: null,
     });
 
     await expect(brandedImagePipeline(ctx)).rejects.toThrow(/fidelity/i);
-    // It asked twice before giving up, as it should.
-    expect(callProvider).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls.map((c) => String(c[1])).join(' | ')).toContain('refusing and refunding');
   });
 
   it('still repairs a product it really did find, moved and in a reshaped frame', async () => {
