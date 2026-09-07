@@ -67,6 +67,7 @@ export const BUDGET_MS: Record<Capability, number> = {
   RELIGHT: 90_000,
   UPSCALE: 120_000,
   COLLAGE: 120_000,
+  PRODUCT_SHOT: 120_000,
   IMAGE_TO_VIDEO: 8 * 60_000,
   VIDEO_STITCH: 5 * 60_000,
   TEXT_GENERATE: 60_000,

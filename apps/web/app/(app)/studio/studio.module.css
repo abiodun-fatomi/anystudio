@@ -1239,3 +1239,139 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---- looks you pick by looking ----
+   A tile is a small photograph, not a colour chip: the ground the preset
+   makes, with a stand-in product sitting on it, so the eye can compare a
+   row of them the way it would compare photos. */
+.presetGroups {
+  display: grid;
+  gap: var(--s-3);
+}
+.presetGroupHead {
+  display: grid;
+  gap: 1px;
+  margin-bottom: var(--s-2);
+}
+.presetGroupHead strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+.presetGroupHead span {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.presetRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--s-2);
+}
+.preset {
+  display: grid;
+  gap: 4px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  min-width: 0;
+}
+.preset:hover {
+  border-color: var(--line);
+}
+.preset[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.presetSwatch {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border-radius: calc(var(--r-md) - 3px);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+/* The cut-out tile shows the checkerboard everyone reads as "no background". */
+.presetSwatch[data-transparent] {
+  background:
+    linear-gradient(45deg, #d8d5dc 25%, transparent 25%, transparent 75%, #d8d5dc 75%) 0 0 / 12px 12px,
+    linear-gradient(45deg, #d8d5dc 25%, transparent 25%, transparent 75%, #d8d5dc 75%) 6px 6px / 12px 12px,
+    #fff;
+}
+/* The stand-in product: a soft rounded shape with a contact shadow, so the
+   tile reads as something sitting on a surface rather than a flat square. */
+.presetProduct {
+  position: absolute;
+  left: 26%;
+  right: 26%;
+  top: 30%;
+  bottom: 26%;
+  border-radius: 40% 40% 34% 34%;
+  background: linear-gradient(160deg, #b9a894, #8d7a64);
+  box-shadow: 0 6% 10% rgba(0, 0, 0, 0.28);
+}
+.presetProduct[data-ink='light'] {
+  background: linear-gradient(160deg, #e6ddd0, #b6a894);
+}
+.presetName {
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset[aria-checked='true'] .presetName {
+  color: var(--ink);
+}
+
+/* ---- the merchant shots ----
+   Wider than a preset tile because each one carries the sentence that says
+   when to reach for it — "Your clothing worn by a person, without hiring one." */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--s-2);
+}
+.mode {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.mode strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+  color: var(--ink);
+}
+.mode span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.35;
+}
+.mode:hover {
+  border-color: var(--line);
+}
+.mode[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Said before the button, not discovered in the result: this tool will not
+   use the photo you are looking at. */
+.ignoredNote {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+}

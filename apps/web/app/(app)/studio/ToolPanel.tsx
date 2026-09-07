@@ -13,7 +13,16 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
-import { PRESENTERS } from '@anystudio/shared';
+import {
+  PRESENTERS,
+  PRESET_GROUPS,
+  PRODUCT_MODES,
+  PRODUCT_MODE_KEYS,
+  acceptsSourceKey,
+  presetsIn,
+  type PhotoPreset,
+  type PresetGroup,
+} from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import styles from './studio.module.css';
@@ -48,11 +57,19 @@ export function ToolPanel({
   const { workspace, balance, postpaid } = useApp();
   const [quote, setQuote] = useState<Quote | null>(null);
   const costCode = tool.costCodeFor?.(values);
+  // A tool whose capability depends on the chosen look must quote the one it
+  // will actually send — otherwise "Plain white" shows the price of a scene.
+  const capability = tool.capabilityFor?.(values) ?? tool.capability;
+  // Some tools need the canvas photo only for some settings, and some
+  // capabilities cannot take a photo at all. Both must be visible before the
+  // button is pressed, never discovered in the result.
+  const wantsSource = tool.needsSourceFor?.(values) ?? tool.needsSource;
+  const photoIgnored = hasSource && !acceptsSourceKey(capability) && !tool.fields.some((f) => f.kind === 'file' || f.kind === 'photos');
   useEffect(() => {
     let live = true;
     setQuote(null);
     api.generations
-      .quote(workspace.id, tool.capability, costCode)
+      .quote(workspace.id, capability, costCode)
       .then((q) => {
         if (live) setQuote(q);
       })
@@ -60,14 +77,14 @@ export function ToolPanel({
     return () => {
       live = false;
     };
-  }, [workspace.id, tool.capability, costCode]);
+  }, [workspace.id, capability, costCode]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;
   const short = after !== null && after < 0;
   const missing = missingFor(tool, values);
-  const blocked = busy || !quote || short || (tool.needsSource && !hasSource) || Boolean(missing);
-  const why = !hasSource && tool.needsSource ? 'Add a photo first.' : (missing ?? (short ? 'Not enough credits.' : null));
+  const blocked = busy || !quote || short || (wantsSource && !hasSource) || Boolean(missing);
+  const why = !hasSource && wantsSource ? 'Add a photo first.' : (missing ?? (short ? 'Not enough credits.' : null));
   const label = BUTTON_LABEL[tool.id] ?? (tool.id === 'video' ? (Number(values.shots) > 1 ? 'Make the ad' : 'Make the reel') : 'Make it');
 
   return (
@@ -84,13 +101,27 @@ export function ToolPanel({
               .filter((f) => !f.showIf || f.showIf(values))
               .map((f) => (
                 <Fragment key={f.key}>
-                  <FieldControl field={f} value={values[f.key]} values={values} onChange={(v) => onChange(f.key, v)} />
+                  <FieldControl
+                    field={f}
+                    value={values[f.key]}
+                    values={values}
+                    onChange={(v) => onChange(f.key, v)}
+                    onFill={(params) => {
+                      for (const [k, v] of Object.entries(params)) onChange(k, v);
+                    }}
+                  />
                   {tool.ideas && tool.ideas.under === f.key && (
                     <Ideas tool={tool} values={values} sourceKey={sourceKey ?? null} onPick={(idea) => pickIdea(tool, values, idea, onChange)} />
                   )}
                 </Fragment>
               ))}
           </div>
+
+          {photoIgnored && (
+            <p className={styles.ignoredNote} role="status">
+              This makes a brand-new picture, so the photo on your canvas will not be in it.
+            </p>
+          )}
 
           <div className={styles.quote} data-short={short || undefined} aria-live="polite">
             <div className={styles.quoteRow}>
@@ -547,6 +578,192 @@ function PhotoLabelsField({
   );
 }
 
+/**
+ * Looks as tiles. The tile IS the choice — a seller sees a blush studio, a
+ * wooden table, a market stall, and taps. Nothing is typed, and nothing is
+ * imagined from a sentence.
+ *
+ * Tapping fills the preset's params into the panel underneath, so the words
+ * are still there to edit and the ideas chips still work on top of them.
+ * Tapping the chosen tile again clears it and hands the seller the empty box
+ * back, which is the old behaviour and occasionally what someone wants.
+ */
+function PresetsField({
+  field,
+  value,
+  onChange,
+  onFill,
+}: {
+  field: Extract<Field, { kind: 'presets' }>;
+  value: string;
+  onChange: (v: unknown) => void;
+  onFill: (params: Record<string, unknown>) => void;
+}) {
+  const pick = (p: PhotoPreset) => {
+    if (value === p.key) {
+      onChange('');
+      return;
+    }
+    onChange(p.key);
+    onFill(p.params);
+  };
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.presetGroups}>
+        {(Object.keys(PRESET_GROUPS) as PresetGroup[]).map((g) => (
+          <div key={g}>
+            <div className={styles.presetGroupHead}>
+              <strong>{PRESET_GROUPS[g].label}</strong>
+              <span>{PRESET_GROUPS[g].note}</span>
+            </div>
+            <div className={styles.presetRow} role="radiogroup" aria-label={PRESET_GROUPS[g].label}>
+              {presetsIn(g).map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === p.key}
+                  className={styles.preset}
+                  onClick={() => pick(p)}
+                  title={`${p.name} — ${p.note}`}
+                >
+                  <span
+                    className={styles.presetSwatch}
+                    data-transparent={p.swatch.transparent || undefined}
+                    style={
+                      p.swatch.transparent
+                        ? undefined
+                        : {
+                            background:
+                              p.swatch.colors.length === 2 ? `linear-gradient(160deg, ${p.swatch.colors[0]}, ${p.swatch.colors[1]})` : p.swatch.colors[0],
+                          }
+                    }
+                  >
+                    {/* A stand-in for the seller's product, so a tile reads as a photo and not a colour chip. */}
+                    <span className={styles.presetProduct} data-ink={p.swatch.ink} />
+                  </span>
+                  <span className={styles.presetName}>{p.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * The merchant shots, as tiles with their own words on them.
+ *
+ * "On a model", "Ghost mannequin", "Press it" — a person selling clothes
+ * knows all three on sight. A dropdown of the same words would be shorter and
+ * worse: the tile can carry the sentence that says which one to reach for.
+ */
+function ModesField({ field, value, onChange }: { field: Extract<Field, { kind: 'modes' }>; value: string; onChange: (v: unknown) => void }) {
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.modes} role="radiogroup" aria-label={field.label}>
+        {PRODUCT_MODE_KEYS.map((k) => {
+          const m = PRODUCT_MODES[k];
+          return (
+            <button key={k} type="button" role="radio" aria-checked={value === k} className={styles.mode} onClick={() => onChange(k)} title={m.hint}>
+              <strong>{m.label}</strong>
+              <span>{m.note}</span>
+            </button>
+          );
+        })}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * More photos of the same product.
+ *
+ * This is the quality control that costs nothing: a model asked to keep a bag
+ * exact does far better when it has seen the back of it. Never required, and
+ * the copy says what each extra photo buys rather than just "add files".
+ */
+function AnglesField({ field, value, onChange }: { field: Extract<Field, { kind: 'angles' }>; value: string[]; onChange: (v: unknown) => void }) {
+  const { workspace } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const keys = value.filter(Boolean);
+  const joined = keys.join(',');
+  useEffect(() => {
+    const wanted = joined ? joined.split(',') : [];
+    if (!wanted.length) return;
+    let live = true;
+    api.media
+      .urls(workspace.id, wanted)
+      .then(({ urls: u }) => {
+        if (live) setUrls((prev) => ({ ...prev, ...u }));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, joined]);
+
+  const add = async (files: FileList | null) => {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!list.length) return;
+    setBusy(true);
+    const added: string[] = [];
+    for (const file of list) {
+      if (keys.length + added.length >= field.max) break;
+      try {
+        const asset = await uploadFile(workspace.id, file);
+        added.push(asset.key);
+        const { urls: u } = await api.media.urls(workspace.id, [asset.key]);
+        setUrls((prev) => ({ ...prev, ...u }));
+      } catch {
+        /* one bad file must not lose the others */
+      }
+    }
+    setBusy(false);
+    if (added.length) onChange([...keys, ...added]);
+  };
+
+  return (
+    <div>
+      <span className={styles.fieldLabel}>
+        {field.label}
+        <span className={styles.photoCount}>
+          {keys.length} of {field.max}
+        </span>
+      </span>
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void add(e.target.files).finally(() => (e.target.value = ''))} />
+      <div className={styles.photoGrid}>
+        <button type="button" className={styles.photoAdd} onClick={() => input.current?.click()} disabled={busy || keys.length >= field.max}>
+          <Icon.plus />
+          <span>{keys.length >= field.max ? 'Full' : busy ? 'Adding…' : 'Add'}</span>
+        </button>
+        {keys.map((k, i) => (
+          <button
+            key={k}
+            type="button"
+            className={styles.photoTile}
+            aria-pressed
+            onClick={() => onChange(keys.filter((x) => x !== k))}
+            title="Take this one out"
+          >
+            {urls[k] ? <img src={urls[k]} alt="" loading="lazy" /> : <span className={styles.photoBlank} />}
+            <span className={styles.photoNum}>{i + 1}</span>
+          </button>
+        ))}
+      </div>
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
 /** An idea lands in the prompt, and its camera move in the camera field when that one is still empty. */
 function pickIdea(tool: Tool, values: Record<string, unknown>, idea: Idea, onChange: (key: string, value: unknown) => void) {
   if (!tool.ideas) return;
@@ -649,12 +866,15 @@ function FieldControl({
   value,
   values,
   onChange,
+  onFill,
 }: {
   field: Field;
   value: unknown;
   /** The whole panel, for the fields whose options or contents depend on another one. */
   values: Record<string, unknown>;
   onChange: (v: unknown) => void;
+  /** Write several fields at once — a preset filling in the look it stands for. */
+  onFill: (params: Record<string, unknown>) => void;
 }) {
   switch (field.kind) {
     case 'text':
@@ -732,6 +952,12 @@ function FieldControl({
         />
       );
     }
+    case 'modes':
+      return <ModesField field={field} value={String(value ?? '')} onChange={onChange} />;
+    case 'angles':
+      return <AnglesField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
+    case 'presets':
+      return <PresetsField field={field} value={String(value ?? '')} onChange={onChange} onFill={onFill} />;
     case 'photos':
       return <PhotosField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
     case 'photoLabels':

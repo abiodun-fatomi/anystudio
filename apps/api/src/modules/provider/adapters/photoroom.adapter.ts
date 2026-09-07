@@ -6,12 +6,67 @@
  * Returns the image bytes directly; errors come back as JSON.
  */
 
-import { ProviderError, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
+import {
+  PRODUCT_SIZE_BY_ASPECT,
+  ProviderError,
+  SHADOW_STYLES,
+  type Capability,
+  type CapabilityParams,
+  type ProviderInput,
+  type ProviderOpts,
+  type ProviderResult,
+} from '@anystudio/shared';
 import { BaseProvider } from './base';
 import { kindForStatus } from './http';
 
 const KNOWN: Record<string, Capability[]> = {
-  'photoroom:edit': ['BACKGROUND_REPLACE', 'RELIGHT', 'BACKGROUND_REMOVE'],
+  'photoroom:edit': ['BACKGROUND_REPLACE', 'RELIGHT', 'BACKGROUND_REMOVE', 'PRODUCT_SHOT'],
+};
+
+/**
+ * One mode, one set of query fields. A table rather than a switch so adding
+ * the next mode is a row — and so the whole mapping can be read at a glance
+ * when a vendor renames a field.
+ *
+ * `p` is the validated params; the schema has already refused anything a mode
+ * cannot work without, so nothing here needs to re-check.
+ */
+type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
+const MODE_FIELDS: Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams) => void> = {
+  on_model: (p, q) => {
+    q.set('virtualModel.mode', 'ai.auto');
+    // A workspace's own model is passed as an image; a preset by name.
+    if (p.model && p.model !== 'custom') q.set('virtualModel.model', p.model);
+    q.set('virtualModel.scene', p.scene ?? 'random');
+    q.set('virtualModel.pose', p.pose ?? 'random');
+    if (p.prompt) q.set('virtualModel.prompt', p.prompt);
+  },
+  ghost_mannequin: (p, q) => {
+    q.set('ghostMannequin.mode', 'ai.auto');
+    if (p.prompt) q.set('ghostMannequin.prompt', p.prompt);
+  },
+  flat_lay: (p, q) => {
+    q.set('flatLay.mode', 'ai.auto');
+    if (p.prompt) q.set('flatLay.prompt', p.prompt);
+  },
+  ironing: (_p, q) => q.set('ironing.mode', 'ai.auto'),
+  beautify: (p, q) => {
+    q.set('beautify.mode', `ai.${p.subject}`);
+    if (p.prompt) q.set('beautify.prompt', p.prompt);
+  },
+  recolor: (p, q) => {
+    q.set('recolor.mode', 'ai.auto');
+    if (p.color) q.set('recolor.color', p.color.slice(1));
+    if (p.part ?? p.prompt) q.set('recolor.prompt', (p.part ?? p.prompt)!);
+  },
+  retouch: (p, q) => {
+    q.set('retouch.mode', 'ai.auto');
+    if (p.prompt) q.set('retouch.prompt', p.prompt);
+  },
+  expand: (p, q) => {
+    q.set('expand.mode', 'ai.auto');
+    if (p.prompt) q.set('expand.prompt', p.prompt);
+  },
 };
 
 export class PhotoroomProvider extends BaseProvider {
@@ -45,6 +100,27 @@ export class PhotoroomProvider extends BaseProvider {
       case 'BACKGROUND_REMOVE': {
         const p = this.params(input, 'BACKGROUND_REMOVE');
         if (p.background !== 'transparent') q.set('background.color', p.background.slice(1));
+        break;
+      }
+      case 'PRODUCT_SHOT': {
+        const p = this.params(input, 'PRODUCT_SHOT');
+        MODE_FIELDS[p.mode](p, q);
+        // The frame the vendor renders at. `expand` is the one mode that must
+        // NOT keep the original size — widening the frame is the whole point.
+        if (p.mode === 'expand') q.set('outputSize', 'auto');
+        q.set('size', PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD');
+        const shadow = SHADOW_STYLES[p.shadow].mode;
+        if (shadow) q.set('shadow.mode', shadow);
+        // More angles of the same product: the cheapest quality lever we have,
+        // and the reason a drifted result asks for another photo instead of a refund.
+        for (const [i, name] of Object.keys(input.files)
+          .filter((n) => n.startsWith('angleKeys['))
+          .sort()
+          .entries())
+          q.append(`referenceImages[${i}]`, input.files[name]!.url);
+        // Their own model, for a workspace that saved one.
+        const modelPhoto = input.files.modelPhotoKey?.url;
+        if (p.mode === 'on_model' && modelPhoto) q.set('virtualModel.model', modelPhoto);
         break;
       }
       default:

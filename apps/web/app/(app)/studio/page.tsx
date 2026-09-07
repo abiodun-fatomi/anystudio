@@ -17,6 +17,7 @@ import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { moneyMinor } from '@/lib/billing/money';
 import { TOOLS, bringsItsOwnSource, cardSourceFor, coerceParams, toolById, type Tool, type ToolId } from '@/lib/studio/tools';
+import { acceptsSourceKey } from '@anystudio/shared';
 import { useGenerations, type GenerationCard } from '@/lib/studio/useGenerations';
 import { Button, EmptyState, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -201,13 +202,26 @@ function Studio() {
       const p = coerceParams(t, v);
       // A tool that brings its own file (a video to translate) keeps it; the canvas photo is for the rest.
       const ownsSource = bringsItsOwnSource(t);
-      if (!ownsSource && src) p.sourceKey = src;
+      const capability = t.capabilityFor?.(v) ?? t.capability;
+      // Only attach the canvas photo to a capability that can actually take
+      // one. A key the schema does not know is stripped in silence, and the
+      // customer gets a picture of a stranger where they expected their own.
+      if (!ownsSource && src && acceptsSourceKey(capability)) p.sourceKey = src;
       if (t.needsSource && !src) {
         setBusy(false);
         return;
       }
       const cardSource = ownsSource ? cardSourceFor(t, p) : (src ?? undefined);
-      const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
+      const r = await create({
+        toolId: t.id,
+        // The chosen look can decide the capability: a cut-out onto a colour
+        // is not the same request as a scene, and costs a fifth as much.
+        capability,
+        params: p,
+        credits,
+        sourceKey: cardSource,
+        costCode: t.costCodeFor?.(p),
+      });
       setBusy(false);
       if (!r.ok) {
         if (r.status === 402)

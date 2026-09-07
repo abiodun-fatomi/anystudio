@@ -43,6 +43,7 @@ export const TYPE_OF: Record<ProviderCapability, Exclude<LibraryType, 'all'>> = 
   RELIGHT: 'image',
   UPSCALE: 'image',
   COLLAGE: 'image',
+  PRODUCT_SHOT: 'image',
   IMAGE_TO_VIDEO: 'video',
   VIDEO_STITCH: 'video',
   DUB: 'video',
