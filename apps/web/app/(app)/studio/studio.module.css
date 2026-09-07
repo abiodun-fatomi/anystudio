@@ -1670,3 +1670,25 @@
   color: var(--muted);
   line-height: 1.4;
 }
+
+/* ---- whose shop is on the picture ----
+   The switch is ordinary; the sentence under it is the point. It names what
+   will be stamped, so nobody spends a credit to find out. */
+.brandField {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.brandLine {
+  margin: 0;
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.brandLine a {
+  color: var(--accent);
+  font-weight: 600;
+}

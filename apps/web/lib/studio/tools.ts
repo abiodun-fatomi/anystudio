@@ -69,6 +69,12 @@ export type Field =
     }
   /** `note` on an option is the sentence shown under the control once it is chosen. */
   | { key: string; kind: 'segment'; label: string; options: Array<{ id: string; label: string; note?: string }> }
+  /**
+   * One switch for "put my shop on this one", with a sentence under it naming
+   * exactly what will be stamped. The fine-grained settings live on the Brand
+   * kit page; this is the per-picture answer to one question.
+   */
+  | { key: 'brand'; kind: 'brand'; label: string }
   /** `optionsFor` narrows the list to what the other values allow — the arrangements that can hold this many photos. */
   | {
       key: string;
@@ -230,6 +236,10 @@ export const TOOLS: Tool[] = [
         maxLength: 80,
         showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
       },
+      // A cut-out is a product on transparency, meant to be placed into
+      // something else — stamping a shop name on it would ruin the only thing
+      // it is for. Everywhere else, the switch.
+      { key: 'brand', kind: 'brand', label: 'Put my shop on it', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
     ],
     defaults: { preserveProduct: true, aspect: '1:1', sizes: ['feed_square', 'story'] },
     ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
@@ -499,6 +509,10 @@ export const TOOLS: Tool[] = [
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '₦12,000', maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
+      // The switch that puts a merchant's shop on the picture. Its sentence is
+      // built from the brand kit and whatever price was typed above, so it
+      // sits after the price to read in order.
+      { key: 'brand', kind: 'brand', label: 'Put my shop on it' },
     ],
     defaults: {
       sourceKeys: [],
@@ -662,6 +676,10 @@ export const TOOLS: Tool[] = [
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
       { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
+      // The switch that puts a merchant's shop on the picture. Its sentence is
+      // built from the brand kit and whatever price was typed above, so it
+      // sits after the price to read in order.
+      { key: 'brand', kind: 'brand', label: 'Put my shop on it' },
     ],
     defaults: {
       mode: 'on_model',
@@ -753,6 +771,10 @@ export const TOOLS: Tool[] = [
       },
       { key: 'aspect', kind: 'segment', label: 'Shape', options: ASPECTS.map((a) => ({ id: a, label: a })) },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
+      // The one place this matters most: forty pictures either all carry the
+      // shop's name or none of them do, and doing it here is the difference
+      // between a catalogue and a folder.
+      { key: 'brand', kind: 'brand', label: 'Put my shop on all of them' },
     ],
     defaults: {
       sourceKeys: [],
@@ -765,7 +787,7 @@ export const TOOLS: Tool[] = [
       sizes: ['feed_square'],
     },
     // Every setting except the photo list belongs to the child, not the batch.
-    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes'],
+    localKeys: ['mode', 'model', 'scene', 'subject', 'shadow', 'aspect', 'sizes', 'brand'],
     assemble: (p) => {
       const sourceKeys = Array.isArray(p.sourceKeys) ? (p.sourceKeys as string[]).filter(Boolean) : [];
       const params: Record<string, unknown> = {
@@ -779,6 +801,8 @@ export const TOOLS: Tool[] = [
         if (p.model && p.model !== 'random') params.model = p.model;
         if (p.scene) params.scene = p.scene;
       }
+      // The badge choice rides down to every child, so the whole shoot agrees.
+      if (p.brand) params.brand = p.brand;
       return { of: 'PRODUCT_SHOT', sourceKeys, params };
     },
   },

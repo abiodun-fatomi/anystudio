@@ -8,19 +8,26 @@
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { api, type DubLanguages, type Genre, type Idea, type IdeasOut, type MediaAssetRow, type Quote } from '@/lib/api';
+import Link from 'next/link';
+import { api, type BrandKitRow, type DubLanguages, type Genre, type Idea, type IdeasOut, type MediaAssetRow, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { filesFromDrop, uploadMany } from '@/lib/studio/folder';
 import { voicesCache } from '@/lib/studio/voices-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import {
+  BRAND_OFF,
   PRESENTERS,
   PRESET_GROUPS,
   OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
   acceptsSourceKey,
+  brandIsOff,
+  brandLine,
+  nothingToBrand,
   presetsIn,
+  type BrandChoice,
+  type BrandTyped,
   type PhotoPreset,
   type PresetGroup,
 } from '@anystudio/shared';
@@ -36,6 +43,12 @@ const BUTTON_LABEL: Record<string, string> = {
   lipsync: 'Sync it',
   collage: 'Put them together',
 };
+
+/**
+ * One fetch per workspace, not one per tool. A merchant moves between Merchant
+ * shots and Batch a dozen times in a session and the kit does not change.
+ */
+const BRAND_CACHE = new Map<string, BrandKitRow>();
 
 export function ToolPanel({
   tool,
@@ -57,6 +70,35 @@ export function ToolPanel({
 }) {
   const { workspace, balance, postpaid } = useApp();
   const [quote, setQuote] = useState<Quote | null>(null);
+  /**
+   * The brand kit, so the badge switch can name what it will stamp rather
+   * than promise something vague. Fetched once per workspace and cached: a
+   * merchant works through forty photos and the kit does not change between
+   * them, and a control that flickers while it loads is worse than one that
+   * arrives a moment late.
+   */
+  const [brandKit, setBrandKit] = useState<BrandKitRow | null>(() => BRAND_CACHE.get(workspace.id) ?? null);
+  useEffect(() => {
+    const cached = BRAND_CACHE.get(workspace.id);
+    if (cached) {
+      setBrandKit(cached);
+      return;
+    }
+    let live = true;
+    api.brand
+      .get(workspace.id)
+      .then((kit) => {
+        BRAND_CACHE.set(workspace.id, kit);
+        if (live) setBrandKit(kit);
+      })
+      // A kit that cannot be read is a kit with nothing in it, as far as this
+      // control is concerned: the switch still works, it just cannot promise
+      // a name. Never a reason to block a generation.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [workspace.id]);
   const costCode = tool.costCodeFor?.(values);
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
@@ -109,6 +151,7 @@ export function ToolPanel({
                     field={f}
                     value={values[f.key]}
                     values={values}
+                    brandKit={brandKit}
                     onChange={(v) => onChange(f.key, v)}
                     onFill={(params) => {
                       for (const [k, v] of Object.entries(params)) onChange(k, v);
@@ -934,6 +977,7 @@ function FieldControl({
   field,
   value,
   values,
+  brandKit,
   onChange,
   onFill,
 }: {
@@ -941,6 +985,8 @@ function FieldControl({
   value: unknown;
   /** The whole panel, for the fields whose options or contents depend on another one. */
   values: Record<string, unknown>;
+  /** The workspace's brand kit, so the badge switch can say what it will stamp. Null while loading or unset. */
+  brandKit: BrandKitRow | null;
   onChange: (v: unknown) => void;
   /** Write several fields at once — a preset filling in the look it stands for. */
   onFill: (params: Record<string, unknown>) => void;
@@ -1046,6 +1092,16 @@ function FieldControl({
       );
     case 'switch':
       return <Switch label={field.label} hint={field.hint} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
+    case 'brand':
+      return (
+        <BrandField
+          label={field.label}
+          kit={brandKit}
+          choice={value as BrandChoice | undefined}
+          typed={{ price: values.price as string | undefined, businessName: values.businessName as string | undefined }}
+          onChange={onChange}
+        />
+      );
     case 'slider':
       return (
         <Slider
@@ -1149,4 +1205,53 @@ function FieldControl({
       );
     }
   }
+}
+
+/**
+ * "Put my shop on it".
+ *
+ * The badge machinery was complete and had no switch, which meant a workspace
+ * with a brand kit got its name on every picture — including the one meant
+ * for a supplier — and a workspace without one never learned that the price
+ * pill is the point. A picture with ₦12,000 on it is a sale; the same picture
+ * without it is forty WhatsApp messages asking how much.
+ *
+ * The sentence underneath is the whole design. Not a preview that might lie,
+ * not three checkboxes to reason about — the words that are going on the
+ * picture, before a credit is spent. When there is nothing to put there it
+ * says so, and points at the one page that fixes it.
+ */
+function BrandField({
+  label,
+  kit,
+  choice,
+  typed,
+  onChange,
+}: {
+  label: string;
+  kit: BrandKitRow | null;
+  choice: BrandChoice | undefined;
+  /** What this picture carries of its own: a price, a name typed for it. */
+  typed: BrandTyped;
+  onChange: (v: unknown) => void;
+}) {
+  // Undefined means "whatever the kit says", which is on. Off is explicit, so
+  // that a request carries the decision rather than relying on a default that
+  // could change underneath it.
+  const on = !brandIsOff(choice);
+  const nothingToAdd = nothingToBrand(kit, typed);
+  return (
+    <div className={styles.brandField}>
+      <Switch label={label} checked={on && !nothingToAdd} disabled={nothingToAdd} onChange={(e) => onChange(e.target.checked ? undefined : BRAND_OFF)} />
+      <p className={styles.brandLine}>
+        {on || nothingToAdd ? brandLine(kit, choice, typed) : 'Nothing added — this one comes back clean.'}
+        {nothingToAdd && (
+          <>
+            {' '}
+            <Link href="/brand">Set it up</Link>
+          </>
+        )}
+      </p>
+    </div>
+  );
 }
