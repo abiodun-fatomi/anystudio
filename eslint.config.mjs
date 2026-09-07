@@ -51,7 +51,9 @@ export default tseslint.config(
   {
     // Scripts and seeds print on purpose, and the worker has no logger yet:
     // its structured console lines are its log until the pipeline lands.
-    files: ['scripts/**', 'packages/db/prisma/seed.ts', 'apps/worker/src/**', '**/*.spec.ts', '**/*.test.ts'],
+    // `scripts/**` alone resolves against this file's directory, so a script
+    // inside a workspace package was never matched by it.
+    files: ['**/scripts/**', 'packages/db/prisma/seed.ts', 'apps/worker/src/**', '**/*.spec.ts', '**/*.test.ts'],
     rules: { 'no-console': 'off' },
   },
 );
