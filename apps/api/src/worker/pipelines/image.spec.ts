@@ -155,6 +155,16 @@ describe('a model that kept the frame but moved the product', () => {
     expect(plain(await patch(image, 60, 60)), 'a second copy of the product was left at its old position').toBe(true);
   });
 
+  it('asks a different vendor on the retry, not the one that just changed the product', async () => {
+    // The first vendor mangles it; the pipeline must steer away rather than
+    // ask the same model the same question in a sterner voice.
+    sourceBytes = await photoAt(RED, 80, 80);
+    const { ctx, callProvider } = ctxWith({ output: await photoAt(BLUE, 130, 130), mask: await cutoutAt(RED, 80, 80) });
+    await brandedImagePipeline(ctx).catch(() => undefined);
+    const second = callProvider.mock.calls[1]?.[1] as { route?: { exclude?: string[] } } | undefined;
+    expect(second?.route?.exclude, 'the retry did not steer away from the vendor that just failed').toEqual(['google:gemini-image']);
+  });
+
   it('says so in the log, with the place it moved to', async () => {
     sourceBytes = await photoAt(RED, 40, 40);
     const { ctx, warn } = ctxWith({ output: await photoAt(RED, 130, 130), mask: await cutoutAt(RED, 40, 40) });

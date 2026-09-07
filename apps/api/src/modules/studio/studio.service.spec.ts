@@ -78,6 +78,77 @@ describe('StudioService.ideas', () => {
     expect((await failing.svc.ideas('ws', { tool: 'background' })).source).toBe('stock');
   });
 
+  /**
+   * The router ranks the text models and logs the rest as `fallbacks`. For a
+   * long time it only ever CALLED the first one, so when Gemini began
+   * refusing our response schema, ideas dropped to the stock set on every
+   * request — with a working second model listed in the logs of every one of
+   * those failures, never asked.
+   */
+  it('asks the next model when the first one refuses, instead of serving stock', async () => {
+    const down = {
+      key: 'google:flash',
+      generate: vi.fn(async () => {
+        throw new Error('HTTP 400: response_schema.properties[ideas].items.required[0]: property is not defined');
+      }),
+    };
+    const up = {
+      key: 'anthropic:haiku',
+      generate: vi.fn(async () => ({ providerKey: 'anthropic:haiku', artifacts: [{ mime: 'application/json', role: 'text', text: good }] })),
+    };
+    const db = {
+      workspace: { findUniqueOrThrow: vi.fn(async () => ({ id: 'ws', type: 'BUSINESS', region: 'ng', currency: 'NGN', profile: {} })) },
+      brandKit: { findUnique: vi.fn(async () => null) },
+      mediaAsset: { findFirst: vi.fn(async () => null) },
+    };
+    const router = {
+      route: vi.fn(async () => ({
+        capability: 'TEXT_GENERATE',
+        candidates: [
+          { row: { key: 'google:flash', config: null }, provider: down },
+          { row: { key: 'anthropic:haiku', config: null }, provider: up },
+        ],
+        excluded: [],
+      })),
+    };
+    const svc = new StudioService(db as never, { readUrl: vi.fn() } as never, router as never);
+
+    const out = await svc.ideas('ws', { tool: 'scene' });
+
+    expect(down.generate).toHaveBeenCalledTimes(1);
+    expect(up.generate, 'the second model was never asked').toHaveBeenCalledTimes(1);
+    expect(out.source).toBe('model');
+    expect(out.ideas[0]!.title).toBe('The stitching first');
+  });
+
+  it('only serves stock when every model has been asked and refused', async () => {
+    const boom = () => {
+      throw new Error('vendor down');
+    };
+    const a = { key: 'a', generate: vi.fn(async () => boom()) };
+    const b = { key: 'b', generate: vi.fn(async () => boom()) };
+    const db = {
+      workspace: { findUniqueOrThrow: vi.fn(async () => ({ id: 'ws', type: 'BUSINESS', region: 'ng', currency: 'NGN', profile: {} })) },
+      brandKit: { findUnique: vi.fn(async () => null) },
+      mediaAsset: { findFirst: vi.fn(async () => null) },
+    };
+    const router = {
+      route: vi.fn(async () => ({
+        capability: 'TEXT_GENERATE',
+        candidates: [
+          { row: { key: 'a', config: null }, provider: a },
+          { row: { key: 'b', config: null }, provider: b },
+        ],
+        excluded: [],
+      })),
+    };
+    const svc = new StudioService(db as never, { readUrl: vi.fn() } as never, router as never);
+
+    expect((await svc.ideas('ws', { tool: 'scene' })).source).toBe('stock');
+    expect(a.generate).toHaveBeenCalledTimes(1);
+    expect(b.generate).toHaveBeenCalledTimes(1);
+  });
+
   it('answers the same question from cache and a new round from the model', async () => {
     const { svc, provider } = make(good);
     await svc.ideas('ws', { tool: 'video', sourceKey: 'k', shots: 2 });

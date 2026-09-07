@@ -250,21 +250,47 @@ export class GoogleProvider extends BaseProvider {
   }
 }
 
-/** Gemini's schema dialect rejects a few JSON-Schema keywords; drop them rather than fail. */
-function stripUnsupported(schema: Record<string, unknown>): Record<string, unknown> {
-  const drop = new Set(['$schema', 'additionalProperties', 'default', 'examples', 'title']);
-  const walk = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      return Object.fromEntries(
-        Object.entries(v as Record<string, unknown>)
-          .filter(([k]) => !drop.has(k))
-          .map(([k, val]) => [k, walk(val)]),
-      );
+/**
+ * Gemini's schema dialect rejects a few JSON-Schema keywords; drop them
+ * rather than fail.
+ *
+ * The catch, and it cost us the whole ideas feature: a keyword name and a
+ * PROPERTY name live in different namespaces, and this used to walk every
+ * object treating both the same. `title` is a JSON-Schema annotation — and
+ * it is also what an idea's title field is called. So `properties.title`
+ * was deleted from the schema while `required: ['title', …]` went on
+ * naming it, and Gemini answered, correctly:
+ *
+ *   response_schema.properties[ideas].items.required[0]: property is not defined
+ *
+ * Every ideas request 400'd, and the caller quietly served stock ideas, so
+ * the feature looked bland rather than broken. `default` and `examples`
+ * are the same trap waiting for the next schema that needs those words.
+ *
+ * So the walk now knows where it is: inside a map of property names, a key
+ * is a NAME and is never dropped; anywhere else it is a keyword.
+ */
+const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions']);
+const DROP = new Set(['$schema', 'additionalProperties', 'default', 'examples', 'title']);
+
+export function stripUnsupported(schema: Record<string, unknown>): Record<string, unknown> {
+  /** A schema node: its keys are keywords. */
+  const node = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(node);
+    if (!v || typeof v !== 'object') return v;
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (DROP.has(k)) continue;
+      out[k] = SCHEMA_MAPS.has(k) ? names(val) : node(val);
     }
-    return v;
+    return out;
   };
-  return walk(schema) as Record<string, unknown>;
+  /** A map of property names to schemas: its keys are names, and names are untouchable. */
+  const names = (v: unknown): unknown => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return node(v);
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([name, sub]) => [name, node(sub)]));
+  };
+  return node(schema) as Record<string, unknown>;
 }
 
 export function parseJson(providerKey: string, text: string): unknown {

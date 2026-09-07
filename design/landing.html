@@ -1099,6 +1099,119 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
 .lang-more .body{font-size:14.5px;color:var(--muted);line-height:1.65}
 .lang-note{color:var(--muted);font-size:14.5px;margin-top:18px;max-width:52ch}
 
+/* ============================================================
+   SHOTS — one photo, the whole shoot
+   ============================================================ */
+.shots-lead{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:clamp(20px,3vw,36px);align-items:center;margin-bottom:28px}
+@media(max-width:760px){.shots-lead{grid-template-columns:1fr;gap:20px}}
+.shots-src{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
+.shots-src img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover}
+.shots-src .tag{
+  position:absolute;left:8px;bottom:8px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);padding:5px 8px;border-radius:3px
+}
+.shots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media(max-width:900px){.shots{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.shots{grid-template-columns:1fr}}
+.shot{
+  position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface-2);
+  transition:transform .22s cubic-bezier(.2,.8,.3,1),box-shadow .22s,border-color .22s
+}
+.shot:hover{transform:translateY(-4px);box-shadow:var(--frame-shadow-lg);border-color:var(--ink)}
+.shot img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;background:var(--surface)}
+.shot figcaption{padding:13px 14px 15px;display:flex;flex-direction:column;gap:3px}
+.shot b{font-size:14.5px;font-weight:700}
+.shot span{font-size:13px;color:var(--muted);line-height:1.5}
+/* A shot whose picture has not been dropped in yet still reads as a card. */
+.shot img:not([src]),.shot img[src=""]{visibility:hidden}
+
+/* ============================================================
+   REELS — motion, from the same photo
+   ============================================================ */
+.reels{display:grid;grid-template-columns:repeat(2,minmax(0,168px)) minmax(0,1fr);gap:16px;align-items:start}
+/* On a phone the two reels sit side by side and the copy goes underneath.
+   Stacked full-width they are 9:16 each, which is most of a screen apiece. */
+@media(max-width:820px){.reels{grid-template-columns:repeat(2,minmax(0,1fr))}.reel-note{grid-column:1/-1}}
+.reel{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#0B090D;box-shadow:var(--frame-shadow)}
+.reel video,.reel img{display:block;width:100%;aspect-ratio:9/16;object-fit:cover}
+.reel .tag{
+  position:absolute;left:9px;top:9px;z-index:2;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  background:color-mix(in srgb,#0B090D 68%,transparent);color:#fff;padding:5px 8px;border-radius:3px;backdrop-filter:blur(6px)
+}
+.reel-note{display:flex;flex-direction:column;gap:8px;justify-content:center;padding:4px 2px}
+.reel-note b{font-size:15.5px;font-weight:700}
+.faces{display:flex;align-items:center;margin-top:2px;flex-wrap:wrap}
+.faces img{
+  width:38px;height:38px;border-radius:50%;object-fit:cover;display:block;
+  border:2px solid var(--surface-2);background:var(--surface);margin-right:-9px;box-shadow:var(--frame-shadow)
+}
+.faces span{margin-left:18px;font-size:13px;color:var(--muted);line-height:1.5}
+.reel-note p{font-size:14px;color:var(--muted);line-height:1.6}
+
+/* ============================================================
+   STUDIO — every tool, grouped as the app groups them
+   ============================================================ */
+.studio{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:16px}
+.studio-col{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:22px 20px 24px;
+  display:flex;flex-direction:column;transition:border-color .22s,box-shadow .22s
+}
+.studio-col:hover{border-color:var(--ink);box-shadow:var(--frame-shadow)}
+.studio-col.wide{grid-column:span 2}
+@media(max-width:560px){.studio-col.wide{grid-column:span 1}}
+.studio-col .mono{color:var(--accent);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.studio-col.alt .mono{color:var(--cyan)}
+.studio-col h4{font-size:17px;font-weight:800;margin-top:9px;letter-spacing:-.01em}
+.studio-col > p{font-size:14px;color:var(--muted);line-height:1.6;margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+.chips b{
+  font-family:var(--f-body);font-size:12.5px;font-weight:600;line-height:1;color:var(--ink-soft);
+  border:1px solid var(--line);background:var(--surface);border-radius:3px;padding:8px 9px
+}
+
+/* ============================================================
+   BAND — a single claim with one picture beside it
+   ============================================================ */
+.band{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:clamp(24px,4vw,44px);
+  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:clamp(24px,4vw,48px);align-items:center
+}
+@media(max-width:860px){.band{grid-template-columns:1fr}}
+.band h3{font-size:clamp(22px,3.2vw,32px);font-weight:800;max-width:17ch;letter-spacing:-.015em}
+.band p{color:var(--muted);font-size:16px;line-height:1.65;margin-top:14px;max-width:52ch}
+.band .band-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+/* Forty tiles filling in, which is what a batch actually looks like. */
+.tiles{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+@media(max-width:520px){.tiles{grid-template-columns:repeat(6,1fr)}}
+.tiles i{
+  aspect-ratio:1;border-radius:2px;background:var(--line-soft);border:1px solid var(--line-soft);
+  animation:fill 3.4s cubic-bezier(.2,.8,.3,1) infinite both
+}
+@keyframes fill{
+  0%,8%{background:var(--line-soft);border-color:var(--line-soft)}
+  22%,72%{background:var(--accent-wash);border-color:var(--accent)}
+  92%,100%{background:var(--line-soft);border-color:var(--line-soft)}
+}
+.soon{
+  display:inline-flex;align-items:center;gap:7px;font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--cyan);border:1px solid var(--cyan);border-radius:3px;padding:6px 9px;margin-bottom:14px
+}
+.soon i{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+/* The phone, drawn rather than photographed — nothing to download, nothing to age. */
+.appshot{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:340px;margin-inline:auto}
+.appshot .scr{
+  border:1px solid var(--line);border-radius:14px;background:var(--surface-2);padding:10px;box-shadow:var(--frame-shadow);
+  display:flex;flex-direction:column;gap:8px
+}
+.appshot .scr:nth-child(2){transform:translateY(18px)}
+.appshot .bar{height:6px;border-radius:3px;background:var(--line-soft)}
+.appshot .bar.a{width:62%}
+.appshot .bar.b{width:40%}
+.appshot .ph{border-radius:8px;aspect-ratio:4/5;background:linear-gradient(150deg,var(--accent-wash),var(--cyan-wash));border:1px solid var(--line-soft)}
+.appshot .ph.two{background:linear-gradient(150deg,var(--cyan-wash),var(--accent-wash))}
+@media(prefers-reduced-motion:reduce){.tiles i,.soon i{animation:none}}
+
 .rv{opacity:0;transform:translateY(20px)}
 .rv.seen{opacity:1;transform:none;transition:opacity .6s cubic-bezier(.2,.8,.3,1),transform .6s cubic-bezier(.2,.8,.3,1)}
 @media(prefers-reduced-motion:reduce){
@@ -1121,8 +1234,9 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     </a>
     <nav class="nav-links">
       <a href="#how">How it works</a>
-      <a href="why.html">Why AnyStudio</a>
-      <a href="#who">Who it's for</a>
+      <a href="#studio">The studio</a>
+      <a href="#shots">Shots</a>
+      <a href="#reels">Video</a>
       <a href="#whatsapp">WhatsApp</a>
       <a href="#api">For platforms</a>
       <a href="#pricing">Pricing</a>
@@ -1155,7 +1269,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
         <div class="hero-copy">
           <div class="aud-copy live">
             <h1 class="hero-h" id="heroH">One product photo.<br><em>Everything you post.</em></h1>
-            <p class="hero-sub" id="heroSub">Send one picture. Get back branded images carrying your price and business name, a caption ready to paste, a full product description, and a short reel ad that plays on loop — then post it straight to Status, Instagram and TikTok.</p>
+            <p class="hero-sub" id="heroSub">Send one picture. Get back the shoot — your product on a model, on a clean sweep, laid flat; a reel that plays on loop; the description, the caption and the hashtags; a voice reading it in your buyer's language. Then post it straight to Status, Instagram and TikTok.</p>
           </div>
           <!-- Sizing ghosts: never shown or read out, they only hold the cell
                open to the tallest variant so the hero cannot resize. -->
@@ -1458,6 +1572,95 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
   </div>
 </section>
 
+<!-- ============================== SHOTS ============================== -->
+<section class="sec" id="shots">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>The shoot you cannot afford, from the photo you already took.</h2>
+        <p class="sec-lede">A model, a studio, a stylist and a day of someone's time is what a proper apparel listing normally costs, in any city you care to name. This is one photo on a bed, and five ways of showing it — the garment itself never changes, only what is holding it up.</p>
+      </div>
+    </div>
+
+    <div class="shots-lead rv">
+      <figure class="shots-src">
+        <img alt="A linen dress photographed on a bed with a phone, under a ceiling light" src="/shots/shot-source.webp" width="900" height="1200">
+        <span class="tag">What you send</span>
+      </figure>
+      <div>
+        <p class="sec-lede" style="margin-top:0">Every picture on the right came from that one on the left. Nothing was re-shot, nothing was bought, and the print on the fabric is the same print — the studio checks it against your original and puts your own pixels back if the model drifts, rather than handing you a dress you do not sell.</p>
+        <div class="chips" style="margin-top:18px">
+          <b>On a model</b><b>Ghost mannequin</b><b>Flat lay</b><b>Pressed</b><b>Studio</b><b>Widen the frame</b><b>Remove stray text</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="shots rv">
+      <figure class="shot">
+        <img alt="The same linen dress worn by a model on a studio backdrop" src="/shots/shot-model.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <figcaption><b>On a model</b><span>Worn, front and centre, on a clean backdrop. Pick the look, the pose and the setting.</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <img alt="The same linen dress as a hollow ghost mannequin shot" src="/shots/shot-ghost.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <figcaption><b>Ghost mannequin</b><span>The shape of a body, nobody inside it. What every marketplace listing wants.</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <img alt="The same linen dress folded and photographed from above" src="/shots/shot-flat.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <figcaption><b>Flat lay</b><span>Folded, square to the camera, from above — the shot that shows the whole print.</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <img alt="A shirt with every crease pressed out" src="/shots/shot-pressed.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <figcaption><b>Pressed</b><span>Creases from the wardrobe taken out, without touching the cut or the colour.</span></figcaption>
+      </figure>
+    </div>
+    <p class="mono" style="margin-top:18px;color:var(--muted);font-size:12px">Up to four reference angles per item — front, back, side, detail — so the studio knows what the back looks like instead of inventing it.</p>
+  </div>
+</section>
+
+<!-- ============================== REELS ============================== -->
+<section class="sec" id="reels">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>Then it moves.</h2>
+        <p class="sec-lede">A still gets scrolled past. The same photo, given a slow push-in and twelve seconds, gets watched — and Status, Reels and TikTok all push video harder than they push pictures. Pick the shape of the ad and the studio writes the shot list, or write it yourself.</p>
+      </div>
+    </div>
+    <div class="reels rv">
+      <div class="reel">
+        <span class="tag">Reveal</span>
+        <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+               poster="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
+          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div class="reel">
+        <span class="tag">Price drop</span>
+        <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+               poster="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
+          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033730_e88d408d-ad4b-4938-a379-3f1a8041e6e5.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div class="reel-note">
+        <b>Six formats, written for you.</b>
+        <p>Reveal, benefits, before and after, unboxing, price drop, and the customer-filmed one that does not look like an advert. Each is a real shot list — how the camera moves, how long each shot holds, where the price lands.</p>
+        <b style="margin-top:6px">Or put a person in it.</b>
+        <p>A presenter reads your script to camera across several shots, so the product has somebody vouching for it. The voice, the words and the face are yours to choose.</p>
+        <div class="faces">
+          <img alt="" src="/shots/presenter-1.webp" loading="lazy" decoding="async" width="76" height="76">
+          <img alt="" src="/shots/presenter-2.webp" loading="lazy" decoding="async" width="76" height="76">
+          <img alt="" src="/shots/presenter-3.webp" loading="lazy" decoding="async" width="76" height="76">
+          <img alt="" src="/shots/presenter-4.webp" loading="lazy" decoding="async" width="76" height="76">
+          <span>Pick who sells it — and which of nine languages they sell it in.</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+          <a class="btn btn-ghost" href="auth.html#signup">Make one free</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============================== WHO ============================== -->
 <section class="sec" id="who">
   <div class="wrap">
@@ -1558,7 +1761,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     <div class="sec-head rv">
       <div>
         <h2>The photo stays. The words travel.</h2>
-        <p class="sec-lede">A buyer in Abidjan and a buyer in Lagos are looking at the same bottle. They are not reading the same sentence. AnyStudio writes the description and speaks the voiceover in the language of the market you are selling into — the product is never re-shot, only re-written.</p>
+        <p class="sec-lede">A buyer in São Paulo, a buyer in Cairo and a buyer in Lagos are looking at the same bottle. They are not reading the same sentence. AnyStudio writes the description and speaks the voiceover in the language of the market you are selling into — the product is never re-shot, only re-written.</p>
       </div>
     </div>
 
@@ -1713,12 +1916,52 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
   </div>
 </section>
 
+<!-- ============================== STUDIO ============================== -->
+<section class="sec" id="studio">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <h2>Fifteen tools. One photo feeds all of them.</h2>
+        <p class="sec-lede">Not fifteen apps with fifteen logins and fifteen subscriptions. One library, one brand kit, one balance — and whatever you make can be sent straight into the next tool without downloading anything.</p>
+      </div>
+    </div>
+    <div class="studio rv">
+      <div class="studio-col wide">
+        <span class="mono">Photos · 8</span>
+        <h4>Make one picture better, or make a new one from it.</h4>
+        <p>Put the product somewhere else, take the background away, put a real shadow under it, make it big enough to print, or lay six of them out as one set. The product itself is checked against your original every time.</p>
+        <div class="chips">
+          <b>Merchant shots</b><b>New scene</b><b>Replace background</b><b>Cut out</b><b>Enhance</b><b>Restyle</b><b>Collage</b><b>Flyer</b>
+        </div>
+      </div>
+      <div class="studio-col">
+        <span class="mono">Video · 3</span>
+        <h4>Reels, ads, and new words in the same mouth.</h4>
+        <p>A reel from a single photo, a multi-shot ad with a presenter, or an existing clip re-voiced so the lips still match.</p>
+        <div class="chips"><b>Reels &amp; ads</b><b>Lip-sync</b><b>Dub</b></div>
+      </div>
+      <div class="studio-col alt">
+        <span class="mono">Sound · 2</span>
+        <h4>A song for your Status, or a voice reading your script.</h4>
+        <p>An original track in a style you pick — afrobeats, reggaeton, lo-fi, something quiet under a voice — or a narrator in the accent your buyers actually speak.</p>
+        <div class="chips"><b>Music</b><b>Voiceover</b></div>
+      </div>
+      <div class="studio-col alt">
+        <span class="mono">Words · 1</span>
+        <h4>The listing, the caption, the hashtags.</h4>
+        <p>Written from the picture and your brand tone — three angles per post, hashtags ordered specific before broad, and no invented prices.</p>
+        <div class="chips"><b>Descriptions</b><b>Captions</b><b>Hashtags</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============================== FEATURES ============================== -->
 <section class="sec">
   <div class="wrap">
     <div class="sec-head rv">
       <div>
-        <h2>The parts you would otherwise pay four people for.</h2>
+        <h2>And the parts that hold it all together.</h2>
       </div>
     </div>
     <div class="feat rv">
@@ -1728,9 +1971,9 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
         <p>Logo, colours, fonts and tone saved once, then applied to everything you generate afterwards.</p>
       </div>
       <div>
-        <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></span>
-        <h4>Background control</h4>
-        <p>Remove to transparent, replace with a studio sweep, or place the product in a scene you choose.</p>
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h3M20 7V5a1 1 0 00-1-1h-3M4 17v2a1 1 0 001 1h3M20 17v2a1 1 0 01-1 1h-3"/><circle cx="12" cy="12" r="3.2"/></svg></span>
+        <h4>Your product, checked</h4>
+        <p>Every generated image is measured against your original. If the product drifted, your own pixels go back in — and if it cannot be recovered, the credit does.</p>
       </div>
       <div>
         <span class="ic"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
@@ -1751,6 +1994,64 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
         <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 4.5-3.4 7.3-8 8-4.6-.7-8-3.5-8-8V7z"/></svg></span>
         <h4>Your images stay yours</h4>
         <p>Private storage by default, short-lived links, and deletion that actually deletes.</p>
+      </div>
+      <div>
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M21 15V5a2 2 0 00-2-2H9"/><rect x="3" y="7" width="12" height="14" rx="2"/></svg></span>
+        <h4>One library, every tool</h4>
+        <p>Anything you make can be sent straight into the next tool — a still into a reel, a reel into a dub — without downloading and re-uploading it.</p>
+      </div>
+      <div>
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h12"/></svg></span>
+        <h4>Sizes cut for you</h4>
+        <p>Story, feed and square come out of one generation, each cropped around the product rather than the brightest thing in the frame.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== BATCH ============================== -->
+<section class="sec" id="batch">
+  <div class="wrap">
+    <div class="band rv">
+      <div>
+        <span class="mono" style="color:var(--accent);font-size:11px;letter-spacing:.08em;text-transform:uppercase">The whole shoot</span>
+        <h3>A hundred photos. One decision.</h3>
+        <p>Nobody edits a catalogue one picture at a time. Pick the look once, select the whole folder, and the studio works through it — same background, same crop, same price badge, one price per photo. You are told what it will cost before it starts, and anything that fails is refunded on its own rather than taking the batch down with it.</p>
+        <div class="band-actions">
+          <a class="btn btn-primary" href="auth.html#signup">Try it on ten</a>
+          <a class="btn btn-ghost" href="#pricing">What a hundred costs</a>
+        </div>
+      </div>
+      <div class="tiles" aria-hidden="true">
+        <i style="animation-delay:0ms"></i><i style="animation-delay:60ms"></i><i style="animation-delay:120ms"></i><i style="animation-delay:180ms"></i>
+        <i style="animation-delay:240ms"></i><i style="animation-delay:300ms"></i><i style="animation-delay:360ms"></i><i style="animation-delay:420ms"></i>
+        <i style="animation-delay:80ms"></i><i style="animation-delay:140ms"></i><i style="animation-delay:200ms"></i><i style="animation-delay:260ms"></i>
+        <i style="animation-delay:320ms"></i><i style="animation-delay:380ms"></i><i style="animation-delay:440ms"></i><i style="animation-delay:500ms"></i>
+        <i style="animation-delay:160ms"></i><i style="animation-delay:220ms"></i><i style="animation-delay:280ms"></i><i style="animation-delay:340ms"></i>
+        <i style="animation-delay:400ms"></i><i style="animation-delay:460ms"></i><i style="animation-delay:520ms"></i><i style="animation-delay:580ms"></i>
+        <i style="animation-delay:240ms"></i><i style="animation-delay:300ms"></i><i style="animation-delay:360ms"></i><i style="animation-delay:420ms"></i>
+        <i style="animation-delay:480ms"></i><i style="animation-delay:540ms"></i><i style="animation-delay:600ms"></i><i style="animation-delay:660ms"></i>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== MOBILE ============================== -->
+<section class="sec" id="mobile">
+  <div class="wrap">
+    <div class="band rv">
+      <div>
+        <span class="soon"><i></i> Coming soon</span>
+        <h3>The app, for the phone the photo was taken on.</h3>
+        <p>Everything here already works in a browser on a phone, and on WhatsApp without any browser at all. The app adds the parts only a phone can do well: shoot straight into the studio, keep your library offline, and get a push the moment a reel finishes rendering instead of checking back.</p>
+        <div class="band-actions">
+          <a class="btn btn-ghost" href="why.html#mobile">What it will do</a>
+          <a class="btn btn-primary" href="auth.html#signup">Use it on the web today</a>
+        </div>
+      </div>
+      <div class="appshot" aria-hidden="true">
+        <div class="scr"><span class="bar a"></span><span class="ph"></span><span class="bar b"></span></div>
+        <div class="scr"><span class="bar b"></span><span class="ph two"></span><span class="bar a"></span></div>
       </div>
     </div>
   </div>
@@ -1988,7 +2289,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
     <div class="foot-cols">
       <div>
         <span class="mono">Product</span>
-        <a href="#how">How it works</a><a href="#whatsapp">WhatsApp bot</a><a href="#pricing">Pricing</a><a href="#pricing">Credit packs</a>
+        <a href="#how">How it works</a><a href="#studio">The studio</a><a href="#shots">Merchant shots</a><a href="#reels">Reels &amp; ads</a><a href="#batch">Batch</a><a href="#whatsapp">WhatsApp bot</a><a href="#pricing">Pricing</a>
       </div>
       <div>
         <span class="mono">For platforms</span>
@@ -2000,7 +2301,7 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
       </div>
       <div>
         <span class="mono">Company</span>
-        <a href="why.html">Why AnyStudio</a><a href="careers.html">Careers</a><a href="why.html#mobile">Mobile app</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refunds.html">Refunds</a><a href="mailto:hello@anystudio.ai">hello@anystudio.ai</a>
+        <a href="why.html">Why AnyStudio</a><a href="careers.html">Careers</a><a href="#mobile">Mobile app — soon</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refunds.html">Refunds</a><a href="mailto:hello@anystudio.ai">hello@anystudio.ai</a>
       </div>
     </div>
   </div>

@@ -145,7 +145,20 @@ export class GenerationRunner {
         signal: abort.signal,
         budgetMs: BUDGET_MS[row.capability],
         log,
-        callProvider: (input, opts) => this.callWithFallback(decision.candidates, input, { ...opts, generationId }, log),
+        callProvider: async (input, opts) => {
+          // A pipeline may ask to steer away from a vendor it has just seen
+          // fail on quality rather than on errors — something the router
+          // cannot know, because the call SUCCEEDED. If steering leaves no
+          // one, the original ranking stands: a second-best vendor beats no
+          // picture at all.
+          let candidates = decision.candidates;
+          if (opts.route) {
+            const steered = await this.router.route(row.capability, workspace.type, { generationId, ...opts.route });
+            if (steered.candidates.length > 0) candidates = steered.candidates;
+            else log.warn({ route: opts.route }, 'nobody left after steering; keeping the original candidates');
+          }
+          return this.callWithFallback(candidates, input, { ...opts, generationId }, log);
+        },
         callCapability: async (capability, input, opts) => {
           const d = await this.router.route(capability, workspace.type, { generationId, ...(opts.route ?? {}) });
           if (d.candidates.length === 0) throw new ProviderError('PROVIDER_DOWN', `no provider available for ${capability}`, 'router');
@@ -288,11 +301,22 @@ export class GenerationRunner {
       const started = Date.now();
       const fullInput: ProviderInput = { ...input, config: { ...((c.row.config as Record<string, unknown> | null) ?? {}), costMinor: c.row.costPerCall } };
       try {
-        log.info({ providerKey: c.row.key, candidate: i + 1, of: candidates.length }, 'calling provider');
+        // `for` names the capability actually being called. The bound logger
+        // carries the JOB's capability, so a cutout taken on behalf of an
+        // IMAGE_EDIT was logged as an IMAGE_EDIT call — which is exactly the
+        // line you reach for when working out why an image came out wrong.
+        // (The router was always told the right one; only the log lied.)
+        log.info({ providerKey: c.row.key, for: input.capability, candidate: i + 1, of: candidates.length }, 'calling provider');
         const result = await c.provider.generate(fullInput, opts);
         await this.router.report(c.row.key, input.capability, { ok: true, latencyMs: Date.now() - started }, { generationId: opts.generationId });
         log.info(
-          { providerKey: c.row.key, latencyMs: Date.now() - started, providerJobId: result.providerJobId, artifacts: result.artifacts.length },
+          {
+            providerKey: c.row.key,
+            for: input.capability,
+            latencyMs: Date.now() - started,
+            providerJobId: result.providerJobId,
+            artifacts: result.artifacts.length,
+          },
           'provider answered',
         );
         return { ...result, costMinor: result.costMinor ?? c.row.costPerCall };

@@ -21,9 +21,9 @@
  */
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type WorkspaceType } from '@prisma/client';
 import { z } from 'zod';
-import type { LlmRequest } from '@anystudio/shared';
+import type { LlmRequest, ProviderResult } from '@anystudio/shared';
 import { logger } from '../../../config/logger';
 import { MediaService } from '../media/media.service';
 import { ProviderRouter } from '../provider/provider.router';
@@ -454,21 +454,10 @@ export class StudioService {
         .filter(Boolean)
         .join('\n'),
     });
-    const decision = await this.router.route('TEXT_GENERATE', workspace.type);
-    const candidate = decision.candidates[0];
-    if (!candidate) throw new Error('no TEXT_GENERATE provider');
-    const result = await candidate.provider.generate(
-      {
-        generationId: `captions-${workspaceId.slice(0, 8)}`,
-        workspaceId,
-        capability: 'TEXT_GENERATE',
-        params: { task: 'captions', platform, goal: dto.goal ?? 'sell' },
-        files: {},
-        config: { ...((candidate.row.config as Record<string, unknown> | null) ?? {}) },
-        prompt: { system, parts, jsonSchema: CAPTIONS_JSON_SCHEMA, maxTokens: 1200, temperature: dto.round ? 0.95 : 0.8 },
-      },
-      { timeoutMs: 25_000 },
-    );
+    const result = await this.askAnyModel(workspaceId, workspace.type, `captions-${workspaceId.slice(0, 8)}`, {
+      params: { task: 'captions', platform, goal: dto.goal ?? 'sell' },
+      prompt: { system, parts, jsonSchema: CAPTIONS_JSON_SCHEMA, maxTokens: 1200, temperature: dto.round ? 0.95 : 0.8 },
+    });
     const parsed = captionSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
     if (!parsed.success) {
       logger.warn({ workspaceId, providerKey: result.providerKey, issues: parsed.error.issues.slice(0, 3) }, 'captions: the model answered off-structure');
@@ -540,22 +529,11 @@ export class StudioService {
         .join('\n'),
     });
 
-    const decision = await this.router.route('TEXT_GENERATE', workspace.type);
-    const candidate = decision.candidates[0];
-    if (!candidate) throw new Error('no TEXT_GENERATE provider');
     const request: LlmRequest = { system, parts, jsonSchema: IDEAS_JSON_SCHEMA, maxTokens: 900, temperature: dto.round ? 0.9 : 0.7 };
-    const result = await candidate.provider.generate(
-      {
-        generationId: `ideas-${workspaceId.slice(0, 8)}`,
-        workspaceId,
-        capability: 'TEXT_GENERATE',
-        params: { task: 'ideas', tool: dto.tool },
-        files: {},
-        config: { ...((candidate.row.config as Record<string, unknown> | null) ?? {}) },
-        prompt: request,
-      },
-      { timeoutMs: 25_000 },
-    );
+    const result = await this.askAnyModel(workspaceId, workspace.type, `ideas-${workspaceId.slice(0, 8)}`, {
+      params: { task: 'ideas', tool: dto.tool },
+      prompt: request,
+    });
     const text = result.artifacts.find((a) => a.text !== undefined)?.text;
     const parsed = ideaSchema.safeParse(text);
     if (!parsed.success) {
@@ -568,6 +546,55 @@ export class StudioService {
       ideas: parsed.data.ideas.slice(0, 3).map((i) => ({ title: i.title, prompt: i.prompt, motion: isVideo ? i.motion : undefined, why: i.why })),
       source: 'model',
     };
+  }
+
+  /**
+   * Ask the text models, in the order the router ranked them, until one
+   * answers.
+   *
+   * This used to take `decision.candidates[0]` and stop. The router was
+   * still computing the rest and logging them as `fallbacks`, so the logs
+   * said `fallbacks:["anthropic:claude-haiku-4.5"]` on every single call
+   * while nothing was ever able to reach Anthropic. When Gemini started
+   * refusing our schema, ideas fell straight through to the stock set —
+   * for days, on every request, with a perfectly good second model sitting
+   * unused behind a list we built and threw away.
+   *
+   * A fallback that is computed but not called is not a fallback.
+   */
+  private async askAnyModel(
+    workspaceId: string,
+    workspaceType: WorkspaceType,
+    generationId: string,
+    req: { params: Record<string, unknown>; prompt: LlmRequest },
+  ): Promise<ProviderResult> {
+    const decision = await this.router.route('TEXT_GENERATE', workspaceType);
+    if (decision.candidates.length === 0) throw new Error('no TEXT_GENERATE provider');
+    let last: unknown;
+    for (const [i, candidate] of decision.candidates.entries()) {
+      try {
+        return await candidate.provider.generate(
+          {
+            generationId,
+            workspaceId,
+            capability: 'TEXT_GENERATE',
+            params: req.params,
+            files: {},
+            config: { ...((candidate.row.config as Record<string, unknown> | null) ?? {}) },
+            prompt: req.prompt,
+          },
+          { timeoutMs: 25_000 },
+        );
+      } catch (err) {
+        last = err;
+        const next = decision.candidates[i + 1]?.row.key;
+        logger.warn(
+          { workspaceId, providerKey: candidate.row.key, err: err instanceof Error ? err.message : String(err), next: next ?? null },
+          next ? 'text model failed; asking the next one' : 'text model failed and there is no one left to ask',
+        );
+      }
+    }
+    throw last instanceof Error ? last : new Error(String(last));
   }
 
   /** The generic set, moved on by the round, with the reason attached outside production. */
