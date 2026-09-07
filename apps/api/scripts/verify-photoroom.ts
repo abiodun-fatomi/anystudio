@@ -45,6 +45,13 @@ async function main(): Promise<void> {
     console.error('PHOTOROOM_API_KEY is not set. Put it in your shell, not in this file.\n  export PHOTOROOM_API_KEY=…');
     process.exit(2);
   }
+  // A placeholder copied out of an instruction is not a key, and finding that
+  // out from six identical 401s is a worse minute than finding it out here.
+  if (/^(paste|your|xxx|<|\.\.\.)/i.test(apiKey) || apiKey.length < 16) {
+    console.error(`PHOTOROOM_API_KEY does not look like a key (${apiKey.length} characters).`);
+    console.error('Copy the real one from the Photoroom API dashboard → API keys. It is not your app login.');
+    process.exit(2);
+  }
 
   const url = arg('url') || SAMPLE;
   const out = arg('out') || './photoroom-check';
@@ -102,6 +109,13 @@ async function main(): Promise<void> {
       // The vendor's own words, in full: this is the whole point of the run.
       const message = err instanceof Error ? err.message : String(err);
       console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms\n    ${message}\n`);
+      // Every mode will fail the same way and none of them will be about the
+      // adapter, so say what it is once and stop burning the wall clock.
+      if (/HTTP 401|could not be authenticated/i.test(message)) {
+        console.log('    The key was rejected, so every mode below would fail the same way.');
+        console.log('    Photoroom API dashboard → API keys → Create API key. Nothing was charged.\n');
+        process.exit(2);
+      }
     }
   }
 
