@@ -112,7 +112,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 
   // 4. Our words, our logo, our watermark.
   await ctx.stage('composing', 74, 'adding your name and price');
-  const branded = await brand(ctx, picked.bytes, p);
+  const branded = await applyBrand(ctx, picked.bytes, p);
 
   // 5. Every size.
   await ctx.stage('composing', 84, 'cutting every size');
@@ -239,7 +239,16 @@ export async function pasteProductAt(scene: Uint8Array, cutout: Uint8Array, plac
 }
 
 /** Price pill, business name or logo, watermark — from the brand kit, exactly. */
-async function brand(ctx: PipelineContext, image: Uint8Array, p: CapabilityParams<'IMAGE_EDIT'>): Promise<Buffer> {
+/**
+ * The seller's price, name or logo and our watermark, laid over a finished
+ * picture. Shared with the collage tool so a set of photos and a single
+ * scene carry the same badge in the same place — a shop, not a toolbox.
+ */
+export async function applyBrand(
+  ctx: PipelineContext,
+  image: Uint8Array,
+  p: Pick<CapabilityParams<'IMAGE_EDIT'>, 'price' | 'businessName' | 'brand'>,
+): Promise<Buffer> {
   const kit = ctx.brandKit;
   const showPrice = p.brand?.showPrice ?? kit?.showPrice ?? true;
   const showName = p.brand?.showBusinessName ?? true;

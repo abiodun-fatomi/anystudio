@@ -16,7 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { moneyMinor } from '@/lib/billing/money';
-import { TOOLS, coerceParams, toolById, type Tool, type ToolId } from '@/lib/studio/tools';
+import { TOOLS, bringsItsOwnSource, cardSourceFor, coerceParams, toolById, type Tool, type ToolId } from '@/lib/studio/tools';
 import { useGenerations, type GenerationCard } from '@/lib/studio/useGenerations';
 import { Button, EmptyState, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
@@ -200,13 +200,13 @@ function Studio() {
       setBusy(true);
       const p = coerceParams(t, v);
       // A tool that brings its own file (a video to translate) keeps it; the canvas photo is for the rest.
-      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      const ownsSource = bringsItsOwnSource(t);
       if (!ownsSource && src) p.sourceKey = src;
       if (t.needsSource && !src) {
         setBusy(false);
         return;
       }
-      const cardSource = ownsSource ? (typeof p.sourceKey === 'string' ? p.sourceKey : undefined) : (src ?? undefined);
+      const cardSource = ownsSource ? cardSourceFor(t, p) : (src ?? undefined);
       const r = await create({ toolId: t.id, capability: t.capability, params: p, credits, sourceKey: cardSource, costCode: t.costCodeFor?.(p) });
       setBusy(false);
       if (!r.ok) {
@@ -239,7 +239,7 @@ function Studio() {
   const again = useCallback(
     (card: GenerationCard) => {
       const t = toolById(card.toolId);
-      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      const ownsSource = bringsItsOwnSource(t);
       setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
       setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
       void generate(t, card.params, card.credits, ownsSource ? sourceKey : (card.sourceKey ?? sourceKey));
@@ -256,7 +256,7 @@ function Studio() {
   const edit = useCallback(
     (card: GenerationCard) => {
       const t = toolById(card.toolId);
-      const ownsSource = t.fields.some((f) => f.kind === 'file' && f.key === 'sourceKey');
+      const ownsSource = bringsItsOwnSource(t);
       setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
       setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
       window.scrollTo({ top: 0, behavior: 'smooth' });

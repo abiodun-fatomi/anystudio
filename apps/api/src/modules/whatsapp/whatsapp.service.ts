@@ -635,6 +635,7 @@ export class WhatsappService implements OnModuleInit {
       case 'BACKGROUND_REMOVE':
       case 'BACKGROUND_REPLACE':
       case 'UPSCALE':
+      case 'COLLAGE':
       case 'RELIGHT': {
         const main = outputs.find((o) => o.role === 'image');
         const story = outputs.find((o) => o.role === 'variant' && o.size === 'story');

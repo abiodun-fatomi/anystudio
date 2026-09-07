@@ -32,6 +32,7 @@ const CAPABILITY_WORD: Record<string, string> = {
   BACKGROUND_REPLACE: 'new background',
   RELIGHT: 'relit photo',
   UPSCALE: 'enhanced photo',
+  COLLAGE: 'collage',
   IMAGE_TO_VIDEO: 'video',
   VIDEO_STITCH: 'ad',
   TEXT_GENERATE: 'listing copy',

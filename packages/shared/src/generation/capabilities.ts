@@ -26,6 +26,7 @@ export const CAPABILITIES = [
   'BACKGROUND_REPLACE',
   'RELIGHT',
   'UPSCALE',
+  'COLLAGE',
   'IMAGE_TO_VIDEO',
   'VIDEO_STITCH',
   'TEXT_GENERATE',
@@ -61,8 +62,8 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
  * take twenty minutes on a machine doing nothing.
  */
 const HEAVY: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'MUSIC', 'DUB', 'LIPSYNC']);
-/** Long jobs that use OUR machine: ffmpeg stitching pins a core, so only a couple run at once. */
-const LOCAL: ReadonlySet<Capability> = new Set<Capability>(['VIDEO_STITCH']);
+/** Long jobs that use OUR machine: ffmpeg stitching and sharp compositing pin a core, so only a couple run at once. */
+const LOCAL: ReadonlySet<Capability> = new Set<Capability>(['VIDEO_STITCH', 'COLLAGE']);
 
 /** Which queue carries a capability: our CPU, a vendor's, or neither. */
 export const queueFor = (capability: Capability): QueueName => (LOCAL.has(capability) ? QUEUES.local : HEAVY.has(capability) ? QUEUES.heavy : QUEUES.fast);
@@ -138,6 +139,31 @@ export const AD_PLANS = {
 export type AdShots = keyof typeof AD_PLANS;
 export const adPlan = (shots: number) => (AD_PLANS as Record<number, (typeof AD_PLANS)[AdShots] | undefined>)[shots];
 export type Aspect = (typeof ASPECTS)[number];
+
+/**
+ * Several photos in one picture — the post a seller makes when one photo is
+ * not the whole story: the bag from three angles, the five colours in stock,
+ * the plate before and after.
+ *
+ * Each layout says how many photos it is FOR, so the studio can offer the
+ * ones that suit what has been picked instead of letting someone choose a
+ * before-and-after with five photos in hand. `auto` is what the panel starts
+ * on: the pipeline picks by the count.
+ */
+export const COLLAGE_LAYOUTS = {
+  auto: { label: 'Choose for me', min: 2, max: 9, note: 'The tidiest arrangement for however many photos you picked.' },
+  grid: { label: 'Even grid', min: 2, max: 9, note: 'Equal tiles. Best for a set — colours, sizes, a range.' },
+  hero: { label: 'One big, rest below', min: 3, max: 9, note: 'The first photo leads; the others support it.' },
+  row: { label: 'Side by side', min: 2, max: 4, note: 'A single row. Best for two or three.' },
+  stack: { label: 'Stacked', min: 2, max: 4, note: 'One above the other. Good for a tall Status or Story.' },
+  before_after: { label: 'Before and after', min: 2, max: 2, note: 'Two photos, labelled, with a divider between them.' },
+} as const;
+export type CollageLayout = keyof typeof COLLAGE_LAYOUTS;
+export const COLLAGE_MIN_PHOTOS = 2;
+export const COLLAGE_MAX_PHOTOS = 9;
+/** The layouts that can hold this many photos, in the order the studio offers them. */
+export const collageLayoutsFor = (count: number): CollageLayout[] =>
+  (Object.keys(COLLAGE_LAYOUTS) as CollageLayout[]).filter((k) => count >= COLLAGE_LAYOUTS[k].min && count <= COLLAGE_LAYOUTS[k].max);
 
 export const EXPORT_SIZES = {
   feed_square: { aspect: '1:1', width: 1080, height: 1080 },
@@ -224,6 +250,27 @@ export const capabilityParams = {
   UPSCALE: z.object({
     sourceKey: objectKey,
     factor: z.union([z.literal(2), z.literal(4)]).default(2),
+  }),
+  /**
+   * Several photos in one. Entirely ours — sharp on our own box, no vendor,
+   * no model — so it is quick, cheap and the same every time. The photos are
+   * laid out in the order they were picked: the first one leads.
+   */
+  COLLAGE: z.object({
+    sourceKeys: z.array(objectKey).min(COLLAGE_MIN_PHOTOS).max(COLLAGE_MAX_PHOTOS),
+    layout: z.enum(Object.keys(COLLAGE_LAYOUTS) as [CollageLayout, ...CollageLayout[]]).default('auto'),
+    aspect: z.enum(ASPECTS).default('1:1'),
+    /** Space between the photos, as a share of the short side — 0 is edge to edge. */
+    gap: z.number().int().min(0).max(48).default(14),
+    /** A hex colour behind the photos, or 'brand' for the brand kit's first colour. */
+    background: z.union([z.literal('brand'), z.string().regex(/^#[0-9a-fA-F]{6}$/)]).default('#FFFFFF'),
+    rounded: z.boolean().default(true),
+    /** A word over each photo, in the same order — "Before", "After", a colour, a size. Blank entries are skipped. */
+    labels: z.array(z.string().max(28)).max(COLLAGE_MAX_PHOTOS).default([]),
+    sizes: z.array(z.enum(Object.keys(EXPORT_SIZES) as [ExportSize, ...ExportSize[]])).default(['feed_square', 'story']),
+    price: z.string().max(40).optional(),
+    businessName: z.string().max(80).optional(),
+    brand: brandOverrides,
   }),
   IMAGE_TO_VIDEO: z.object({
     sourceKey: objectKey,
@@ -454,6 +501,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   BACKGROUND_REPLACE: 'image.background',
   RELIGHT: 'image.relight',
   UPSCALE: 'image.upscale',
+  COLLAGE: 'image.collage',
   IMAGE_TO_VIDEO: 'video.reel', // a multi-shot ad prices itself under video.ad_15s / video.ad_30s
   VIDEO_STITCH: 'video.stitch',
   TEXT_GENERATE: 'text.description',
