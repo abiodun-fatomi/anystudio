@@ -228,9 +228,25 @@
 }
 
 /* ---- canvas ---- */
+/* THE PHOTO STAYS PUT.
+   The panel is the tall column — merchant shots alone has the mode tiles, who
+   wears it, where, the pose, the size, the price, the name, the badge switch,
+   the shadow and the exports — and while it scrolled, the picture scrolled
+   away with it. A seller choosing a pose was choosing it blind, for the one
+   photo the whole decision is about.
+   So the canvas is pinned and only the panel moves. Below the two-column
+   breakpoint the page is a sequence of steps rather than two columns, and
+   pinning there would waste most of a small screen. */
 .canvas {
   display: grid;
   gap: 0;
+  position: sticky;
+  top: calc(var(--bar-h) + var(--s-4));
+}
+@media (max-width: 767px) {
+  .canvas {
+    position: static;
+  }
 }
 .stage {
   position: relative;
@@ -405,11 +421,28 @@
 }
 
 /* ---- tool panel ---- */
+/* The panel is no longer sticky: the canvas is, and two sticky columns that
+   both outgrow the viewport just stall against each other. This one is the
+   tall one, so it is the one that scrolls — but it scrolls INSIDE itself, so
+   the results below it stay reachable without walking back up past a form. */
 .panel {
-  position: sticky;
-  top: calc(var(--bar-h) + var(--s-4));
   display: grid;
   gap: var(--s-4);
+  position: sticky;
+  top: calc(var(--bar-h) + var(--s-4));
+  max-height: calc(100dvh - var(--bar-h) - var(--s-5) * 2);
+  overflow-y: auto;
+  /* Room for the scrollbar so the controls do not sit under it. */
+  padding-right: var(--s-1);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+@media (max-width: 767px) {
+  .panel {
+    max-height: none;
+    overflow-y: visible;
+    padding-right: 0;
+  }
 }
 @media (max-width: 767px) {
   .panel {
@@ -758,12 +791,12 @@
   gap: var(--s-2);
   flex-wrap: wrap;
 }
+/* Two acts, not one: the name shows the crop, the arrow saves it. Checking
+   whether a Story crop cut the label off should not leave a file behind. */
 .variant {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   min-height: var(--control-h-sm);
-  padding: 0 var(--s-3);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-soft);
   background: var(--surface);
@@ -771,11 +804,43 @@
   font-weight: 600;
   color: var(--ink-soft);
   text-decoration: none;
+  overflow: hidden;
 }
 .variant:hover {
   border-color: var(--line);
   text-decoration: none;
   color: var(--ink);
+}
+.variant > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: zoom-in;
+}
+.variant > a {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  border-left: 1px solid var(--line-soft);
+  color: var(--muted);
+}
+.variant > a:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.variant > button:focus-visible,
+.variant > a:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -2px;
+}
+.variant[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
 }
 .copyBlock {
   display: grid;
@@ -1691,4 +1756,98 @@
 .brandLine a {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ---- a result you can actually look at ----
+   The picture was a plain <img>: the only way to see a generation properly
+   was to download it, which is exactly the wrong order. It is a button now. */
+.previewOpen {
+  display: block;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.previewOpen:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Shown on hover, and always on touch, where there is no hover to reveal it. */
+.previewZoom {
+  position: absolute;
+  right: var(--s-2);
+  bottom: var(--s-2);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: rgba(12, 10, 16, 0.62);
+  backdrop-filter: blur(3px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.previewOpen:hover .previewZoom,
+.previewOpen:focus-visible .previewZoom {
+  opacity: 1;
+}
+@media (hover: none) {
+  .previewZoom {
+    opacity: 1;
+  }
+}
+
+/* ---- sifting the results ----
+   Chips, not columns. A kanban's columns mean status and nothing here changes
+   status, so type-columns would be a filter permanently switched on — with a
+   row of one-card columns to scroll sideways through. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.filter span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--muted);
+}
+.filter:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+.filter[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.filter[aria-pressed='true'] span {
+  color: inherit;
+}
+.filter:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
 }

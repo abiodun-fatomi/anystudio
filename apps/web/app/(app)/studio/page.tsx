@@ -16,7 +16,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type CatalogueProductView, type MediaAssetRow } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { moneyMinor } from '@/lib/billing/money';
-import { TOOLS, bringsItsOwnSource, cardSourceFor, coerceParams, toolById, type Tool, type ToolId } from '@/lib/studio/tools';
+import {
+  TOOLS,
+  TOOL_GROUPS,
+  bringsItsOwnSource,
+  cardSourceFor,
+  coerceParams,
+  groupOfCapability,
+  toolById,
+  type Tool,
+  type ToolGroup,
+  type ToolId,
+} from '@/lib/studio/tools';
 import { acceptsSourceKey } from '@anystudio/shared';
 import { useGenerations, type GenerationCard } from '@/lib/studio/useGenerations';
 import { Button, EmptyState, useToast } from '@/components/ui';
@@ -37,6 +48,9 @@ export default function StudioPage() {
 }
 
 /** How many fit in the strip before it becomes a wall again. */
+/** The filter chips, in the order the tool sheet groups them. */
+const RESULT_GROUPS = (Object.keys(TOOL_GROUPS) as ToolGroup[]).map((g) => [g, TOOL_GROUPS[g].label] as const);
+
 const STRIP_SIZE = 6;
 /** What a merchant on their first day is most likely to want. */
 const STRIP_DEFAULT: ToolId[] = ['shots', 'scene', 'batch', 'video', 'copy', 'collage'];
@@ -102,6 +116,30 @@ function Studio() {
     return out;
   }, [recent]);
   const { cards, create, cancel, dismiss, hydrate, resolveUrls, editText, regenerateField, unlock } = useGenerations();
+  /**
+   * Sifting the results, once there are enough to sift.
+   *
+   * Deliberately not a board: a kanban's columns mean status, and a song is a
+   * song forever — type-columns would be a filter permanently switched on,
+   * with a row of one-card columns to scroll sideways through. This is the
+   * useful half. Newest-first stays the order, because "the thing I just
+   * made" is what a merchant is looking for nine times out of ten.
+   */
+  const [filter, setFilter] = useState<ToolGroup | 'all'>('all');
+  const counts = useMemo(() => {
+    const byGroup = {} as Record<ToolGroup, number>;
+    for (const c of cards) {
+      const g = groupOfCapability(c.capability);
+      if (g) byGroup[g] = (byGroup[g] ?? 0) + 1;
+    }
+    return { total: cards.length, byGroup };
+  }, [cards]);
+  const shown = useMemo(() => (filter === 'all' ? cards : cards.filter((c) => groupOfCapability(c.capability) === filter)), [cards, filter]);
+  // A filter that outlives what it was filtering strands someone on an empty
+  // list they have to work out how to leave.
+  useEffect(() => {
+    if (filter !== 'all' && (counts.byGroup[filter] ?? 0) === 0) setFilter('all');
+  }, [filter, counts]);
   const [unlockPrice, setUnlockPrice] = useState<number | null>(null);
   useEffect(() => {
     api.audio
@@ -408,9 +446,7 @@ function Studio() {
           </div>
           {viewer && sourceUrl && (
             <Lightbox
-              src={sourceUrl}
-              alt="Your product photo"
-              meta={sourceMeta?.width ? `${sourceMeta.width}×${sourceMeta.height}` : undefined}
+              shots={[{ src: sourceUrl, alt: 'Your product photo', meta: sourceMeta?.width ? `${sourceMeta.width}×${sourceMeta.height}` : undefined }]}
               onClose={() => setViewer(false)}
             />
           )}
@@ -456,7 +492,24 @@ function Studio() {
           <h2>Results</h2>
           <span className="mono">{liveCount > 0 ? `${liveCount} in progress` : balance !== null ? `${balance.toLocaleString()} credits` : ''}</span>
         </div>
-        {cards.length === 0 ? (
+        {/* A filter, not a board. Columns by type would be a filter that is
+            always on, and would make three cards look like an empty kanban.
+            These appear only once there is enough to sift through, and each
+            one says how many, so nobody taps into an empty list. */}
+        {counts.total > 2 && (
+          <div className={styles.filters} role="group" aria-label="Filter results">
+            {([['all', 'All'], ...RESULT_GROUPS] as Array<[string, string]>).map(([id, label]) => {
+              const n = id === 'all' ? counts.total : (counts.byGroup[id as ToolGroup] ?? 0);
+              if (n === 0) return null;
+              return (
+                <button key={id} type="button" className={styles.filter} aria-pressed={filter === id} onClick={() => setFilter(id as typeof filter)}>
+                  {label} <span>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {shown.length === 0 ? (
           <EmptyState
             icon={<Icon.library />}
             title="Nothing made yet"
@@ -464,7 +517,7 @@ function Studio() {
           />
         ) : (
           <div className={styles.grid}>
-            {cards.map((c) => (
+            {shown.map((c) => (
               <ResultCard
                 key={c.clientKey}
                 card={c}

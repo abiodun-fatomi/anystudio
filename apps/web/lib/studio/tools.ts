@@ -1446,6 +1446,38 @@ export const TOOL_META: Record<ToolId, { group: ToolGroup; blurb: string; keywor
   },
 };
 
+/**
+ * Which group a finished generation belongs to, from its capability.
+ *
+ * The Results list needs this to filter, and it cannot go through TOOL_META:
+ * a result knows the capability it used, not which tool asked for it, and two
+ * tools can share one capability. Keyed off the thing the row actually holds.
+ */
+const GROUP_BY_CAPABILITY: Partial<Record<Capability, ToolGroup>> = {
+  IMAGE_GENERATE: 'photo',
+  IMAGE_EDIT: 'photo',
+  BACKGROUND_REMOVE: 'photo',
+  BACKGROUND_REPLACE: 'photo',
+  RELIGHT: 'photo',
+  UPSCALE: 'photo',
+  COLLAGE: 'photo',
+  PRODUCT_SHOT: 'photo',
+  BATCH: 'bulk',
+  IMAGE_TO_VIDEO: 'video',
+  VIDEO_STITCH: 'video',
+  DUB: 'video',
+  LIPSYNC: 'video',
+  MUSIC: 'sound',
+  VOICEOVER: 'sound',
+  TEXT_GENERATE: 'words',
+};
+/**
+ * Takes a plain string: a result carries whatever capability the server
+ * recorded, which may be one this build has never heard of. An unknown one
+ * belongs to no group and is simply never filtered out.
+ */
+export const groupOfCapability = (capability: string): ToolGroup | undefined => GROUP_BY_CAPABILITY[capability as Capability];
+
 /** Tools in a group, in the order the strip and the sheet show them. */
 export const toolsIn = (group: ToolGroup): Tool[] => TOOLS.filter((t) => TOOL_META[t.id].group === group);
 

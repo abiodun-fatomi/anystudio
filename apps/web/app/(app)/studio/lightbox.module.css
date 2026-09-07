@@ -144,3 +144,36 @@
     display: none;
   }
 }
+
+/* Between the sizes of one result: the full frame, the Story crop, the Feed
+   crop. A merchant's real question is whether a crop cut the label off, and
+   that is only answerable by looking at them one after another. */
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.step button {
+  min-width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: inherit;
+  font-size: var(--t-4);
+  line-height: 1;
+  cursor: pointer;
+}
+.step button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.step span {
+  padding: 0 var(--s-1);
+  opacity: 0.8;
+}

@@ -14,6 +14,7 @@ import type { GenerationCard } from '@/lib/studio/useGenerations';
 import { Badge, Button, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { PublishDialog } from '@/components/publishing/PublishDialog';
+import { Lightbox, type Shot } from './Lightbox';
 import styles from './studio.module.css';
 
 const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = {
@@ -76,6 +77,26 @@ export function ResultCard({
     (locked ? card.outputs.find((o) => o.role === 'preview') : fullTrack) ??
     card.outputs.find((o) => o.role === 'preview');
   const variants = card.outputs.filter((o) => o.role === 'variant');
+  /**
+   * Every picture this result actually produced, in the order a merchant
+   * cares about: the full frame first, then each crop.
+   *
+   * Until now the only way to see a result properly was to download it, which
+   * is exactly the wrong order — the question "is this any good, and did the
+   * Story crop cut my label off" has to be answerable before anything leaves
+   * the browser.
+   */
+  const shots = useMemo<Shot[]>(() => {
+    const list: Shot[] = [];
+    const add = (o: (typeof card.outputs)[number] | undefined, label: string) => {
+      const url = o?.key ? card.urls[o.key] : undefined;
+      if (o && url) list.push({ src: url, alt: label, meta: o.width ? `${o.width}×${o.height}` : undefined });
+    };
+    if (main?.role === 'image') add(main, `${tool.label} — full size`);
+    for (const v of variants) add(v, sizeLabel(v));
+    return list;
+  }, [main, variants, card.urls, card.outputs, tool.label]);
+  const [viewAt, setViewAt] = useState<number | null>(null);
   const text = isAudio || isSpokenVideo ? undefined : (card.outputs.find((o) => o.role === 'text')?.text as CopyText | undefined);
   const audioText = isAudio
     ? (card.outputs.find((o) => o.role === 'text')?.text as
@@ -151,6 +172,16 @@ export function ResultCard({
             {mainUrl ? (
               main.role === 'video' ? (
                 <video src={mainUrl} controls playsInline preload="metadata" />
+              ) : shots.length > 0 ? (
+                // A button, not an img with a handler: this is the primary way
+                // to inspect a result, so it has to be reachable by keyboard
+                // and announce itself as something you can open.
+                <button type="button" className={styles.previewOpen} onClick={() => setViewAt(0)} aria-label={`See ${tool.label} full size`}>
+                  <img src={mainUrl} alt={`Result from ${tool.label}`} />
+                  <span className={styles.previewZoom} aria-hidden="true">
+                    <Icon.expand width={16} height={16} />
+                  </span>
+                </button>
               ) : (
                 <img src={mainUrl} alt={`Result from ${tool.label}`} />
               )
@@ -185,22 +216,25 @@ export function ResultCard({
 
       {variants.length > 0 && (
         <div className={styles.variants} aria-label="Sizes">
-          {variants.map((v) => (
-            <a
-              key={v.key}
-              className={styles.variant}
-              href={card.urls[v.key] ?? '#'}
-              download
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!card.urls[v.key]}
-            >
-              {sizeLabel(v)}{' '}
-              <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                {v.width}×{v.height}
+          {variants.map((v) => {
+            // Tapping a size shows it. Downloading it is the small arrow, and
+            // a separate decision — a merchant checking whether the Story crop
+            // works should not end up with a file they did not want.
+            const at = shots.findIndex((sh) => sh.src === card.urls[v.key]);
+            return (
+              <span key={v.key} className={styles.variant} data-disabled={!card.urls[v.key] || undefined}>
+                <button type="button" onClick={() => at >= 0 && setViewAt(at)} disabled={at < 0}>
+                  {sizeLabel(v)}{' '}
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                    {v.width}×{v.height}
+                  </span>
+                </button>
+                <a href={card.urls[v.key] ?? '#'} download target="_blank" rel="noreferrer" aria-label={`Download ${sizeLabel(v)}`}>
+                  <Icon.publish width={13} height={13} />
+                </a>
               </span>
-            </a>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -261,6 +295,7 @@ export function ResultCard({
           </Button>
         )}
       </div>
+      {viewAt !== null && shots.length > 0 && <Lightbox shots={shots} startAt={viewAt} onClose={() => setViewAt(null)} />}
       {card.id && (
         <PublishDialog
           open={posting}

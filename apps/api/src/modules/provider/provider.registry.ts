@@ -26,6 +26,14 @@ import { HiggsfieldProvider } from './adapters/higgsfield.adapter';
 import { ElevenLabsProvider } from './adapters/elevenlabs.adapter';
 import { HeyGenProvider } from './adapters/heygen.adapter';
 
+/**
+ * Vendor keys whose test variant is distinguishable from the live one, and
+ * what to read to tell them apart. Only vendors that actually mark their test
+ * keys belong here: a guess would either miss the real thing or cry wolf at a
+ * live key that happens to contain a word.
+ */
+const SANDBOX_KEYS = ['PHOTOROOM_API_KEY'] as const;
+
 @Injectable()
 export class ProviderRegistry {
   private readonly byKey = new Map<string, GenerationProvider>();
@@ -65,6 +73,30 @@ export class ProviderRegistry {
     for (const c of candidates) {
       if (!c.present) continue;
       for (const p of c.make()) this.byKey.set(p.key, p);
+    }
+
+    /**
+     * A TEST KEY IN PRODUCTION IS INVISIBLE UNTIL A CUSTOMER SEES IT.
+     *
+     * Photoroom's sandbox key is free, runs the real models, and stamps a
+     * watermark across everything it returns. That makes it perfect for
+     * verifying an adapter and catastrophic to deploy: nothing fails, no
+     * error is logged, credits are spent, and the first person to notice is
+     * a merchant looking at their own product covered in another company's
+     * name. It has already happened here once.
+     *
+     * A key is a string in an environment group, and the two look identical
+     * at a glance, so the only reliable guard is the machine reading it.
+     */
+    if (isProd) {
+      // Read here, not at module load: the environment file may not be in
+      // place when this file is first imported.
+      const sandbox = SANDBOX_KEYS.filter((name) => /sandbox/i.test(env[name] ?? ''));
+      if (sandbox.length)
+        logger.error(
+          { vars: sandbox },
+          'A SANDBOX KEY IS SET IN PRODUCTION. Everything it generates comes back watermarked, and customers are being charged for it. Replace it in the environment group now.',
+        );
     }
 
     logger.info(
