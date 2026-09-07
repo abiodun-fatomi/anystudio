@@ -14,9 +14,13 @@ import { WorkerSupervisor } from './supervisor';
 import { assertAppKey } from '../utils/crypto/encrypt';
 import { logger } from '../../config/logger';
 import { flushSentry, initSentry } from '../../config/logger/sentry';
+import { tuneMediaRuntime } from '../../config/media-runtime';
 
 async function main(): Promise<void> {
   assertAppKey();
+  // Before any image is touched: libvips otherwise sizes its cache and its
+  // thread pool against the host, and this container is a fraction of one.
+  tuneMediaRuntime();
   if (initSentry('worker')) logger.info('error tracking on');
   process.env.SERVICE_NAME ??= 'worker';
 

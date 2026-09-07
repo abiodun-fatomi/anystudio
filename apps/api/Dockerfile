@@ -83,6 +83,11 @@ ENV NODE_ENV=production
 # with it. ~90 MB, paid once per image; the API process never calls it.
 RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates openssl ffmpeg \
  && rm -rf /var/lib/apt/lists/*
+# glibc gives each thread its own allocation arena — up to eight times the
+# core count — and never returns a freed arena to the operating system. In a
+# process that decodes images on a thread pool that reads as a ratcheting RSS
+# with a flat heap: the shape of a leak, with nothing leaking. Two arenas.
+ENV MALLOC_ARENA_MAX=2
 WORKDIR /app
 # /out already carries dist, node_modules with a generated Prisma client, and
 # prisma/ with the schema and migrations.

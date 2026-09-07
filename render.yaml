@@ -145,14 +145,30 @@ services:
         value: worker
       - key: LOG_LEVEL
         value: debug
-      # Concurrency per weight class. A "heavy" slot is a socket waiting on a
-      # vendor, so it is cheap; "local" is ffmpeg on this box, so it is not.
+      # V8 sizes its heap from the HOST's memory, not the container's, so on
+      # a 512 MB starter it never feels pressure — the cgroup kills the
+      # process while the garbage collector still thinks it has room. This is
+      # the number that turns an OOM kill into a collection.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      # Concurrency per weight class.
+      #
+      # A "heavy" slot was called cheap because it is mostly a socket waiting
+      # on a vendor — true for the middle of the job and wrong for the end of
+      # it, which is when the finished file is pulled into memory whole,
+      # written to R2, written to a temp file and passed through ffmpeg for a
+      # thumbnail. A 10 MB clip is 20-30 MB live at that moment, and eight of
+      # them can reach it together. Six plus eight plus two is fourteen jobs
+      # in 512 MB; these numbers are what fits.
+      #
+      # Raise them with the instance, not before: on a 2 GB standard the old
+      # 6/8/2 is fine.
       - key: WORKER_FAST_CONCURRENCY
-        value: '6'
+        value: '3'
       - key: WORKER_HEAVY_CONCURRENCY
-        value: '8'
+        value: '4'
       - key: WORKER_LOCAL_CONCURRENCY
-        value: '2'
+        value: '1'
 
 envVarGroups:
   # Render prompts for each of these on first sync and stores them in the

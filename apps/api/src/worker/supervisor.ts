@@ -37,6 +37,7 @@ import { PrismaClient } from '@prisma/client';
 import { QUEUES, type GenerationJob } from '@anystudio/shared';
 import { createRedis, redisHealthy } from '../../config/redis';
 import { logger } from '../../config/logger';
+import { memoryMb } from '../../config/media-runtime';
 import { GenerationService } from '../modules/generation/generation.service';
 import { QueueService } from '../modules/queue/queue.service';
 import { hostname } from 'node:os';
@@ -49,6 +50,16 @@ import { CatalogueService } from '../modules/catalogue/catalogue.service';
 import { RetentionService } from '../modules/retention/retention.service';
 
 const HEARTBEAT_KEY = 'worker:heartbeat';
+
+/**
+ * When to stop logging memory quietly and start complaining, in MB.
+ *
+ * A Render starter worker has 512 MB and is killed at it, so 400 leaves
+ * enough room to see the climb before the restart rather than after. Set
+ * WORKER_MEMORY_WARN_MB when the instance size changes; the number here is
+ * the floor, not a law.
+ */
+const HIGH_WATER_MB = Number(process.env.WORKER_MEMORY_WARN_MB ?? 400);
 const SWEEP_EVERY_MS = 60_000;
 const DISPATCH_EVERY_MS = 20_000;
 const WEBHOOK_EVERY_MS = 10_000;
@@ -154,12 +165,19 @@ export class WorkerSupervisor {
     logger.info('worker stopped cleanly');
   }
 
+  /** Jobs being processed right now, across every queue. Reported with memory. */
+  private inFlight = 0;
+
   private consumer(name: string, concurrency: number): Worker<GenerationJob> {
     const w = new Worker<GenerationJob>(
       name,
       async (job: Job<GenerationJob>) => {
-        const outcome = await this.runner.run(job.data.generationId);
-        return outcome;
+        this.inFlight += 1;
+        try {
+          return await this.runner.run(job.data.generationId);
+        } finally {
+          this.inFlight -= 1;
+        }
       },
       { connection: this.redis!, concurrency, lockDuration: 120_000, stalledInterval: 60_000, maxStalledCount: 2 },
     );
@@ -200,6 +218,21 @@ export class WorkerSupervisor {
     } catch (err) {
       logger.warn({ err }, 'could not record the worker heartbeat');
     }
+
+    // What the process is actually holding, every thirty seconds.
+    //
+    // The worker was OOM-killed with nothing in the log but the kill, which
+    // left the shape of the growth to guesswork: a JavaScript leak climbs in
+    // `heap`, buffered media climbs in `external` and `buffers`, and a
+    // native allocator that never gives pages back climbs in `rss` alone
+    // while the other three stay flat. One line at DEBUG tells them apart,
+    // and it is the first thing to read after the next restart.
+    const mem = memoryMb();
+    const level = mem.rss >= HIGH_WATER_MB ? 'warn' : 'debug';
+    logger[level](
+      { ...mem, inFlight: this.inFlight },
+      level === 'warn' ? 'memory is close to the container limit; jobs may be interrupted by a restart' : 'worker memory',
+    );
   }
 
   private async sweep(): Promise<void> {

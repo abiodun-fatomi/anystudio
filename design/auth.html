@@ -196,6 +196,9 @@ img{max-width:100%;display:block}
 .frame .vd{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;display:block;background:#17131A}
 .frame.reel .live,.frame.reel .prog{opacity:0;transition:opacity .3s}
 .frame.reel.playing .live,.frame.reel.playing .prog{opacity:1}
+/* The UGC frame says what it is. Top RIGHT: .fnum has the top left. And
+   it does not fade in with the reel badge — the still alone is the ad. */
+.frame .ugc{position:absolute;right:6px;top:5px;z-index:5;font-family:var(--f-mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:rgba(23,19,26,.55);padding:2px 6px;border-radius:2px;backdrop-filter:blur(4px)}
 .frame.reel .live{position:absolute;top:5px;left:6px;z-index:5;display:flex;align-items:center;gap:4px;
   font-family:var(--f-mono);font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;color:#fff;
   background:rgba(0,0,0,.45);padding:2px 5px;border-radius:2px}
@@ -465,44 +468,45 @@ input[aria-invalid="true"]{border-color:var(--danger)}
     </div>
 
     <div class="sheet">
-      <div class="sheet-bar"><span class="mono">Sheet 001 · Ládé Hats</span><span class="mono">6 frames</span></div>
+      <div class="sheet-bar"><span class="mono">Sheet 001 · Ládé Toys</span><span class="mono">6 frames</span></div>
       <div class="sheet-grid">
         <div class="frame src">
           <div class="art" style="background:linear-gradient(150deg,#b9a998,#6f6257)"></div>
-          <img class="ph" alt="A bucket hat photographed at home on a kitchen table" src="/shots/hat-source.webp">
+          <img class="ph" alt="A wooden stacking toy photographed at home on a kitchen table" src="/shots/toy-source.webp">
           <span class="fnum" style="color:var(--muted);text-shadow:none">01</span>
           <span class="badge">Their photo</span>
         </div>
         <div class="frame">
           <div class="art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div>
-          <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100625_ac6a5163-9b02-4749-9aa1-88ef4f99309e_min.webp">
+          <img class="ph" alt="The same toy on a soft peach studio backdrop" src="/shots/toy-peach.webp">
           <span class="scrim"></span><span class="fnum">02</span>
-          <div class="tag"><span class="nm">Ládé Hats</span><span class="pr">₦9,500</span></div>
+          <div class="tag"><span class="nm">Ládé Toys</span><span class="pr">$32</span></div>
         </div>
         <div class="frame">
           <div class="art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div>
-          <img class="ph" alt="The same hat on a deep teal backdrop" src="/shots/hat-teal.webp">
+          <img class="ph" alt="The same toy on a deep teal backdrop" src="/shots/toy-teal.webp">
           <span class="scrim"></span><span class="fnum">03</span>
-          <div class="tag"><span class="nm">Ládé Hats</span><span class="pr">₦9,500</span></div>
+          <div class="tag"><span class="nm">Ládé Toys</span><span class="pr">$32</span></div>
         </div>
         <div class="frame">
-          <div class="art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div>
-          <img class="ph" alt="" src="/shots/hat-white.webp">
+          <div class="art" style="background:linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)"></div>
+          <img class="ph" alt="The same toy on a plain white sweep" src="/shots/toy-white.webp">
           <span class="scrim"></span><span class="fnum">04</span>
-          <div class="tag"><span class="nm">Ládé Hats</span><span class="pr">₦9,500</span></div>
-        </div>
-        <div class="frame">
-          <div class="art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
-          <img class="ph" alt="" src="/shots/hat-sand.webp">
-          <span class="scrim"></span><span class="fnum">05</span>
-          <div class="tag"><span class="nm">Ládé Hats</span><span class="pr">₦9,500</span></div>
+          <div class="tag"><span class="nm">Ládé Toys</span><span class="pr">$32</span></div>
         </div>
         <div class="frame reel">
           <div class="art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div>
-          <img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp">
-          <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="/shots/hat-reel.mp4" type="video/mp4"></video>
-          <span class="scrim"></span><span class="fnum">06</span>
+          <img class="ph" alt="" src="/shots/toy-peach.webp">
+          <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="/shots/toy-reel.mp4" type="video/mp4"></video>
+          <span class="scrim"></span><span class="fnum">05</span>
           <span class="live"><i></i>Reel</span><span class="prog"><i></i></span>
+        </div>
+        <div class="frame">
+          <div class="art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
+          <img class="ph" alt="The same toy held up to the camera, filmed the way a customer would" src="/shots/toy-ugc.webp">
+          <video class="vd" autoplay muted loop playsinline preload="metadata" disablepictureinpicture><source src="/shots/toy-ugc.mp4" type="video/mp4"></video>
+          <span class="scrim"></span><span class="fnum">06</span><span class="ugc">UGC ad</span>
+          <div class="tag"><span class="nm">Ládé Toys</span><span class="pr">$32</span></div>
         </div>
       </div>
     </div>
