@@ -769,9 +769,38 @@ function flattenText(v: unknown): string {
   return '';
 }
 
-/** A row as the customer may see it: a vaulted song's key is not theirs until they unlock it. */
+/**
+ * A row as the customer may see it.
+ *
+ * Two things are ours and not theirs.
+ *
+ * A vaulted song's key stays behind until it is unlocked — that one is the
+ * business model. The other is WHO MADE IT AND WHAT WE PAID THEM: `providerKey`, the vendor's job
+ * id, what the call cost us, and the vendor's own failure text. None of it is rendered anywhere in
+ * the studio, but it rode along in the JSON, which is the same leak one layer
+ * down — a merchant opening the network tab learns which supplier had the GPU
+ * this morning, and next month, after an operator reroutes the capability,
+ * learns something different and equally none of their business.
+ *
+ * `failureKind` stays: it is a category of ours (LOW_QUALITY, TIMEOUT), it
+ * chooses the sentence the customer reads, and it names nobody.
+ */
 export function forCustomer<T extends Generation>(row: T): T {
   const outputs = row.outputs as Array<{ key: string; locked?: boolean }> | null;
-  if (!outputs?.some((o) => o.locked)) return row;
-  return { ...row, outputs: redactLocked(outputs) as unknown as Prisma.JsonValue };
+  const redacted = {
+    ...row,
+    providerKey: null,
+    providerJobId: null,
+    // What we paid the vendor. That is the margin, in the customer's own
+    // network tab, on every generation they have ever made.
+    providerCostMinor: null,
+    // The vendor's own words, often with their name in them. The customer gets
+    // customerMessage() instead, which is ours and says what to do next.
+    failureReason: null,
+    children: Array.isArray((row as { children?: unknown }).children)
+      ? ((row as unknown as { children: Generation[] }).children.map(forCustomer) as unknown)
+      : (row as { children?: unknown }).children,
+  } as T;
+  if (!outputs?.some((o) => o.locked)) return redacted;
+  return { ...redacted, outputs: redactLocked(outputs) as unknown as Prisma.JsonValue };
 }

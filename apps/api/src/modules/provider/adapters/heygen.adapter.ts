@@ -87,7 +87,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
       throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
         raw: submitted.json,
       });
-    opts.onProgress?.('HeyGen is translating', 15);
+    opts.onProgress?.('Translating the video', 15);
 
     const job = await this.wait(`${base}/video-translations/${providerJobId}`, providerJobId, opts, 'translating');
     return {
@@ -115,7 +115,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
       throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
         raw: submitted.json,
       });
-    opts.onProgress?.('HeyGen is syncing the lips', 15);
+    opts.onProgress?.('Matching the mouth to the words', 15);
 
     const job = await this.wait(`${base}/lipsyncs/${providerJobId}`, providerJobId, opts, 'syncing');
     return { providerKey: this.key, providerJobId, artifacts: [{ url: job.video_url!, mime: 'video/mp4', role: 'video' }], meta: { mode } };
@@ -154,7 +154,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
       throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no video_id in response'}`, this.key, {
         raw: submitted.json,
       });
-    opts.onProgress?.('HeyGen is filming the presenter', 20);
+    opts.onProgress?.('Filming the presenter', 20);
     const job = await this.wait(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(providerJobId)}`, providerJobId, opts, 'filming');
     return { url: job.video_url!, providerJobId };
   }
@@ -222,7 +222,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
         intervalMs: 10_000,
         timeoutMs: opts.timeoutMs,
         signal: opts.signal,
-        onTick: (ms) => opts.onProgress?.(`HeyGen is ${verb} (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 6000)),
+        onTick: (ms) => opts.onProgress?.(`${verb} (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 6000)),
       },
     ).catch((err) => {
       throw err instanceof ProviderError

@@ -50,7 +50,7 @@ export class ReplicateProvider extends BaseProvider {
       signal: opts.signal,
     });
     const providerJobId = first.json.id;
-    opts.onProgress?.('cutting out the product', 30);
+    opts.onProgress?.('Cutting out your product', 30);
 
     const final =
       first.json.status === 'succeeded' || first.json.status === 'failed'

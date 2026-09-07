@@ -54,7 +54,7 @@ export class SyncProvider extends BaseProvider {
     const submitted = await http<SyncJob>(this.key, `${base}/generate`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
     const providerJobId = submitted.json.id;
     if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: no id in response`, this.key, { raw: submitted.json });
-    opts.onProgress?.('sync is animating the mouth', 15);
+    opts.onProgress?.('Matching the mouth to the words', 15);
 
     const job = await poll<SyncJob>(
       async () => {
@@ -71,7 +71,7 @@ export class SyncProvider extends BaseProvider {
         intervalMs: 6_000,
         timeoutMs: opts.timeoutMs,
         signal: opts.signal,
-        onTick: (ms) => opts.onProgress?.(`sync is animating the mouth (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 5000)),
+        onTick: (ms) => opts.onProgress?.(`Matching the mouth to the words (${Math.round(ms / 1000)}s)`, Math.min(85, 15 + ms / 5000)),
       },
     ).catch((err) => {
       throw err instanceof ProviderError

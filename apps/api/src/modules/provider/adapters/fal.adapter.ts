@@ -68,14 +68,14 @@ export class FalProvider extends BaseProvider {
 
     const submitted = await http<FalSubmit>(this.key, `${QUEUE}/${endpoint}`, { body, headers, timeoutMs: 30_000, signal: opts.signal });
     const { request_id: providerJobId, status_url, response_url } = submitted.json;
-    opts.onProgress?.('queued at fal', 10);
+    opts.onProgress?.('Waiting for a rendering slot', 10);
 
     const started = Date.now();
     await poll(
       async () => {
         const s = await http<FalStatus>(this.key, `${status_url}?logs=0`, { headers, timeoutMs: 15_000, signal: opts.signal });
         if (s.json.status === 'COMPLETED') return true;
-        if (s.json.status === 'IN_PROGRESS') opts.onProgress?.('fal is generating', 40);
+        if (s.json.status === 'IN_PROGRESS') opts.onProgress?.('Rendering', 40);
         else if (s.json.queue_position !== undefined) opts.onProgress?.(`waiting in queue (position ${s.json.queue_position})`, 15);
         return null;
       },

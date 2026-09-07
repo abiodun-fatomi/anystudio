@@ -63,7 +63,7 @@ export class BflProvider extends BaseProvider {
     const submitted = await http<Submit>(this.key, `https://api.bfl.ai/v1/${endpoint}`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
     const providerJobId = submitted.json.id;
     const pollUrl = submitted.json.polling_url ?? `https://api.bfl.ai/v1/get_result?id=${providerJobId}`;
-    opts.onProgress?.('Flux is rendering', 25);
+    opts.onProgress?.('Making your image', 25);
 
     const final = await poll(
       async () => {

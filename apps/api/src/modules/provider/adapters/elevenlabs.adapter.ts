@@ -89,7 +89,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     const providerJobId = submitted.dubbing_id;
     if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: no dubbing_id in response`, this.key, { raw: submitted });
     const expectMs = Math.max(30_000, Math.round((submitted.expected_duration_sec ?? 120) * 1000));
-    opts.onProgress?.('ElevenLabs is dubbing', 15);
+    opts.onProgress?.('Translating the speech', 15);
 
     const status = await poll(
       async () => {
@@ -110,7 +110,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
         intervalMs: 8_000,
         timeoutMs: opts.timeoutMs,
         signal: opts.signal,
-        onTick: (ms) => opts.onProgress?.(`ElevenLabs is dubbing (${Math.round(ms / 1000)}s)`, Math.min(80, 15 + (ms / expectMs) * 60)),
+        onTick: (ms) => opts.onProgress?.(`Translating the speech (${Math.round(ms / 1000)}s)`, Math.min(80, 15 + (ms / expectMs) * 60)),
       },
     ).catch((err) => {
       throw err instanceof ProviderError
@@ -118,7 +118,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
         : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
 
-    opts.onProgress?.('fetching the dubbed video', 85);
+    opts.onProgress?.('Fetching the translated video', 85);
     const { bytes, mime } = await this.download(`${API}/dubbing/${providerJobId}/audio/${encodeURIComponent(lang)}`, headers, opts);
     const isVideo = mime.startsWith('video/') || (!mime.startsWith('audio/') && (input.files.sourceKey?.mime ?? '').startsWith('video/'));
     return {
@@ -165,7 +165,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
         model_id: model,
       };
     }
-    opts.onProgress?.('composing', 20);
+    opts.onProgress?.('Composing the music', 20);
     const bytes = await this.audio(`${API}/music?output_format=${encodeURIComponent(format)}`, body, opts, 'music');
     return {
       providerKey: this.key,
@@ -192,7 +192,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     };
     // The model reads the language from the text; a code is only sent when it is one it accepts.
     if (/^[a-z]{2}$/.test(p.language)) body.language_code = p.language;
-    opts.onProgress?.('speaking', 30);
+    opts.onProgress?.('Recording the voice', 30);
     const bytes = await this.audio(`${API}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(format)}`, body, opts, 'tts');
     return { providerKey: this.key, artifacts: [{ bytes, mime: mimeOf(format), role: 'audio' }], meta: { model, voiceId } };
   }

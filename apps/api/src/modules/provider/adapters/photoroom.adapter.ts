@@ -130,7 +130,7 @@ export class PhotoroomProvider extends BaseProvider {
         return this.unsupported(input.capability);
     }
 
-    opts.onProgress?.('Photoroom is editing', 30);
+    opts.onProgress?.('Editing your photo', 30);
     const res = await fetch(`https://image-api.photoroom.com/v2/edit?${q.toString()}`, {
       headers: { 'x-api-key': this.apiKey, accept: 'image/png, application/json' },
       signal: AbortSignal.timeout(opts.timeoutMs),

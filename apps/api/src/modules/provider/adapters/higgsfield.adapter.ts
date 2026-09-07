@@ -65,7 +65,7 @@ export class HiggsfieldProvider extends BaseProvider {
       signal: opts.signal,
     });
     const providerJobId = submitted.json.id;
-    opts.onProgress?.('Higgsfield is rendering', 25);
+    opts.onProgress?.('Rendering your video', 25);
     const final = await poll(
       async () => {
         const s = await http<Status>(this.key, `${base}/requests/${providerJobId}`, { headers, timeoutMs: 20_000, signal: opts.signal });
@@ -75,7 +75,7 @@ export class HiggsfieldProvider extends BaseProvider {
         intervalMs: 6_000,
         timeoutMs: opts.timeoutMs,
         signal: opts.signal,
-        onTick: (ms) => opts.onProgress?.(`Higgsfield is rendering (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
+        onTick: (ms) => opts.onProgress?.(`Rendering your video (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
       },
     );
     if (final.status !== 'completed')

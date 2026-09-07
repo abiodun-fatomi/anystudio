@@ -66,13 +66,13 @@ export class OpenAiProvider extends BaseProvider {
     }
     const video = JSON.parse(createdText) as Video;
     const providerJobId = video.id;
-    opts.onProgress?.('Sora is rendering', 20);
+    opts.onProgress?.('Rendering your video', 20);
 
     const final = await poll(
       async () => {
         const s = await http<Video>(this.key, `https://api.openai.com/v1/videos/${providerJobId}`, { headers: auth, timeoutMs: 20_000, signal: opts.signal });
         if (s.json.status === 'completed' || s.json.status === 'failed') return s.json;
-        if (s.json.progress !== undefined) opts.onProgress?.(`Sora is rendering (${s.json.progress}%)`, 20 + s.json.progress * 0.6);
+        if (s.json.progress !== undefined) opts.onProgress?.(`Rendering your video (${s.json.progress}%)`, 20 + s.json.progress * 0.6);
         return null;
       },
       { intervalMs: 8_000, timeoutMs: opts.timeoutMs, signal: opts.signal },

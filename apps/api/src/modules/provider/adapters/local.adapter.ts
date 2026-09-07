@@ -44,7 +44,7 @@ export class LocalProvider extends BaseProvider {
         .sort(([a], [b]) => index(a) - index(b));
       if (shots.length === 0) throw new ProviderError('INVALID_INPUT', 'stitch: no shots', this.key);
 
-      opts.onProgress?.('fetching shots', 5);
+      opts.onProgress?.('Gathering the shots', 5);
       const shotPaths: string[] = [];
       for (const [i, [, f]] of shots.entries()) {
         const { bytes } = await fetchBytes(this.key, f.url, opts.timeoutMs);
@@ -63,7 +63,7 @@ export class LocalProvider extends BaseProvider {
         await writeFile(voPath, (await fetchBytes(this.key, input.files.voiceoverKey.url, opts.timeoutMs)).bytes);
       }
 
-      opts.onProgress?.('assembling', 30);
+      opts.onProgress?.('Assembling your ad', 30);
       // The end card starts where the last shot ends; that needs the real durations.
       const durations = await Promise.all(shotPaths.map((s) => probeDurationMs(s).catch(() => 5000)));
       const endStartSec = durations.reduce((a, b) => a + b, 0) / 1000;
@@ -76,7 +76,7 @@ export class LocalProvider extends BaseProvider {
         const e = err as { stderr?: string; message?: string };
         throw new ProviderError('RETRYABLE', `ffmpeg failed: ${(e.stderr ?? e.message ?? '').slice(-800)}`, this.key);
       }
-      opts.onProgress?.('encoding done', 90);
+      opts.onProgress?.('Finishing the file', 90);
       const bytes = await readFile(out);
       const frame = FRAME[p.aspect];
       const durationMs = await probeDurationMs(out).catch(() => undefined);
