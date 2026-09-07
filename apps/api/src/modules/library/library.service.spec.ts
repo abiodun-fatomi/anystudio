@@ -155,15 +155,37 @@ suite('LibraryService + InsightsService', () => {
     expect(seen).toEqual(oldest.items.map((i) => i.id));
   });
 
+  /**
+   * The half of "that ankara photo from last week" the page could never hear:
+   * the API took a date range all along and nothing asked for one.
+   *
+   * Written against the window rather than against a count. The fixture
+   * backdates two of its rows by two and three days — an earlier version of
+   * this test assumed everything was made "now" and asserted a number, which
+   * was a statement about the fixture rather than about the filter, and it
+   * broke the moment it met a real database.
+   */
   it('finds only what was made inside the window', async () => {
-    // The half of "that ankara photo from last week" the page could never
-    // hear: the API took a date range all along and nothing asked for one.
     const all = await library.list(workspaceId, { take: 60 });
     expect(all.items.length).toBeGreaterThan(0);
-    const future = new Date(Date.now() + 86_400_000).toISOString();
-    expect((await library.list(workspaceId, { from: future })).items).toHaveLength(0);
-    const anHourAgo = new Date(Date.now() - 3_600_000).toISOString();
-    expect((await library.list(workspaceId, { from: anHourAgo })).items).toHaveLength(all.items.length);
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+    // Nothing was made tomorrow.
+    expect((await library.list(workspaceId, { from: ago(-1) })).items).toHaveLength(0);
+    // Everything was made in the last year.
+    expect((await library.list(workspaceId, { from: ago(365), take: 60 })).items).toHaveLength(all.items.length);
+
+    // And the window really narrows: each smaller one is a subset of the
+    // larger, which is the property that would break if `from` were ignored
+    // or compared the wrong way round.
+    const ids = async (days: number) => (await library.list(workspaceId, { from: ago(days), take: 60 })).items.map((i) => i.id);
+    const [year, week, hour] = [await ids(365), await ids(7), await ids(1 / 24)];
+    expect(week.length).toBeLessThanOrEqual(year.length);
+    expect(hour.length).toBeLessThanOrEqual(week.length);
+    for (const id of hour) expect(week, 'an hour is inside a week').toContain(id);
+    for (const id of week) expect(year, 'a week is inside a year').toContain(id);
+    // The fixture backdates two rows, so a one-hour window must exclude them.
+    expect(hour.length).toBeLessThan(year.length);
   });
 
   it('groups a catalogue by product', async () => {
