@@ -5,6 +5,17 @@ import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Max, M
 export const LIBRARY_TYPES = ['all', 'image', 'video', 'copy', 'audio'] as const;
 export type LibraryType = (typeof LIBRARY_TYPES)[number];
 
+/**
+ * Two orders, because a merchant looks for their work in two ways.
+ *
+ * Newest first is what they want nine times in ten — "the thing I made this
+ * morning". Oldest first is for the tenth: working forward through a
+ * catalogue shot over weeks, where starting at the end means scrolling to
+ * the beginning every time.
+ */
+export const LIBRARY_SORTS = ['newest', 'oldest'] as const;
+export type LibrarySort = (typeof LIBRARY_SORTS)[number];
+
 export class LibraryQueryDto {
   @ApiPropertyOptional({ description: 'Words to search for in titles, prompts, details and the copy that came back' })
   @IsOptional()
@@ -38,6 +49,11 @@ export class LibraryQueryDto {
   @IsOptional()
   @IsISO8601()
   to?: string;
+
+  @ApiPropertyOptional({ enum: LIBRARY_SORTS, default: 'newest' })
+  @IsOptional()
+  @IsIn(LIBRARY_SORTS)
+  sort?: LibrarySort;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'The last id of the previous page' })
   @IsOptional()

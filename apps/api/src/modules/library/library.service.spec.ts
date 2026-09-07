@@ -133,6 +133,39 @@ suite('LibraryService + InsightsService', () => {
     expect(new Set([...a.items, ...b.items].map((i) => i.id)).size).toBe(4);
   });
 
+  /**
+   * The cursor and the ordering are one decision.
+   *
+   * Keyset pagination asks for rows PAST the last one seen, and "past" means
+   * the opposite thing in each direction. Flipping the ORDER BY and leaving
+   * the comparison alone gives you the same rows on every page of an
+   * oldest-first list, forever — a bug that reads as a loading problem and is
+   * really arithmetic. This is the test that would have caught it.
+   */
+  it('turns the list around without breaking the paging', async () => {
+    const newest = await library.list(workspaceId, { take: 60 });
+    const oldest = await library.list(workspaceId, { take: 60, sort: 'oldest' });
+    expect(oldest.items.map((i) => i.id)).toEqual([...newest.items.map((i) => i.id)].reverse());
+
+    const a = await library.list(workspaceId, { take: 3, sort: 'oldest' });
+    const b = await library.list(workspaceId, { take: 3, sort: 'oldest', cursor: a.nextCursor! });
+    const seen = [...a.items, ...b.items].map((i) => i.id);
+    // Neither repeated nor skipped: the whole set, once each, in order.
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen).toEqual(oldest.items.map((i) => i.id));
+  });
+
+  it('finds only what was made inside the window', async () => {
+    // The half of "that ankara photo from last week" the page could never
+    // hear: the API took a date range all along and nothing asked for one.
+    const all = await library.list(workspaceId, { take: 60 });
+    expect(all.items.length).toBeGreaterThan(0);
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    expect((await library.list(workspaceId, { from: future })).items).toHaveLength(0);
+    const anHourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    expect((await library.list(workspaceId, { from: anHourAgo })).items).toHaveLength(all.items.length);
+  });
+
   it('groups a catalogue by product', async () => {
     const p = await library.products(workspaceId);
     expect(p.map((x) => [x.productKey, x.count])).toEqual(

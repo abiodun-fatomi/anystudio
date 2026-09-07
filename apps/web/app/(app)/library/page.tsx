@@ -11,7 +11,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/app-context';
-import { api, type LibraryItem, type LibraryProduct, type LibraryType } from '@/lib/api';
+import { api, type LibraryItem, type LibraryProduct, type LibrarySort, type LibraryType } from '@/lib/api';
 import { toolFor } from '@/lib/studio/useGenerations';
 import { toolById } from '@/lib/studio/tools';
 import { PageHeader } from '@/components/shell/Page';
@@ -28,6 +28,26 @@ const TYPES: Array<{ id: LibraryType; label: string }> = [
   { id: 'audio', label: 'Audio' },
 ];
 const TYPE_WORD: Record<string, string> = { image: 'Photo', video: 'Video', copy: 'Copy', audio: 'Audio' };
+
+/**
+ * When, in the words a seller uses.
+ *
+ * "That ankara photo from last week" is the sentence this page exists to
+ * answer, and until now the only half it could hear was "ankara". The API
+ * has taken a date range all along; nothing ever asked for one.
+ *
+ * Relative, not a date picker: nobody knows the date they made a thing, they
+ * know it was a few days ago. `days` is counted back from now at the moment
+ * of asking, so "last 7 days" stays true if the tab is left open overnight.
+ */
+const RANGES = [
+  { id: 'any', label: 'Any time', days: 0 },
+  { id: 'week', label: 'Last 7 days', days: 7 },
+  { id: 'month', label: 'Last 30 days', days: 30 },
+  { id: 'quarter', label: 'Last 3 months', days: 90 },
+] as const;
+type RangeId = (typeof RANGES)[number]['id'];
+const since = (days: number): string | undefined => (days ? new Date(Date.now() - days * 86_400_000).toISOString() : undefined);
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 export default function LibraryPage() {
@@ -47,6 +67,11 @@ function Library() {
   const [debounced, setDebounced] = useState(q);
   const [type, setType] = useState<LibraryType>((params.get('type') as LibraryType) || 'all');
   const [starred, setStarred] = useState(params.get('starred') === '1');
+  const [range, setRange] = useState<RangeId>(() => {
+    const given = params.get('range');
+    return RANGES.some((r) => r.id === given) ? (given as RangeId) : 'any';
+  });
+  const [sort, setSort] = useState<LibrarySort>(params.get('sort') === 'oldest' ? 'oldest' : 'newest');
   const [product, setProduct] = useState<string | null>(params.get('product'));
   const [view, setView] = useState<'items' | 'products'>(params.get('view') === 'products' ? 'products' : 'items');
   const [items, setItems] = useState<LibraryItem[] | null>(null);
@@ -70,10 +95,12 @@ function Library() {
     if (debounced) u.set('q', debounced);
     if (type !== 'all') u.set('type', type);
     if (starred) u.set('starred', '1');
+    if (range !== 'any') u.set('range', range);
+    if (sort !== 'newest') u.set('sort', sort);
     if (product) u.set('product', product);
     if (view === 'products') u.set('view', 'products');
     router.replace(`/library${u.size ? `?${u}` : ''}`, { scroll: false });
-  }, [debounced, type, starred, product, view, router]);
+  }, [debounced, type, starred, range, sort, product, view, router]);
 
   const load = useCallback(
     async (after?: string) => {
@@ -83,6 +110,10 @@ function Library() {
           q: debounced || undefined,
           type,
           favourite: starred || undefined,
+          // Counted at the moment of asking, not when the page loaded: a tab
+          // left open overnight should still mean the last seven days.
+          from: since(RANGES.find((r) => r.id === range)?.days ?? 0),
+          sort,
           product: product ?? undefined,
           cursor: after,
           take: 24,
@@ -99,7 +130,7 @@ function Library() {
         setMore(false);
       }
     },
-    [workspace.id, debounced, type, starred, product, toast],
+    [workspace.id, debounced, type, starred, range, sort, product, toast],
   );
 
   useEffect(() => {
@@ -220,6 +251,28 @@ function Library() {
             Products
           </button>
         </div>
+        {/* When and in what order. Separated from the type chips because they
+            answer a different question, and a single row of eleven chips is
+            the wall this page was built to avoid. */}
+        {view === 'items' && (
+          <div className={styles.chips} role="group" aria-label="When">
+            {RANGES.map((r) => (
+              <button key={r.id} type="button" className={styles.chip} aria-pressed={range === r.id} onClick={() => setRange(r.id)}>
+                {r.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={styles.chip}
+              data-sort
+              aria-pressed={sort === 'oldest'}
+              onClick={() => setSort((v) => (v === 'oldest' ? 'newest' : 'oldest'))}
+              title="Which end of your work to start from"
+            >
+              {sort === 'oldest' ? 'Oldest first' : 'Newest first'}
+            </button>
+          </div>
+        )}
       </div>
       {product && (
         <div className={styles.crumb}>
@@ -276,20 +329,21 @@ function Library() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={<Icon.library />}
-          title={debounced || type !== 'all' || starred || product ? 'Nothing matches' : 'Nothing here yet'}
+          title={debounced || type !== 'all' || starred || range !== 'any' || product ? 'Nothing matches' : 'Nothing here yet'}
           body={
             debounced
               ? `No photos, videos or copy mention “${debounced}”. Search looks at product names, prompts and the words in your copy.`
               : 'Your first generation will appear here, with every size it was exported in.'
           }
           actions={
-            debounced || type !== 'all' || starred || product ? (
+            debounced || type !== 'all' || starred || range !== 'any' || product ? (
               <Button
                 variant="ghost"
                 onClick={() => {
                   setQ('');
                   setType('all');
                   setStarred(false);
+                  setRange('any');
                   setProduct(null);
                 }}
               >
