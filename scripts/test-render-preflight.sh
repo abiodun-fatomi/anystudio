@@ -13,12 +13,18 @@ set -euo pipefail
 url="${!#}"
 service() {
   local name="$1" type="$2" plan="$3" instances="$4" command="$5" predeploy="$6"
+  local auto_deploy='"no"'
+  if [ -z "${AUTO_DEPLOY_ROLE:-}" ] || [ "$name" = "anystudio-${AUTO_DEPLOY_ROLE}-dev" ]; then
+    auto_deploy="${AUTO_DEPLOY_JSON:-\"no\"}"
+  fi
   jq -n \
     --arg name "$name" --arg type "$type" --arg plan "$plan" \
+    --argjson autoDeploy "$auto_deploy" \
     --argjson instances "$instances" --arg command "$command" --arg predeploy "$predeploy" \
-    '{ownerId:"own_fixture",name:$name,type:$type,branch:"development",repo:"https://github.com/owner/repo.git",autoDeploy:false,
+    '{ownerId:"own_fixture",name:$name,type:$type,branch:"development",repo:"https://github.com/owner/repo.git",autoDeploy:$autoDeploy,
       serviceDetails:{runtime:"docker",plan:$plan,region:"frankfurt",numInstances:$instances,maxShutdownDelaySeconds:300,
-        preDeployCommand:$predeploy,envSpecificDetails:{dockerfilePath:"./apps/api/Dockerfile",dockerContext:".",dockerCommand:$command}}}'
+        preDeployCommand:$predeploy,envSpecificDetails:{dockerfilePath:"./apps/api/Dockerfile",dockerContext:".",dockerCommand:$command}}}
+      | if env.OMIT_AUTO_DEPLOY == "1" then del(.autoDeploy) else . end'
 }
 envs() {
   case "$1" in
@@ -42,4 +48,24 @@ chmod +x "$fixture_dir/curl"
 
 PATH="$fixture_dir:$PATH" RENDER_API_KEY=fixture bash scripts/render-preflight.sh development owner/repo api worker media >/dev/null
 
+PATH="$fixture_dir:$PATH" RENDER_API_KEY=fixture AUTO_DEPLOY_JSON=false bash scripts/render-preflight.sh development owner/repo api worker media >/dev/null
+
+# Do not weaken the release gate while accepting Render's real enum. Check
+# each role so an unsafe worker cannot be hidden by a correctly configured API.
+for role in api worker media; do
+  for value in true '"yes"' null '"false"' '"off"' '""' 0; do
+    if output="$(PATH="$fixture_dir:$PATH" RENDER_API_KEY=fixture AUTO_DEPLOY_ROLE="$role" AUTO_DEPLOY_JSON="$value" bash scripts/render-preflight.sh development owner/repo api worker media 2>&1)"; then
+      echo "Expected $role autoDeploy=$value to fail" >&2
+      exit 1
+    fi
+    [[ "$output" == *"Render $role service has autoDeploy="* ]] || { echo "Failed for the wrong reason: $output" >&2; exit 1; }
+  done
+done
+if output="$(PATH="$fixture_dir:$PATH" RENDER_API_KEY=fixture OMIT_AUTO_DEPLOY=1 bash scripts/render-preflight.sh development owner/repo api worker media 2>&1)"; then
+  echo 'Expected missing autoDeploy to fail' >&2
+  exit 1
+fi
+[[ "$output" == *'Render api service has autoDeploy='* ]] || { echo "Failed for the wrong reason: $output" >&2; exit 1; }
+
 echo '✔ Render live preflight reads the official service response field layout'
+echo '✔ autoDeploy accepts no/false and rejects enabled, missing and unknown values'
