@@ -52,14 +52,9 @@ export const PRODUCT_MODES = {
     verified: true,
   },
   beautify: {
-    label: 'Make it studio',
-    note: 'A phone photo cleaned up into a studio shot, on a clean ground.',
-    // Said plainly because a live run showed it happening: this mode
-    // beautifies the SUBJECT, which means it cuts the subject out first. The
-    // room the photo was taken in does not come back. A merchant who wanted
-    // their shop behind it wants Press it, and should be told so here rather
-    // than discovering it from a picture.
-    hint: 'Lighting, colour and sharpness. The background goes — use Press it to keep it.',
+    label: 'Enhance the photo',
+    note: 'Gently improve brightness and colour while keeping the whole photo.',
+    hint: 'No AI redraw or background removal. People, products and framing stay. Use Scene for a new background.',
     forClothes: false,
     costCode: 'image.product_shot',
     verified: true,

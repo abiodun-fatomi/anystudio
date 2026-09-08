@@ -89,9 +89,20 @@ Runnable request bodies are maintained in
 `packages/shared/src/generation/api-scenarios.ts`, shown in **Developer → Docs**
 and returned in each capability's `examples`. They are validated in tests.
 
+Photo-preserving Restyle uses `IMAGE_EDIT` with `restyle` set to `natural`,
+`warm`, `cool`, `vivid`, or `monochrome`. Include the required `prompt` field
+(for example, `Apply a photo-preserving colour treatment.`); this path does
+not interpret free-text edits. It processes the original photo locally,
+retains its oriented dimensions, and fits the complete image inside export
+sizes with white borders instead of cropping. `aspect` and brand overlays
+are not applied on this path. It does not redraw faces, remove backgrounds,
+or call a generative provider. Requests without `restyle` retain the existing
+generative IMAGE_EDIT behaviour. Previously generated results are unchanged.
+
 | Scenario                               | capability         | Important inputs / follow-up                                                            |
 | -------------------------------------- | ------------------ | --------------------------------------------------------------------------------------- |
 | Product in a designed, branded scene   | IMAGE_EDIT         | sourceKey, prompt, aspect, sizes; review fidelity before publishing                     |
+| Photo-preserving Restyle               | IMAGE_EDIT         | sourceKey, prompt, restyle, sizes; colour-only processing, no generative provider       |
 | Poster or image without an input photo | IMAGE_GENERATE     | prompt, aspect, count                                                                   |
 | Transparent or flat-colour cutout      | BACKGROUND_REMOVE  | sourceKey, background                                                                   |
 | Replace a product's background         | BACKGROUND_REPLACE | sourceKey, prompt, shadow, relight                                                      |
@@ -111,8 +122,37 @@ and returned in each capability's `examples`. They are validated in tests.
 
 Multi-shot UGC ads (`format: "ugc"`, `shots: 2 | 4 | 6 | 8`) require a `presenter`: either a selected stock presenter or an uploaded face with explicit consent. The presenter segment uses HeyGen; product footage uses the image-to-video providers. Configure `HEYGEN_API_KEY` on the worker running ad planning. One-shot reels (`shots: 1`), including handheld UGC-style reels, and non-UGC ads must not include a presenter. Missing presenter selections are rejected before credits are held. Do not invent personal testimonials; supply an approved factual script when needed.
 
+Enhance (`UPSCALE`, including batch upscale) validates the requested output
+before credits are held: `width × height × factor²` must not exceed Clarity's
+32 × 1024²-pixel ceiling. For example, 3000 × 4500 at 2× is too large;
+2000 × 3000 at 2× fits. The service does not silently reduce the requested
+factor or resize the original. Missing stored dimensions are inspected from
+the owned source image. Over-limit requests and quotes return a field error.
+
+For a product-only video with speech and clip sound, send `audio: true` and
+`narration: { "voiceId": "VOICE_CATALOGUE_KEY", "script": "Your approved product copy." }`.
+Choose a voice from the workspace catalogue. Narration is off-screen and is
+mutually exclusive with the UGC presenter voice. Keep the script around two
+words per second; measured speech that exceeds the video is rejected rather
+than truncated or sped up. Clip sound is ducked under narration when supplied
+by the model; this does not request a separate generated music track. Existing
+API requests without `narration` retain their previous behavior and credit
+codes remain unchanged. The media worker needs the selected voice provider's
+credentials (normally inherited from the shared Render environment group).
+Studio/library previews loop after the user starts playback; downloaded files
+retain their finite duration. Previously generated files are not modified.
+
 PRODUCT_SHOT modes: `on_model`, `ghost_mannequin`, `flat_lay`, `ironing`,
 `beautify`, `text_removal`, `edit`, `expand`. Custom edit needs a prompt.
+
+`PRODUCT_SHOT` mode `beautify` (including batch children) now enhances the
+original photo locally rather than asking Photoroom to rebuild a studio shot.
+It applies gentle brightness/colour adjustment, preserves the complete scene,
+and still applies requested branding. Size variants contain the whole image
+with white borders, not a subject crop. Legacy `prompt`, `subject`, `shadow`,
+and `aspect` settings do not alter this mode. Use the separate Scene tool for
+a new background. Other product-shot modes retain their existing provider and
+quality-check paths.
 Remove only text you have the right to remove. Do not fabricate endorsements
 or use a face/voice without permission.
 

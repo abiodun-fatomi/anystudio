@@ -51,6 +51,7 @@ import {
   coerceParams,
   groupOfCapability,
   missingFor,
+  restoreToolValues,
   searchTools,
   toolById,
   toolsIn,
@@ -62,8 +63,37 @@ import {
 /** Whether the tool brings its own source rather than using the canvas photo. */
 const ownsSource = (t: Tool): boolean => t.fields.some((f) => (f.kind === 'file' && f.key === 'sourceKey') || f.kind === 'photos');
 
+describe('Restyle preserves the whole photo', () => {
+  it('forces a non-generative treatment even when repeating legacy settings', () => {
+    const tool = toolById('restyle')!;
+    const params = coerceParams(tool, { sourceKey: 'ws/photo.jpg', prompt: 'Reinvent the room', preserveProduct: true, aspect: '1:1' });
+    const parsed = parseCapabilityParams('IMAGE_EDIT', params);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('Restyle request is invalid');
+    expect(parsed.params).toMatchObject({ restyle: 'natural', sourceKey: 'ws/photo.jpg', preserveProduct: false });
+    expect(params.prompt).not.toContain('Reinvent');
+    expect(tool.fields.some((f) => f.key === 'prompt')).toBe(false);
+  });
+});
+
 describe('video presenter selection', () => {
   const video = toolById('video')!;
+  it('restores a narrated request for editing or repeating without losing speech', () => {
+    const saved = { shots: 4, format: 'price_drop', audio: true, narration: { script: 'Our bottle is ready.', voiceId: 'voice-1' } };
+    const restored = restoreToolValues(video, saved);
+    expect(missingFor(video, restored)).toBeNull();
+    expect(coerceParams(video, restored).narration).toEqual(saved.narration);
+    expect(restoreToolValues(video, { audio: false }).narrationEnabled).toBe(false);
+  });
+  it('sends narration and clip sound together without a presenter', () => {
+    const values = { ...video.defaults, narrationVoiceId: 'voice-1', narrationScript: 'Our bottle is ready.' };
+    expect(missingFor(video, values)).toBeNull();
+    const params = coerceParams(video, values);
+    expect(params.audio).toBe(true);
+    expect(params.narration).toEqual({ script: values.narrationScript, voiceId: 'voice-1' });
+    expect(params).not.toHaveProperty('presenter');
+    expect(parseCapabilityParams('IMAGE_TO_VIDEO', { ...params, sourceKey: 'ws/photo.jpg' }).ok).toBe(true);
+  });
   it('requires a face for UGC and rejects legacy no-presenter selections', () => {
     const values = { ...video.defaults, format: 'ugc', shots: 4 };
     expect(missingFor(video, values)).toBe('Pick who talks to camera.');
@@ -76,7 +106,7 @@ describe('video presenter selection', () => {
     { shots: 1, format: 'ugc' },
     { shots: 4, format: 'reveal' },
   ])('removes stale presenters when switching to %j', (selection) => {
-    const values = { ...video.defaults, ...selection, presenterKey: 'daphne', presenter: { kind: 'stock', key: 'daphne' } };
+    const values = { ...video.defaults, ...selection, narrationEnabled: false, presenterKey: 'daphne', presenter: { kind: 'stock', key: 'daphne' } };
     expect(missingFor(video, values)).toBeNull();
     expect(coerceParams(video, values)).not.toHaveProperty('presenter');
   });
@@ -358,9 +388,10 @@ describe('offering the fix that exists', () => {
 describe('the words a reel is made from', () => {
   const video = toolById('video');
 
-  it('starts on the format, so a photo and a tap is a whole request', () => {
+  it('starts on the format but asks for a voice when narration is enabled', () => {
     expect(video.defaults.brief).toBe('format');
-    expect(missingFor(video, video.defaults)).toBeNull();
+    expect(missingFor(video, video.defaults)).toBe('Pick narrator voice.');
+    expect(missingFor(video, { ...video.defaults, narrationEnabled: false })).toBeNull();
   });
 
   it('hides the box until someone takes the pen', () => {

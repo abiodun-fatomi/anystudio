@@ -109,7 +109,7 @@ function ctxWith(opts: { params: Record<string, unknown>; output: Uint8Array; ma
     row: { id: 'g-1', workspaceId: 'ws-1', capability: 'PRODUCT_SHOT', input: opts.params },
     brandKit: opts.brandKit ?? null,
     files: { sourceKey: { key: 'ws-1/p.png', url: 'https://signed/p.png', mime: 'image/png' } },
-    media: { getBytes: vi.fn(async () => Buffer.from('') as unknown as Uint8Array) },
+    media: { getBytes: vi.fn(async () => Buffer.from(sourceBytes)) },
     callProvider,
     callCapability,
     stage,
@@ -129,6 +129,23 @@ const params = (over: Record<string, unknown> = {}) => ({
   shadow: 'soft',
   sizes: ['feed_square', 'story'],
   ...over,
+});
+
+describe('Beautify preserves the entire photo', () => {
+  it('enhances the source without a provider or cutout, even when the provider would lose the subject', async () => {
+    sourceBytes = await photo(RED);
+    const { ctx, callProvider, callCapability } = ctxWith({ params: params({ mode: 'beautify' }), output: await nothing(), mask: null });
+    const result = await productShotPipeline(ctx);
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(callCapability).not.toHaveBeenCalled();
+    expect(result.providerKey).toBe('local:beautify');
+    expect(result.artifacts).toHaveLength(3);
+    expect(result.artifacts[0]).toMatchObject({ width: 256, height: 256 });
+    const actual = await sharp(result.artifacts[0]!.bytes!).raw().toBuffer();
+    const expected = await sharp(sourceBytes).rotate().toColourspace('srgb').modulate({ brightness: 1.04, saturation: 1.03 }).raw().toBuffer();
+    expect(actual).toEqual(expected);
+    expect(result.artifacts[2]).toMatchObject({ width: 1080, height: 1920 });
+  });
 });
 
 describe('which modes the check is allowed to refuse', () => {

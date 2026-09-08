@@ -540,7 +540,7 @@ function ItemDetail({ item, workspaceId }: { item: LibraryItem; workspaceId: str
     <div className={styles.detail}>
       <div className={styles.preview}>
         {video ? (
-          <video src={video.url ?? item.previewUrl ?? undefined} controls playsInline preload="metadata" />
+          <video src={video.url ?? item.previewUrl ?? undefined} controls loop={item.capability === 'IMAGE_TO_VIDEO'} playsInline preload="metadata" />
         ) : image ? (
           <img src={image.url ?? item.previewUrl ?? undefined} alt={item.title ?? ''} />
         ) : track ? (

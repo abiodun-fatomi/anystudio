@@ -149,7 +149,23 @@ export class FalProvider extends BaseProvider {
         : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
 
-    const result = await http<unknown>(this.key, responseUrl, { headers, timeoutMs: 30_000, signal: opts.signal });
+    const result = await http<unknown>(this.key, responseUrl, { headers, timeoutMs: 30_000, signal: opts.signal }).catch(async (err: unknown) => {
+      // Only a completed job's structured validation response proves terminal
+      // rejection. Auth errors, missing jobs, transport failures and generic
+      // 422s must retain the journal's ambiguous-submission protection.
+      if (err instanceof ProviderError && err.meta.status === 422) {
+        const detail = (err.meta.raw as { detail?: unknown } | null)?.detail;
+        if (
+          Array.isArray(detail) &&
+          detail.length > 0 &&
+          detail.every((item) => item && item.type === 'value_error' && Array.isArray(item.loc) && item.loc[0] === 'body' && typeof item.msg === 'string')
+        ) {
+          await opts.onSettled?.('FAILED');
+          throw new ProviderError('REQUEST_REJECTED', `${this.key}: ${detail.map((item) => item.msg).join('; ')}`, this.key, { ...err.meta, providerJobId });
+        }
+      }
+      throw err;
+    });
     let artifacts: ProviderArtifact[];
     try {
       artifacts = this.shapeOutput(input, result.json, providerJobId);

@@ -20,6 +20,11 @@ import { AD_FORMATS, REEL_BRIEF, namesAVendor, parseCapabilityParams, type AdFor
 const reel = (over: Record<string, unknown> = {}) => parseCapabilityParams('IMAGE_TO_VIDEO', { sourceKey: 'ws/a.jpg', ...over });
 
 describe('UGC presenters versus product reels', () => {
+  it('accepts off-screen speech with clip sound but rejects scripts too long for a reel', () => {
+    expect(reel({ audio: true, narration: { voiceId: 'voice-1', script: 'Our bottle is ready.' } }).ok).toBe(true);
+    expect(reel({ narration: { voiceId: 'voice-1', script: 'word '.repeat(100) } }).ok).toBe(false);
+    expect(reel({ shots: 2, format: 'ugc', presenter: { kind: 'stock', key: 'daphne' }, narration: { voiceId: 'voice-1', script: 'Hello.' } }).ok).toBe(false);
+  });
   it('requires a presenter for multi-shot UGC before accepting the request', () => {
     expect(reel({ format: 'ugc', shots: 4 }).ok).toBe(false);
     expect(reel({ format: 'ugc', shots: 4, presenter: { kind: 'stock', key: 'daphne' } }).ok).toBe(true);

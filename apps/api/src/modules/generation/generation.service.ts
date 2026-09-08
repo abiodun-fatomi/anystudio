@@ -31,6 +31,8 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import sharp from 'sharp';
+import { validateUpscaleSize } from './upscale-limits';
 import { Prisma, PrismaClient, type Generation, type MediaAsset } from '@prisma/client';
 import {
   BATCH_MAX,
@@ -219,6 +221,7 @@ export class GenerationService {
       }
     }
     const sourceDurationMs = await this.billableSourceDuration(req.workspaceId, req.capability, params, readyAssets);
+    await this.validateUpscaleSource(req.workspaceId, req.capability, params, readyAssets);
 
     // Video is where a bug becomes a five-figure invoice. A per-workspace
     // daily count is the cheapest guardrail that fails closed; the
@@ -248,6 +251,13 @@ export class GenerationService {
       if (!voice || !voice.active || voice.kind !== 'CLONE' || voice.workspaceId !== req.workspaceId) {
         throw new ValidationError({ voiceId: 'Choose one of this workspace’s active cloned voices.' });
       }
+    }
+
+    if (req.capability === 'IMAGE_TO_VIDEO' && params.narration) {
+      const voiceId = (params.narration as { voiceId: string }).voiceId;
+      const voice = await this.db.voiceProfile.findUnique({ where: { key: voiceId }, select: { active: true, kind: true, workspaceId: true } });
+      if (!voice?.active || (voice.kind === 'CLONE' && voice.workspaceId !== req.workspaceId))
+        throw new ValidationError({ 'narration.voiceId': 'Choose an active voice available to this workspace.' });
     }
 
     // Every video is a PARENT, including a one-shot reel. Its provider render
@@ -481,6 +491,7 @@ export class GenerationService {
     if (!cost) throw new NotFoundError(`credit cost "${code}"`);
     /** Counts come from the same capability fields and media metadata the eventual request uses. */
     const sourceDurationMs = await this.billableSourceDuration(workspaceId, capability, params);
+    await this.validateUpscaleSource(workspaceId, capability, params);
     const quantity = generationQuantity(capability, params, sourceDurationMs);
     const each = cost.credits;
     const total = each * Math.max(1, Math.min(quantity, BATCH_MAX));
@@ -501,6 +512,33 @@ export class GenerationService {
    * Dubbing vendors bill by source length. Use the duration verified from the
    * stored bytes, and reject an over-limit input before reserving credits.
    */
+  private async validateUpscaleSource(
+    workspaceId: string,
+    capability: Capability,
+    params: Record<string, unknown>,
+    readyAssets?: Map<string, MediaAsset>,
+  ): Promise<void> {
+    if (capability === 'BATCH' && params.of === 'UPSCALE' && Array.isArray(params.sourceKeys)) {
+      for (const sourceKey of params.sourceKeys)
+        await this.validateUpscaleSource(workspaceId, 'UPSCALE', { ...((params.params as Record<string, unknown>) ?? {}), sourceKey }, readyAssets);
+      return;
+    }
+    if (capability !== 'UPSCALE' || typeof params.sourceKey !== 'string') return;
+    const asset = readyAssets?.get(params.sourceKey) ?? (await this.media.requireReady(workspaceId, params.sourceKey));
+    let width = asset.width;
+    let height = asset.height;
+    if (!width || !height) {
+      try {
+        const meta = await sharp(await this.media.getBytes(asset.key), { limitInputPixels: 40_000_000 }).metadata();
+        width = meta.width ?? null;
+        height = meta.height ?? null;
+      } catch {
+        throw new ValidationError({ sourceKey: 'Could not read this image’s dimensions. Upload a JPEG, PNG or WebP image again.' });
+      }
+    }
+    validateUpscaleSize(width ?? 0, height ?? 0, Number(params.factor ?? 2));
+  }
+
   private async billableSourceDuration(
     workspaceId: string,
     capability: Capability,

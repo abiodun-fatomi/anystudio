@@ -63,8 +63,8 @@ export class CreditLineError extends AppError {
 }
 
 export class ValidationError extends AppError {
-  constructor(details: Record<string, unknown>) {
-    super('invalid_input', 400, 'Some of that did not look right.', details);
+  constructor(details: Record<string, unknown>, message = 'Some of that did not look right.') {
+    super('invalid_input', 400, message, details);
   }
 }
 

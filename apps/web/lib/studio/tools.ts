@@ -340,33 +340,32 @@ export const TOOLS: Tool[] = [
     icon: 'swap',
     capability: 'IMAGE_EDIT',
     needsSource: true,
-    narrative: { ...IMAGE_STAGES, generating: 'Restyling your photo', composing: 'Cutting every size' },
+    narrative: { ...IMAGE_STAGES, generating: 'Restyling your photo', composing: 'Keeping the whole photo in every size' },
     fields: [
       {
-        key: 'prompt',
-        kind: 'text',
-        label: 'How should it look?',
-        placeholder: 'Warm film look, golden hour, soft grain',
-        rows: 3,
-        maxLength: 600,
-        required: true,
-        hint: 'For a personal photo or a flyer you already have. The whole image can change.',
-      },
-      {
-        key: 'aspect',
-        kind: 'segment',
-        label: 'Shape',
-        options: ASPECTS.map((a) => ({
-          id: a,
-          label: a,
-          note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
-          ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
-        })),
+        key: 'restyle',
+        kind: 'select',
+        label: 'Photo look',
+        options: [
+          { value: 'natural', label: 'Natural light' },
+          { value: 'warm', label: 'Warm' },
+          { value: 'cool', label: 'Cool' },
+          { value: 'vivid', label: 'Vivid' },
+          { value: 'monochrome', label: 'Black and white' },
+        ],
+        hintFor: () => 'Changes colour and tone only. Keeps every person and object. Export sizes add borders instead of cropping.',
       },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
     ],
-    defaults: { preserveProduct: false, aspect: '1:1', sizes: ['feed_square', 'story'], brand: { showPrice: false, showBusinessName: false } },
-    ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
+    defaults: { restyle: 'natural', preserveProduct: false, sizes: ['feed_square', 'story'] },
+    // Enforce the safe path even when repeating an older generative Restyle.
+    assemble: (p) => ({
+      sourceKey: p.sourceKey,
+      restyle: p.restyle ?? 'natural',
+      prompt: 'Apply a photo-preserving colour treatment.',
+      preserveProduct: false,
+      sizes: p.sizes,
+    }),
   },
   {
     id: 'flyer',
@@ -656,17 +655,6 @@ export const TOOLS: Tool[] = [
         showIf: (v) => v.mode === 'edit',
       },
       {
-        key: 'subject',
-        kind: 'segment',
-        label: 'What is it?',
-        options: [
-          { id: 'auto', label: 'Anything' },
-          { id: 'food', label: 'Food' },
-          { id: 'car', label: 'A vehicle' },
-        ],
-        showIf: (v) => v.mode === 'beautify',
-      },
-      {
         key: 'prompt',
         kind: 'text',
         label: 'Anything to add?',
@@ -674,7 +662,7 @@ export const TOOLS: Tool[] = [
         rows: 2,
         maxLength: 600,
         // Optional on every mode that does not require it. Words steer; they never gate.
-        showIf: (v) => !['retouch', 'recolor', 'ironing'].includes(String(v.mode ?? '')),
+        showIf: (v) => !['retouch', 'recolor', 'ironing', 'beautify'].includes(String(v.mode ?? '')),
       },
       {
         key: 'angleKeys',
@@ -690,6 +678,7 @@ export const TOOLS: Tool[] = [
         key: 'shadow',
         kind: 'segment',
         label: 'Shadow',
+        showIf: (v) => v.mode !== 'beautify',
         options: [
           { id: 'soft', label: 'Soft' },
           { id: 'hard', label: 'Hard' },
@@ -779,17 +768,6 @@ export const TOOLS: Tool[] = [
         showIf: (v) => v.mode === 'on_model',
       },
       {
-        key: 'subject',
-        kind: 'segment',
-        label: 'What are they?',
-        options: [
-          { id: 'auto', label: 'Anything' },
-          { id: 'food', label: 'Food' },
-          { id: 'car', label: 'Vehicles' },
-        ],
-        showIf: (v) => v.mode === 'beautify',
-      },
-      {
         key: 'textKind',
         kind: 'segment',
         label: 'Which writing?',
@@ -812,6 +790,7 @@ export const TOOLS: Tool[] = [
         key: 'shadow',
         kind: 'segment',
         label: 'Shadow',
+        showIf: (v) => v.mode !== 'beautify',
         options: [
           { id: 'soft', label: 'Soft' },
           { id: 'hard', label: 'Hard' },
@@ -994,6 +973,31 @@ export const TOOLS: Tool[] = [
       },
       { key: 'motion', kind: 'text', label: 'Camera', placeholder: 'slow push-in · orbit · tilt up · rack focus', maxLength: 200 },
       {
+        key: 'audio',
+        kind: 'switch',
+        label: 'Keep background / clip sound',
+        hint: 'Keeps sound supplied by the video model and lowers it under speech. Does not compose a separate music track.',
+      },
+      {
+        key: 'narrationEnabled',
+        kind: 'switch',
+        label: 'Spoken product voiceover',
+        hint: 'A narrator speaks off screen; no person is added to the picture.',
+        showIf: (v) => !canPresent(v),
+      },
+      { key: 'narrationVoiceId', kind: 'catalogue', source: 'voices', label: 'Narrator voice', showIf: (v) => !canPresent(v) && v.narrationEnabled === true },
+      {
+        key: 'narrationScript',
+        kind: 'text',
+        label: 'Narration script',
+        placeholder: 'The exact words to say about your product',
+        required: true,
+        rows: 3,
+        maxLength: 1200,
+        hint: 'Allow about 2 words per second. Use factual product details and your real price.',
+        showIf: (v) => !canPresent(v) && v.narrationEnabled === true,
+      },
+      {
         key: 'durationSec',
         kind: 'segment',
         label: 'Reel length',
@@ -1067,13 +1071,17 @@ export const TOOLS: Tool[] = [
         showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
       },
     ],
-    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'stock' },
+    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: true, narrationEnabled: true, presenterKind: 'stock' },
     // `brief` decides what the panel shows, not what is sent: a blank prompt
     // is filled from the format on the server either way.
-    localKeys: ['presenterKind', 'brief'],
+    localKeys: ['presenterKind', 'brief', 'narrationEnabled'],
     assemble: (p) => {
       const kind = p.presenterKind;
       const out = { ...p };
+      delete out.narration;
+      delete out.narrationScript;
+      delete out.narrationVoiceId;
+      if (!canPresent(p) && p.narrationEnabled === true) out.narration = { script: p.narrationScript, voiceId: p.narrationVoiceId };
       // Changing a previous UGC run into a reel must not retain its presenter.
       delete out.presenter;
       for (const k of ['presenterKind', 'presenterKey', 'presenterPhotoKey', 'presenterConsent', 'presenterVoiceId', 'presenterScript']) delete out[k];
@@ -1404,6 +1412,24 @@ export const cardSourceFor = (tool: Tool, params: Record<string, unknown>): stri
 };
 
 /** Segments and selects carry strings; some params are numbers. Coerce by the tool's defaults. */
+export function restoreToolValues(tool: Tool, params: Record<string, unknown>): Record<string, unknown> {
+  if (tool.id !== 'video') return { ...params };
+  const narration = params.narration as { script?: string; voiceId?: string } | undefined;
+  const presenter = params.presenter as { kind?: string; key?: string; photoKey?: string; consent?: boolean; voiceId?: string; script?: string } | undefined;
+  return {
+    ...params,
+    narrationEnabled: params.narrationEnabled ?? Boolean(narration),
+    narrationScript: params.narrationScript ?? narration?.script,
+    narrationVoiceId: params.narrationVoiceId ?? narration?.voiceId,
+    presenterKind: params.presenterKind ?? presenter?.kind ?? 'stock',
+    presenterKey: params.presenterKey ?? presenter?.key,
+    presenterPhotoKey: params.presenterPhotoKey ?? presenter?.photoKey,
+    presenterConsent: params.presenterConsent ?? presenter?.consent,
+    presenterVoiceId: params.presenterVoiceId ?? presenter?.voiceId,
+    presenterScript: params.presenterScript ?? presenter?.script,
+  };
+}
+
 export function coerceParams(tool: Tool, values: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...tool.defaults, ...values };
   for (const [k, d] of Object.entries(tool.defaults)) {
@@ -1499,7 +1525,7 @@ export const TOOL_META: Record<ToolId, { group: ToolGroup; blurb: string; keywor
     keywords: 'cut out cutout remove background transparent png isolate',
   },
   enhance: { group: 'photo', blurb: 'Sharper and bigger, for print or a big screen.', keywords: 'enhance upscale sharpen bigger resolution quality blurry' },
-  restyle: { group: 'photo', blurb: 'The same product, a different look.', keywords: 'restyle style look vibe recolour mood' },
+  restyle: { group: 'photo', blurb: 'Your whole photo, with a new colour and lighting look.', keywords: 'restyle style look vibe colour mood' },
   collage: {
     group: 'photo',
     blurb: 'Several photos in one — a set, a range, before and after.',

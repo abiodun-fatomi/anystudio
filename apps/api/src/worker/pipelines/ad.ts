@@ -36,6 +36,7 @@ import {
 } from '@anystudio/shared';
 import type { Pipeline, PipelineContext, PipelineResult } from './index';
 import { renderPresenter, wantsPresenter, type PresenterClip } from './presenter';
+import { renderNarration } from './narration';
 
 const FORMAT_BRIEF: Record<CapabilityParams<'IMAGE_TO_VIDEO'>['format'], string> = {
   reveal: 'A product reveal: start close and abstract, pull back to show the whole product, end settled on it.',
@@ -271,12 +272,14 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
     t += durationMs;
   }
   const allKeys = clip ? [clip.key, ...shotKeys] : shotKeys;
+  const narration = await renderNarration(ctx, p, targetDurationMs);
   await ctx.stage('composing', 70, `stitching ${allKeys.length} shots`);
   const files: Record<string, { key: string; url: string; mime: string }> = Object.fromEntries(
     await Promise.all(allKeys.map(async (k, i) => [`shotKeys[${i}]`, { key: k, url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
   );
   // The presenter's speech is the ad's voiceover: laid from zero, it lines up with the lips in shot one.
   if (clip) files.voiceoverKey = { key: clip.audioKey, url: await ctx.media.signRead(clip.audioKey, 60 * 60), mime: 'audio/mpeg' };
+  else if (narration) files.voiceoverKey = { key: narration.key, url: await ctx.media.signRead(narration.key, 60 * 60), mime: narration.mime };
   const stitched = await ctx.callCapability(
     'VIDEO_STITCH',
     {
@@ -292,7 +295,7 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
         captions,
         endCard: endCard?.text ? endCard : undefined,
         watermark: true,
-        voiceoverKey: clip?.audioKey,
+        voiceoverKey: clip?.audioKey ?? narration?.key,
       },
       files,
     },

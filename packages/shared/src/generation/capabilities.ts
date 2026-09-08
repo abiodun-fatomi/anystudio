@@ -303,6 +303,8 @@ export const capabilityParams = {
     count: z.number().int().min(1).max(4).default(1),
   }),
   IMAGE_EDIT: z.object({
+    /** Non-generative, whole-photo treatment. Never remove or redraw a subject. */
+    restyle: z.enum(['natural', 'warm', 'cool', 'vivid', 'monochrome']).optional(),
     useCase: z.enum(['design', 'photography']).optional(),
     sourceKey: objectKey,
     prompt: z.string().min(3).max(2000),
@@ -478,6 +480,9 @@ export const capabilityParams = {
       /** Camera and motion hints the shot planner fills in. */
       motion: z.string().max(300).optional(),
       audio: z.boolean().default(false),
+      /** Off-screen narration, distinct from native clip sound or a UGC presenter. */
+      narration: z.object({ script: z.string().trim().min(1).max(1200), voiceId: z.string().trim().min(1).max(80) }).optional(),
+      narrationClip: z.object({ key: objectKey, durationMs: z.number().int().positive(), mime: z.string() }).optional(),
       /**
        * More than one shot makes this a PARENT: a plan is written, each shot is
        * its own CHILD generation rendered in parallel, and the parent stitches
@@ -519,6 +524,14 @@ export const capabilityParams = {
     })
     .superRefine((v, ctx) => {
       const ugcAd = v.format === 'ugc' && v.shots > 1;
+      if (v.narration && ugcAd)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['narration'], message: 'UGC already uses the presenter voice. Use the presenter script instead.' });
+      if (v.narration && v.narration.script.split(/\s+/).length > Math.floor((adPlan(v.shots)?.seconds ?? v.durationSec) * 2.5))
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['narration', 'script'],
+          message: 'Shorten the narration to fit the selected video length (about 2 words per second).',
+        });
       if (ugcAd && !v.presenter) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter'], message: 'Choose a presenter for your UGC ad.' });
       if (v.presenter && !ugcAd)
         ctx.addIssue({
@@ -713,6 +726,7 @@ export const PIPELINE_WRITTEN_KEYS: readonly string[] = [
   'styleHints',
   'providerVoiceId',
   'presenterClip',
+  'narrationClip',
   'plan',
   'caption',
   'shotIndex',

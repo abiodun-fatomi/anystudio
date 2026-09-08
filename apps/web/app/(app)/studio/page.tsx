@@ -29,6 +29,7 @@ import {
   type Tool,
   type ToolGroup,
   type ToolId,
+  restoreToolValues,
 } from '@/lib/studio/tools';
 import { acceptsSourceKey } from '@anystudio/shared';
 import { useGenerations, type GenerationCard } from '@/lib/studio/useGenerations';
@@ -354,9 +355,9 @@ function Studio() {
     (card: GenerationCard) => {
       const t = toolById(card.toolId);
       const ownsSource = bringsItsOwnSource(t);
-      setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
+      setValues((all) => ({ ...all, [t.id]: restoreToolValues(t, card.params) }));
       setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
-      void generate(t, card.params, card.credits, ownsSource ? sourceKey : (card.sourceKey ?? sourceKey));
+      void generate(t, restoreToolValues(t, card.params), card.credits, ownsSource ? sourceKey : (card.sourceKey ?? sourceKey));
     },
     [generate, setUrl, sourceKey],
   );
@@ -371,7 +372,7 @@ function Studio() {
     (card: GenerationCard) => {
       const t = toolById(card.toolId);
       const ownsSource = bringsItsOwnSource(t);
-      setValues((all) => ({ ...all, [t.id]: { ...card.params } }));
+      setValues((all) => ({ ...all, [t.id]: restoreToolValues(t, card.params) }));
       setUrl({ tool: t.id, source: ownsSource ? sourceKey : (card.sourceKey ?? sourceKey) });
       window.scrollTo({ top: 0, behavior: 'smooth' });
       toast({ title: 'Ready to change', body: 'Your settings are back in the panel. Change what you like, then make it again.' });
