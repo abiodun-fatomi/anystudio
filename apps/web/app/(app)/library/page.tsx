@@ -15,7 +15,7 @@ import { api, type LibraryItem, type LibraryProduct, type LibrarySort, type Libr
 import { toolFor } from '@/lib/studio/useGenerations';
 import { toolById } from '@/lib/studio/tools';
 import { PageHeader } from '@/components/shell/Page';
-import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Input, Skeleton, useToast } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Input, LoadError, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { PublishDialog } from '@/components/publishing/PublishDialog';
 import styles from './library.module.css';
@@ -52,7 +52,13 @@ const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day:
 
 export default function LibraryPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div role="status" aria-label="Loading library" aria-busy="true">
+          <Skeleton height={220} />
+        </div>
+      }
+    >
       <Library />
     </Suspense>
   );
@@ -77,6 +83,7 @@ function Library() {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [more, setMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [products, setProducts] = useState<LibraryProduct[] | null>(null);
   const [open, setOpen] = useState<LibraryItem | null>(null);
   const [remove, setRemove] = useState<LibraryItem | null>(null);
@@ -105,6 +112,7 @@ function Library() {
   const load = useCallback(
     async (after?: string) => {
       const seq = ++req.current;
+      setLoadError(null);
       try {
         const r = await api.library.list(workspace.id, {
           q: debounced || undefined,
@@ -123,19 +131,22 @@ function Library() {
         setCursor(r.nextCursor);
       } catch (e) {
         if (seq === req.current) {
-          setItems([]);
-          toast({ title: 'Could not load the library', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+          setItems((current) => current ?? []);
+          setLoadError(e instanceof Error ? e.message : 'The library could not be loaded.');
         }
       } finally {
-        setMore(false);
+        if (seq === req.current) setMore(false);
       }
     },
-    [workspace.id, debounced, type, starred, range, sort, product, toast],
+    [workspace.id, debounced, type, starred, range, sort, product],
   );
 
   useEffect(() => {
     setItems(null);
     void load();
+    return () => {
+      req.current += 1;
+    };
   }, [load]);
   useEffect(() => {
     if (view === 'products' && products === null)
@@ -283,6 +294,7 @@ function Library() {
         </div>
       )}
 
+      {view === 'items' && loadError && <LoadError what="the library" message={loadError} onRetry={() => void load()} />}
       {view === 'products' ? (
         products === null ? (
           <div className={styles.grid}>
@@ -326,7 +338,7 @@ function Library() {
             <Skeleton key={i} height={220} />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !loadError ? (
         <EmptyState
           icon={<Icon.library />}
           title={debounced || type !== 'all' || starred || range !== 'any' || product ? 'Nothing matches' : 'Nothing here yet'}

@@ -5,6 +5,7 @@
  * straight back; the token is only consumed once the signed-in email
  * matches the one invited.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useState } from 'react';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
@@ -86,7 +87,7 @@ function Invite() {
 export default function Page() {
   return (
     <div className="rise">
-      <Suspense fallback={null}>
+      <Suspense fallback={<SectionLoading />}>
         <Invite />
       </Suspense>
     </div>

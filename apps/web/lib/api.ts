@@ -36,6 +36,7 @@ interface Envelope<T> {
 }
 
 const BASE = '/api/v1';
+export const SESSION_EXPIRED_EVENT = 'anystudio:session-expired';
 
 /** One request. Throws ApiError on any non-2xx. */
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
@@ -48,6 +49,11 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   if (res.status === 204) return undefined as T;
   const env = (await res.json().catch(() => ({}))) as Partial<Envelope<T>>;
   if (!res.ok) {
+    // The signed-in shell handles expiry without re-fetching /auth/me on every navigation.
+    // Auth form failures (e.g. a wrong password) remain local to the form.
+    if (res.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
     throw new ApiError(res.status, env.error ?? 'http', env.message ?? 'Something went wrong.', env.requestId, env.fields);
   }
   return env.data as T;

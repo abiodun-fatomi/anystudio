@@ -13,7 +13,7 @@
  * is connected the section says so and offers the one button that fixes
  * it, rather than showing zeros that look like failure.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/lib/app-context';
 import { api, type Insights, type LedgerRow, type PostView } from '@/lib/api';
@@ -51,22 +51,29 @@ export default function TodayPage() {
   const [data, setData] = useState<Insights | null>(null);
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const request = useRef(0);
 
   const load = useCallback(async () => {
-    if (!ws) return;
+    const seq = ++request.current;
+    setError(null);
     try {
       const [insights, history] = await Promise.all([api.insights.overview(ws.id, Number(days)), api.wallet.history(ws.id).catch(() => ({ rows: [] }))]);
+      if (seq !== request.current) return;
       setData(insights);
       setBalance(insights.balance.credits);
       setRows(history.rows.slice(0, 5));
       setError(null);
     } catch (e) {
+      if (seq !== request.current) return;
       setError(e instanceof Error ? e.message : 'Could not load your studio just now.');
     }
-  }, [ws, days, setBalance]);
+  }, [ws.id, days, setBalance]);
   useEffect(() => {
     setData(null);
     void load();
+    return () => {
+      request.current += 1;
+    };
   }, [load]);
 
   const first = me.user.name?.split(' ')[0];

@@ -10,6 +10,7 @@
  * anything) comes from the API at runtime, so one web build serves every
  * environment; nothing about payments is baked in at build time.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useEffect, useState } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
@@ -127,7 +128,7 @@ function Pay() {
 export default function Page() {
   return (
     <div className="rise">
-      <Suspense fallback={null}>
+      <Suspense fallback={<SectionLoading />}>
         <Pay />
       </Suspense>
     </div>

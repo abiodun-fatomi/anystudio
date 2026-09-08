@@ -6,6 +6,7 @@
  * added, still confirming, or it did not go through — and in every case
  * the reference to quote.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/app-context';
@@ -160,7 +161,7 @@ function Return() {
 export default function Page() {
   return (
     <div className="rise">
-      <Suspense fallback={null}>
+      <Suspense fallback={<SectionLoading />}>
         <Return />
       </Suspense>
     </div>

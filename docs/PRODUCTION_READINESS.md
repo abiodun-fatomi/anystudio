@@ -45,7 +45,10 @@ services already run these changes. No release was deployed during this review.
 
 - Full API suite: **804 passed, none skipped**, using PostgreSQL 18 and real
   FFmpeg, with normal test-file parallelism.
-- Web suite: **79 passed**; web type-checking, lint and production build passed.
+- Web suite: **93 passed**; web type-checking, lint and production build passed.
+  This includes DOM regression tests for section navigation, workspace resets,
+  out-of-order responses, library retry states, disabled link-buttons and
+  session-expiry notifications. Signed-in live-browser visual QA is still required.
 - Audio catalogue seed checks: **2 passed**. Workspace-wide lint passed.
 - API type-checking, lint and build passed.
 - All 34 migrations applied to a clean disposable database. Prisma's comparison
