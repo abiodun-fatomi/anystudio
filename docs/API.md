@@ -99,6 +99,14 @@ are not applied on this path. It does not redraw faces, remove backgrounds,
 or call a generative provider. Requests without `restyle` retain the existing
 generative IMAGE_EDIT behaviour. Previously generated results are unchanged.
 
+The studio's **Enhance** tool uses `IMAGE_EDIT` with `restyle: "enhance"`
+and `sizes: []`. It applies gentle brightness/colour correction and sharpening
+locally, preserving the source's oriented dimensions without cropping or AI
+redrawing. It is not file-size compression or restoration of missing detail.
+Enhance retains its existing `image.upscale` credit price; quote and request
+both select that price server-side. **Upscale** is now the separate tool for
+the existing `UPSCALE` capability and its 2×/4× enlargement controls.
+
 | Scenario                               | capability         | Important inputs / follow-up                                                            |
 | -------------------------------------- | ------------------ | --------------------------------------------------------------------------------------- |
 | Product in a designed, branded scene   | IMAGE_EDIT         | sourceKey, prompt, aspect, sizes; review fidelity before publishing                     |

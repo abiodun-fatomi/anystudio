@@ -310,7 +310,12 @@ export function useGenerations() {
       const fromRow = (g: GenerationRow): GenerationCard => ({
         clientKey: g.id,
         id: g.id,
-        toolId: g.capability === 'IMAGE_EDIT' && g.input.preserveProduct === false ? 'restyle' : toolFor(g.capability),
+        toolId:
+          g.capability === 'IMAGE_EDIT' && g.input.restyle === 'enhance'
+            ? 'enhance'
+            : g.capability === 'IMAGE_EDIT' && g.input.preserveProduct === false
+              ? 'restyle'
+              : toolFor(g.capability),
         capability: g.capability,
         credits: g.credits,
         status: g.status,
@@ -367,7 +372,7 @@ export function toolFor(capability: string): string {
         IMAGE_EDIT: 'scene',
         BACKGROUND_REPLACE: 'background',
         BACKGROUND_REMOVE: 'cutout',
-        UPSCALE: 'enhance',
+        UPSCALE: 'upscale',
         TEXT_GENERATE: 'copy',
         IMAGE_TO_VIDEO: 'video',
         IMAGE_GENERATE: 'flyer',

@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { generationCostCode, generationQuantity, musicVoiceDowngradeCredits } from './generation.service';
 
 describe('generation price selection', () => {
+  it('keeps the existing Enhance price without discounting other image edits', () => {
+    expect(generationCostCode('IMAGE_EDIT', { restyle: 'enhance' })).toBe('image.upscale');
+    expect(generationCostCode('IMAGE_EDIT', { restyle: 'natural' })).toBe('image.storefront');
+    expect(generationCostCode('BATCH', { of: 'IMAGE_EDIT', params: { restyle: 'enhance' } })).toBe('image.upscale');
+  });
   it('never treats an arbitrary costCode-like param as the price', () => {
     expect(generationCostCode('TEXT_GENERATE', { task: 'product_copy', costCode: 'video.shot' })).toBe('text.description');
     expect(generationCostCode('IMAGE_EDIT', { costCode: 'video.shot' })).toBe('image.storefront');
