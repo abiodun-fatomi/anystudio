@@ -188,7 +188,7 @@ export function ResultCard({
           <div className={styles.preview}>
             {mainUrl ? (
               main.role === 'video' ? (
-                <video src={mainUrl} controls playsInline preload="metadata" />
+                <video src={mainUrl} controls loop={card.capability === 'IMAGE_TO_VIDEO'} playsInline preload="metadata" />
               ) : shots.length > 0 ? (
                 // A button, not an img with a handler: this is the primary way
                 // to inspect a result, so it has to be reachable by keyboard

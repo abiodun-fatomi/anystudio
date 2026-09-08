@@ -52,6 +52,7 @@ import { applyBrand, artifactBytes, pasteProductAt } from './image';
 import { focalCrop, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { rethrowIfAborted } from './abort';
+import { restylePipeline } from './restyle';
 
 type Params = CapabilityParams<'PRODUCT_SHOT'>;
 
@@ -59,6 +60,29 @@ export const productShotPipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as Params;
   const sourceUrl = ctx.files.sourceKey?.url;
   if (!sourceUrl) throw new ProviderError('INVALID_INPUT', 'no source photo', 'product-shot');
+  // Beautify is a whole-photo enhancement, not a studio-scene regeneration.
+  // No segmentation means a person cannot be mistaken for background.
+  if (p.mode === 'beautify') {
+    const enhanced = await restylePipeline({
+      ...ctx,
+      row: { ...ctx.row, input: { ...p, restyle: 'natural', prompt: 'Enhance the original photo', sizes: [] } },
+    });
+    await ctx.stage('composing', 76, 'Adding your name and price');
+    const branded = await applyBrand(ctx, enhanced.artifacts[0]!.bytes!, p);
+    const meta = await sharp(branded).metadata();
+    const artifacts: ProviderArtifact[] = [{ bytes: new Uint8Array(branded), mime: 'image/png', role: 'image', width: meta.width, height: meta.height }];
+    for (const size of p.sizes) {
+      const { width, height } = EXPORT_SIZES[size];
+      const bytes = await sharp(branded)
+        .resize(width, height, { fit: 'contain', background: '#ffffff' })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 95 })
+        .toBuffer();
+      artifacts.push({ bytes: new Uint8Array(bytes), mime: 'image/jpeg', role: 'variant', width, height, size });
+    }
+    ctx.log.info({ mode: p.mode, providerKey: 'local:beautify', sizes: p.sizes.length }, 'whole-photo enhancement finished without regenerating the subject');
+    return { artifacts, providerKey: 'local:beautify', costMinor: 0 };
+  }
 
   const strict = judgesShape(p.mode);
 

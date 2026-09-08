@@ -29,6 +29,7 @@ import { FIDELITY, fidelity, shifted } from './fidelity';
 import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { rethrowIfAborted } from './abort';
+import { restylePipeline } from './restyle';
 
 const STRICTER =
   '\n\nIMPORTANT: the product must be reproduced EXACTLY as in the reference photo — identical shape, size, colours, label, text and position in frame. Do not restyle, recolour, rotate or reinterpret it. Only the background and surroundings may change.';
@@ -37,6 +38,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'IMAGE_EDIT'>;
   const sourceUrl = ctx.files.sourceKey?.url;
   if (!sourceUrl) throw new ProviderError('INVALID_INPUT', 'no source', 'image-pipeline');
+  if (p.restyle) return restylePipeline(ctx);
 
   // 1. The mask. If the cutout cannot be made, the loop degrades to a single trusted call rather than failing the customer.
   let source: Uint8Array | null = null;
