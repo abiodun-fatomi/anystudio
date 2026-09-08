@@ -8,12 +8,10 @@
  * the copy fails after the debit, the debit is refunded on the same key —
  * a seller is never charged for a song they cannot hear.
  */
-import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation, type VoiceProfile } from '@prisma/client';
 import type { Request } from 'express';
@@ -35,8 +33,7 @@ import { MediaService } from '../media/media.service';
 import { ProviderRegistry } from '../provider/provider.registry';
 import { isVoiceLab } from '../provider/adapters/voice-lab';
 import type { CloneVoiceDto } from './audio.dto';
-
-const exec = promisify(execFile);
+import { runFfmpeg, runFfprobe } from '../../../config/ffmpeg';
 
 /** The vendor that keeps cloned voices. One, on purpose: a clone cannot follow a seller from one vendor to another. */
 export const CLONE_PROVIDER_KEY = 'elevenlabs:tts';
@@ -310,14 +307,14 @@ async function toMp3(bytes: Uint8Array, mime: string): Promise<{ mp3: Uint8Array
     const out = join(dir, 'sample.mp3');
     await writeFile(src, bytes);
     try {
-      await exec('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vn', '-ac', '1', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '128k', out], {
+      await runFfmpeg('voice-sample', ['-v', 'error', '-y', '-i', src, '-vn', '-ac', '1', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '128k', out], {
         maxBuffer: 16 * 1024 * 1024,
       });
     } catch (err) {
       logger.warn({ err: err instanceof Error ? err.message : err, mime }, 'voice sample could not be decoded');
       throw new ValidationError({ sampleKey: 'That recording could not be read. Try recording again, or upload an MP3.' });
     }
-    const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', out]);
+    const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', out]);
     return { mp3: new Uint8Array(await readFile(out)), seconds: parseFloat(stdout.trim()) || 0 };
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -169,6 +169,16 @@ services:
         value: '4'
       - key: WORKER_LOCAL_CONCURRENCY
         value: '1'
+      # How many ffmpeg processes may exist AT ONCE, across every queue.
+      #
+      # The queue concurrencies cannot answer this: an ad's four thumbnails
+      # are four jobs on media.heavy and the stitch is one on media.local, so
+      # three slots produced five simultaneous ffmpegs. Measured on a
+      # four-shot ad: 344 MB of ffmpeg together, 258 MB one at a time — and
+      # serialised was not slower, because half a CPU was the real limit all
+      # along. Raise it on a box with cores to spare.
+      - key: FFMPEG_CONCURRENCY
+        value: '1'
       # WHICH queues this instance serves. Unset means all three, which is
       # what dev runs: one worker, one bill.
       #

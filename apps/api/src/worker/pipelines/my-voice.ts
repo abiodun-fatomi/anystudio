@@ -18,15 +18,12 @@
  * is told so on the result rather than left wondering why it does not
  * sound like them.
  */
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { ProviderError, type CapabilityParams } from '@anystudio/shared';
 import type { PipelineContext } from './index';
-
-const exec = promisify(execFile);
+import { runFfmpeg } from '../../../config/ffmpeg';
 
 export interface MyVoiceOutcome {
   bytes: Uint8Array;
@@ -146,8 +143,8 @@ export async function mix(instrumental: Uint8Array, vocal: Uint8Array): Promise<
     const voc = join(dir, 'voc.mp3');
     const out = join(dir, 'song.mp3');
     await Promise.all([writeFile(inst, instrumental), writeFile(voc, vocal)]);
-    await exec(
-      'ffmpeg',
+    await runFfmpeg(
+      'mix-song',
       [
         '-v',
         'error',

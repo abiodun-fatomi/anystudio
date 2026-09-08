@@ -3,15 +3,13 @@
  * bytes in a temp directory that is removed whatever happens; nothing here
  * knows about storage or rows.
  */
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { ProviderError } from '@anystudio/shared';
 import type { PipelineContext } from './index';
+import { runFfmpeg, runFfprobe } from '../../../config/ffmpeg';
 
-const exec = promisify(execFile);
 const MAX_BUFFER = 64 * 1024 * 1024;
 
 /** The sound of a video as MP3, plus how long it is. A silent video is an error worth naming. */
@@ -23,7 +21,7 @@ export async function extractAudio(video: Uint8Array, ext: string): Promise<{ au
     await writeFile(src, video);
     const durationMs = await probeDurationMs(src);
     try {
-      await exec('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vn', '-c:a', 'libmp3lame', '-b:a', '160k', out], { maxBuffer: MAX_BUFFER });
+      await runFfmpeg('extract-audio', ['-v', 'error', '-y', '-i', src, '-vn', '-c:a', 'libmp3lame', '-b:a', '160k', out], { maxBuffer: MAX_BUFFER });
     } catch (err) {
       throw new ProviderError('INVALID_INPUT', `the video has no usable audio track: ${err instanceof Error ? err.message.split('\n')[0] : err}`, 'ffmpeg');
     }
@@ -36,7 +34,7 @@ export async function extractAudio(video: Uint8Array, ext: string): Promise<{ au
 /** How long a media file plays, or 0 when ffprobe cannot tell. */
 export async function probeDurationMs(path: string): Promise<number> {
   try {
-    const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', path]);
+    const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', path]);
     return Math.round(parseFloat(stdout.trim()) * 1000) || 0;
   } catch {
     return 0;

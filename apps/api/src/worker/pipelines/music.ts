@@ -23,11 +23,9 @@
  * (audio.music.unlock) copies the track out of the vault. See AudioService.
  */
 
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import {
   ProviderError,
   lyricsSchema,
@@ -43,8 +41,7 @@ import type { Pipeline, PipelineContext, PipelineResult } from './index';
 import { MediaService } from '../../modules/media/media.service';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { singInMyVoice, type MyVoiceOutcome } from './my-voice';
-
-const exec = promisify(execFile);
+import { runFfmpeg, runFfprobe } from '../../../config/ffmpeg';
 
 export const musicPipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'MUSIC'>;
@@ -309,14 +306,14 @@ export async function cutPreview(bytes: Uint8Array, ext: string, seconds: number
     await writeFile(src, bytes);
     let fullMs = 0;
     try {
-      const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', src]);
+      const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', src]);
       fullMs = Math.round(parseFloat(stdout.trim()) * 1000) || 0;
     } catch {
       /* unknown length is not fatal */
     }
     const fadeAt = Math.max(0, seconds - 2);
-    await exec(
-      'ffmpeg',
+    await runFfmpeg(
+      'music-preview',
       ['-v', 'error', '-y', '-i', src, '-t', String(seconds), '-af', `afade=t=out:st=${fadeAt}:d=2`, '-c:a', 'libmp3lame', '-b:a', '128k', out],
       { maxBuffer: 32 * 1024 * 1024 },
     );

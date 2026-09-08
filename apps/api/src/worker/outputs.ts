@@ -8,19 +8,16 @@
  * inline on the row.
  */
 
-import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import sharp from 'sharp';
 import type { Generation } from '@prisma/client';
 import type { GenerationOutput, ProviderArtifact } from '@anystudio/shared';
 import { logger } from '../../config/logger';
 import { MediaService } from '../modules/media/media.service';
 import { fetchBytes } from '../modules/provider/adapters/http';
-
-const exec = promisify(execFile);
+import { runFfmpeg } from '../../config/ffmpeg';
 
 const EXT: Record<string, string> = {
   'image/png': 'png',
@@ -121,12 +118,17 @@ async function thumbnail(bytes: Uint8Array, mime: string): Promise<Buffer | null
     try {
       const src = join(dir, 'in.mp4');
       await writeFile(src, bytes);
-      const { stdout } = await exec(
-        'ffmpeg',
+      // Through the gate: an ad's four shots finish within a second of each
+      // other, so without it this is four ffmpegs at 80 MB apiece racing the
+      // stitch for the same 512 MB.
+      const { stdout } = await runFfmpeg(
+        'thumbnail',
         ['-v', 'error', '-ss', '0.5', '-i', src, '-frames:v', '1', '-vf', 'scale=512:-2', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'],
         { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024 },
       );
-      return await sharp(stdout).webp({ quality: 78 }).toBuffer();
+      return await sharp(stdout as Buffer)
+        .webp({ quality: 78 })
+        .toBuffer();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
