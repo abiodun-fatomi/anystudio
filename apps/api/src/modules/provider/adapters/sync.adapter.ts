@@ -51,9 +51,15 @@ export class SyncProvider extends BaseProvider {
       ],
       options: { sync_mode: this.str(input.config, 'syncMode', 'cut_off') },
     };
-    const submitted = await http<SyncJob>(this.key, `${base}/generate`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
-    const providerJobId = submitted.json.id;
-    if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: no id in response`, this.key, { raw: submitted.json });
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+    } else {
+      const submitted = await http<SyncJob>(this.key, `${base}/generate`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
+      if (!submitted.json.id) throw new ProviderError('RETRYABLE', `${this.key}: no id in response`, this.key, { raw: submitted.json });
+      providerJobId = submitted.json.id;
+      await opts.onSubmitted?.(providerJobId);
+    }
     opts.onProgress?.('Matching the mouth to the words', 15);
 
     const job = await poll<SyncJob>(
@@ -61,10 +67,14 @@ export class SyncProvider extends BaseProvider {
         const s = await http<SyncJob>(this.key, `${base}/generate/${providerJobId}`, { headers, timeoutMs: 20_000, signal: opts.signal });
         const st = (s.json.status ?? '').toUpperCase();
         if (st === 'COMPLETED') return s.json;
-        if (st === 'REJECTED')
+        if (st === 'REJECTED') {
+          await opts.onSettled?.('FAILED');
           throw new ProviderError('CONTENT_REJECTED', `${this.key}: rejected: ${s.json.error ?? 'moderation'}`, this.key, { providerJobId });
-        if (st === 'FAILED' || st === 'CANCELED')
+        }
+        if (st === 'FAILED' || st === 'CANCELED') {
+          await opts.onSettled?.('FAILED');
           throw new ProviderError('RETRYABLE', `${this.key}: ${st.toLowerCase()}: ${s.json.error ?? 'no reason given'}`, this.key, { providerJobId });
+        }
         return null;
       },
       {
@@ -78,7 +88,10 @@ export class SyncProvider extends BaseProvider {
         ? err
         : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
-    if (!job.outputUrl) throw new ProviderError('RETRYABLE', `${this.key}: completed without an outputUrl`, this.key, { providerJobId });
+    if (!job.outputUrl) {
+      await opts.onSettled?.('FAILED');
+      throw new ProviderError('RETRYABLE', `${this.key}: completed without an outputUrl`, this.key, { providerJobId });
+    }
     return { providerKey: this.key, providerJobId, artifacts: [{ url: job.outputUrl, mime: 'video/mp4', role: 'video' }], meta: { model } };
   }
 }

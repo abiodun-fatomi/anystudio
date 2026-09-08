@@ -44,7 +44,7 @@ export default function PlansPage() {
       try {
         sessionStorage.setItem(`anystudio:pay:${out.reference}`, out.paymentId);
       } catch {
-        /* the return page can still look it up */
+        /* the signed-in return URL also carries this payment id */
       }
       window.location.assign(out.url);
     } catch (e) {
@@ -160,12 +160,18 @@ export default function PlansPage() {
                   <Button
                     full
                     variant={p.code === 'business' ? 'primary' : 'subtle'}
-                    disabled={!canBuy || !offer.canBuy || p.current || (cat.subscription !== null && !cat.subscription.cancelAtPeriodEnd)}
+                    disabled={!canBuy || !offer.canBuy || p.current || cat.subscription !== null}
                     loading={busy === `plan:${p.code}`}
                     onClick={() => void buy('plan', p.code)}
                     title={!offer.canBuy && cat.available ? 'Not available through this payment provider yet' : undefined}
                   >
-                    {p.current ? 'Current plan' : cat.subscription && !cat.subscription.cancelAtPeriodEnd ? 'Cancel your plan first' : `Choose ${words.name}`}
+                    {p.current
+                      ? 'Current plan'
+                      : cat.subscription?.cancelAtPeriodEnd
+                        ? 'Available after current plan ends'
+                        : cat.subscription
+                          ? 'Cancel your plan first'
+                          : `Choose ${words.name}`}
                   </Button>
                 </article>
               );

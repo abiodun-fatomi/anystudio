@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderInput } from '@anystudio/shared';
 import { ProviderError } from '@anystudio/shared';
-import { ElevenLabsProvider, classifyDubError } from './elevenlabs.adapter';
+import { ElevenLabsProvider, classifyDubError, musicCostMinor } from './elevenlabs.adapter';
 import { HeyGenProvider, classifyFailure } from './heygen.adapter';
 import { SyncProvider } from './sync.adapter';
 
@@ -53,6 +53,13 @@ function dubInput(
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe('Eleven Music cost', () => {
+  it('prices the actual generated duration at the configured per-minute rate', () => {
+    expect(musicCostMinor(120, undefined)).toBe(30);
+    expect(musicCostMinor(90, 20)).toBe(30);
+  });
+});
+
 describe('ElevenLabs dubbing', () => {
   it('submits by URL as a form, polls until dubbed, downloads the MP4, and says the lips were not touched', async () => {
     const calls = script([
@@ -84,6 +91,24 @@ describe('ElevenLabs dubbing', () => {
     expect(r.meta?.lipsync).toBe(false);
   });
 
+  it('resumes a persisted dub id without creating another project', async () => {
+    const calls = script([() => json({ dubbing_id: 'dub_saved', status: 'dubbed', target_languages: ['fr'] }), () => bytes(4000, 'video/mp4')]);
+    const p = ElevenLabsProvider.all('k').find((x) => x.key === 'elevenlabs:dubbing-v1')!;
+    const onSubmitted = vi.fn(async () => undefined);
+    const result = await p.generate(dubInput({}), {
+      ...opts(),
+      resume: { providerJobId: 'dub_saved', data: { expectedDurationSec: 40 } },
+      onSubmitted,
+    });
+
+    expect(result.providerJobId).toBe('dub_saved');
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://api.elevenlabs.io/v1/dubbing/dub_saved',
+      'https://api.elevenlabs.io/v1/dubbing/dub_saved/audio/fr',
+    ]);
+  });
+
   it('refuses a language it does not speak before spending anything', async () => {
     const calls = script([]);
     const p = ElevenLabsProvider.all('k').find((x) => x.key === 'elevenlabs:dubbing-v1')!;
@@ -98,7 +123,7 @@ describe('ElevenLabs dubbing', () => {
     ]);
     const p = ElevenLabsProvider.all('k').find((x) => x.key === 'elevenlabs:dubbing-v1')!;
     await expect(p.generate(dubInput({}), opts())).rejects.toMatchObject({ kind: 'CONTENT_REJECTED' });
-    expect(classifyDubError('No speech detected in the file')).toBe('INVALID_INPUT');
+    expect(classifyDubError('No speech detected in the file')).toBe('REQUEST_REJECTED');
     expect(classifyDubError('internal error')).toBe('RETRYABLE');
     expect(classifyDubError(null)).toBe('RETRYABLE');
   });
@@ -112,7 +137,9 @@ describe('HeyGen v3', () => {
       () => json({ data: { id: 'vt_1', status: 'completed', video_url: 'https://cdn.heygen/vt_1.mp4' } }),
     ]);
     const p = HeyGenProvider.all('hk').find((x) => x.key === 'heygen:translate')!;
-    const promise = p.generate(dubInput({ targetLanguage: 'en-NG', lipsync: true, quality: 'precision', sourceLanguage: 'en', speakers: 1 }), opts());
+    const input = dubInput({ targetLanguage: 'en-NG', lipsync: true, quality: 'precision', sourceLanguage: 'en', speakers: 1 });
+    input.config = { mode: 'speed' }; // an old row default must not downgrade the request
+    const promise = p.generate(input, opts());
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     await vi.runAllTimersAsync().catch(() => undefined);
     vi.useRealTimers();
@@ -132,6 +159,35 @@ describe('HeyGen v3', () => {
     expect(r.meta?.lipsync).toBe(true);
   });
 
+  it('resumes a saved translation id without posting a second translation', async () => {
+    const calls = script([() => json({ data: { id: 'vt_saved', status: 'completed', video_url: 'https://cdn.heygen/vt_saved.mp4' } })]);
+    const p = HeyGenProvider.all('hk').find((x) => x.key === 'heygen:translate')!;
+    const onSubmitted = vi.fn(async () => undefined);
+    const result = await p.generate(dubInput({ targetLanguage: 'en-NG' }), {
+      ...opts(),
+      resume: { providerJobId: 'vt_saved' },
+      onSubmitted,
+    });
+
+    expect(result.providerJobId).toBe('vt_saved');
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.url)).toEqual(['https://api.heygen.com/v3/video-translations/vt_saved']);
+  });
+
+  it('resumes a saved presenter video without uploading the photo or filming twice', async () => {
+    const calls = script([() => json({ data: { status: 'completed', video_url: 'https://cdn.heygen/presenter.mp4' } })]);
+    const p = HeyGenProvider.all('hk').find((x) => x.key === 'heygen:translate')!;
+    const onSubmitted = vi.fn(async () => undefined);
+    const result = await p.talkingVideo(
+      { photo: { bytes: new Uint8Array([1, 2, 3]), mime: 'image/jpeg' }, audioUrl: 'https://r2/audio.mp3', aspect: '9:16', title: 'presenter' },
+      { ...opts(), resume: { providerJobId: 'presenter_saved' }, onSubmitted },
+    );
+
+    expect(result.providerJobId).toBe('presenter_saved');
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.url)).toEqual(['https://api.heygen.com/v1/video_status.get?video_id=presenter_saved']);
+  });
+
   it('lip-syncs audio onto a video and surfaces a failure message', async () => {
     script([() => json({ data: { lipsync_id: 'ls_1' } }), () => json({ id: 'ls_1', status: 'failed', failure_message: 'No face detected in the video' })]);
     const p = HeyGenProvider.all('hk').find((x) => x.key === 'heygen:lipsync')!;
@@ -143,7 +199,7 @@ describe('HeyGen v3', () => {
       files: { sourceKey: { url: 'https://r2/v.mp4', mime: 'video/mp4' }, audioKey: { url: 'https://r2/a.mp3', mime: 'audio/mpeg' } },
       config: {},
     };
-    await expect(p.generate(input, opts())).rejects.toMatchObject({ kind: 'INVALID_INPUT' });
+    await expect(p.generate(input, opts())).rejects.toMatchObject({ kind: 'REQUEST_REJECTED' });
     expect(classifyFailure('Policy violation')).toBe('CONTENT_REJECTED');
     expect(classifyFailure(undefined)).toBe('RETRYABLE');
   });

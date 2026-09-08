@@ -292,7 +292,7 @@ describe('offering the fix that exists', () => {
   });
 
   it('says nothing for a failure that more photos cannot fix', () => {
-    for (const kind of ['TIMEOUT', 'PROVIDER_DOWN', 'RATE_LIMITED', 'CONTENT_REJECTED', 'INVALID_INPUT', null, undefined])
+    for (const kind of ['TIMEOUT', 'PROVIDER_DOWN', 'RATE_LIMITED', 'CONTENT_REJECTED', 'REQUEST_REJECTED', 'INVALID_INPUT', null, undefined])
       expect(anglesWouldHelp(shots, { mode: 'on_model', angleKeys: [] }, kind), String(kind)).toBe(false);
   });
 

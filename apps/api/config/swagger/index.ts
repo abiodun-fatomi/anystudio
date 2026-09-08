@@ -7,6 +7,7 @@
  */
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { isProductionDeployment } from '../environment';
 
 export default class SwaggerConfig {
   /** Mount the UI, or do nothing in production. */
@@ -33,7 +34,7 @@ export default class SwaggerConfig {
 
   /** Production never; otherwise on unless SWAGGER_ENABLED says off. */
   static enabled(): boolean {
-    if (process.env.NODE_ENV === 'production' && process.env.APP_ENV === 'production') return false;
+    if (isProductionDeployment()) return false;
     const v = process.env.SWAGGER_ENABLED;
     return v === undefined ? true : v === 'true';
   }

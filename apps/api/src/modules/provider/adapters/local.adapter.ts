@@ -36,6 +36,13 @@ export class LocalProvider extends BaseProvider {
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     if (input.capability !== 'VIDEO_STITCH') this.unsupported(input.capability);
     const p = this.params(input, 'VIDEO_STITCH');
+    const deadline = Date.now() + Math.max(0, opts.timeoutMs);
+    const remaining = (): number => {
+      if (opts.signal?.aborted) throw opts.signal.reason instanceof Error ? opts.signal.reason : new Error('aborted');
+      const ms = Math.floor(deadline - Date.now());
+      if (ms <= 0) throw new ProviderError('RETRYABLE', `${this.key}: stitch budget exhausted after ${opts.timeoutMs}ms`, this.key);
+      return ms;
+    };
     const dir = await mkdtemp(join(tmpdir(), 'stitch-'));
     try {
       const shots = Object.entries(input.files)
@@ -46,7 +53,7 @@ export class LocalProvider extends BaseProvider {
       opts.onProgress?.('Gathering the shots', 5);
       const shotPaths: string[] = [];
       for (const [i, [, f]] of shots.entries()) {
-        const { bytes } = await fetchBytes(this.key, f.url, opts.timeoutMs);
+        const { bytes } = await fetchBytes(this.key, f.url, remaining(), opts.signal);
         const path = join(dir, `shot-${i}.mp4`);
         await writeFile(path, bytes);
         shotPaths.push(path);
@@ -55,36 +62,56 @@ export class LocalProvider extends BaseProvider {
       let voPath: string | undefined;
       if (input.files.musicKey) {
         musicPath = join(dir, 'music');
-        await writeFile(musicPath, (await fetchBytes(this.key, input.files.musicKey.url, opts.timeoutMs)).bytes);
+        await writeFile(musicPath, (await fetchBytes(this.key, input.files.musicKey.url, remaining(), opts.signal)).bytes);
       }
       if (input.files.voiceoverKey) {
         voPath = join(dir, 'vo');
-        await writeFile(voPath, (await fetchBytes(this.key, input.files.voiceoverKey.url, opts.timeoutMs)).bytes);
+        await writeFile(voPath, (await fetchBytes(this.key, input.files.voiceoverKey.url, remaining(), opts.signal)).bytes);
       }
 
       opts.onProgress?.('Assembling your ad', 30);
-      // The end card starts where the last shot ends; that needs the real durations.
-      const durations = await Promise.all(shotPaths.map((s) => probeDurationMs(s).catch(() => 5000)));
-      const endStartSec = durations.reduce((a, b) => a + b, 0) / 1000;
-      const sourceWidth = await probeWidth(shotPaths[0]!);
+      const sourceDurationsMs = await Promise.all(shotPaths.map((s) => probeOr(s, remaining, opts.signal, probeDurationMs, 5000)));
+      const shotHasAudio = p.preserveShotAudio
+        ? await Promise.all(shotPaths.map((s) => probeOr(s, remaining, opts.signal, probeHasAudio, false)))
+        : shotPaths.map(() => false);
+      // Multi-vendor duration grids differ. The pipeline supplies the paid
+      // timeline; otherwise a standalone/manual stitch keeps each source's
+      // real length. buildArgs trims long clips and pads short ones.
+      const timelineMs = p.shotDurationsMs ?? sourceDurationsMs;
+      const endStartSec = timelineMs.reduce((a, b) => a + b, 0) / 1000;
+      const sourceWidth = await probeWidth(shotPaths[0]!, remaining(), opts.signal);
       const size = outputSize(p.aspect, sourceWidth);
       const out = join(dir, 'out.mp4');
-      const args = buildArgs(p, shotPaths, { musicPath, voPath, out, endStartSec, size });
+      const args = buildArgs(p, shotPaths, { musicPath, voPath, out, endStartSec, size, timelineMs, shotHasAudio });
       // Said BEFORE ffmpeg runs, because the interesting case is the one where
       // it never returns: a stitch that takes the instance down leaves no
       // artifact, no meta and no error, just the log starting over. What it
       // chose has to be on the record before it starts.
-      logger.info({ shots: shotPaths.length, sourceWidth, width: size.w, height: size.h, seconds: Math.round(endStartSec), ...memoryMb() }, 'stitching');
+      logger.info(
+        {
+          shots: shotPaths.length,
+          sourceWidth,
+          width: size.w,
+          height: size.h,
+          sourceDurationsMs,
+          timelineMs,
+          shotHasAudio,
+          targetDurationMs: p.targetDurationMs,
+          seconds: Math.round(endStartSec),
+          ...memoryMb(),
+        },
+        'stitching',
+      );
       const started = Date.now();
       try {
-        await runFfmpeg('stitch', args, { maxBuffer: 4 * 1024 * 1024, timeout: opts.timeoutMs, signal: opts.signal });
+        await runFfmpeg('stitch', args, { maxBuffer: 4 * 1024 * 1024, timeout: remaining(), signal: opts.signal });
       } catch (err) {
         const e = err as { stderr?: string; message?: string };
         throw new ProviderError('RETRYABLE', `ffmpeg failed: ${(e.stderr ?? e.message ?? '').slice(-800)}`, this.key);
       }
       opts.onProgress?.('Finishing the file', 90);
       const bytes = await readFile(out);
-      const durationMs = await probeDurationMs(out).catch(() => undefined);
+      const durationMs = await probeOr(out, remaining, opts.signal, probeDurationMs, undefined);
       // A view over the same memory, not a second copy of a 20 MB file.
       const view = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       logger.info({ encodeMs: Date.now() - started, bytes: bytes.byteLength, width: size.w, height: size.h, ...memoryMb() }, 'ad assembled');
@@ -103,10 +130,18 @@ export class LocalProvider extends BaseProvider {
 const index = (name: string): number => Number(name.slice('shotKeys['.length, -1));
 
 /** The ffmpeg command. Kept as one function so a change to the look is one diff. */
-function buildArgs(
+export function buildArgs(
   p: CapabilityParams<'VIDEO_STITCH'>,
   shots: string[],
-  io: { musicPath?: string; voPath?: string; out: string; endStartSec: number; size: { w: number; h: number } },
+  io: {
+    musicPath?: string;
+    voPath?: string;
+    out: string;
+    endStartSec: number;
+    size: { w: number; h: number };
+    timelineMs: number[];
+    shotHasAudio?: boolean[];
+  },
 ): string[] {
   const { w, h } = io.size;
   const args: string[] = ['-v', 'error', '-y'];
@@ -118,20 +153,35 @@ function buildArgs(
   if (io.voPath) args.push('-i', io.voPath);
 
   const f: string[] = [];
-  // Normalise every shot to the frame: scale to cover, crop centre, 30 fps, sane pixel format.
+  // Normalise every shot to the frame and its planned timeline slot. tpad
+  // clones only when a provider returned a shorter grid length; trim cuts a
+  // longer one. setpts makes concat see every segment from zero.
   shots.forEach((_, i) => {
-    f.push(`[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},fps=30,format=yuv420p,setsar=1[v${i}]`);
+    const seconds = Math.max(0.5, io.timelineMs[i]! / 1000).toFixed(3);
+    f.push(
+      `[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},fps=30,format=yuv420p,setsar=1,tpad=stop_mode=clone:stop_duration=${seconds},trim=duration=${seconds},setpts=PTS-STARTPTS[v${i}]`,
+    );
+    if (p.preserveShotAudio) {
+      f.push(
+        io.shotHasAudio?.[i]
+          ? `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=pad_dur=${seconds},atrim=duration=${seconds},asetpts=PTS-STARTPTS[a${i}]`
+          : `anullsrc=r=48000:cl=stereo:d=${seconds}[a${i}]`,
+      );
+    }
   });
-  // End card: a 2-second brand-coloured frame with the closing line.
-  const endCardSecs = p.endCard ? 2 : 0;
-  let concatInputs = shots.map((_, i) => `[v${i}]`).join('');
+  // Reserve the exact remainder for the end card. For old/manual stitch
+  // requests without a target this keeps the historical two seconds.
+  const targetSeconds = p.targetDurationMs ? p.targetDurationMs / 1000 : undefined;
+  const endCardSecs = p.endCard ? Math.max(0, targetSeconds === undefined ? 2 : targetSeconds - io.endStartSec) : 0;
+  let concatInputs = shots.map((_, i) => `[v${i}]${p.preserveShotAudio ? `[a${i}]` : ''}`).join('');
   let n = shots.length;
   if (p.endCard) {
     f.push(`color=c=0x17131A:s=${w}x${h}:d=${endCardSecs}:r=30,format=yuv420p,setsar=1[vend]`);
-    concatInputs += '[vend]';
+    if (p.preserveShotAudio) f.push(`anullsrc=r=48000:cl=stereo:d=${endCardSecs.toFixed(3)}[aend]`);
+    concatInputs += `[vend]${p.preserveShotAudio ? '[aend]' : ''}`;
     n += 1;
   }
-  f.push(`${concatInputs}concat=n=${n}:v=1:a=0[vcat]`);
+  f.push(`${concatInputs}concat=n=${n}:v=1:a=${p.preserveShotAudio ? 1 : 0}[vcat]${p.preserveShotAudio ? '[acat]' : ''}`);
 
   // Captions and watermark are drawtext layers over the concatenated stream.
   const layers: string[] = [];
@@ -158,21 +208,48 @@ function buildArgs(
   }
   f.push(`[vcat]${layers.length ? layers.join(',') : 'null'}[vout]`);
 
-  // Audio: music bed ducked under the voiceover, or silence so every output has an audio track.
-  if (musicIdx >= 0 && voIdx >= 0) {
+  // Audio: every stream the concat filter creates must be consumed. Native
+  // shot audio and music form a bed; speech ducks that bed and is mixed back
+  // on top. Padding the voice track to the picture length also lets product
+  // audio resume after a presenter's opening instead of ending the whole mix.
+  const audioSeconds = (targetSeconds ?? io.endStartSec + endCardSecs).toFixed(3);
+  const hasNative = p.preserveShotAudio;
+  if (voIdx >= 0 && (musicIdx >= 0 || hasNative)) {
+    const beds: string[] = [];
+    if (hasNative) {
+      f.push(`[acat]volume=0.80[anative]`);
+      beds.push('[anative]');
+    }
+    if (musicIdx >= 0) {
+      f.push(`[${musicIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.65[amusic]`);
+      beds.push('[amusic]');
+    }
+    if (beds.length === 2) f.push(`${beds.join('')}amix=inputs=2:duration=longest:dropout_transition=2[abed]`);
+    else f.push(`${beds[0]}anull[abed]`);
     f.push(
-      `[${musicIdx}:a]volume=0.8[m];[${voIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo,asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[md];[md][vo2]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
+      `[${voIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=pad_dur=${audioSeconds},atrim=duration=${audioSeconds},asplit=2[voside][vomix]`,
+    );
+    f.push(
+      `[abed][voside]sidechaincompress=threshold=0.03:ratio=12:attack=20:release=400[aducked];[aducked][vomix]amix=inputs=2:duration=longest:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
+    );
+  } else if (musicIdx >= 0 && hasNative) {
+    f.push(
+      `[${musicIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.65[amusic];[acat]volume=0.85[anative];[anative][amusic]amix=inputs=2:duration=longest:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
     );
   } else if (musicIdx >= 0) {
     f.push(`[${musicIdx}:a]volume=0.9,loudnorm=I=-14:TP=-1.5:LRA=11[aout]`);
   } else if (voIdx >= 0) {
-    f.push(`[${voIdx}:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]`);
+    f.push(
+      `[${voIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=pad_dur=${audioSeconds},atrim=duration=${audioSeconds},loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
+    );
+  } else if (p.preserveShotAudio) {
+    f.push(`[acat]loudnorm=I=-14:TP=-1.5:LRA=11[aout]`);
   } else {
     f.push(`anullsrc=r=48000:cl=stereo[aout]`);
   }
 
   // Bound the output by the picture, never by the audio: a short voiceover must not cut the ad.
-  args.push('-filter_complex', f.join(';'), '-map', '[vout]', '-map', '[aout]', '-t', (io.endStartSec + endCardSecs).toFixed(2));
+  args.push('-filter_complex', f.join(';'), '-map', '[vout]', '-map', '[aout]', '-t', (targetSeconds ?? io.endStartSec + endCardSecs).toFixed(3));
   // x264's own default was `medium`, which is three to five times slower than
   // `veryfast` at the same CRF — and the difference is a slightly larger file,
   // not a visibly worse one. That trade is wrong here twice over: this runs on
@@ -212,19 +289,40 @@ function esc(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:').replace(/%/g, '%%').replace(/\n/g, ' ');
 }
 
-async function probeDurationMs(path: string): Promise<number> {
-  const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]);
+async function probeDurationMs(path: string, timeout = 30_000): Promise<number> {
+  const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path], timeout);
   return Math.round(Number(stdout.trim()) * 1000);
 }
 
+async function probeHasAudio(path: string, timeout = 30_000): Promise<boolean> {
+  const stdout = await runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', path], timeout);
+  return stdout.trim().length > 0;
+}
+
 /** The pixel width of a shot, or null when ffprobe cannot say. */
-async function probeWidth(path: string): Promise<number | null> {
+async function probeWidth(path: string, timeout = 30_000, signal?: AbortSignal): Promise<number | null> {
   try {
-    const stdout = await runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path]);
+    const stdout = await runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path], timeout);
     const w = Number(stdout.trim());
     return Number.isFinite(w) && w > 0 ? w : null;
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     return null;
+  }
+}
+
+async function probeOr<T>(
+  path: string,
+  remaining: () => number,
+  signal: AbortSignal | undefined,
+  probe: (path: string, timeout?: number) => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await probe(path, remaining());
+  } catch (err) {
+    if (signal?.aborted || err instanceof ProviderError) throw err;
+    return fallback;
   }
 }
 

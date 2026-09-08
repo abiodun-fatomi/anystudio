@@ -31,16 +31,17 @@ const EXT: Record<string, string> = {
   'application/json': 'json',
 };
 
-export async function storeArtifacts(media: MediaService, row: Generation, artifacts: ProviderArtifact[]): Promise<GenerationOutput[]> {
+export async function storeArtifacts(media: MediaService, row: Generation, artifacts: ProviderArtifact[], signal?: AbortSignal): Promise<GenerationOutput[]> {
   const outputs: GenerationOutput[] = [];
   const counters: Record<string, number> = {};
 
   for (const a of artifacts) {
+    signal?.throwIfAborted();
     if (a.text !== undefined) {
       outputs.push({ key: '', role: 'text', mime: a.mime, text: a.text });
       continue;
     }
-    const bytes = a.bytes ?? (a.url ? (await fetchBytes(row.providerKey ?? 'vendor', a.url, 120_000)).bytes : undefined);
+    const bytes = a.bytes ?? (a.url ? (await fetchBytes(row.providerKey ?? 'vendor', a.url, 120_000, signal)).bytes : undefined);
     if (!bytes) {
       logger.warn({ generationId: row.id, role: a.role }, 'artifact had neither bytes nor url; skipped');
       continue;
@@ -61,6 +62,7 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
       }
     }
 
+    signal?.throwIfAborted();
     await media.put(key, bytes, a.mime);
     await media.recordOutput({
       workspaceId: row.workspaceId,
@@ -73,6 +75,10 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
       height,
       durationMs: a.durationMs,
     });
+    // Once put starts, always create the ownership row before observing a
+    // cancellation. Failure cleanup can then retire the object; an unrecorded
+    // R2 key would otherwise be invisible garbage.
+    signal?.throwIfAborted();
     const output: GenerationOutput = {
       key,
       role: a.role,
@@ -85,11 +91,13 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
     };
     outputs.push(output);
 
-    const thumb = await thumbnail(bytes, a.mime).catch((err) => {
+    const thumb = await thumbnail(bytes, a.mime, signal).catch((err) => {
+      signal?.throwIfAborted();
       logger.debug({ generationId: row.id, key, err: err instanceof Error ? err.message : err }, 'no thumbnail');
       return null;
     });
     if (thumb) {
+      signal?.throwIfAborted();
       const thumbKey = MediaService.key(row.workspaceId, `gen/${row.id}`, `thumb-${a.role}-${n}.webp`, row.createdAt);
       await media.put(thumbKey, thumb, 'image/webp');
       await media.recordOutput({
@@ -108,7 +116,7 @@ export async function storeArtifacts(media: MediaService, row: Generation, artif
 }
 
 /** A 512-px WebP for the library. Images through sharp; videos through one ffmpeg frame grab. */
-async function thumbnail(bytes: Uint8Array, mime: string): Promise<Buffer | null> {
+async function thumbnail(bytes: Uint8Array, mime: string, signal?: AbortSignal): Promise<Buffer | null> {
   if (mime.startsWith('image/')) {
     return sharp(bytes).resize(512, 512, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
   }
@@ -124,7 +132,7 @@ async function thumbnail(bytes: Uint8Array, mime: string): Promise<Buffer | null
       const { stdout } = await runFfmpeg(
         'thumbnail',
         ['-v', 'error', '-ss', '0.5', '-i', src, '-frames:v', '1', '-vf', 'scale=512:-2', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'],
-        { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024 },
+        { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, signal },
       );
       return await sharp(stdout as Buffer)
         .webp({ quality: 78 })

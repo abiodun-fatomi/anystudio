@@ -2,12 +2,14 @@
 /**
  * Quick start — the smallest set of calls that gets a picture back, with
  * the request bodies ready to paste and this environment's own API base.
- * The full reference lives in the interactive docs at /api/v1/docs.
+ * Scenario bodies are shared with API discovery and checked against the validators.
  */
 import { useEffect, useState } from 'react';
 import { siblingOrigin } from '@/lib/hosts';
 import { useToast, Button } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
+import { API_SCENARIOS } from '@anystudio/shared';
+import { WEBHOOK_VERIFY_EXAMPLE } from '@/lib/developer-docs';
 import styles from '../developer.module.css';
 
 export default function DocsPage() {
@@ -38,17 +40,17 @@ export default function DocsPage() {
   -H "Content-Type: application/json" \\
   -d '{"url":"https://cdn.example.com/products/sku-9.jpg"}'
 
-# → { "data": { "upload": { "key": "…/uploads/….jpg", "status": "READY", … } } }`,
+# → { "data": { "upload": { "key": "YOUR_WORKSPACE/uploads/product.jpg", "status": "READY", … } } }`,
     },
     {
       title: '2. Ask for something',
-      body: 'Pick a capability and give it the params GET /capabilities lists. clientKey is your idempotency key; merchantRef is whoever this is for, so usage and fair-use limits are per merchant.',
+      body: 'Choose a scenario below. POST /generations/quote with its capability and complete params to estimate the total first. clientKey must be unique across the workspace; merchantRef groups usage, not access permissions.',
       code: `curl -X POST ${base}/generations \\
   -H "Authorization: Bearer $ANYSTUDIO_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "capability": "IMAGE_EDIT",
-    "params": { "sourceKey": "…/uploads/….jpg", "prompt": "on a marble counter in soft morning light", "aspect": "1:1", "sizes": ["feed_square", "story"], "price": "₦12,000" },
+    "params": { "sourceKey": "YOUR_WORKSPACE/uploads/product.jpg", "prompt": "on a marble counter in soft morning light", "aspect": "1:1", "sizes": ["feed_square", "story"], "price": "₦12,000" },
     "clientKey": "order-8812-hero",
     "merchantRef": "store-441"
   }'
@@ -58,7 +60,7 @@ export default function DocsPage() {
     },
     {
       title: '3. Hear back',
-      body: 'Poll the generation, or add a webhook endpoint and we POST the same object when it finishes. Output URLs are signed and last an hour; fetch again for fresh ones.',
+      body: 'Poll until SUCCEEDED, FAILED or CANCELLED, or register a webhook in the portal for success/failure. GET returns data.generation; webhook data is the generation itself. URLs last an hour; fetch again to refresh them.',
       code: `curl ${base}/generations/$ID -H "Authorization: Bearer $ANYSTUDIO_KEY"
 
 # → { "data": { "generation": { "status": "SUCCEEDED", "outputs": [
@@ -67,17 +69,8 @@ export default function DocsPage() {
     },
     {
       title: '4. Verify a webhook',
-      body: 'Every delivery is signed with the secret shown when you added the endpoint: X-AnyStudio-Signature is t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">. Reject anything older than five minutes and answer 2xx before doing the work.',
-      code: `import { createHmac, timingSafeEqual } from 'node:crypto';
-
-export function verify(rawBody: string, header: string, secret: string): boolean {
-  const { t, v1 } = Object.fromEntries(header.split(',').map((kv) => kv.split('=')));
-  if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
-  const expected = createHmac('sha256', secret).update(\`\${t}.\${rawBody}\`).digest('hex');
-  return v1.length === expected.length && timingSafeEqual(Buffer.from(v1, 'hex'), Buffer.from(expected, 'hex'));
-}
-
-// { "id": "evt_…", "type": "generation.succeeded", "createdAt": "…", "data": { …the generation… } }`,
+      body: 'Every delivery is signed with the secret shown when you added the endpoint: X-AnyStudio-Signature is t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">. Reject timestamps more than five minutes in either direction. Persist the event durably before returning 2xx, then process it asynchronously.',
+      code: WEBHOOK_VERIFY_EXAMPLE,
     },
   ];
 
@@ -88,13 +81,14 @@ export function verify(rawBody: string, header: string, secret: string): boolean
           <div>
             <div className={styles.groupTitle}>Quick start</div>
             <div className={styles.groupLede}>
-              Four calls. Base URL for this environment: <span style={{ fontFamily: 'var(--f-mono)' }}>{base}</span>. Every answer is wrapped as{' '}
+              Base URL for this environment: <span style={{ fontFamily: 'var(--f-mono)' }}>{base}</span>. Every successful answer is wrapped as{' '}
               <span style={{ fontFamily: 'var(--f-mono)' }}>{'{ status, message, data }'}</span>; every error has a{' '}
-              <span style={{ fontFamily: 'var(--f-mono)' }}>code</span>.
+              <span style={{ fontFamily: 'var(--f-mono)' }}>error</span> identifier and may include a{' '}
+              <span style={{ fontFamily: 'var(--f-mono)' }}>fields</span> array of path/message objects.
             </div>
           </div>
-          <a style={{ fontFamily: 'var(--f-mono)' }} href={`${base}/docs`} target="_blank" rel="noreferrer">
-            Full reference ↗
+          <a style={{ fontFamily: 'var(--f-mono)' }} href="#scenario-reference">
+            Scenario reference ↓
           </a>
         </div>
         {steps.map((s) => (
@@ -113,30 +107,105 @@ export function verify(rawBody: string, header: string, secret: string): boolean
         ))}
       </section>
 
+      <section className={styles.group} id="scenario-reference">
+        <div className={styles.groupTitle}>API calls by scenario</div>
+        <p className={styles.groupLede}>
+          All examples use POST /generations. Replace every YOUR_WORKSPACE/uploads/... value with a READY key returned by your upload, and replace voice/genre
+          keys with catalogue values. Use a new clientKey for new work. These examples validate against the same schemas as the API; provider availability and
+          permission still matter.
+        </p>
+        <pre className={styles.code}>{`# No debit or generation is created by a quote.
+curl -X POST ${base}/generations/quote \\
+  -H "Authorization: Bearer $ANYSTUDIO_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"capability":"TEXT_GENERATE","params":{"productName":"Ankara tote"}}'
+# data: { costCode, credits, label, balance, balanceAfter, expectedMs }
+# Estimate only; submission uses current prices and performs its own checks.
+
+curl ${base}/capabilities -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl ${base}/catalogue/audio/voices -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl ${base}/catalogue/audio/genres -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl ${base}/catalogue/audio/dub-languages -H "Authorization: Bearer $ANYSTUDIO_KEY"`}</pre>
+        {API_SCENARIOS.map((scenario) => {
+          const code = `curl -X POST ${base}/generations -H "Authorization: Bearer $ANYSTUDIO_KEY" -H "Content-Type: application/json" -d '${JSON.stringify(scenario.body, null, 2)}'`;
+          return (
+            <div key={scenario.id}>
+              <div className={styles.codeHead}>
+                <div>
+                  <strong>{scenario.title}</strong>
+                  <div className={styles.groupLede}>{scenario.note}</div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => copy(code)}>
+                  Copy
+                </Button>
+              </div>
+              <pre className={styles.code}>{code}</pre>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className={styles.group}>
+        <div className={styles.groupTitle}>Uploads and generation management</div>
+        <p className={styles.groupLede}>
+          Required scopes: media:write for uploads, generations:write for create/cancel/unlock, generations:read for list/get, catalogue:read for
+          discovery/quotes, and balance:read for the wallet. Keys are server secrets; run these examples on your backend.
+        </p>
+        <pre className={styles.code}>{`# Local upload: replace filename, MIME and bytes with the real file's metadata.
+curl -X POST ${base}/uploads -H "Authorization: Bearer $ANYSTUDIO_KEY" -H "Content-Type: application/json" -d '{"filename":"product.jpg","mime":"image/jpeg","bytes":123456}'
+# Save data.upload.id as UPLOAD_ID and data.upload.url as UPLOAD_URL.
+# PUT the raw file using ALL returned data.upload.headers (this example assumes image/jpeg).
+# Never forward ANYSTUDIO_KEY to the storage host.
+curl -X PUT "$UPLOAD_URL" -H "Content-Type: image/jpeg" --data-binary @product.jpg
+curl -X POST ${base}/uploads/$UPLOAD_ID/complete -H "Authorization: Bearer $ANYSTUDIO_KEY"
+# Use the final data.upload.key only when status is READY.
+
+# List this project's jobs. Follow data.nextCursor with ?cursor=... for the next page.
+curl "${base}/generations?limit=50&merchantRef=store-441" -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl ${base}/generations/$ID -H "Authorization: Bearer $ANYSTUDIO_KEY"
+
+# Cancellation is only possible while QUEUED.
+curl -X POST ${base}/generations/$ID/cancel -H "Authorization: Bearer $ANYSTUDIO_KEY"
+
+# Song unlock: show the additional price and obtain agreement first.
+curl ${base}/catalogue/audio/unlock-price -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl -X POST ${base}/generations/$ID/unlock -H "Authorization: Bearer $ANYSTUDIO_KEY"
+curl ${base}/generations/$ID -H "Authorization: Bearer $ANYSTUDIO_KEY"
+
+curl ${base}/balance -H "Authorization: Bearer $ANYSTUDIO_KEY"`}</pre>
+        <p className={styles.groupLede}>
+          A locked song has an empty key and null URL. List responses are summaries; fetch a single generation for outputs. Treat SUCCEEDED, FAILED and
+          CANCELLED as terminal. Webhooks report success/failure, not cancellation. Batches may succeed partially; use separate jobs for exact SKU-to-output
+          tracking.
+        </p>
+      </section>
+
       <section className={styles.group}>
         <div className={styles.groupTitle}>Good to know</div>
         <div className={styles.prose}>
           <h3>Credits and prices</h3>
           <p>
-            Each capability has a credit price; <code>GET /capabilities</code> lists them with the params they take. Credits are held when you ask and returned
-            if the work fails. <code>GET /balance</code> says what is left; top up from the Credits page — an out-of-credits request is a <code>402</code>,
-            never a silent queue.
+            <code>GET /capabilities</code> lists base rates, not the final total for every scenario. Use <code>POST /generations/quote</code> with complete
+            params for a total estimate. Credits are reserved on submission and refunded on full failure; batches can succeed partially with a partial refund.{' '}
+            <code>GET /balance</code> says what is left; an out-of-credits request is a <code>402</code>, never a silent queue.
           </p>
           <h3>Idempotency</h3>
           <p>
-            Send the same <code>clientKey</code> again and you get the same generation back, charged once. Use your order id, your job id — anything unique on
-            your side.
+            Send the same <code>clientKey</code> again and you get the same generation back, charged once. Use your order id, your job id — anything unique
+            across the workspace, including a project prefix. A collision with another project returns 409 without revealing its generation. The first accepted
+            request wins; change the key to request different work.
           </p>
           <h3>Rate limits</h3>
           <p>
             60 requests a minute per key on <code>POST /generations</code>, 10 a minute per <code>merchantRef</code> behind it; headers{' '}
-            <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>Retry-After</code> tell you where you stand. Need more for a launch? Say
-            so.
+            <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and <code>RateLimit-Reset</code> tell you where you stand; <code>Retry-After</code>{' '}
+            accompanies a 429. Need more for a launch? Say so.
           </p>
           <h3>Songs</h3>
           <p>
             A <code>MUSIC</code> generation returns a 30-second preview and a locked full track. <code>POST /generations/:id/unlock</code> pays for the rest and
-            opens it.
+            opens it. Check <code>GET /catalogue/audio/unlock-price</code> for the extra charge first. Then fetch <code>GET /generations/:id</code> for the
+            standard response with refreshed URLs.
           </p>
           <h3>Faces and voices</h3>
           <p>
@@ -144,6 +213,14 @@ export function verify(rawBody: string, header: string, secret: string): boolean
             face and voice being used. Vendors run their own moderation; a refusal comes back as a failed generation with the credits returned.
           </p>
           <h3>Keys</h3>
+          <p>
+            Projects isolate API generations, but uploads and the credit wallet are workspace-wide. merchantRef is an accounting label, not a tenant security
+            boundary. Use separate workspaces for mutually untrusted tenants.
+          </p>
+          <p>
+            Project/key/webhook management uses the signed-in Developer portal, not this bearer key. Interactive Swagger is available only on
+            development/staging when enabled; it is intentionally unavailable in production.
+          </p>
           <p>
             Keys are server secrets. Never ship one in a browser, a mobile app or a public repo; if one leaks, revoke it here and mint another — the generations
             it made stay in your history under its prefix.

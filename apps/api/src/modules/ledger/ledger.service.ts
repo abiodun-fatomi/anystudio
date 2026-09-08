@@ -62,15 +62,16 @@ export class LedgerService {
    * Return credits after a failed generation.
    *
    * Uses the SAME idempotency key as the debit with a suffix, so a job that is
-   * retried and fails twice refunds exactly once.
+   * retried and fails twice refunds exactly once. The optional transaction
+   * keeps a generation's terminal claim and its refund in one commit.
    */
-  async refund(m: LedgerMove): Promise<LedgerEntry> {
-    return this.apply('REFUND', Math.abs(m.amount), { ...m, idempotencyKey: `${m.idempotencyKey}:refund` });
+  async refund(m: LedgerMove, tx?: LedgerClient): Promise<LedgerEntry> {
+    return this.apply('REFUND', Math.abs(m.amount), { ...m, idempotencyKey: `${m.idempotencyKey}:refund` }, undefined, tx);
   }
 
   /** Credits bought, or granted by a plan renewal. */
-  async purchase(m: LedgerMove): Promise<LedgerEntry> {
-    return this.apply('PURCHASE', Math.abs(m.amount), m);
+  async purchase(m: LedgerMove, tx?: LedgerClient): Promise<LedgerEntry> {
+    return this.apply('PURCHASE', Math.abs(m.amount), m, undefined, tx);
   }
 
   /** Free-tier and campaign credits. */
@@ -99,11 +100,31 @@ export class LedgerService {
    * Refused by the database if the credits were already spent — the caller
    * records that and a person follows up; we do not push a wallet negative.
    */
-  async clawback(m: LedgerMove): Promise<LedgerEntry> {
-    return this.apply('ADJUSTMENT', -Math.abs(m.amount), { ...m, idempotencyKey: `${m.idempotencyKey}:clawback` });
+  async clawback(m: LedgerMove, tx?: LedgerClient): Promise<LedgerEntry> {
+    return this.apply('ADJUSTMENT', -Math.abs(m.amount), { ...m, idempotencyKey: `${m.idempotencyKey}:clawback` }, undefined, tx);
   }
 
-  /** Current balance, from the last row. One indexed read. */
+  /**
+   * Record a verified external refund/chargeback even if the purchased
+   * credits were already spent. The resulting negative balance is debt, and
+   * prevents further prepaid work until it is repaid. Only billing calls this
+   * after the gateway is the source of truth; ordinary adjustments still use
+   * the overdraft-safe `clawback()` path above.
+   */
+  async forceClawback(m: LedgerMove, tx?: LedgerClient): Promise<LedgerEntry> {
+    const client = tx ?? this.db;
+    const rows = await client.$queryRaw<LedgerEntry[]>`
+      SELECT * FROM ledger_force_clawback(
+        ${m.walletId}::uuid, ${Math.abs(m.amount)}::int,
+        ${`${m.idempotencyKey}:clawback`}, ${m.referenceId ?? null}::uuid,
+        ${m.reason ?? null}
+      )`;
+    const row = rows[0];
+    if (!row) throw new Error('ledger_force_clawback returned no row');
+    return row;
+  }
+
+  /** Current authoritative balance, aggregated by Postgres from signed entries. */
   async balance(walletId: string): Promise<number> {
     const rows = await this.db.$queryRaw<{ balance: number }[]>`
       SELECT ledger_balance(${walletId}::uuid) AS balance`;
@@ -124,8 +145,9 @@ export class LedgerService {
   }
 
   /**
-   * Drift check for the operations dashboard: nonzero means something wrote
-   * around the function, which is a security finding rather than a bug.
+   * Compatibility health check for the operations dashboard. The database
+   * now treats SUM(delta) as authoritative, so a successful check is zero and
+   * an invalid/overflowing ledger raises instead of trusting a cached row.
    */
   async drift(walletId: string): Promise<number> {
     const rows = await this.db.$queryRaw<{ drift: number }[]>`

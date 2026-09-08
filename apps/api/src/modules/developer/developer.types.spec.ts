@@ -51,7 +51,7 @@ describe('schema description', () => {
     // LIPSYNC is a refined object; the fields are still visible.
     const lip = describeSchema(capabilityParams.LIPSYNC);
     expect(lip.map((f) => f.name)).toContain('audioKey');
-    expect(lip.find((f) => f.name === 'consent')).toMatchObject({ type: 'literal', required: true, values: ['true'] });
+    expect(lip.find((f) => f.name === 'consent')).toMatchObject({ type: 'literal', required: true, values: [true] });
     expect(describeSchema(z.string())).toEqual([]);
   });
 });

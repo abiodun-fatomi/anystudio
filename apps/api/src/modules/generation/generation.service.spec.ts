@@ -12,7 +12,7 @@
  * so these run on every pull request.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { GenerationService } from './generation.service';
 import { GenerationHooks } from './generation.hooks';
@@ -20,6 +20,7 @@ import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { QueueService } from '../queue/queue.service';
 import { AppError } from '../../../config/globals/errors';
+import type { GenerationRequest } from './generation.types';
 
 const url = process.env.DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -27,24 +28,37 @@ const suite = url ? describe : describe.skip;
 suite('GenerationService', () => {
   const db = new PrismaClient();
   const ledger = new LedgerService(db);
+  const media = new MediaService(db);
   // No REDIS_URL in tests: the queue is a no-op and the row is the only truth — exactly the degraded mode.
-  const service = new GenerationService(db, ledger, new MediaService(db), new QueueService(), new GenerationHooks());
+  const service = new GenerationService(db, ledger, media, new QueueService(), new GenerationHooks());
 
   let workspaceId: string;
   let userId: string;
   let walletId: string;
 
-  const COST = 'test.image';
-  const PRICE = 10;
+  const COST = 'text.description';
+  const PRICE = 2;
   const STARTING_CREDITS = 100;
 
   beforeAll(async () => {
     await db.$connect();
-    await db.creditCost.upsert({
-      where: { code: COST },
-      create: { code: COST, credits: PRICE, label: 'Test image' },
-      update: { credits: PRICE, label: 'Test image' },
-    });
+    await Promise.all([
+      db.creditCost.upsert({
+        where: { code: COST },
+        create: { code: COST, credits: PRICE, label: 'Test image' },
+        update: {},
+      }),
+      db.creditCost.upsert({
+        where: { code: 'audio.music.preview' },
+        create: { code: 'audio.music.preview', credits: 10, label: 'Song generation' },
+        update: { credits: 10 },
+      }),
+      db.creditCost.upsert({
+        where: { code: 'audio.music.preview.my_voice' },
+        create: { code: 'audio.music.preview.my_voice', credits: 20, label: 'Song in your voice' },
+        update: { credits: 20 },
+      }),
+    ]);
   });
 
   afterAll(async () => {
@@ -69,7 +83,7 @@ suite('GenerationService', () => {
   });
 
   const request = (clientKey: string = crypto.randomUUID()) =>
-    service.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', costCode: COST, clientKey, params: { productName: 'Ankara tote' } });
+    service.request({ workspaceId, requestedById: userId, capability: 'TEXT_GENERATE', clientKey, params: { productName: 'Ankara tote' } });
 
   it('debits the credits when the generation is requested, not when it succeeds', async () => {
     const { generation, balance } = await request();
@@ -79,25 +93,47 @@ suite('GenerationService', () => {
     expect(balance).toBe(STARTING_CREDITS - PRICE);
   });
 
-  it('copies the price onto the row, so a later price change cannot rewrite history', async () => {
+  it('copies the server-owned price onto the generation row', async () => {
+    const price = await db.creditCost.findUniqueOrThrow({ where: { code: COST } });
     const { generation } = await request();
-    await db.creditCost.update({ where: { code: COST }, data: { credits: 999 } });
 
     const reread = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
-    expect(reread.credits).toBe(PRICE);
+    expect(reread.credits).toBe(price.credits);
+  });
 
-    await db.creditCost.update({ where: { code: COST }, data: { credits: PRICE } });
+  it('cannot underprice a normal request by injecting the zero-credit child code', async () => {
+    await db.creditCost.upsert({
+      where: { code: 'video.shot' },
+      create: { code: 'video.shot', credits: 0, label: 'Internal child shot' },
+      update: { credits: 0 },
+    });
+    const malicious: GenerationRequest & { costCode: string } = {
+      workspaceId,
+      requestedById: userId,
+      capability: 'TEXT_GENERATE',
+      clientKey: crypto.randomUUID(),
+      params: { productName: 'Ankara tote' },
+      costCode: 'video.shot',
+    };
+
+    const { generation, balance } = await service.request(malicious);
+
+    expect(generation.costCode).toBe(COST);
+    expect(generation.credits).toBe(PRICE);
+    expect(balance).toBe(STARTING_CREDITS - PRICE);
   });
 
   it('writes no row at all when the wallet cannot afford it', async () => {
-    await db.creditCost.update({ where: { code: COST }, data: { credits: STARTING_CREDITS + 1 } });
-    try {
-      await expect(request()).rejects.toMatchObject({ code: 'insufficient_credits', status: 402 });
-      expect(await db.generation.count({ where: { workspaceId } })).toBe(0);
-      expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
-    } finally {
-      await db.creditCost.update({ where: { code: COST }, data: { credits: PRICE } });
-    }
+    await ledger.expire({
+      walletId,
+      amount: STARTING_CREDITS - (PRICE - 1),
+      idempotencyKey: `drain:${walletId}`,
+      reason: 'leave less than one generation costs',
+    });
+
+    await expect(request()).rejects.toMatchObject({ code: 'insufficient_credits', status: 402 });
+    expect(await db.generation.count({ where: { workspaceId } })).toBe(0);
+    expect(await ledger.balance(walletId)).toBe(PRICE - 1);
   });
 
   it('refunds when the generation fails', async () => {
@@ -107,6 +143,27 @@ suite('GenerationService', () => {
 
     expect(failed.status).toBe('FAILED');
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
+  it('reconciles durable provider-attempt spend when a sweeper fails a generation', async () => {
+    const { generation } = await request();
+    const running = await service.start(generation.id);
+    await db.providerAttempt.create({
+      data: {
+        generationId: generation.id,
+        operationKey: 'text-plan:0',
+        providerKey: 'paid:text',
+        capability: 'TEXT_GENERATE',
+        generationAttempt: running!.attempts,
+        status: 'SUCCEEDED',
+        costMinor: 17,
+        finishedAt: new Date(),
+      },
+    });
+
+    const failed = await service.fail(generation.id, { failureReason: 'worker disappeared' });
+
+    expect(failed.providerCostMinor).toBe(17);
   });
 
   it('refunds exactly once, however many times a failure is replayed', async () => {
@@ -128,6 +185,57 @@ suite('GenerationService', () => {
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - PRICE);
   });
 
+  it('atomically refunds the personal-voice premium when a successful song kept the model singer', async () => {
+    const voiceKey = `mine:${crypto.randomUUID()}`;
+    await db.voiceProfile.create({
+      data: {
+        key: voiceKey,
+        providerKey: 'elevenlabs:tts',
+        providerVoiceId: 'voice-1',
+        name: 'Mine',
+        language: 'en',
+        tags: [],
+        kind: 'CLONE',
+        workspaceId,
+        consentAt: new Date(),
+        createdById: userId,
+      },
+    });
+    const { generation } = await service.request({
+      workspaceId,
+      requestedById: userId,
+      capability: 'MUSIC',
+      clientKey: crypto.randomUUID(),
+      params: { brief: 'A song for the shop', genre: 'afrobeats', vocal: 'female', singer: 'me', voiceId: voiceKey, durationSec: 30 },
+    });
+    expect(generation.credits).toBe(20);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - 20);
+
+    await service.start(generation.id);
+    const done = await service.succeed(generation.id, {
+      outputs: [{ key: 'result.json', role: 'text', mime: 'application/json', text: { myVoice: { applied: false } } }],
+    });
+
+    expect(done.status).toBe('SUCCEEDED');
+    expect(done.credits).toBe(10);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - 10);
+    expect(await db.ledgerEntry.count({ where: { referenceId: generation.id, kind: 'REFUND' } })).toBe(1);
+  });
+
+  it('rejects an unowned personal voice before reserving credits or creating a generation', async () => {
+    await expect(
+      service.request({
+        workspaceId,
+        requestedById: userId,
+        capability: 'MUSIC',
+        clientKey: crypto.randomUUID(),
+        params: { brief: 'A song for the shop', genre: 'afrobeats', vocal: 'female', singer: 'me', voiceId: 'mine:not-ours', durationSec: 30 },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(await db.generation.count({ where: { workspaceId } })).toBe(0);
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
   it('will not un-refund a failed generation if the provider answers late', async () => {
     const { generation } = await request();
     await service.start(generation.id);
@@ -135,6 +243,37 @@ suite('GenerationService', () => {
 
     await expect(service.succeed(generation.id, { outputs: [] })).rejects.toBeInstanceOf(AppError);
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
+  it('lets exactly one concurrent success, failure or cancellation become terminal', async () => {
+    const { generation } = await request();
+    const results = await Promise.allSettled([
+      service.succeed(generation.id, { outputs: [{ key: 'winner.webp', role: 'image', mime: 'image/webp' }] }),
+      service.fail(generation.id, { failureReason: 'racing failure' }),
+      service.cancel(generation.id),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
+    expect(['SUCCEEDED', 'FAILED', 'CANCELLED']).toContain(row.status);
+    const refunded = row.status === 'FAILED' || row.status === 'CANCELLED';
+    expect(await ledger.balance(walletId)).toBe(refunded ? STARTING_CREDITS : STARTING_CREDITS - PRICE);
+    expect(await db.ledgerEntry.count({ where: { referenceId: generation.id, kind: 'REFUND' } })).toBe(refunded ? 1 : 0);
+  });
+
+  it('rolls back the terminal claim when its refund cannot commit', async () => {
+    const { generation } = await request();
+    await service.start(generation.id);
+    const refusingLedger = new LedgerService(db);
+    refusingLedger.refund = async () => {
+      throw new Error('ledger unavailable');
+    };
+    const refusingService = new GenerationService(db, refusingLedger, new MediaService(db), new QueueService(), new GenerationHooks());
+
+    await expect(refusingService.fail(generation.id, { failureReason: 'provider failed' })).rejects.toThrow('ledger unavailable');
+
+    expect((await db.generation.findUniqueOrThrow({ where: { id: generation.id } })).status).toBe('RUNNING');
+    expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - PRICE);
   });
 
   it('lets only one worker start a generation', async () => {
@@ -159,6 +298,54 @@ suite('GenerationService', () => {
     await expect(service.cancel(b.generation.id)).rejects.toMatchObject({ status: 409 });
   });
 
+  it.each(['succeed', 'fail', 'cancel'] as const)('retires and purges generation work on %s', async (transition) => {
+    const { generation } = await request();
+    if (transition !== 'cancel') await service.start(generation.id);
+    const key = `${MediaService.generationWorkPrefix(workspaceId, generation.id, generation.createdAt)}scratch.mp3`;
+    await db.mediaAsset.create({
+      data: { workspaceId, generationId: generation.id, kind: 'DERIVED', status: 'READY', key, mime: 'audio/mpeg', bytes: 3 },
+    });
+    const remove = vi.spyOn(media, 'deleteObject').mockResolvedValue(true);
+    try {
+      if (transition === 'succeed') await service.succeed(generation.id, { outputs: [] });
+      else if (transition === 'fail') await service.fail(generation.id, { failureReason: 'test' });
+      else await service.cancel(generation.id);
+
+      expect(remove).toHaveBeenCalledWith(key);
+      expect(await db.mediaAsset.findUniqueOrThrow({ where: { key } })).toMatchObject({ status: 'PURGED', deletedAt: expect.any(Date) });
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  it('keeps parent work while it is waiting for children, then removes it when the parent becomes terminal', async () => {
+    const parent = await db.generation.create({
+      data: {
+        workspaceId,
+        requestedById: userId,
+        capability: 'IMAGE_TO_VIDEO',
+        kind: 'PARENT',
+        costCode: 'video.reel',
+        credits: 0,
+        status: 'RUNNING',
+        input: { sourceKey: `${workspaceId}/source.jpg`, shots: 1 },
+      },
+    });
+    const key = `${MediaService.generationWorkPrefix(workspaceId, parent.id, parent.createdAt)}presenter.mp4`;
+    await db.mediaAsset.create({ data: { workspaceId, generationId: parent.id, kind: 'DERIVED', status: 'READY', key, mime: 'video/mp4', bytes: 3 } });
+    const remove = vi.spyOn(media, 'deleteObject').mockResolvedValue(true);
+    try {
+      await service.wait(parent.id);
+      expect(remove).not.toHaveBeenCalled();
+      expect(await db.mediaAsset.findUniqueOrThrow({ where: { key } })).toMatchObject({ status: 'READY', deletedAt: null });
+
+      await service.fail(parent.id, { failureReason: 'test cleanup after waiting' });
+      expect(remove).toHaveBeenCalledWith(key);
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
   it('requeues a generation whose worker went silent, and refunds only when attempts are spent', async () => {
     const { generation } = await request();
     await service.start(generation.id);
@@ -181,6 +368,55 @@ suite('GenerationService', () => {
     row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
     expect(row.status).toBe('FAILED');
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);
+  });
+
+  it('retries a crashed parent assembly on media.local and counts the new attempt', async () => {
+    const heartbeatAt = new Date(Date.now() - 60 * 60 * 1000);
+    const plan = {
+      hook: 'Watch this',
+      shots: [{ prompt: 'A detailed product shot on a clean table', motion: 'slow push-in', durationSec: 5, caption: 'Made for you' }],
+      endCard: { text: 'Order now' },
+    };
+    const parent = await db.generation.create({
+      data: {
+        workspaceId,
+        requestedById: userId,
+        capability: 'IMAGE_TO_VIDEO',
+        kind: 'PARENT',
+        costCode: 'video.reel',
+        credits: 0,
+        status: 'RUNNING',
+        attempts: 2,
+        stage: 'composing',
+        heartbeatAt,
+        input: { sourceKey: `${workspaceId}/source.jpg`, shots: 1, plan },
+      },
+    });
+    await db.generation.create({
+      data: {
+        workspaceId,
+        requestedById: userId,
+        capability: 'IMAGE_TO_VIDEO',
+        kind: 'CHILD',
+        parentId: parent.id,
+        clientKey: `${parent.id}:shot:0`,
+        costCode: 'video.shot',
+        credits: 0,
+        status: 'SUCCEEDED',
+        input: { sourceKey: `${workspaceId}/source.jpg` },
+        outputs: [{ key: `${workspaceId}/shot.mp4`, role: 'video', mime: 'video/mp4' }],
+      },
+    });
+
+    expect(await service.sweepStale()).toContain(parent.id);
+    const waiting = await db.generation.findUniqueOrThrow({ where: { id: parent.id } });
+    expect(waiting.status).toBe('RUNNING');
+    expect(waiting.stage).toBe('waiting');
+    expect(waiting.attempts).toBe(2);
+
+    const resumed = await service.resume(parent.id);
+    expect(resumed?.stage).toBe('composing');
+    expect(resumed?.attempts).toBe(3);
   });
 
   it('does not reclaim a row that is merely waiting in a busy queue', async () => {
@@ -210,9 +446,33 @@ suite('GenerationService', () => {
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS - PRICE);
   });
 
+  it('reuses a child shot when a restarted parent dispatches the same index again', async () => {
+    const parent = await db.generation.create({
+      data: {
+        workspaceId,
+        requestedById: userId,
+        capability: 'IMAGE_TO_VIDEO',
+        kind: 'PARENT',
+        clientKey: crypto.randomUUID(),
+        costCode: 'video.ad_15s',
+        credits: 0,
+        input: { sourceKey: `${workspaceId}/source.jpg`, shots: 2 },
+      },
+    });
+    const first = await service.createChild(parent, 'IMAGE_TO_VIDEO', { sourceKey: `${workspaceId}/source.jpg`, prompt: 'first' }, 0);
+    await db.generation.update({ where: { id: first.id }, data: { status: 'SUCCEEDED', outputs: [] } });
+
+    const replay = await service.createChild(parent, 'IMAGE_TO_VIDEO', { sourceKey: `${workspaceId}/source.jpg`, prompt: 'different retry input' }, 0);
+
+    expect(replay.id).toBe(first.id);
+    expect(replay.status).toBe('SUCCEEDED');
+    expect(replay.input).toEqual({ sourceKey: `${workspaceId}/source.jpg`, prompt: 'first' });
+    expect(await db.generation.count({ where: { parentId: parent.id } })).toBe(1);
+  });
+
   it('refuses a request whose params do not fit the capability, before any money moves', async () => {
     await expect(
-      service.request({ workspaceId, requestedById: userId, capability: 'IMAGE_EDIT', costCode: COST, clientKey: 'bad', params: { prompt: 'x' } }),
+      service.request({ workspaceId, requestedById: userId, capability: 'IMAGE_EDIT', clientKey: 'bad', params: { prompt: 'x' } }),
     ).rejects.toMatchObject({ status: 400 });
     expect(await db.generation.count({ where: { workspaceId } })).toBe(0);
     expect(await ledger.balance(walletId)).toBe(STARTING_CREDITS);

@@ -8,8 +8,8 @@
  * is one video, and the text output says what was said.
  */
 import { LIPSYNC_MAX_SEC, ProviderError, type CapabilityParams, type ProviderArtifact, type ProviderFile } from '@anystudio/shared';
+import type { VoiceProfile } from '@prisma/client';
 import type { Pipeline, PipelineContext } from './index';
-import { MediaService } from '../../modules/media/media.service';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { durationOf, extOf, guardLength } from './ffmpeg';
 
@@ -58,6 +58,10 @@ export const lipsyncPipeline: Pipeline = async (ctx) => {
   };
 };
 
+export function canUseScriptVoice(voice: Pick<VoiceProfile, 'active' | 'kind' | 'workspaceId'> | null | undefined, workspaceId: string): boolean {
+  return Boolean(voice?.active && (voice.kind !== 'CLONE' || voice.workspaceId === workspaceId));
+}
+
 /** Read the script in the chosen voice and store the take beside the row. */
 async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
   const script = p
@@ -70,7 +74,7 @@ async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
   let language = p.language;
   if (p.voiceId) {
     const voice = await ctx.db.voiceProfile.findUnique({ where: { key: p.voiceId } });
-    if (!voice?.active) throw new ProviderError('INVALID_INPUT', `unknown voice "${p.voiceId}"`, 'lipsync-pipeline');
+    if (!voice || !canUseScriptVoice(voice, ctx.row.workspaceId)) throw new ProviderError('INVALID_INPUT', `unknown voice "${p.voiceId}"`, 'lipsync-pipeline');
     providerVoiceId = voice.providerVoiceId;
     only = voice.providerKey;
     if (!p.language || p.language === 'en') language = voice.language.split('-')[0] ?? 'en';
@@ -82,12 +86,19 @@ async function record(ctx: PipelineContext, p: CapabilityParams<'LIPSYNC'>) {
     { timeoutMs: 120_000, signal: ctx.signal, route: only ? { only } : undefined },
   );
   const take = r.artifacts.find((a) => a.role === 'audio');
-  const bytes = take?.bytes ?? (take?.url ? (await fetchBytes(r.providerKey, take.url, 60_000)).bytes : undefined);
+  const bytes = take?.bytes ?? (take?.url ? (await fetchBytes(r.providerKey, take.url, 60_000, ctx.signal)).bytes : undefined);
   if (!take || !bytes) throw new ProviderError('RETRYABLE', `${r.providerKey} returned no audio for the script`, r.providerKey);
   const ext = extOf(take.mime) === 'bin' ? 'mp3' : extOf(take.mime);
-  const audioKey = MediaService.key(ctx.row.workspaceId, `gen/${ctx.row.id}/work`, `voice.${ext}`, ctx.row.createdAt);
-  await ctx.media.put(audioKey, bytes, take.mime);
   const durationMs = take.durationMs ?? (await durationOf(bytes, ext));
+  const audioKey = await ctx.media.putGenerationWork({
+    workspaceId: ctx.row.workspaceId,
+    generationId: ctx.row.id,
+    createdAt: ctx.row.createdAt,
+    name: `voice.${ext}`,
+    bytes,
+    mime: take.mime,
+    durationMs,
+  });
   ctx.log.info({ audioKey, durationMs, words: script.split(/\s+/).length, providerKey: r.providerKey }, 'script recorded');
   return {
     audioKey,

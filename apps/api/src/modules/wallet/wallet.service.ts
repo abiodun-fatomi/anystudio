@@ -19,7 +19,7 @@ export class WalletService {
     private readonly ledger: LedgerService,
   ) {}
 
-  /** Current credits, derived from the ledger's last row. */
+  /** Current credits, derived authoritatively from the ledger's signed deltas. */
   async balance(workspaceId: string) {
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');

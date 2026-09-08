@@ -25,7 +25,7 @@
  */
 import { ProviderError, dubLanguage, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
-import { http, pick, poll } from './http';
+import { http, kindForStatus, linkedTimeoutSignal, MAX_PROVIDER_JSON_BYTES, pick, poll, readLimitedResponseBytes } from './http';
 import type { PresenterLab, TalkingVideoInput } from './presenter-lab';
 
 const KNOWN: Record<string, Capability> = { 'heygen:translate': 'DUB', 'heygen:lipsync': 'LIPSYNC' };
@@ -68,7 +68,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
     const name = dubLanguage(p.targetLanguage)?.heygen;
     if (!name) throw new ProviderError('INVALID_INPUT', `${this.key}: cannot translate into "${p.targetLanguage}"`, this.key);
     const base = this.str(input.config, 'baseUrl', 'https://api.heygen.com/v3');
-    const mode = this.str(input.config, 'mode', p.quality);
+    const mode = p.quality;
     const body: Record<string, unknown> = {
       video: { type: 'url', url: this.file(input, 'sourceKey') },
       output_languages: [name],
@@ -81,12 +81,19 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
     if (p.speakers > 0) body.speaker_num = p.speakers;
     if (p.sourceLanguage && p.sourceLanguage !== 'auto') body.input_language = p.sourceLanguage;
 
-    const submitted = await http<unknown>(this.key, `${base}/video-translations`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
-    const providerJobId = pick<string[]>(submitted.json, 'data.video_translation_ids')?.[0] ?? pick<string[]>(submitted.json, 'video_translation_ids')?.[0];
-    if (!providerJobId)
-      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
-        raw: submitted.json,
-      });
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+    } else {
+      const submitted = await http<unknown>(this.key, `${base}/video-translations`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
+      const id = pick<string[]>(submitted.json, 'data.video_translation_ids')?.[0] ?? pick<string[]>(submitted.json, 'video_translation_ids')?.[0];
+      if (!id)
+        throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
+          raw: submitted.json,
+        });
+      providerJobId = id;
+      await opts.onSubmitted?.(providerJobId);
+    }
     opts.onProgress?.('Translating the video', 15);
 
     const job = await this.wait(`${base}/video-translations/${providerJobId}`, providerJobId, opts, 'translating');
@@ -101,7 +108,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
   private async lipsync(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     const p = this.params(input, 'LIPSYNC');
     const base = this.str(input.config, 'baseUrl', 'https://api.heygen.com/v3');
-    const mode = this.str(input.config, 'mode', p.quality);
+    const mode = p.quality;
     const body = {
       video: { type: 'url', url: this.file(input, 'sourceKey') },
       audio: { type: 'url', url: this.file(input, 'audioKey') },
@@ -109,12 +116,19 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
       enable_dynamic_duration: true,
       title: `anystudio ${input.generationId}`,
     };
-    const submitted = await http<unknown>(this.key, `${base}/lipsyncs`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
-    const providerJobId = pick<string>(submitted.json, 'data.lipsync_id') ?? pick<string>(submitted.json, 'lipsync_id');
-    if (!providerJobId)
-      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
-        raw: submitted.json,
-      });
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+    } else {
+      const submitted = await http<unknown>(this.key, `${base}/lipsyncs`, { headers: this.headers(), body, timeoutMs: 30_000, signal: opts.signal });
+      const id = pick<string>(submitted.json, 'data.lipsync_id') ?? pick<string>(submitted.json, 'lipsync_id');
+      if (!id)
+        throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no job id in response'}`, this.key, {
+          raw: submitted.json,
+        });
+      providerJobId = id;
+      await opts.onSubmitted?.(providerJobId);
+    }
     opts.onProgress?.('Matching the mouth to the words', 15);
 
     const job = await this.wait(`${base}/lipsyncs/${providerJobId}`, providerJobId, opts, 'syncing');
@@ -123,37 +137,41 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
 
   // ---- a person on camera --------------------------------------------------------
 
-  async talkingVideo(
-    input: TalkingVideoInput,
-    opts: { timeoutMs: number; signal?: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
-  ): Promise<{ url: string; providerJobId: string }> {
-    let character: Record<string, unknown>;
-    if (input.avatarId) {
-      character = { type: 'avatar', avatar_id: input.avatarId, avatar_style: 'normal' };
-    } else if (input.photo) {
-      const id = await this.uploadTalkingPhoto(input.photo, opts.signal);
-      character = { type: 'talking_photo', talking_photo_id: id, talking_photo_style: 'square', talking_style: 'expressive', expression: 'happy' };
+  async talkingVideo(input: TalkingVideoInput, opts: ProviderOpts): Promise<{ url: string; providerJobId: string }> {
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
     } else {
-      throw new ProviderError('INVALID_INPUT', `${this.key}: a presenter needs an avatar or a photo`, this.key);
-    }
-    const dimension =
-      input.aspect === '9:16' ? { width: 1080, height: 1920 } : input.aspect === '1:1' ? { width: 1080, height: 1080 } : { width: 1920, height: 1080 };
-    const body = {
-      title: input.title,
-      video_inputs: [{ character, voice: { type: 'audio', audio_url: input.audioUrl }, background: { type: 'color', value: '#F4EFE8' } }],
-      dimension,
-    };
-    const submitted = await http<unknown>(this.key, 'https://api.heygen.com/v2/video/generate', {
-      headers: this.headers(),
-      body,
-      timeoutMs: 30_000,
-      signal: opts.signal,
-    });
-    const providerJobId = pick<string>(submitted.json, 'data.video_id') ?? pick<string>(submitted.json, 'video_id');
-    if (!providerJobId)
-      throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no video_id in response'}`, this.key, {
-        raw: submitted.json,
+      let character: Record<string, unknown>;
+      if (input.avatarId) {
+        character = { type: 'avatar', avatar_id: input.avatarId, avatar_style: 'normal' };
+      } else if (input.photo) {
+        const id = await this.uploadTalkingPhoto(input.photo, opts.signal);
+        character = { type: 'talking_photo', talking_photo_id: id, talking_photo_style: 'square', talking_style: 'expressive', expression: 'happy' };
+      } else {
+        throw new ProviderError('INVALID_INPUT', `${this.key}: a presenter needs an avatar or a photo`, this.key);
+      }
+      const dimension =
+        input.aspect === '9:16' ? { width: 1080, height: 1920 } : input.aspect === '1:1' ? { width: 1080, height: 1080 } : { width: 1920, height: 1080 };
+      const body = {
+        title: input.title,
+        video_inputs: [{ character, voice: { type: 'audio', audio_url: input.audioUrl }, background: { type: 'color', value: '#F4EFE8' } }],
+        dimension,
+      };
+      const submitted = await http<unknown>(this.key, 'https://api.heygen.com/v2/video/generate', {
+        headers: this.headers(),
+        body,
+        timeoutMs: 30_000,
+        signal: opts.signal,
       });
+      const id = pick<string>(submitted.json, 'data.video_id') ?? pick<string>(submitted.json, 'video_id');
+      if (!id)
+        throw new ProviderError('RETRYABLE', `${this.key}: ${pick<string>(submitted.json, 'error.message') ?? 'no video_id in response'}`, this.key, {
+          raw: submitted.json,
+        });
+      providerJobId = id;
+      await opts.onSubmitted?.(providerJobId);
+    }
     opts.onProgress?.('Filming the presenter', 20);
     const job = await this.wait(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(providerJobId)}`, providerJobId, opts, 'filming');
     return { url: job.video_url!, providerJobId };
@@ -161,31 +179,31 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
 
   /** One photo → a talking-photo id. Deprecated on HeyGen's side in favour of photo avatars, still served; see PROVIDERS.md. */
   private async uploadTalkingPhoto(photo: { bytes: Uint8Array; mime: string }, signal?: AbortSignal): Promise<string> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
-    signal?.addEventListener('abort', () => controller.abort(), { once: true });
+    const linked = linkedTimeoutSignal(signal, 60_000);
     let res: Response;
+    let json: unknown;
     try {
       res = await fetch('https://upload.heygen.com/v1/talking_photo', {
         method: 'POST',
         headers: { ...this.headers(), 'content-type': photo.mime === 'image/png' ? 'image/png' : 'image/jpeg' },
         body: photo.bytes as unknown as ArrayBuffer,
-        signal: controller.signal,
+        signal: linked.signal,
       });
+      const text = new TextDecoder().decode(await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_JSON_BYTES, 'talking photo response'));
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
     } catch (err) {
-      clearTimeout(timer);
+      if (err instanceof ProviderError) throw err;
       throw new ProviderError('RETRYABLE', `${this.key}: network error uploading the photo: ${err instanceof Error ? err.message : err}`, this.key);
+    } finally {
+      linked.dispose();
     }
-    clearTimeout(timer);
-    const json = (await res.json().catch(() => ({}))) as unknown;
     if (!res.ok) {
       const msg = pick<string>(json, 'message') ?? pick<string>(json, 'error.message') ?? `HTTP ${res.status}`;
-      throw new ProviderError(
-        res.status === 400 || res.status === 422 ? 'INVALID_INPUT' : res.status >= 500 ? 'RETRYABLE' : 'PROVIDER_DOWN',
-        `${this.key}: talking photo upload failed: ${msg}`,
-        this.key,
-        { status: res.status },
-      );
+      throw new ProviderError(kindForStatus(res.status), `${this.key}: talking photo upload failed: ${msg}`, this.key, { status: res.status });
     }
     const id = pick<string>(json, 'data.talking_photo_id') ?? pick<string>(json, 'talking_photo_id');
     if (!id) throw new ProviderError('RETRYABLE', `${this.key}: no talking_photo_id in upload response`, this.key, { raw: json });
@@ -214,6 +232,7 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
         }
         if (st === 'failed' || st === 'error') {
           const why = job.failure_message ?? (typeof job.error === 'string' ? job.error : (job.error?.message ?? job.error?.detail)) ?? undefined;
+          await opts.onSettled?.('FAILED');
           throw new ProviderError(classifyFailure(why), `${this.key}: ${why ?? 'job failed'}`, this.key, { providerJobId });
         }
         return null;
@@ -232,9 +251,9 @@ export class HeyGenProvider extends BaseProvider implements PresenterLab {
   }
 }
 
-export function classifyFailure(message: string | undefined): 'CONTENT_REJECTED' | 'INVALID_INPUT' | 'RETRYABLE' {
+export function classifyFailure(message: string | undefined): 'CONTENT_REJECTED' | 'REQUEST_REJECTED' | 'RETRYABLE' {
   const m = (message ?? '').toLowerCase();
   if (/moderation|policy|violat|inappropriate|consent/.test(m)) return 'CONTENT_REJECTED';
-  if (/no face|face not|no speech|no audio|unsupported|too long|duration|resolution|corrupt|invalid/.test(m)) return 'INVALID_INPUT';
+  if (/no face|face not|no speech|no audio|unsupported|too long|duration|resolution|corrupt|invalid/.test(m)) return 'REQUEST_REJECTED';
   return 'RETRYABLE';
 }

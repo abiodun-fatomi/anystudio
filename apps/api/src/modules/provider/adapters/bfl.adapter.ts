@@ -45,7 +45,7 @@ export class BflProvider extends BaseProvider {
 
     if (input.capability === 'IMAGE_EDIT') {
       const p = this.params(input, 'IMAGE_EDIT');
-      const { bytes } = await fetchBytes(this.key, this.file(input, 'sourceKey'), 60_000);
+      const { bytes } = await fetchBytes(this.key, this.file(input, 'sourceKey'), Math.min(opts.timeoutMs, 60_000), opts.signal);
       body = {
         prompt: p.preserveProduct ? `${p.prompt}. Keep the product exactly the same; change only the surroundings.` : p.prompt,
         input_image: Buffer.from(bytes).toString('base64'),
@@ -60,9 +60,19 @@ export class BflProvider extends BaseProvider {
       return this.unsupported(input.capability);
     }
 
-    const submitted = await http<Submit>(this.key, `https://api.bfl.ai/v1/${endpoint}`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
-    const providerJobId = submitted.json.id;
-    const pollUrl = submitted.json.polling_url ?? `https://api.bfl.ai/v1/get_result?id=${providerJobId}`;
+    let providerJobId: string;
+    let pollUrl: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+      const saved = opts.resume.data?.pollUrl;
+      pollUrl = typeof saved === 'string' && saved ? saved : `https://api.bfl.ai/v1/get_result?id=${encodeURIComponent(providerJobId)}`;
+    } else {
+      const submitted = await http<Submit>(this.key, `https://api.bfl.ai/v1/${endpoint}`, { headers, body, timeoutMs: 30_000, signal: opts.signal });
+      providerJobId = submitted.json.id;
+      if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: submission returned no id`, this.key, { raw: submitted.json });
+      pollUrl = submitted.json.polling_url ?? `https://api.bfl.ai/v1/get_result?id=${encodeURIComponent(providerJobId)}`;
+      await opts.onSubmitted?.(providerJobId, { pollUrl });
+    }
     opts.onProgress?.('Making your image', 25);
 
     const final = await poll(
@@ -75,10 +85,14 @@ export class BflProvider extends BaseProvider {
 
     if (final.status !== 'Ready') {
       const moderated = /moderated/i.test(final.status);
+      await opts.onSettled?.('FAILED');
       throw new ProviderError(moderated ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: ${final.status}`, this.key, { providerJobId, raw: final.details });
     }
     const url = pick<string>(final, 'result.sample');
-    if (!url) throw new ProviderError('RETRYABLE', `${this.key}: ready but no sample url`, this.key, { providerJobId });
+    if (!url) {
+      await opts.onSettled?.('FAILED');
+      throw new ProviderError('RETRYABLE', `${this.key}: ready but no sample url`, this.key, { providerJobId });
+    }
     return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'image/png', role: 'image' }], meta: { endpoint } };
   }
 }

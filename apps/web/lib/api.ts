@@ -36,6 +36,7 @@ interface Envelope<T> {
 }
 
 const BASE = '/api/v1';
+export const SESSION_EXPIRED_EVENT = 'anystudio:session-expired';
 
 /** One request. Throws ApiError on any non-2xx. */
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
@@ -48,6 +49,11 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   if (res.status === 204) return undefined as T;
   const env = (await res.json().catch(() => ({}))) as Partial<Envelope<T>>;
   if (!res.ok) {
+    // The signed-in shell handles expiry without re-fetching /auth/me on every navigation.
+    // Auth form failures (e.g. a wrong password) remain local to the form.
+    if (res.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
     throw new ApiError(res.status, env.error ?? 'http', env.message ?? 'Something went wrong.', env.requestId, env.fields);
   }
   return env.data as T;
@@ -557,11 +563,12 @@ export interface SubscriptionView {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   cancelledAt: string | null;
+  cancellationPending: boolean;
 }
 export interface RefundRequestView {
   id: string;
   paymentId: string;
-  status: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  status: 'REQUESTED' | 'PROCESSING' | 'NEEDS_REVIEW' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
   reason: string;
   createdAt: string;
   decidedAt: string | null;
@@ -581,7 +588,7 @@ export interface PaymentView {
   reference: string;
   provider: PaymentProvider;
   kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL' | 'INVOICE';
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'NEEDS_REVIEW' | 'REFUNDED';
   itemCode: string;
   interval: string | null;
   credits: number;
@@ -1133,7 +1140,6 @@ export const api = {
         'GET',
         `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
       ),
-    refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
     refunds: (q: { status?: string; cursor?: string | null; take?: number } = {}) =>
       request<{ rows: AdminRefundRequest[]; nextCursor: string | null }>(
         'GET',
@@ -1462,12 +1468,9 @@ export const api = {
     remove: (workspaceId: string, assetId: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/media/${assetId}`),
   },
   generations: {
-    quote: (workspaceId: string, capability: string, costCode?: string, quantity?: number) =>
-      request<Quote>(
-        'GET',
-        `/workspaces/${workspaceId}/generations/quote?capability=${capability}${costCode ? `&costCode=${costCode}` : ''}${quantity && quantity > 1 ? `&quantity=${quantity}` : ''}`,
-      ),
-    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string; costCode?: string }) =>
+    quote: (workspaceId: string, capability: string, params: Record<string, unknown>) =>
+      request<Quote>('POST', `/workspaces/${workspaceId}/generations/quote`, { capability, params }),
+    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string }) =>
       request<GenerationResult>('POST', `/workspaces/${workspaceId}/generations`, body),
     get: (workspaceId: string, id: string) => request<GenerationView>('GET', `/workspaces/${workspaceId}/generations/${id}`),
     history: (workspaceId: string, cursor?: string) =>

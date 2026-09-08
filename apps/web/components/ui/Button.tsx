@@ -7,7 +7,7 @@
  * made transparent, not removed) so a form does not jump when it submits.
  */
 import Link from 'next/link';
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cx } from '@/lib/cx';
 import styles from './Button.module.css';
 
@@ -33,8 +33,28 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   const cls = cx(styles.btn, styles[variant], size !== 'md' && styles[size], full && styles.full, icon && styles.icon, className);
   if (href) {
+    if (disabled || loading) {
+      // aria-disabled alone never prevents an anchor from navigating.
+      return (
+        <span
+          role="link"
+          aria-disabled="true"
+          aria-busy={loading || undefined}
+          aria-label={rest['aria-label']}
+          title={rest.title}
+          style={rest.style}
+          className={cls}
+          data-loading={loading || undefined}
+        >
+          {loading && <span className={styles.spinner} aria-hidden="true" />}
+          {leading}
+          {children}
+          {trailing}
+        </span>
+      );
+    }
     return (
-      <Link href={href} className={cls} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined}>
+      <Link {...(rest as unknown as AnchorHTMLAttributes<HTMLAnchorElement>)} href={href} className={cls}>
         {leading}
         {children}
         {trailing}

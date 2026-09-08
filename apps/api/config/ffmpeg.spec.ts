@@ -32,13 +32,19 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('./logger', () => ({ logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined } }));
 
-const { runFfmpeg, ffmpegLimit } = await import('./ffmpeg');
+const { runFfmpeg, ffmpegLimit, parseFfmpegConcurrency } = await import('./ffmpeg');
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 describe('the ffmpeg gate', () => {
   it('defaults to one at a time', () => {
     expect(ffmpegLimit()).toBe(1);
+  });
+
+  it('rejects invalid concurrency instead of silently running an unsafe gate', () => {
+    expect(parseFfmpegConcurrency(undefined)).toBe(1);
+    expect(parseFfmpegConcurrency('2')).toBe(2);
+    for (const bad of ['0', '-1', '1.5', 'nope', 'Infinity']) expect(() => parseFfmpegConcurrency(bad)).toThrow('positive integer');
   });
 
   it('never runs two at once, however many arrive together', async () => {
@@ -78,5 +84,25 @@ describe('the ffmpeg gate', () => {
     expect(calls.length, 'the waiting job never started').toBe(before + 2);
     calls[before + 1]!.resolve();
     await next;
+  });
+
+  it('removes an aborted waiter without consuming or stranding the slot', async () => {
+    const before = calls.length;
+    const running = runFfmpeg('thumbnail', ['running']);
+    const controller = new AbortController();
+    const cancelled = runFfmpeg('stitch', ['cancelled'], { signal: controller.signal });
+    const after = runFfmpeg('thumbnail', ['after-cancel']);
+    await settle();
+    expect(calls.length).toBe(before + 1);
+
+    controller.abort(new Error('generation cancelled'));
+    await expect(cancelled).rejects.toThrow('generation cancelled');
+    calls[before]!.resolve();
+    await running;
+    await settle();
+
+    expect(calls.length).toBe(before + 2);
+    calls[before + 1]!.resolve();
+    await after;
   });
 });

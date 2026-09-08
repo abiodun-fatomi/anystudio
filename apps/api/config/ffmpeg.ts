@@ -35,17 +35,43 @@ import { logger } from './logger';
 
 const exec = promisify(execFile);
 
-const MAX = Math.max(1, Number(process.env.FFMPEG_CONCURRENCY ?? 1));
+export function parseFfmpegConcurrency(value: string | undefined): number {
+  if (value === undefined || value.trim() === '') return 1;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`FFMPEG_CONCURRENCY must be a positive integer; received ${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
+const MAX = parseFfmpegConcurrency(process.env.FFMPEG_CONCURRENCY);
 
 let active = 0;
-const waiting: Array<() => void> = [];
+interface Waiter {
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}
+const waiting: Waiter[] = [];
 
-function acquire(): Promise<void> {
+function acquire(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
   if (active < MAX) {
     active += 1;
     return Promise.resolve();
   }
-  return new Promise<void>((resolve) => waiting.push(resolve));
+  return new Promise<void>((resolve, reject) => {
+    const waiter: Waiter = { resolve, reject, signal };
+    waiter.onAbort = () => {
+      const index = waiting.indexOf(waiter);
+      if (index !== -1) waiting.splice(index, 1);
+      signal?.removeEventListener('abort', waiter.onAbort!);
+      reject(signal?.reason instanceof Error ? signal.reason : new Error('aborted'));
+    };
+    waiting.push(waiter);
+    signal?.addEventListener('abort', waiter.onAbort, { once: true });
+  });
 }
 
 function release(): void {
@@ -53,8 +79,10 @@ function release(): void {
   // The slot is handed straight to whoever is next rather than decremented
   // and re-taken: between those two steps another caller could slip in and
   // put us over the limit, which is the one thing this exists to prevent.
-  if (next) next();
-  else active -= 1;
+  if (next) {
+    next.signal?.removeEventListener('abort', next.onAbort!);
+    next.resolve();
+  } else active -= 1;
 }
 
 export interface FfmpegOpts {
@@ -73,7 +101,7 @@ export interface FfmpegOpts {
  */
 export async function runFfmpeg(what: string, args: string[], opts: FfmpegOpts = {}): Promise<{ stdout: Buffer | string; stderr: Buffer | string }> {
   if (active >= MAX) logger.debug({ what, active, max: MAX, waiting: waiting.length }, 'ffmpeg is busy; waiting for a slot');
-  await acquire();
+  await acquire(opts.signal);
   const started = Date.now();
   try {
     return await exec('ffmpeg', args, {
@@ -88,9 +116,14 @@ export async function runFfmpeg(what: string, args: string[], opts: FfmpegOpts =
   }
 }
 
-/** ffprobe is cheap — it decodes nothing — so it does not take a slot. */
-export async function runFfprobe(args: string[]): Promise<string> {
-  const { stdout } = await exec('ffprobe', args);
+/**
+ * ffprobe is cheap — it decodes nothing — so it does not take an ffmpeg slot.
+ * It still receives a hard deadline and output cap: this is also called on
+ * customer uploads, and a malformed container must not leave an API process
+ * or an unbounded stdout pipe behind.
+ */
+export async function runFfprobe(args: string[], timeout = 30_000): Promise<string> {
+  const { stdout } = await exec('ffprobe', args, { timeout, maxBuffer: 1024 * 1024 });
   return String(stdout);
 }
 

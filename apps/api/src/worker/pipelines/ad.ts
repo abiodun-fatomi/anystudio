@@ -13,7 +13,8 @@
  * could run in neither — a deadlock that costs nothing to create and a
  * page to diagnose. So the parent runs TWICE: the first run writes the
  * plan, creates the children and returns `waiting`; the last child to
- * finish puts the parent back on the queue; the second run stitches.
+ * finish puts the parent onto media.local; the second run stitches. The
+ * parent row remains IMAGE_TO_VIDEO so this pipeline still owns both passes.
  *
  * MONEY
  * -----
@@ -45,15 +46,49 @@ const FORMAT_BRIEF: Record<CapabilityParams<'IMAGE_TO_VIDEO'>['format'], string>
   ugc: 'Shot like a customer filmed it on a phone: handheld feel, natural light, the product in real life.',
 };
 
+const END_CARD_MS = 2_000;
+const MIN_SEGMENT_MS = 500;
+
 export const adPipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'IMAGE_TO_VIDEO'>;
   if (ctx.resume) return assemble(ctx, p);
   return plan(ctx, p);
 };
 
-/** With a presenter, shot one is the person talking; the table's first slot (plus a breath) is how long they get. */
+/** With a presenter, shot one is the person talking; the table's first slot is the script-writing budget. */
 function presenterSeconds(p: CapabilityParams<'IMAGE_TO_VIDEO'>): number {
-  return (adPlan(p.shots)?.durations[0] ?? 8) + 2;
+  return adPlan(p.shots)?.durations[0] ?? 8;
+}
+
+/**
+ * Fit provider-grid clips into the exact runtime sold to the customer.
+ * A presenter is speech, so its measured duration is preserved; product
+ * footage absorbs the remaining trim/pad. Every allocation sums exactly.
+ */
+export function allocateAdTimeline(
+  rawProductMs: number[],
+  targetMs: number,
+  options: { endCard: boolean; presenterMs?: number } = { endCard: false },
+): number[] {
+  const contentMs = targetMs - (options.endCard ? END_CARD_MS : 0);
+  const presenterMs = options.presenterMs === undefined ? undefined : Math.max(MIN_SEGMENT_MS, Math.round(options.presenterMs));
+  const productBudget = contentMs - (presenterMs ?? 0);
+  if (productBudget < rawProductMs.length * MIN_SEGMENT_MS) {
+    throw new ProviderError('INVALID_INPUT', 'The presenter speech is too long for this ad length. Shorten the presenter script.', 'ad-pipeline');
+  }
+  const fittedProducts = fitDurations(rawProductMs, productBudget);
+  return presenterMs === undefined ? fittedProducts : [presenterMs, ...fittedProducts];
+}
+
+function fitDurations(rawMs: number[], targetMs: number): number[] {
+  if (rawMs.length === 0) return [];
+  if (targetMs < rawMs.length * MIN_SEGMENT_MS) throw new ProviderError('INVALID_INPUT', 'The requested video is too short for its shots.', 'ad-pipeline');
+  const weights = rawMs.map((duration) => Math.max(MIN_SEGMENT_MS, duration));
+  const weightTotal = weights.reduce((sum, duration) => sum + duration, 0);
+  const distributable = targetMs - rawMs.length * MIN_SEGMENT_MS;
+  const fitted = weights.map((weight) => MIN_SEGMENT_MS + Math.floor((distributable * weight) / weightTotal));
+  fitted[fitted.length - 1]! += targetMs - fitted.reduce((sum, duration) => sum + duration, 0);
+  return fitted;
 }
 
 /** First run: write the plan, create the shots, step aside. */
@@ -63,34 +98,71 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
     throw new ProviderError('INVALID_INPUT', 'a presenter needs the "filmed by a customer" format and at least two shots', 'ad-pipeline');
   if (withPresenter && !ctx.presenterLab('heygen'))
     throw new ProviderError('PROVIDER_DOWN', 'no presenter vendor is configured (HEYGEN_API_KEY); the ad cannot have a presenter here', 'presenter');
-  await ctx.stage('preparing', 6, 'planning the shots');
-  const request = planRequest(ctx, p);
-  const result = await ctx.callCapability(
-    'TEXT_GENERATE',
-    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { task: 'shot_plan' }, files: ctx.files, prompt: request },
-    { timeoutMs: 60_000, signal: ctx.signal },
-  );
-  const parsed = shotPlanSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
-  if (!parsed.success)
-    throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
-  // With a presenter, the person is shot one and the product shots fill the rest of the table.
-  const productShots = withPresenter ? p.shots - 1 : p.shots;
-  const shotPlan: ShotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, productShots) };
-  // A short plan is padded with the settle shot rather than refused: the customer asked for four.
-  const table = adPlan(p.shots)?.durations ?? [];
-  const wanted = withPresenter ? table.slice(1) : table;
-  while (shotPlan.shots.length < productShots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
-  // The table's durations win over the planner's: they are what the price and the running time assume.
-  shotPlan.shots = shotPlan.shots.map((shot, i) => ({ ...shot, durationSec: (wanted[i] ?? shot.durationSec) as 5 | 8 }));
-  if (withPresenter) {
-    // Their own words first; a segment already filmed on an earlier attempt keeps its words; else the planner's.
-    const own = p.presenter?.script?.trim();
-    shotPlan.presenterScript = (own || p.presenterClip?.script || shotPlan.presenterScript || '').trim();
-    if (!shotPlan.presenterScript) throw new ProviderError('RETRYABLE', 'the planner wrote no presenter script', result.providerKey);
+
+  // A one-shot reel still uses a child. That makes its provider render the
+  // first pass and moves its exact-duration/aspect normalization onto the
+  // isolated media.local service for the second pass.
+  if (p.shots === 1) {
+    await ctx.stage('routing', 20, 'sending the reel to the video model');
+    const parent = await ctx.db.generation.findUniqueOrThrow({ where: { id: ctx.row.id } });
+    const childParams = {
+      sourceKey: p.sourceKey,
+      prompt: p.prompt,
+      durationSec: p.durationSec,
+      aspect: p.aspect,
+      motion: p.motion,
+      audio: p.audio,
+      shots: 1 as const,
+      format: p.format,
+      shotIndex: 0,
+    };
+    await ctx.generations.createChild(parent, 'IMAGE_TO_VIDEO', childParams, 0);
+    return { artifacts: [], waiting: true };
   }
 
-  await ctx.db.generation.update({ where: { id: ctx.row.id }, data: { input: { ...(ctx.row.input as object), plan: shotPlan } } });
-  ctx.log.info({ shots: shotPlan.shots.length, hook: shotPlan.hook, format: p.format, presenter: withPresenter }, 'shot plan written');
+  await ctx.stage('preparing', 6, 'planning the shots');
+  const saved = shotPlanSchema.safeParse((ctx.row.input as { plan?: unknown }).plan);
+  let shotPlan: ShotPlan;
+  let plannerProviderKey: string | undefined;
+  let plannerCost = 0;
+  if (saved.success) {
+    // A retry after a worker restart must execute the plan already committed
+    // to this parent. Asking the model again can change shot N while the
+    // already-finished child N still contains the old shot, and also pays for
+    // planning twice.
+    shotPlan = saved.data;
+    ctx.log.info({ shots: shotPlan.shots.length }, 'reusing the saved shot plan after a restart');
+  } else {
+    const request = planRequest(ctx, p);
+    const result = await ctx.callCapability(
+      'TEXT_GENERATE',
+      { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { task: 'shot_plan' }, files: ctx.files, prompt: request },
+      { timeoutMs: 60_000, signal: ctx.signal },
+    );
+    const parsed = shotPlanSchema.safeParse(result.artifacts.find((a) => a.text !== undefined)?.text);
+    if (!parsed.success)
+      throw new ProviderError('RETRYABLE', `shot plan did not fit the schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`, result.providerKey);
+    plannerProviderKey = result.providerKey;
+    plannerCost = result.costMinor ?? 0;
+    // With a presenter, the person is shot one and the product shots fill the rest of the table.
+    const productShots = withPresenter ? p.shots - 1 : p.shots;
+    shotPlan = { ...parsed.data, shots: parsed.data.shots.slice(0, productShots) };
+    // A short plan is padded with the settle shot rather than refused: the customer asked for four.
+    const table = adPlan(p.shots)?.durations ?? [];
+    const wanted = withPresenter ? table.slice(1) : table;
+    while (shotPlan.shots.length < productShots) shotPlan.shots.push({ ...shotPlan.shots[shotPlan.shots.length - 1]!, motion: 'slow push-in' });
+    // The table's durations win over the planner's: they are what the price and the running time assume.
+    shotPlan.shots = shotPlan.shots.map((shot, i) => ({ ...shot, durationSec: (wanted[i] ?? shot.durationSec) as 5 | 8 }));
+    if (withPresenter) {
+      // Their own words first; a segment already filmed on an earlier attempt keeps its words; else the planner's.
+      const own = p.presenter?.script?.trim();
+      shotPlan.presenterScript = (own || p.presenterClip?.script || shotPlan.presenterScript || '').trim();
+      if (!shotPlan.presenterScript) throw new ProviderError('RETRYABLE', 'the planner wrote no presenter script', result.providerKey);
+    }
+
+    await ctx.db.generation.update({ where: { id: ctx.row.id }, data: { input: { ...(ctx.row.input as object), plan: shotPlan } } });
+    ctx.log.info({ shots: shotPlan.shots.length, hook: shotPlan.hook, format: p.format, presenter: withPresenter }, 'shot plan written');
+  }
 
   // The talking segment, before the shots go out: it is the slowest piece and the one a retry must not repeat.
   let presenterCost = 0;
@@ -119,7 +191,7 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
         motion: shot.motion,
         durationSec: shot.durationSec,
         aspect: p.aspect,
-        audio: false,
+        audio: p.audio,
         shots: 1,
         format: p.format,
         caption: shot.caption,
@@ -128,7 +200,7 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
       i,
     );
   }
-  return { artifacts: [], waiting: true, providerKey: result.providerKey, costMinor: (result.costMinor ?? 0) + presenterCost };
+  return { artifacts: [], waiting: true, providerKey: plannerProviderKey, costMinor: plannerCost + presenterCost };
 }
 
 /** Second run: every child is terminal. Stitch, or fail with the whole price refunded. */
@@ -152,45 +224,71 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
   // Captions timed to the shots: each shot's caption for the length of that shot.
   // With a presenter, the hook sits over the first seconds of them talking, then the product shots carry their own lines.
   const captions: Array<{ text: string; fromMs: number; toMs: number }> = [];
+  const rawProductDurationsMs = children.map((child, i) => {
+    if (p.shots === 1) return p.durationSec * 1000;
+    const plannedSeconds = plan?.shots[i]?.durationSec;
+    return plannedSeconds ? plannedSeconds * 1000 : (videoDurationMs(child) ?? ((child.input as { durationSec?: number }).durationSec ?? 5) * 1000);
+  });
+  const endCard = p.shots > 1 ? (plan?.endCard ?? { text: p.productName ?? '', price: p.price }) : undefined;
+  const targetDurationMs = p.shots === 1 ? p.durationSec * 1000 : adPlan(p.shots)!.seconds * 1000;
+  const shotDurationsMs = allocateAdTimeline(rawProductDurationsMs, targetDurationMs, {
+    endCard: Boolean(endCard?.text),
+    presenterMs: clip?.durationMs,
+  });
+  const productDurationsMs = clip ? shotDurationsMs.slice(1) : shotDurationsMs;
   let t = 0;
   if (clip) {
-    if (plan?.hook) captions.push({ text: plan.hook, fromMs: 300, toMs: Math.min(clip.durationMs - 300, 3500) });
-    t = clip.durationMs;
+    if (plan?.hook) captions.push({ text: plan.hook, fromMs: 300, toMs: Math.min(shotDurationsMs[0]! - 300, 3500) });
+    t = shotDurationsMs[0]!;
   }
-  for (const [i, c] of children.entries()) {
-    // What the shot actually is, not what we asked for. A vendor whose grid
-    // does not include our length gives back a different one (wan-2.5 has no
-    // 8), and a caption timed against the plan would then drift further out
-    // of step with every shot that follows it.
-    const durationMs = videoDurationMs(c) ?? ((c.input as { durationSec?: number }).durationSec ?? 5) * 1000;
+  for (const [i] of children.entries()) {
+    // The stitcher trims a longer vendor grid result (Wan 10 s) or pads a
+    // shorter one (for example, a 4 s fallback) to this paid timeline. Veo's
+    // 5 s slot is requested as 6 s and trimmed, so it never needs a freeze.
+    // Captions therefore
+    // follow the plan, not the raw provider file.
+    const durationMs = productDurationsMs[i]!;
     const text = !clip && i === 0 && plan?.hook ? plan.hook : (plan?.shots[i]?.caption ?? '');
     if (text) captions.push({ text, fromMs: t + 300, toMs: t + durationMs - 300 });
     t += durationMs;
   }
-  const endCard = plan?.endCard ?? { text: p.productName ?? '', price: p.price };
   const allKeys = clip ? [clip.key, ...shotKeys] : shotKeys;
   await ctx.stage('composing', 70, `stitching ${allKeys.length} shots`);
-  const files: Record<string, { url: string; mime: string }> = Object.fromEntries(
-    await Promise.all(allKeys.map(async (k, i) => [`shotKeys[${i}]`, { url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
+  const files: Record<string, { key: string; url: string; mime: string }> = Object.fromEntries(
+    await Promise.all(allKeys.map(async (k, i) => [`shotKeys[${i}]`, { key: k, url: await ctx.media.signRead(k, 60 * 60), mime: 'video/mp4' }] as const)),
   );
   // The presenter's speech is the ad's voiceover: laid from zero, it lines up with the lips in shot one.
-  if (clip) files.voiceoverKey = { url: await ctx.media.signRead(clip.audioKey, 60 * 60), mime: 'audio/mpeg' };
+  if (clip) files.voiceoverKey = { key: clip.audioKey, url: await ctx.media.signRead(clip.audioKey, 60 * 60), mime: 'audio/mpeg' };
   const stitched = await ctx.callCapability(
     'VIDEO_STITCH',
     {
       generationId: ctx.row.id,
       workspaceId: ctx.row.workspaceId,
-      params: { shotKeys: allKeys, aspect: p.aspect, captions, endCard: endCard.text ? endCard : undefined, watermark: true, voiceoverKey: clip?.audioKey },
+      params: {
+        shotKeys: allKeys,
+        shotDurationsMs,
+        targetDurationMs,
+        preserveShotAudio: p.audio,
+        aspect: p.aspect,
+        captions,
+        endCard: endCard?.text ? endCard : undefined,
+        watermark: true,
+        voiceoverKey: clip?.audioKey,
+      },
       files,
     },
     { timeoutMs: 5 * 60_000, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('composing', progress ?? 80, detail) },
   );
   const shotsCost = children.reduce((sum, c) => sum + (c.providerCostMinor ?? 0), 0);
-  ctx.log.info({ shots: children.length, shotsCostMinor: shotsCost, totalMs: t }, 'ad assembled');
+  ctx.log.info({ shots: children.length, shotsCostMinor: shotsCost, contentMs: t, targetDurationMs }, 'ad assembled');
   return {
     artifacts: stitched.artifacts,
     providerKey: stitched.providerKey,
     providerJobId: stitched.providerJobId,
+    // The stitch is local/free. Parent-owned planner/presenter calls are read
+    // from its durable attempt journal by the runner; only child rows need to
+    // be inherited here.
+    inheritedCostMinor: shotsCost,
     costMinor: shotsCost + (stitched.costMinor ?? 0),
   };
 }

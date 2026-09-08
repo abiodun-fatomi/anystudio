@@ -25,6 +25,7 @@ lerna-debug.log*
 
 # --- AnyStudio ---
 node_modules
+.pnpm-store/
 dist/
 .next/
 .turbo/

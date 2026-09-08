@@ -20,6 +20,7 @@ import sharp from 'sharp';
 import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, judgesShape, type ProductMode } from '@anystudio/shared';
 import { productShotPipeline } from './product-shot';
 import type { PipelineContext } from './index';
+import { fetchBytes } from '../../modules/provider/adapters/http';
 
 /**
  * A product with a pattern in it, on a white ground, offset so it has a
@@ -219,6 +220,19 @@ describe('when the check itself cannot run', () => {
     expect(out.artifacts.filter((a) => a.role === 'variant')).toHaveLength(2);
     expect(callProvider).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls.flat().join(' ')).toContain('without the fidelity check');
+  });
+
+  it('does not make a paid shot after cancellation stopped the cutout step', async () => {
+    sourceBytes = await photo(RED);
+    const cancellation = new Error('generation cancelled');
+    const controller = new AbortController();
+    controller.abort(cancellation);
+    const { ctx, callProvider } = ctxWith({ params: params(), output: await photo(BLUE), mask: null });
+    ctx.signal = controller.signal;
+
+    await expect(productShotPipeline(ctx)).rejects.toBe(cancellation);
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(fetchBytes).toHaveBeenLastCalledWith('product-shot', 'https://signed/p.png', 60_000, controller.signal);
   });
 });
 

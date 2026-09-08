@@ -11,6 +11,7 @@
  * session survives a refresh and can be handed to someone else. Everything
  * the cards know comes from useGenerations; this file only arranges it.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -42,7 +43,7 @@ import styles from './studio.module.css';
 
 export default function StudioPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<SectionLoading />}>
       <Studio />
     </Suspense>
   );
@@ -320,7 +321,6 @@ function Studio() {
         params: p,
         credits,
         sourceKey: cardSource,
-        costCode: t.costCodeFor?.(p),
       });
       setBusy(false);
       if (!r.ok) {

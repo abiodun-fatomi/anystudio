@@ -30,6 +30,7 @@ function ctxWith(voiceRow: object | null, lab: object | null): PipelineContext {
     row: { id: 'gen-1', workspaceId: 'ws-1', input: {} } as PipelineContext['row'],
     db: { voiceProfile: { findUnique: vi.fn(async () => voiceRow) } } as unknown as PipelineContext['db'],
     voiceLab: () => lab as never,
+    callExternal: vi.fn(async (_provider, _input, execute: (opts: object) => Promise<unknown>, externalOpts: object) => execute(externalOpts)),
     stage: vi.fn(async () => undefined),
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as PipelineContext['log'],
     signal: new AbortController().signal,
@@ -55,6 +56,8 @@ describe('singing in their own voice', () => {
 
   it('keeps the model singer when the stems split fails, charging nothing', async () => {
     const lab = {
+      key: 'elevenlabs:tts',
+      capabilities: ['VOICEOVER'],
       separateStems: vi.fn(async () => {
         throw new ProviderError('RETRYABLE', 'boom', 'elevenlabs:tts');
       }),
@@ -66,9 +69,43 @@ describe('singing in their own voice', () => {
     expect(out.reason).toMatch(/stems/);
   });
 
+  it('does not downgrade an ambiguous paid side-door submission to a model singer', async () => {
+    const lab = {
+      key: 'elevenlabs:tts',
+      capabilities: ['VOICEOVER'],
+      separateStems: vi.fn(async () => {
+        throw new ProviderError('SUBMISSION_UNKNOWN', 'submission may have reached the vendor', 'elevenlabs:tts');
+      }),
+      voiceLabCostMinor: () => 10,
+    };
+    await expect(singInMyVoice(ctxWith(mine, lab), { singer: 'me', voiceId: 'mine:abc' } as never, song)).rejects.toMatchObject({
+      kind: 'SUBMISSION_UNKNOWN',
+    });
+  });
+
+  it('does not downgrade cancellation during the paid stems step to a model singer', async () => {
+    const cancellation = new Error('generation cancelled');
+    const controller = new AbortController();
+    controller.abort(cancellation);
+    const lab = {
+      key: 'elevenlabs:tts',
+      capabilities: ['VOICEOVER'],
+      separateStems: vi.fn(async () => {
+        throw new ProviderError('RETRYABLE', 'transport closed', 'elevenlabs:tts');
+      }),
+      voiceLabCostMinor: () => 10,
+    };
+    const ctx = ctxWith(mine, lab);
+    ctx.signal = controller.signal;
+
+    await expect(singInMyVoice(ctx, { singer: 'me', voiceId: 'mine:abc' } as never, song)).rejects.toBe(cancellation);
+  });
+
   ffIt('mixes the converted vocal over the instrumental when every step works', async () => {
     const [inst, voc] = await Promise.all([tone(220), tone(880)]);
     const lab = {
+      key: 'elevenlabs:tts',
+      capabilities: ['VOICEOVER'],
       separateStems: vi.fn(async () => ({ vocals: voc, instrumental: inst, mime: 'audio/mpeg' })),
       convertVoice: vi.fn(async () => ({ bytes: voc, mime: 'audio/mpeg' })),
       voiceLabCostMinor: (step: string) => (step === 'stems' ? 20 : 180),

@@ -6,6 +6,7 @@
  * Connecting is a navigation to the API, which sends the browser to the
  * platform's consent screen and back here with ?connected= or ?error=.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, type PublishJob, type PublishPlatform, type SocialAccount, type SocialPlatform } from '@/lib/api';
@@ -64,7 +65,7 @@ const STATUS_WORDS: Record<PublishJob['status'], string> = {
 
 export default function Page() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<SectionLoading />}>
       <Publishing />
     </Suspense>
   );

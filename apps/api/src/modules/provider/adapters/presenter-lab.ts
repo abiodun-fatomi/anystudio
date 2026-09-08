@@ -4,7 +4,7 @@
  * saying it. Like VoiceLab, a side door on the adapter rather than a
  * routed capability — the presenter catalogue names the vendor.
  */
-import type { GenerationProvider } from '@anystudio/shared';
+import type { GenerationProvider, ProviderOpts } from '@anystudio/shared';
 
 export interface TalkingVideoInput {
   /** One of the two. */
@@ -17,10 +17,7 @@ export interface TalkingVideoInput {
 }
 
 export interface PresenterLab extends GenerationProvider {
-  talkingVideo(
-    input: TalkingVideoInput,
-    opts: { timeoutMs: number; signal?: AbortSignal; onProgress?: (detail: string, progress?: number) => void },
-  ): Promise<{ url: string; providerJobId: string }>;
+  talkingVideo(input: TalkingVideoInput, opts: ProviderOpts): Promise<{ url: string; providerJobId: string }>;
   /** Vendor cost of a talking segment of this many seconds, minor units. */
   presenterCostMinor(seconds: number): number;
 }

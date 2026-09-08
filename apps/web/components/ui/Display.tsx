@@ -89,6 +89,16 @@ export function Skeleton({
   return <span className={cx(styles.skel, round && styles.round, text && styles.text, className)} style={{ width, height, ...style }} aria-hidden="true" />;
 }
 
+export function SectionLoading({ label = 'Loading section' }: { label?: string }) {
+  return (
+    <section role="status" aria-label={label} aria-busy="true" style={{ display: 'grid', gap: 24 }}>
+      <Skeleton width="40%" height={32} />
+      <Skeleton width="65%" height={18} />
+      <Skeleton height={180} />
+    </section>
+  );
+}
+
 export function Progress({ value, label, detail, className }: { value: number | null; label?: ReactNode; detail?: ReactNode; className?: string }) {
   const pct = value === null ? null : Math.max(0, Math.min(100, value));
   return (

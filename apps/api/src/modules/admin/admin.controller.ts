@@ -127,14 +127,6 @@ export class AdminController {
   @Get('/payments') payments(@Query() q: PaymentsQueryDto) {
     return this.admin.payments(q);
   }
-  @Post('/payments/:id/refund') @HttpCode(HttpStatus.OK) refundPayment(
-    @CurrentActor() a: Actor,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() b: ReasonDto,
-    @Req() req: Request,
-  ) {
-    return this.admin.refundPayment(a, id, b.reason, req);
-  }
 
   @Get('/audit') audit(@Query() q: AuditQueryDto) {
     return this.admin.audit(q);

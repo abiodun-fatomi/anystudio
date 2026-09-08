@@ -15,6 +15,7 @@
  * seller's product brief is their business.
  */
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { logger } from '../../../config/logger';
 import type { Outbound } from './whatsapp.types';
 
@@ -28,7 +29,6 @@ export interface SendResult {
 
 @Injectable()
 export class WhatsappClient {
-  private localSeq = 0;
   readonly configured: boolean;
   private readonly version = process.env.WHATSAPP_API_VERSION ?? 'v21.0';
   private readonly phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? '';
@@ -48,10 +48,9 @@ export class WhatsappClient {
       this.sent.push({ to, message });
       if (this.sent.length > 500) this.sent.splice(0, this.sent.length - 500);
       logger.info({ to: mask(to), kind: message.kind }, 'whatsapp (not configured): would send');
-      // Unique for the life of the process, whatever happens to the buffer:
-      // the id is a unique column, and a test that clears `sent` between
-      // cases must not hand out `local-1` twice.
-      return { messageId: `local-${++this.localSeq}`, ok: true };
+      // The database outlives this client (and the process). A local sequence
+      // collides after every restart even though these are different messages.
+      return { messageId: `local-${randomUUID()}`, ok: true };
     }
     const res = await this.graph(`${this.phoneNumberId}/messages`, { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {

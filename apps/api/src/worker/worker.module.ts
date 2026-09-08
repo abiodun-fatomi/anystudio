@@ -26,6 +26,7 @@ import { PublishingModule } from '../modules/publishing/publishing.module';
 import { UsageBillingModule } from '../modules/usage-billing/usage-billing.module';
 import { CatalogueModule } from '../modules/catalogue/catalogue.module';
 import { RetentionModule } from '../modules/retention/retention.module';
+import { BillingModule } from '../modules/billing/billing.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { RetentionModule } from '../modules/retention/retention.module';
     SupportModule,
     PublishingModule,
     UsageBillingModule,
+    BillingModule,
     CatalogueModule,
     RetentionModule,
   ],

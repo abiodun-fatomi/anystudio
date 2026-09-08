@@ -1,15 +1,15 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min } from 'class-validator';
-import { CAPABILITIES, type Capability } from '@anystudio/shared';
+import { PUBLIC_CAPABILITIES, type Capability } from '@anystudio/shared';
 import { MERCHANT_REF } from './developer.dto';
 
 export class ApiCreateGenerationDto {
-  @ApiProperty({ enum: CAPABILITIES })
-  @IsIn(CAPABILITIES as readonly string[])
+  @ApiProperty({ enum: PUBLIC_CAPABILITIES })
+  @IsIn(PUBLIC_CAPABILITIES as readonly string[])
   capability!: Capability;
 
-  @ApiProperty({ description: "The capability's parameters; GET /v1/capabilities lists them", type: Object })
+  @ApiProperty({ description: "The capability's parameters; GET /api/v1/capabilities lists them", type: Object })
   @IsObject()
   params!: Record<string, unknown>;
 
@@ -27,13 +27,9 @@ export class ApiCreateGenerationDto {
   @IsString()
   @Matches(MERCHANT_REF)
   merchantRef?: string;
-
-  @ApiPropertyOptional({ description: 'Price under a specific CreditCost code (e.g. video.ad_30s)' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  costCode?: string;
 }
+
+export class ApiQuoteGenerationDto extends PickType(ApiCreateGenerationDto, ['capability', 'params'] as const) {}
 
 export class ApiListGenerationsDto {
   @ApiPropertyOptional({ format: 'uuid' })

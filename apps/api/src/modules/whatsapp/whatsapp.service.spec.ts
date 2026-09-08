@@ -65,7 +65,7 @@ suite('WhatsappService', () => {
     for (const c of [
       { code: 'image.storefront', credits: 10, label: 'Image' },
       { code: 'audio.music.preview', credits: 10, label: 'Preview' },
-      { code: 'audio.music.unlock', credits: 30, label: 'Unlock' },
+      { code: 'audio.music.unlock', credits: 10, label: 'Unlock' },
       { code: 'text.description', credits: 2, label: 'Copy' },
     ])
       await db.creditCost.upsert({ where: { code: c.code }, create: c, update: {} });
@@ -93,7 +93,7 @@ suite('WhatsappService', () => {
 
   it('a first "hi" creates a user, a workspace and the welcome credits, and answers with the menu', async () => {
     const id = waId();
-    expect(await svc.handleInbound(id, 'Kemi Ade', 'wamid.1', { kind: 'text', text: 'hi' })).toBe('handled');
+    expect(await svc.handleInbound(id, 'Kemi Ade', `wamid.${id}.1`, { kind: 'text', text: 'hi' })).toBe('handled');
     const contact = await db.whatsappContact.findUniqueOrThrow({ where: { waId: id }, include: { user: true } });
     expect(contact.user?.phone).toBe(`+${id}`);
     expect(contact.user?.phoneVerifiedAt).toBeTruthy();
@@ -102,14 +102,14 @@ suite('WhatsappService', () => {
     expect(last().kind).toBe('list');
     expect((last() as { text: string }).text).toContain('Hi Kemi');
     // The same message again is a duplicate; a second hello does not grant twice.
-    expect(await svc.handleInbound(id, 'Kemi Ade', 'wamid.1', { kind: 'text', text: 'hi' })).toBe('duplicate');
-    await svc.handleInbound(id, 'Kemi Ade', 'wamid.2', { kind: 'text', text: 'hello' });
+    expect(await svc.handleInbound(id, 'Kemi Ade', `wamid.${id}.1`, { kind: 'text', text: 'hi' })).toBe('duplicate');
+    await svc.handleInbound(id, 'Kemi Ade', `wamid.${id}.2`, { kind: 'text', text: 'hello' });
     expect(await ledger.balance(wallet.id)).toBe(SIGNUP_PROMO_CREDITS);
   });
 
   it('a photo with a caption becomes a branded-image request on the WhatsApp channel, and the result comes back as pictures', async () => {
     const id = waId();
-    await svc.handleInbound(id, null, 'wamid.p1', { kind: 'image', mediaId: 'm1', mime: 'image/jpeg', caption: 'on a marble counter' });
+    await svc.handleInbound(id, null, `wamid.${id}.p1`, { kind: 'image', mediaId: 'm1', mime: 'image/jpeg', caption: 'on a marble counter' });
     const contact = await db.whatsappContact.findUniqueOrThrow({ where: { waId: id } });
     const row = await db.generation.findFirstOrThrow({ where: { workspaceId: contact.workspaceId! } });
     expect(row).toMatchObject({ capability: 'IMAGE_EDIT', channel: 'WHATSAPP', credits: 10 });
@@ -128,21 +128,21 @@ suite('WhatsappService', () => {
     expect((client.sent.at(-3)!.message as { url: string }).url).toBe(`https://signed/${contact.workspaceId}/out.jpg`);
 
     // A photo without a caption asks what to do; a plain sentence after it is the scene.
-    await svc.handleInbound(id, null, 'wamid.p2', { kind: 'image', mediaId: 'm2', mime: 'image/jpeg' });
+    await svc.handleInbound(id, null, `wamid.${id}.p2`, { kind: 'image', mediaId: 'm2', mime: 'image/jpeg' });
     expect(last().kind).toBe('buttons');
-    await svc.handleInbound(id, null, 'wamid.p3', { kind: 'text', text: 'in a garden at golden hour' });
+    await svc.handleInbound(id, null, `wamid.${id}.p3`, { kind: 'text', text: 'in a garden at golden hour' });
     expect(await db.generation.count({ where: { workspaceId: contact.workspaceId!, capability: 'IMAGE_EDIT' } })).toBe(2);
   });
 
   it('the song flow collects genre, brief and voice, requests a preview, and offers the unlock when it arrives', async () => {
     const id = waId();
-    await svc.handleInbound(id, 'Tolu', 'wamid.s0', { kind: 'text', text: 'hi' });
-    await svc.handleInbound(id, 'Tolu', 'wamid.s1', { kind: 'choice', id: 'flow:song', title: 'A song' });
+    await svc.handleInbound(id, 'Tolu', `wamid.${id}.s0`, { kind: 'text', text: 'hi' });
+    await svc.handleInbound(id, 'Tolu', `wamid.${id}.s1`, { kind: 'choice', id: 'flow:song', title: 'A song' });
     expect(last().kind).toBe('list');
-    await svc.handleInbound(id, 'Tolu', 'wamid.s2', { kind: 'choice', id: 'genre:afrobeats', title: 'Afrobeats' });
-    await svc.handleInbound(id, 'Tolu', 'wamid.s3', { kind: 'text', text: 'my sister Kemi turning 30' });
+    await svc.handleInbound(id, 'Tolu', `wamid.${id}.s2`, { kind: 'choice', id: 'genre:afrobeats', title: 'Afrobeats' });
+    await svc.handleInbound(id, 'Tolu', `wamid.${id}.s3`, { kind: 'text', text: 'my sister Kemi turning 30' });
     expect(last().kind).toBe('buttons');
-    await svc.handleInbound(id, 'Tolu', 'wamid.s4', { kind: 'choice', id: 'vocal:female', title: 'Female voice' });
+    await svc.handleInbound(id, 'Tolu', `wamid.${id}.s4`, { kind: 'choice', id: 'vocal:female', title: 'Female voice' });
     const contact = await db.whatsappContact.findUniqueOrThrow({ where: { waId: id } });
     const row = await db.generation.findFirstOrThrow({ where: { workspaceId: contact.workspaceId!, capability: 'MUSIC' } });
     expect(row.input).toMatchObject({ genre: 'afrobeats', vocal: 'female', brief: 'my sister Kemi turning 30' });
@@ -163,10 +163,10 @@ suite('WhatsappService', () => {
 
   it('"stop" opts the number out and nothing is delivered until they write again', async () => {
     const id = waId();
-    await svc.handleInbound(id, null, 'wamid.x1', { kind: 'text', text: 'hi' });
-    expect(await svc.handleInbound(id, null, 'wamid.x2', { kind: 'text', text: 'STOP' })).toBe('opted_out');
+    await svc.handleInbound(id, null, `wamid.${id}.x1`, { kind: 'text', text: 'hi' });
+    expect(await svc.handleInbound(id, null, `wamid.${id}.x2`, { kind: 'text', text: 'STOP' })).toBe('opted_out');
     expect((await db.whatsappContact.findUniqueOrThrow({ where: { waId: id } })).optedOut).toBe(true);
-    await svc.handleInbound(id, null, 'wamid.x3', { kind: 'text', text: 'menu' });
+    await svc.handleInbound(id, null, `wamid.${id}.x3`, { kind: 'text', text: 'menu' });
     expect((await db.whatsappContact.findUniqueOrThrow({ where: { waId: id } })).optedOut).toBe(false);
   });
 });

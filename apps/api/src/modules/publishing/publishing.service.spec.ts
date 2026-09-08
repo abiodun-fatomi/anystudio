@@ -54,15 +54,28 @@ function harness() {
         return j;
       }),
     },
-    socialAccount: { update: vi.fn(async (args: unknown) => accountUpdates.push(args)) },
+    socialAccount: {
+      findMany: vi.fn(async () => [account]),
+      update: vi.fn(async (args: unknown) => accountUpdates.push(args)),
+    },
   };
-  const media = { signRead: vi.fn(async () => 'https://signed/k'), getBytes: vi.fn(async () => Buffer.from('x')) };
+  const media = {
+    readUrl: vi.fn(async (_workspaceId: string, key: string) => {
+      if (key.includes('/vault/')) throw new Error('vault media is locked');
+      return 'https://signed/k';
+    }),
+    requireReady: vi.fn(async (_workspaceId: string, key: string) => {
+      if (key.includes('/vault/')) throw new Error('vault media is locked');
+      return { key, mime: 'image/jpeg' };
+    }),
+    getBytes: vi.fn(async () => Buffer.from('x')),
+  };
   const notifications = { notify: vi.fn(async () => undefined) };
   const svc = new PublishingService(db as never, {} as never, media as never, notifications as never);
   const publish = vi.fn();
   const metrics = vi.fn();
   (svc as unknown as { connectors: Record<string, unknown> }).connectors.INSTAGRAM = { configured: () => true, publish, metrics, formats: () => ['IMAGE'] };
-  return { svc, jobs, publish, metrics, notifications, accountUpdates, db };
+  return { svc, jobs, publish, metrics, notifications, accountUpdates, db, media };
 }
 
 describe('publishing loop', () => {
@@ -117,6 +130,32 @@ describe('publishing loop', () => {
       expect.objectContaining({ accessToken: 'tok', externalId: 'ig1' }),
       expect.objectContaining({ mediaUrl: 'https://signed/k' }),
     );
+  });
+
+  it('cannot turn a locked vault asset into a share URL or scheduled post', async () => {
+    const h = harness();
+    const key = 'w1/vault/2026/09/gen/g1/song.mp3';
+
+    await expect(h.svc.share('w1', key)).rejects.toThrow('vault media is locked');
+    await expect(
+      h.svc.create({ userId: 'u1' } as never, 'w1', {
+        accountIds: ['a1'],
+        format: 'IMAGE',
+        mediaKey: key,
+        caption: 'do not publish',
+      } as never),
+    ).rejects.toThrow('vault media is locked');
+    expect(h.media.readUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a legacy queued job whose media key is vaulted', async () => {
+    const h = harness();
+    h.jobs[0]!.mediaKey = 'w1/vault/2026/09/gen/g1/song.mp3';
+
+    await h.svc.runDue();
+
+    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.media.readUrl).toHaveBeenCalledWith('w1', h.jobs[0]!.mediaKey, 60 * 60);
   });
 });
 

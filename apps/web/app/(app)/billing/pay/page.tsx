@@ -10,6 +10,7 @@
  * anything) comes from the API at runtime, so one web build serves every
  * environment; nothing about payments is baked in at build time.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useEffect, useState } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
@@ -30,6 +31,7 @@ function Pay() {
   const params = useSearchParams();
   const txn = params.get('_ptxn');
   const ref = params.get('ref');
+  const paymentId = params.get('paymentId');
   const [cfg, setCfg] = useState<{ clientToken: string; environment: 'sandbox' | 'production' } | null | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -44,15 +46,19 @@ function Pay() {
 
   useEffect(() => {
     if (!ready || !txn || !token || !window.Paddle) return;
+    const returnUrl = (status: 'completed' | 'closed') => {
+      const query = new URLSearchParams({ _ptxn: txn, status });
+      if (ref) query.set('ref', ref);
+      if (paymentId) query.set('paymentId', paymentId);
+      return `/billing/return?${query.toString()}`;
+    };
     try {
       window.Paddle.Environment.set(env);
       window.Paddle.Initialize({
         token,
         eventCallback: (e) => {
-          if (e.name === 'checkout.completed')
-            window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed`);
-          if (e.name === 'checkout.closed')
-            window.location.replace(`/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=closed`);
+          if (e.name === 'checkout.completed') window.location.replace(returnUrl('completed'));
+          if (e.name === 'checkout.closed') window.location.replace(returnUrl('closed'));
           if (e.name === 'checkout.error') setProblem('The payment form reported an error. Nothing was charged.');
         },
       });
@@ -61,13 +67,13 @@ function Pay() {
         settings: {
           displayMode: 'overlay',
           theme: 'light',
-          successUrl: `${window.location.origin}/billing/return?ref=${encodeURIComponent(ref ?? '')}&_ptxn=${encodeURIComponent(txn)}&status=completed`,
+          successUrl: new URL(returnUrl('completed'), window.location.origin).toString(),
         },
       });
     } catch (e) {
       setProblem(e instanceof Error ? e.message : 'Could not open the payment form.');
     }
-  }, [ready, txn, token, env, ref]);
+  }, [ready, txn, token, env, ref, paymentId]);
 
   if (!txn) return <EmptyState title="Nothing to pay" body="Start from Add credits." actions={<Button href="/billing/plans">Add credits</Button>} />;
   if (cfg === undefined) return null;
@@ -122,7 +128,7 @@ function Pay() {
 export default function Page() {
   return (
     <div className="rise">
-      <Suspense fallback={null}>
+      <Suspense fallback={<SectionLoading />}>
         <Pay />
       </Suspense>
     </div>

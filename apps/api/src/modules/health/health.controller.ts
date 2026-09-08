@@ -12,6 +12,22 @@ import type { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators';
+import { BillingCatalogueReadinessService } from '../billing/billing-catalogue-readiness.service';
+
+const WORKER_STALE_MS = 90_000;
+
+interface WorkerProbeRow {
+  seenAt: Date;
+  version: string | null;
+}
+
+/** Public readiness contains no host or infrastructure identifiers. */
+export function workerProbe(row: WorkerProbeRow | null, now = Date.now()): { alive: boolean; release: string | null } {
+  return {
+    alive: row !== null && now - row.seenAt.getTime() < WORKER_STALE_MS,
+    release: row?.version?.slice(0, 7) ?? null,
+  };
+}
 
 @ApiTags('health')
 @Public()
@@ -19,7 +35,10 @@ import { Public } from '../auth/decorators';
 // these without knowing our conventions, and they must never move.
 @Controller({ path: '', version: VERSION_NEUTRAL })
 export class HealthController {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly billingCatalogue: BillingCatalogueReadinessService,
+  ) {}
 
   /**
    * Liveness.
@@ -47,10 +66,12 @@ export class HealthController {
   /**
    * Readiness.
    *
-   * WHAT     Says this instance can serve real traffic — database reachable.
-   *          The load balancer uses this to decide whether to send requests.
+   * WHAT     Says this release can serve real traffic: the database answers
+   *          and both queue classes have a fresh worker heartbeat. Render's
+   *          web liveness probe remains /health, so a worker outage degrades
+   *          this signal without restarting an otherwise healthy API.
    * WHO      Anyone.
-   * COSTS    One trivial query.
+   * COSTS    A small fixed set of local database queries; never vendor I/O.
    * WRITES   Nothing.
    */
   @Get('ready')
@@ -58,8 +79,20 @@ export class HealthController {
   async ready(@Res({ passthrough: true }) res: Response) {
     const started = Date.now();
     try {
-      await this.db.$queryRaw`SELECT 1`;
-      return { status: 'ready', dbMs: Date.now() - started };
+      const [, workerRow, mediaRow, billing] = await Promise.all([
+        this.db.$queryRaw`SELECT 1`,
+        this.db.workerHeartbeat.findFirst({ where: { service: 'worker' }, orderBy: { seenAt: 'desc' }, select: { seenAt: true, version: true } }),
+        this.db.workerHeartbeat.findFirst({ where: { service: 'media' }, orderBy: { seenAt: 'desc' }, select: { seenAt: true, version: true } }),
+        this.billingCatalogue.check(),
+      ]);
+      const now = Date.now();
+      const workers = { worker: workerProbe(workerRow, now), media: workerProbe(mediaRow, now) };
+      const publicBilling = { ready: billing.ready };
+      if (!workers.worker.alive || !workers.media.alive || !billing.ready) {
+        res.status(HttpStatus.SERVICE_UNAVAILABLE);
+        return { status: 'degraded', dbMs: Date.now() - started, workers, billing: publicBilling };
+      }
+      return { status: 'ready', dbMs: Date.now() - started, workers, billing: publicBilling };
     } catch {
       // 503, not 200-with-a-sad-body: a load balancer reads the status code,
       // not the JSON, and would otherwise keep routing to an instance that
@@ -67,7 +100,7 @@ export class HealthController {
       // and a database hostname or driver version in the body is free
       // reconnaissance.
       res.status(HttpStatus.SERVICE_UNAVAILABLE);
-      return { status: 'degraded', dbMs: Date.now() - started };
+      return { status: 'degraded', dbMs: Date.now() - started, workers: null, billing: { ready: false } };
     }
   }
 }

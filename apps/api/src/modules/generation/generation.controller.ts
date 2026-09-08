@@ -12,7 +12,7 @@ import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } 
 import type { Request, Response } from 'express';
 import { GenerationService } from './generation.service';
 import { GenerationEvents } from './generation.events';
-import { CreateGenerationDto, EditTextDto, GenerationHistoryQueryDto, QuoteQueryDto } from './generation.dto';
+import { CreateGenerationDto, EditTextDto, GenerationHistoryQueryDto, QuoteGenerationDto } from './generation.dto';
 import { CurrentActor, RequireWorkspaceRole } from '../auth/decorators';
 import type { SessionActor } from '../auth/policy';
 
@@ -25,12 +25,12 @@ export class GenerationController {
     private readonly events: GenerationEvents,
   ) {}
 
-  @Get('/quote')
+  @Post('/quote')
   @RequireWorkspaceRole('AUDITOR')
   @ApiOperation({ summary: 'What a generation would cost, and the balance after' })
   @ApiParam({ name: 'workspaceId', format: 'uuid' })
-  quote(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() query: QuoteQueryDto) {
-    return this.generations.quote(workspaceId, query.capability, query.costCode, query.quantity);
+  quote(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Body() body: QuoteGenerationDto) {
+    return this.generations.quote(workspaceId, body.capability, body.params);
   }
 
   @Post()
@@ -48,7 +48,6 @@ export class GenerationController {
       capability: body.capability,
       params: body.params,
       clientKey: body.clientKey,
-      costCode: body.costCode,
     });
   }
 

@@ -29,7 +29,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from 'next/navigation';
 import { surfaceForWorkspaceType } from '@anystudio/shared';
 import { siblingOrigin, isLocalHost, portalOf } from '@/lib/hosts';
-import { api, ApiError, type Me } from './api';
+import { api, ApiError, SESSION_EXPIRED_EVENT, type Me } from './api';
 
 /** Does this workspace belong on the host the browser is on? Locally, everything does. */
 function belongsHere(type: string): boolean {
@@ -81,12 +81,22 @@ export const SIGNOUT_CHANNEL = 'anystudio:auth';
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const path = usePathname();
+  const currentPath = useRef(path);
+  useEffect(() => {
+    currentPath.current = path;
+  }, [path]);
   const [me, setMe] = useState<Me | null>(null);
   const [failed, setFailed] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [balance, setBalanceState] = useState<number | null>(null);
   const [line, setLine] = useState<{ postpaid: boolean; paused: boolean }>({ postpaid: false, paused: false });
   const balanceReq = useRef(0);
+
+  useEffect(() => {
+    const expired = () => window.location.replace(signInUrl(currentPath.current));
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expired);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -123,19 +133,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // portal with no workspace in it. (Nothing anywhere → /welcome.)
         const elsewhere = m.workspaces.find((w) => w.id === preferred) ?? m.workspaces[0];
         if (elsewhere) {
-          hopTo(elsewhere.id, path).catch(() => setFailed(true));
+          hopTo(elsewhere.id, currentPath.current).catch(() => {
+            if (live) setFailed(true);
+          });
           return;
         }
         setWorkspaceId(null);
+        window.location.replace('/welcome');
       })
       .catch((e: unknown) => {
-        if (e instanceof ApiError && e.status === 401) window.location.replace(signInUrl(path));
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 401) window.location.replace(signInUrl(currentPath.current));
         else if (live) setFailed(true);
       });
     return () => {
       live = false;
     };
-  }, [path]);
+  }, []);
 
   const refreshBalance = useCallback(async () => {
     if (!workspaceId) return;
@@ -152,8 +166,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [workspaceId]);
 
+  // A refresh after leaving/deleting a workspace must not strand the shell on
+  // an ID that is no longer in the membership list.
+  useEffect(() => {
+    if (!me || !workspaceId || me.workspaces.some((w) => w.id === workspaceId)) return;
+    const next = me.workspaces.find((w) => belongsHere(w.type));
+    balanceReq.current += 1;
+    setBalanceState(null);
+    setLine({ postpaid: false, paused: false });
+    if (next) setWorkspaceId(next.id);
+    else if (me.workspaces[0]) hopTo(me.workspaces[0].id, currentPath.current).catch(() => setFailed(true));
+    else window.location.replace('/welcome');
+  }, [me, workspaceId]);
+
   useEffect(() => {
     void refreshBalance();
+    return () => {
+      balanceReq.current += 1;
+    };
   }, [refreshBalance]);
 
   // Another tab signed out: leave too, immediately, without asking the server.
@@ -196,21 +226,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState | null>(() => {
     if (!me) return null;
-    const workspace = me.workspaces.find((w) => w.id === workspaceId) ?? me.workspaces[0];
+    const workspace = me.workspaces.find((w) => w.id === workspaceId);
     if (!workspace) return null;
     return {
       me,
       workspace,
       workspaces: me.workspaces,
       switchWorkspace: (id, type) => {
+        if (id === workspaceId) return;
         const kind = type ?? me.workspaces.find((w) => w.id === id)?.type;
         if (kind && !belongsHere(kind)) {
           // It lives on the other host: carry the session across.
           hopTo(id, '/today').catch(() => undefined);
           return;
         }
+        balanceReq.current += 1;
         setWorkspaceId(id);
         setBalanceState(null);
+        setLine({ postpaid: false, paused: false });
         try {
           localStorage.setItem(WS_KEY, id);
         } catch {
@@ -246,8 +279,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!value) return <div style={{ minHeight: '100dvh', background: 'var(--paper)' }} aria-busy="true" />;
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  if (!value)
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--paper)' }} role="status" aria-busy="true">
+        Loading your workspace…
+      </div>
+    );
+  // Reset page-local data and open dialogs when the workspace changes, not on navigation.
+  return (
+    <Ctx.Provider key={workspaceId} value={value}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useApp(): AppState {

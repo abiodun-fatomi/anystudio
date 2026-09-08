@@ -12,7 +12,8 @@
  *   2b. THEIR VOICE. When the seller asked to sing it themselves, the
  *      vocal is separated, converted into their cloned voice and mixed
  *      back (see my-voice.ts). If that fails the song is kept as the
- *      model sang it and the result says so.
+ *      model sang it, the result says so, and GenerationService atomically
+ *      returns the captured voice premium when it commits the success.
  *   3. THE VAULT. The full track is stored under the workspace's vault
  *      prefix, which the API refuses to sign. The output is marked locked.
  *   4. THE PREVIEW. ffmpeg cuts the first thirty seconds with a fade and a
@@ -95,7 +96,7 @@ export const musicPipeline: Pipeline = async (ctx) => {
   );
   const track = result.artifacts.find((a) => a.role === 'audio');
   if (!track) throw new ProviderError('RETRYABLE', `${result.providerKey} returned no audio`, result.providerKey);
-  const modelBytes = track.bytes ?? (track.url ? (await fetchBytes(result.providerKey, track.url, 120_000)).bytes : undefined);
+  const modelBytes = track.bytes ?? (track.url ? (await fetchBytes(result.providerKey, track.url, 120_000, ctx.signal)).bytes : undefined);
   if (!modelBytes) throw new ProviderError('RETRYABLE', `${result.providerKey} returned an audio artifact with no bytes`, result.providerKey);
   let bytes = modelBytes;
   let mime = track.mime;
@@ -109,6 +110,7 @@ export const musicPipeline: Pipeline = async (ctx) => {
     bytes = myVoice.bytes;
     mime = myVoice.mime;
     ext = myVoice.ext;
+    if (!myVoice.applied) myVoice.note = `${myVoice.note} The personal-voice premium was returned; you paid the standard song price.`;
     ctx.log.info(
       { applied: myVoice.applied, reason: myVoice.reason, costMinor: myVoice.costMinor },
       myVoice.applied ? 'song sung in their voice' : 'song kept in the model voice',
@@ -140,7 +142,7 @@ export const musicPipeline: Pipeline = async (ctx) => {
         genre: genre.name,
         vocal: p.vocal,
         language: p.language,
-        singer: p.singer ?? 'model',
+        singer: myVoice?.applied === false ? 'model' : (p.singer ?? 'model'),
         // What happened with their voice, in words the result card shows.
         myVoice: myVoice ? { applied: myVoice.applied, note: myVoice.note, voice: myVoice.voiceKey } : null,
       },

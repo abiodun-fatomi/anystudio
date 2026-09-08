@@ -12,6 +12,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Capability, GenerationProvider } from '@anystudio/shared';
 import { logger } from '../../../config/logger';
+import { isProductionDeployment } from '../../../config/environment';
 import { StubProvider } from './adapters/stub.adapter';
 import { SyncProvider } from './adapters/sync.adapter';
 import { FalProvider } from './adapters/fal.adapter';
@@ -40,7 +41,7 @@ export class ProviderRegistry {
 
   constructor() {
     const env = process.env;
-    const isProd = env.APP_ENV === 'production';
+    const isProd = isProductionDeployment(env);
 
     const candidates: Array<{ present: boolean; make: () => GenerationProvider[] }> = [
       { present: !isProd, make: () => [new StubProvider()] },
@@ -92,11 +93,10 @@ export class ProviderRegistry {
       // Read here, not at module load: the environment file may not be in
       // place when this file is first imported.
       const sandbox = SANDBOX_KEYS.filter((name) => /sandbox/i.test(env[name] ?? ''));
-      if (sandbox.length)
-        logger.error(
-          { vars: sandbox },
-          'A SANDBOX KEY IS SET IN PRODUCTION. Everything it generates comes back watermarked, and customers are being charged for it. Replace it in the environment group now.',
-        );
+      if (sandbox.length) {
+        logger.fatal({ vars: sandbox }, 'A sandbox provider key is set in production; refusing to serve watermarked output to paying customers.');
+        throw new Error(`Sandbox provider credentials are not allowed in production: ${sandbox.join(', ')}`);
+      }
     }
 
     logger.info(

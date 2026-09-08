@@ -125,7 +125,12 @@ export default function AdminOverviewPage() {
                     <Link href={`/admin/generations?q=${f.id}`}>{f.capability}</Link>
                   </td>
                   <td>
-                    <span className={styles.pill} data-tone={f.failureKind === 'CONTENT_REJECTED' || f.failureKind === 'INVALID_INPUT' ? 'warn' : 'danger'}>
+                    <span
+                      className={styles.pill}
+                      data-tone={
+                        f.failureKind === 'CONTENT_REJECTED' || f.failureKind === 'REQUEST_REJECTED' || f.failureKind === 'INVALID_INPUT' ? 'warn' : 'danger'
+                      }
+                    >
                       {f.failureKind ?? '—'}
                     </span>
                   </td>

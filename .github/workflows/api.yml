@@ -9,11 +9,11 @@ name: API
 #   staging     → anystudio-api-staging  api.staging.anystudio.ai
 #   production  → anystudio-api          api.anystudio.ai
 #
-# The queue worker is the SAME image as the API started with a different
-# command (node dist/src/worker/main.js). It deploys alongside the API in any
-# environment that sets RENDER_WORKER_SERVICE_ID — see the `deploy` job.
+# Both queue workers use the SAME image as the API, started with a different
+# command (node dist/src/worker/main.js). The fast/heavy and local-media pair
+# deploy alongside the API when both worker service ids are set — see `deploy`.
 #
-# Render's own auto-deploy is off (`autoDeploy: false` in render.yaml), so a
+# Render's own auto-deploy is off (`autoDeployTrigger: off` in each Blueprint), so a
 # commit reaches an environment only through this file, and only after the
 # `Check` job is green. The deploy pins the exact commit that was tested
 # (`commitId`), waits for Render to report it live, then proves the running
@@ -30,11 +30,19 @@ on:
       - packages/db/**
       - packages/shared/**
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - package.json
       - tsconfig.base.json
+      - turbo.json
       - render.yaml
+      - render.staging.yaml
+      - render.production.yaml
+      - scripts/render-preflight.sh
+      - scripts/test-render-preflight.sh
+      - scripts/test-render-blueprints.rb
       - scripts/render-deploy.sh
       - scripts/smoke-api.sh
+      - scripts/test-billing-migration-upgrade.sh
       - .github/workflows/api.yml
   pull_request:
     paths:
@@ -42,9 +50,19 @@ on:
       - packages/db/**
       - packages/shared/**
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - tsconfig.base.json
+      - turbo.json
       - render.yaml
+      - render.staging.yaml
+      - render.production.yaml
+      - scripts/render-preflight.sh
+      - scripts/test-render-preflight.sh
+      - scripts/test-render-blueprints.rb
       - scripts/render-deploy.sh
       - scripts/smoke-api.sh
+      - scripts/test-billing-migration-upgrade.sh
   workflow_dispatch: # redeploy the head of the current branch by hand
 
 concurrency:
@@ -61,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: anystudio
           POSTGRES_PASSWORD: anystudio
@@ -84,6 +102,8 @@ jobs:
       # _prisma_migrations rows, and refuses with P3005 "the database schema
       # is not empty". The check and the thing it checks need separate ground.
       SHADOW_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_shadow?schema=public
+      BILLING_UPGRADE_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_upgrade
+      BILLING_REJECT_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_migration_reject
       DIRECT_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
       ORIGIN_APP: http://localhost:3000
       ORIGIN_ORG: http://localhost:3002
@@ -97,6 +117,9 @@ jobs:
         with: { node-version: 22, cache: pnpm }
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Production dependency audit
+        run: pnpm audit --prod --audit-level=moderate
 
       # The stub provider renders its test audio and video with ffmpeg; the
       # runner image lacks it and every worker spec would fail as "provider down".
@@ -112,7 +135,10 @@ jobs:
         run: pnpm db:generate
 
       - name: Create the shadow database
-        run: PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_shadow'
+        run: |
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_shadow'
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_upgrade'
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_migration_reject'
 
       # A schema edited without a matching migration works locally and fails
       # on deploy. Catch it here, where it is a red check and not an outage.
@@ -126,8 +152,20 @@ jobs:
       - name: Migrations apply cleanly
         run: pnpm db:deploy
 
+      - name: Billing migration upgrades and rolls back cleanly
+        run: bash scripts/test-billing-migration-upgrade.sh
+
+      - name: Render Blueprints preserve the deployment contract
+        run: ruby scripts/test-render-blueprints.rb
+
+      - name: Render live-preflight parser matches the API schema
+        run: bash scripts/test-render-preflight.sh
+
       - name: Typecheck
         run: pnpm --filter @anystudio/shared build && pnpm --filter "@anystudio/api" typecheck
+
+      - name: Lint
+        run: pnpm --filter "@anystudio/api" lint && pnpm --filter "@anystudio/db" lint
 
       - name: Test
         run: pnpm --filter "@anystudio/api" test
@@ -152,14 +190,14 @@ jobs:
     # Each environment carries these variables (Settings → Environments →
     # <name> → Environment variables), none of them secret:
     #   RENDER_API_SERVICE_ID     srv-… of the API service on Render — required
-    #   RENDER_WORKER_SERVICE_ID  srv-… of the worker — OPTIONAL, see below
+    #   RENDER_WORKER_SERVICE_ID  srv-… of the fast/heavy worker — required
+    #   RENDER_MEDIA_SERVICE_ID   srv-… of the local-media worker — required
     #   API_URL                   optional; only until api.<env>.anystudio.ai exists
     # and one repository secret: RENDER_API_KEY.
     #
-    # The worker is optional per environment: render.yaml declares it for dev
-    # (anystudio-worker-dev, same Dockerfile, worker command). Set
-    # RENDER_WORKER_SERVICE_ID on an environment and the step below deploys
-    # it after the API, with no change to this file.
+    # Both workers are mandatory. The main worker explicitly excludes
+    # media.local and the media worker owns that queue, so a release with either
+    # id missing would be green while part (or all) of generation stays queued.
     environment:
       name: ${{ github.ref_name }}
       url: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
@@ -169,7 +207,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts
+          sparse-checkout: |
+            scripts
+            render.yaml
+            render.staging.yaml
+            render.production.yaml
           sparse-checkout-cone-mode: false
 
       - name: Environment is configured
@@ -177,16 +219,22 @@ jobs:
           missing=()
           [ -n "$RENDER_API_KEY" ]                        || missing+=(RENDER_API_KEY)
           [ -n "${{ vars.RENDER_API_SERVICE_ID }}" ]      || missing+=(RENDER_API_SERVICE_ID)
+          [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]   || missing+=(RENDER_WORKER_SERVICE_ID)
+          [ -n "${{ vars.RENDER_MEDIA_SERVICE_ID }}" ]    || missing+=(RENDER_MEDIA_SERVICE_ID)
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing for the '${{ github.ref_name }}' environment: ${missing[*]}. See docs/DEPLOY.md §3."
+            echo "::error::Missing for the '${{ github.ref_name }}' environment: ${missing[*]}. Configure the API, fast/heavy worker, and local-media worker ids together; see docs/DEPLOY.md §3."
             exit 1
           fi
-          if [ -z "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]; then
-            echo "::notice::No RENDER_WORKER_SERVICE_ID for '${{ github.ref_name }}': deploying the API only."
-          fi
-          if [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ] && [ -z "${{ vars.RENDER_MEDIA_SERVICE_ID }}" ]; then
-            echo "::notice::No RENDER_MEDIA_SERVICE_ID: this worker serves every queue, ffmpeg included. See render.yaml."
-          fi
+
+      # Read-only and before the first deploy: a mistyped id must not deploy
+      # the API and only then reveal that one worker points at another app.
+      - name: Render services match this environment
+        run: |
+          bash scripts/render-preflight.sh \
+            "${{ github.ref_name }}" "$GITHUB_REPOSITORY" \
+            "${{ vars.RENDER_API_SERVICE_ID }}" \
+            "${{ vars.RENDER_WORKER_SERVICE_ID }}" \
+            "${{ vars.RENDER_MEDIA_SERVICE_ID }}"
 
       # The API first: its pre-deploy step runs the migrations, so by the time
       # the worker starts on the new code the schema it expects is there.
@@ -194,22 +242,19 @@ jobs:
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_API_SERVICE_ID }}" "${{ github.sha }}"
 
       - name: Deploy worker
-        if: vars.RENDER_WORKER_SERVICE_ID != ''
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_WORKER_SERVICE_ID }}" "${{ github.sha }}"
 
       # The media worker: the same image again, serving only media.local.
-      # Optional per environment like the worker above — but with a sharper
-      # edge if it is forgotten. An undeployed API is obvious within minutes;
+      # Deployed with the worker above. An undeployed API is obvious within minutes;
       # an undeployed media worker keeps answering, on whatever code it was
       # created with, and the only symptom is ads that behave like a release
-      # nobody remembers shipping. Set RENDER_MEDIA_SERVICE_ID when the
-      # service exists.
+      # nobody remembers shipping. The validation above therefore refuses a
+      # release unless this service id is configured.
       - name: Deploy media worker
-        if: vars.RENDER_MEDIA_SERVICE_ID != ''
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_MEDIA_SERVICE_ID }}" "${{ github.sha }}"
 
-      # Render saying "live" means the new instance answered its health check
-      # once. This proves it from the outside, through Cloudflare, and that
-      # the process serving traffic is the commit we just tested.
+      # Render HTTP health checks do not apply to background workers. This
+      # final external probe therefore requires fresh main/media heartbeats
+      # carrying the same commit as the API before the release can pass.
       - name: Smoke test
         run: bash scripts/smoke-api.sh "$API_URL" "${{ github.sha }}"

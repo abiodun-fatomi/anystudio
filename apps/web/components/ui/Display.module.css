@@ -158,6 +158,7 @@
   .skel {
     background: var(--sunk);
     opacity: 1;
+    animation: none;
   }
 }
 

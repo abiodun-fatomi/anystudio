@@ -13,7 +13,13 @@ import { Badge, Button, Dialog, Pager, Select, Skeleton, Table, Textarea, tableC
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
-const TONE: Record<string, 'accent' | 'ok' | 'danger' | undefined> = { REQUESTED: 'accent', APPROVED: 'ok', REFUSED: 'danger', CANCELLED: undefined };
+const TONE: Record<string, 'accent' | 'ok' | 'danger' | undefined> = {
+  REQUESTED: 'accent',
+  PROCESSING: 'accent',
+  APPROVED: 'ok',
+  REFUSED: 'danger',
+  CANCELLED: undefined,
+};
 
 export function RefundRequests() {
   const { atLeast } = useAdmin();
@@ -30,7 +36,7 @@ export function RefundRequests() {
     try {
       if (act.kind === 'approve') {
         await api.admin.approveRefund(act.r.id, note.trim() || undefined);
-        toast({ title: 'Refunded', body: 'Money sent back at the gateway; credits clawed back; the customer has been told.', tone: 'ok' });
+        toast({ title: 'Refund submitted', body: 'It will stay processing until the gateway confirms the money was returned.', tone: 'ok' });
       } else {
         await api.admin.refuseRefund(act.r.id, note.trim());
         toast({ title: 'Refused', body: 'The customer has been told, with your sentence.', tone: 'ok' });
@@ -51,14 +57,17 @@ export function RefundRequests() {
         <div>
           <div className={styles.cardTitle}>Refund requests</div>
           <div style={{ color: 'var(--muted)', fontSize: 'var(--t-2)' }}>
-            Approve sends the money back at the gateway and removes the credits. Refuse with a sentence the customer reads.
+            Approve submits the refund. Credits are removed only after the gateway confirms it; pending approvals reconcile automatically.
           </div>
         </div>
         <Select
           label="Status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          options={['REQUESTED', 'APPROVED', 'REFUSED', 'CANCELLED'].map((s) => ({ value: s, label: s.charAt(0) + s.slice(1).toLowerCase() }))}
+          options={['REQUESTED', 'PROCESSING', 'NEEDS_REVIEW', 'APPROVED', 'REFUSED', 'CANCELLED'].map((s) => ({
+            value: s,
+            label: s.charAt(0) + s.slice(1).toLowerCase().replace('_', ' '),
+          }))}
         />
       </div>
       {pages.rows === null ? (
@@ -157,7 +166,7 @@ export function RefundRequests() {
         title={act?.kind === 'approve' ? 'Approve the refund?' : 'Refuse the refund'}
         description={
           act?.kind === 'approve'
-            ? `${moneyMinor(act.r.payment.amountMinor, act.r.payment.currency)} goes back through ${act.r.payment.provider.toLowerCase()} now, and ${act.r.payment.credits} credits are removed from ${act.r.workspace.name}.`
+            ? `${moneyMinor(act.r.payment.amountMinor, act.r.payment.currency)} will be submitted to ${act.r.payment.provider.toLowerCase()}. Credits are removed only when the provider confirms the refund.`
             : 'The customer reads this sentence in an email. Say what would change the answer.'
         }
         locked={busy}
@@ -167,7 +176,7 @@ export function RefundRequests() {
               Cancel
             </Button>
             <Button onClick={() => void run()} loading={busy} disabled={act?.kind === 'refuse' && note.trim().length < 4}>
-              {act?.kind === 'approve' ? 'Send the money back' : 'Refuse'}
+              {act?.kind === 'approve' ? 'Submit refund' : 'Refuse'}
             </Button>
           </>
         }

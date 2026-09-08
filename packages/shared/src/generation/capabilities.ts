@@ -53,6 +53,8 @@ export const CAPABILITIES = [
   'LIPSYNC',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
+/** Customer-callable capabilities; stitching is an internal worker operation. */
+export const PUBLIC_CAPABILITIES = CAPABILITIES.filter((c) => c !== 'VIDEO_STITCH');
 
 export const isCapability = (v: unknown): v is Capability => typeof v === 'string' && (CAPABILITIES as readonly string[]).includes(v);
 
@@ -293,7 +295,9 @@ export const capabilityParams = {
     prompt: z.string().min(3).max(2000),
     aspect: z.enum(ASPECTS).default('1:1'),
     style: z.string().max(200).optional(),
-    negativePrompt: z.string().max(1000).optional(),
+    // Neither enabled image provider supports a true negative prompt. Reject
+    // it explicitly instead of displaying a control that is silently ignored.
+    negativePrompt: z.undefined({ invalid_type_error: 'Negative prompts are not supported by the available image models.' }).optional(),
     count: z.number().int().min(1).max(4).default(1),
   }),
   IMAGE_EDIT: z.object({
@@ -517,16 +521,41 @@ export const capabilityParams = {
      * two code paths could disagree about it.
      */
     .transform((v) => ({ ...v, prompt: v.prompt?.trim() || REEL_BRIEF[v.format] })),
-  VIDEO_STITCH: z.object({
-    /** Ordered shot keys — each one an IMAGE_TO_VIDEO output. */
-    shotKeys: z.array(objectKey).min(1).max(8),
-    aspect: z.enum(['9:16', '1:1', '16:9']).default('9:16'),
-    captions: z.array(z.object({ text: z.string().max(200), fromMs: z.number().int().min(0), toMs: z.number().int().min(0) })).default([]),
-    musicKey: objectKey.optional(),
-    voiceoverKey: objectKey.optional(),
-    endCard: z.object({ text: z.string().max(120), price: z.string().max(40).optional() }).optional(),
-    watermark: z.boolean().default(true),
-  }),
+  VIDEO_STITCH: z
+    .object({
+      /** Ordered shot keys — each one an IMAGE_TO_VIDEO output. */
+      shotKeys: z.array(objectKey).min(1).max(8),
+      /**
+       * Planned lengths for those keys. Vendors have different duration grids;
+       * the media worker trims or pads each result to this timeline so a product
+       * sold as a 30-second ad does not become 20 or 40 seconds after fallback.
+       */
+      shotDurationsMs: z.array(z.number().int().min(500).max(30_000)).min(1).max(8).optional(),
+      /** Exact customer-facing runtime, including an end card when present. */
+      targetDurationMs: z.number().int().min(500).max(120_000).optional(),
+      /** Keep native audio from the video segments; absent/false produces silence. */
+      preserveShotAudio: z.boolean().default(false),
+      aspect: z.enum(['9:16', '1:1', '16:9']).default('9:16'),
+      captions: z.array(z.object({ text: z.string().max(200), fromMs: z.number().int().min(0), toMs: z.number().int().min(0) })).default([]),
+      musicKey: objectKey.optional(),
+      voiceoverKey: objectKey.optional(),
+      endCard: z.object({ text: z.string().max(120), price: z.string().max(40).optional() }).optional(),
+      watermark: z.boolean().default(true),
+    })
+    .superRefine((v, ctx) => {
+      if (v.shotDurationsMs && v.shotDurationsMs.length !== v.shotKeys.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['shotDurationsMs'], message: 'Give one planned duration for every shot.' });
+      }
+      if (v.targetDurationMs && v.shotDurationsMs) {
+        const contentMs = v.shotDurationsMs.reduce((sum, duration) => sum + duration, 0);
+        if (contentMs > v.targetDurationMs) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targetDurationMs'], message: 'The target duration cannot be shorter than its shot timeline.' });
+        }
+        if (v.endCard && v.targetDurationMs - contentMs < 500) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targetDurationMs'], message: 'Reserve at least half a second for the end card.' });
+        }
+      }
+    }),
   TEXT_GENERATE: z.object({
     /** What to write. The worker builds the prompt; the customer never sees it. */
     task: z.enum(['product_copy', 'shot_plan', 'lyrics', 'field']).default('product_copy'),
@@ -714,9 +743,9 @@ export function parseCapabilityParams(
 }
 
 /**
- * The CreditCost code a capability is priced under by default. A request may
- * override this (a 30-second ad prices its shots under video.ad_30s), but
- * the mapping the studio quotes from lives here so the UI and the API agree.
+ * The CreditCost code a capability is priced under by default. The API may
+ * derive a more specific server-owned code from validated params (for example,
+ * a 30-second ad), but a request never supplies a price code directly.
  */
 export const DEFAULT_COST_CODE: Record<Capability, string> = {
   IMAGE_GENERATE: 'image.storefront',

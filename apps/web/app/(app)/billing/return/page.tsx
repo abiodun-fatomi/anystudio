@@ -6,6 +6,7 @@
  * added, still confirming, or it did not go through — and in every case
  * the reference to quote.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/app-context';
@@ -20,6 +21,7 @@ function Return() {
   const params = useSearchParams();
   const { workspace, refreshBalance } = useApp();
   const ref = params.get('ref');
+  const callbackPaymentId = params.get('paymentId');
   const providerRef = params.get('transaction_id') ?? params.get('_ptxn') ?? undefined;
   const gatewayStatus = params.get('status');
   const [payment, setPayment] = useState<PaymentView | null>(null);
@@ -29,18 +31,24 @@ function Return() {
   useEffect(() => {
     if (!ref) return;
     let live = true;
-    let paymentId: string | null = null;
-    try {
-      paymentId = sessionStorage.getItem(`anystudio:pay:${ref}`);
-    } catch {
-      /* fine */
+    // The API puts the authenticated payment id in every provider return URL.
+    // sessionStorage remains a fallback for old checkouts and direct browser
+    // history entries; verifyPayment still enforces workspace ownership.
+    let paymentId = callbackPaymentId;
+    if (!paymentId) {
+      try {
+        paymentId = sessionStorage.getItem(`anystudio:pay:${ref}`);
+      } catch {
+        /* fine */
+      }
     }
     const tick = async () => {
       if (!live) return;
       try {
         if (!paymentId) {
           const list = await api.billing.payments(workspace.id);
-          // PENDING rows are not in the settled list; ask the verify endpoint by reference through the newest rows first.
+          // A legacy provider return may have neither query nor session state.
+          // The settled list can still recover it after a webhook has landed.
           paymentId = list.rows.find((r) => r.reference === ref)?.id ?? null;
         }
         if (!paymentId) throw new Error('unknown reference');
@@ -65,7 +73,7 @@ function Return() {
     return () => {
       live = false;
     };
-  }, [ref, providerRef, workspace.id, refreshBalance]);
+  }, [ref, callbackPaymentId, providerRef, workspace.id, refreshBalance]);
 
   if (!ref)
     return (
@@ -92,6 +100,16 @@ function Return() {
             </Button>
           </>
         }
+      />
+    );
+  }
+  if (payment?.status === 'NEEDS_REVIEW') {
+    return (
+      <EmptyState
+        icon={<Icon.credits />}
+        title="Payment received — review in progress"
+        body={`We received a provider confirmation but did not add credits because this transaction needs a billing review. Do not pay again. Quote reference ${payment.reference} to support.`}
+        actions={<Button href="/billing">See statement</Button>}
       />
     );
   }
@@ -143,7 +161,7 @@ function Return() {
 export default function Page() {
   return (
     <div className="rise">
-      <Suspense fallback={null}>
+      <Suspense fallback={<SectionLoading />}>
         <Return />
       </Suspense>
     </div>

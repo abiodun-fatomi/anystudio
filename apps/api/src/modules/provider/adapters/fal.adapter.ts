@@ -63,22 +63,38 @@ const DURATIONS: Record<string, readonly number[]> = {
   'fal-ai/wan-25-preview/image-to-video': [5, 10],
 };
 
+/** Wan 2.5's published input limit. Keep this next to its duration contract. */
+const WAN_ENDPOINT = 'fal-ai/wan-25-preview/image-to-video';
+export const WAN_PROMPT_MAX = 1500;
+
+/** Compose the camera direction without ever sending Wan an over-limit prompt. */
+export function wanPrompt(prompt: string, motion?: string): string {
+  const camera = motion?.trim() ? `. Camera: ${motion.trim()}` : '';
+  return `${prompt}${camera}`.slice(0, WAN_PROMPT_MAX);
+}
+
 /**
  * The clip length to ask this endpoint for, given the one the plan wants.
  *
- * The nearest allowed length that does not RUN LONG, and the shortest
- * allowed if every option runs long. Rounding down rather than to the
- * nearest is deliberate: the customer chose "a 30-second ad", the price is
- * set against that, and four shots that each quietly gain two seconds hand
- * them a 40-second one. A shot that comes back short is still the shot; the
- * stitch reads the real lengths off the files, so the ad stays coherent
- * either way. Sending 8 to a vendor that has never accepted 8 is the only
- * option that produces nothing at all.
+ * Standalone reels choose the nearest allowed length that does not run long.
+ * A child of a multi-shot ad instead covers the requested slot: the isolated
+ * stitch worker trims a 10-second Wan clip to the planned 8 seconds. That
+ * preserves motion throughout the paid 30/45/60-second ad; rounding every
+ * eight-second child down to five silently turned a 30-second ad into 20.
  */
-export function snapDuration(wanted: number, allowed: readonly number[] | undefined): number {
+export function snapDuration(wanted: number, allowed: readonly number[] | undefined, cover = false): number {
   if (!allowed?.length || allowed.includes(wanted)) return wanted;
+  if (cover) {
+    const over = allowed.filter((d) => d > wanted);
+    if (over.length) return Math.min(...over);
+  }
   const under = allowed.filter((d) => d < wanted);
   return under.length ? Math.max(...under) : Math.min(...allowed);
+}
+
+/** A request for the precision model must outrank a row-level speed default. */
+export function lipsyncModel(quality: 'speed' | 'precision', configured?: string): string {
+  return quality === 'precision' ? 'lipsync-2-pro' : (configured ?? 'lipsync-2');
 }
 
 export class FalProvider extends BaseProvider {
@@ -98,16 +114,29 @@ export class FalProvider extends BaseProvider {
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     const endpoint = this.str(input.config, 'endpoint', this.defaultEndpoint);
     const headers = { authorization: `Key ${this.apiKey}` };
-    const body = this.shapeInput(input);
-
-    const submitted = await http<FalSubmit>(this.key, `${QUEUE}/${endpoint}`, { body, headers, timeoutMs: 30_000, signal: opts.signal });
-    const { request_id: providerJobId, status_url, response_url } = submitted.json;
+    let providerJobId: string;
+    let statusUrl: string;
+    let responseUrl: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+      statusUrl = resumeString(this.key, opts, 'statusUrl');
+      responseUrl = resumeString(this.key, opts, 'responseUrl');
+    } else {
+      const body = this.shapeInput(input);
+      const submitted = await http<FalSubmit>(this.key, `${QUEUE}/${endpoint}`, { body, headers, timeoutMs: 30_000, signal: opts.signal });
+      providerJobId = submitted.json.request_id;
+      statusUrl = submitted.json.status_url;
+      responseUrl = submitted.json.response_url;
+      if (!providerJobId || !statusUrl || !responseUrl)
+        throw new ProviderError('RETRYABLE', `${this.key}: queue response did not contain resumable job coordinates`, this.key, { raw: submitted.json });
+      await opts.onSubmitted?.(providerJobId, { statusUrl, responseUrl });
+    }
     opts.onProgress?.('Waiting for a rendering slot', 10);
 
     const started = Date.now();
     await poll(
       async () => {
-        const s = await http<FalStatus>(this.key, `${status_url}?logs=0`, { headers, timeoutMs: 15_000, signal: opts.signal });
+        const s = await http<FalStatus>(this.key, `${statusUrl}?logs=0`, { headers, timeoutMs: 15_000, signal: opts.signal });
         if (s.json.status === 'COMPLETED') return true;
         if (s.json.status === 'IN_PROGRESS') opts.onProgress?.('Rendering', 40);
         else if (s.json.queue_position !== undefined) opts.onProgress?.(`waiting in queue (position ${s.json.queue_position})`, 15);
@@ -120,9 +149,25 @@ export class FalProvider extends BaseProvider {
         : new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key, { providerJobId });
     });
 
-    const result = await http<unknown>(this.key, response_url, { headers, timeoutMs: 30_000, signal: opts.signal });
-    const artifacts = this.shapeOutput(input, result.json, providerJobId);
-    return { providerKey: this.key, providerJobId, artifacts, meta: { endpoint, waitMs: Date.now() - started } };
+    const result = await http<unknown>(this.key, responseUrl, { headers, timeoutMs: 30_000, signal: opts.signal });
+    let artifacts: ProviderArtifact[];
+    try {
+      artifacts = this.shapeOutput(input, result.json, providerJobId);
+    } catch (err) {
+      await opts.onSettled?.('FAILED');
+      throw err;
+    }
+    let costMinor: number | undefined;
+    const perSecond = Number(input.config.costPerSecondMinor);
+    if (input.capability === 'IMAGE_TO_VIDEO' && Number.isFinite(perSecond) && perSecond > 0) {
+      const p = this.params(input, 'IMAGE_TO_VIDEO');
+      const seconds = snapDuration(p.durationSec, this.nums(input.config, 'durations', DURATIONS[endpoint]), p.shotIndex !== undefined);
+      costMinor = Math.ceil(seconds * perSecond);
+    } else if (input.capability === 'IMAGE_GENERATE') {
+      const unit = Number(input.config.costMinor);
+      if (Number.isFinite(unit) && unit >= 0) costMinor = Math.ceil(this.params(input, 'IMAGE_GENERATE').count * unit);
+    }
+    return { providerKey: this.key, providerJobId, artifacts, costMinor, meta: { endpoint, waitMs: Date.now() - started } };
   }
 
   /** Our params → this endpoint's request body. */
@@ -160,10 +205,13 @@ export class FalProvider extends BaseProvider {
         const endpoint = this.str(input.config, 'endpoint', this.defaultEndpoint);
         return {
           image_url: this.file(input, 'sourceKey'),
-          prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
-          duration: String(snapDuration(p.durationSec, this.nums(input.config, 'durations', DURATIONS[endpoint]))),
+          prompt: endpoint === WAN_ENDPOINT ? wanPrompt(p.prompt, p.motion) : p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
+          duration: String(snapDuration(p.durationSec, this.nums(input.config, 'durations', DURATIONS[endpoint]), p.shotIndex !== undefined)),
           resolution: this.str(input.config, 'resolution', '720p'),
-          aspect_ratio: p.aspect,
+          // Wan image-to-video has no aspect_ratio field: its frame follows
+          // the input image. Sending an invented field risks a 422 as fal's
+          // schema tightens; exact product framing is handled after rendering.
+          ...(endpoint === WAN_ENDPOINT ? {} : { aspect_ratio: p.aspect }),
           enable_prompt_expansion: true,
         };
       }
@@ -193,7 +241,10 @@ export class FalProvider extends BaseProvider {
         return {
           video_url: this.file(input, 'sourceKey'),
           audio_url: this.file(input, 'audioKey'),
-          model: this.str(input.config, 'model', p.quality === 'precision' ? 'lipsync-2-pro' : 'lipsync-2'),
+          // A customer's precision choice is stronger than a row-level default.
+          // This also keeps an old seeded `lipsync-2` value from silently
+          // downgrading a precision request.
+          model: lipsyncModel(p.quality, this.str(input.config, 'model', 'lipsync-2')),
           sync_mode: this.str(input.config, 'syncMode', 'cut_off'),
         };
       }
@@ -222,6 +273,7 @@ export class FalProvider extends BaseProvider {
           ? snapDuration(
               this.params(input, 'IMAGE_TO_VIDEO').durationSec,
               this.nums(input.config, 'durations', DURATIONS[this.str(input.config, 'endpoint', this.defaultEndpoint)]),
+              this.params(input, 'IMAGE_TO_VIDEO').shotIndex !== undefined,
             )
           : undefined;
       list.push({ url: video.url, mime: video.content_type ?? 'video/mp4', role: 'video', ...(asked ? { durationMs: asked * 1000 } : {}) });
@@ -236,6 +288,17 @@ export class FalProvider extends BaseProvider {
     }
     return list;
   }
+}
+
+function resumeString(providerKey: string, opts: ProviderOpts, key: string): string {
+  const value = opts.resume?.data?.[key];
+  if (typeof value !== 'string' || !value)
+    throw new ProviderError(
+      'SUBMISSION_UNKNOWN',
+      `${providerKey}: saved job ${opts.resume?.providerJobId ?? '(unknown)'} has no ${key}; refusing to resubmit`,
+      providerKey,
+    );
+  return value;
 }
 
 function aspectToFalSize(aspect: string): string {

@@ -37,7 +37,7 @@ export class AnthropicProvider extends BaseProvider {
     for (const part of req.parts) {
       if ('text' in part) content.push({ type: 'text', text: part.text });
       else {
-        const { bytes, mime } = await fetchBytes(this.key, part.imageUrl, opts.timeoutMs);
+        const { bytes, mime } = await fetchBytes(this.key, part.imageUrl, opts.timeoutMs, opts.signal);
         content.push({ type: 'image', source: { type: 'base64', media_type: mime, data: Buffer.from(bytes).toString('base64') } });
       }
     }

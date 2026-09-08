@@ -240,7 +240,7 @@ export class WhatsappService implements OnModuleInit {
           {
             rows: [
               { id: 'flow:photo', title: 'Product photo', description: 'A branded post from a photo · 10 cr' },
-              { id: 'flow:song', title: 'A song', description: 'Any genre, preview first · 10 cr' },
+              { id: 'flow:song', title: 'A song', description: 'Any genre · from 10 cr / 30 sec' },
               { id: 'flow:voice', title: 'A voiceover', description: 'Your script, read aloud · 8 cr' },
               { id: 'flow:copy', title: 'Caption & description', description: 'Words for your listing · 2 cr' },
               { id: 'credits', title: 'Credits', description: `${balance} left · buy more` },
@@ -487,7 +487,7 @@ export class WhatsappService implements OnModuleInit {
     await this.say(contact, [
       {
         kind: 'buttons',
-        text: `You have ${balance} credits. A branded post is 10, a song preview 10, a reel 120. Buy more:`,
+        text: `You have ${balance} credits. A branded post is 10, a song starts at 10 per 30 seconds, a reel is 120. Buy more:`,
         buttons: packs.map((p) => ({ id: `buy:${p.code}`, title: `${p.credits} cr · ${price(p)}`.slice(0, 20) })),
       },
     ]);
@@ -672,7 +672,7 @@ export class WhatsappService implements OnModuleInit {
       case 'MUSIC': {
         const preview = outputs.find((o) => o.role === 'preview');
         const text = outputs.find((o) => o.role === 'text')?.text as { title?: string | null } | undefined;
-        const price = await this.audio.unlockPrice().catch(() => ({ credits: 30 }));
+        const price = await this.audio.unlockPrice().catch(() => ({ credits: 10 }));
         if (preview && urls[preview.key]) messages.push({ kind: 'audio', url: urls[preview.key]! });
         messages.push({
           kind: 'buttons',

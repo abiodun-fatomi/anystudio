@@ -25,7 +25,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
+import { Prisma, PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { UnsafeUrlError, safeFetch } from '../../utils/safe-fetch';
@@ -33,11 +33,20 @@ import { createHash } from 'node:crypto';
 import sharp, { type Metadata } from 'sharp';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
+import { runFfprobe } from '../../../config/ffmpeg';
 import { sniffMime } from './sniff';
 
 /** Signed URLs live this long. Long enough to upload on 3G, short enough to be useless when leaked. */
 const UPLOAD_TTL_SEC = 15 * 60;
 const READ_TTL_SEC = 15 * 60;
+const COPY_TIMEOUT_MS = 60_000;
+const PROBE_READ_TTL_SEC = 2 * 60;
+const MAX_DATABASE_INT = 2_147_483_647;
+const MEDIA_STORAGE_ENV = ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'] as const;
+
+export function missingMediaStorageEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  return MEDIA_STORAGE_ENV.filter((key) => !env[key]?.trim());
+}
 
 const LIMITS = {
   image: { maxBytes: 25 * 1024 * 1024, mimes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif']) },
@@ -55,12 +64,35 @@ export interface PresignedUpload {
   expiresInSec: number;
 }
 
+type ReadableAsset = Pick<MediaAsset, 'kind' | 'key'> & { generation?: { outputs: Prisma.JsonValue } | null };
+
+/**
+ * A produced object is customer-owned only once the generation itself points
+ * at it as an unlocked output. This also closes historical crash leftovers
+ * made by the old unlock order (copy + READY asset before generation update).
+ */
+export function customerReadable(asset: ReadableAsset): boolean {
+  if (asset.kind === 'SOURCE') return true;
+  const outputs = asset.generation?.outputs;
+  if (!Array.isArray(outputs)) return false;
+  return outputs.some(
+    (output) => output !== null && typeof output === 'object' && !Array.isArray(output) && output.key === asset.key && output.locked !== true,
+  );
+}
+
 @Injectable()
 export class MediaService {
   private readonly s3: S3Client;
   private readonly bucket: string;
 
   constructor(private readonly db: PrismaClient) {
+    const missing = missingMediaStorageEnv();
+    if (process.env.NODE_ENV === 'production' && missing.length) {
+      // A worker without storage still writes a healthy heartbeat, then every
+      // paid generation fails at its first read/write. R2_BUCKET is included
+      // because its local default must never become a production destination.
+      throw new Error(`Media storage is not configured: missing ${missing.join(', ')}`);
+    }
     this.bucket = process.env.R2_BUCKET ?? 'anystudio-dev';
     this.s3 = new S3Client({
       region: 'auto',
@@ -68,8 +100,8 @@ export class MediaService {
       forcePathStyle: true,
       credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID ?? '', secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '' },
     });
-    if (!process.env.R2_ENDPOINT || !process.env.R2_ACCESS_KEY_ID) {
-      logger.warn('R2 is not configured: uploads and outputs will fail until R2_ENDPOINT and its keys are set');
+    if (missing.length) {
+      logger.warn({ missing }, 'R2 is not configured: uploads and outputs will fail until every media storage variable is set');
     }
   }
 
@@ -78,6 +110,15 @@ export class MediaService {
     const yyyy = at.getUTCFullYear();
     const mm = String(at.getUTCMonth() + 1).padStart(2, '0');
     return `${workspaceId}/${yyyy}/${mm}/${scope}/${name}`;
+  }
+
+  /**
+   * Pipeline scratch space for one generation. These keys are deliberately
+   * separate from customer outputs: a parent may need them across worker
+   * restarts, but they can be retired as soon as that parent is terminal.
+   */
+  static generationWorkPrefix(workspaceId: string, generationId: string, at: Date): string {
+    return MediaService.key(workspaceId, `gen/${generationId}/work`, '', at);
   }
 
   // ---- uploads ---------------------------------------------------------------
@@ -203,6 +244,7 @@ export class MediaService {
     let finalBytes = bytes;
     let finalMime = mime;
     let sha256: string;
+    let durationMs: number | undefined;
 
     if (family === 'image') {
       // Re-encode: applies EXIF orientation, strips every tag, guarantees a decodable file.
@@ -225,35 +267,82 @@ export class MediaService {
       finalBytes = normalised.length;
       sha256 = createHash('sha256').update(normalised).digest('hex');
     } else {
+      // Probe the object the customer actually uploaded, not its file name or
+      // the browser's claim. Besides making duration-based prices possible,
+      // this refuses corrupt audio/video before it can become a paid job.
+      try {
+        durationMs = await this.probeDuration(asset.key);
+      } catch {
+        return reject('That audio or video could not be read. Try exporting it again as MP4, MOV, MP3 or M4A.');
+      }
       sha256 = await this.hash(asset.key);
     }
 
     const ready = await this.db.mediaAsset.update({
       where: { id: assetId },
-      data: { status: 'READY', mime: finalMime, bytes: finalBytes, width, height, sha256 },
+      data: { status: 'READY', mime: finalMime, bytes: finalBytes, width, height, durationMs, sha256 },
     });
-    logger.info({ workspaceId, assetId, key: asset.key, mime: finalMime, bytes: finalBytes, width, height }, 'upload verified');
+    logger.info({ workspaceId, assetId, key: asset.key, mime: finalMime, bytes: finalBytes, width, height, durationMs }, 'upload verified');
     return ready;
+  }
+
+  /**
+   * Backfill verified duration for a READY asset uploaded before duration was
+   * recorded. Concurrent quotes may both probe, but the conditional update
+   * makes the stored value immutable once one wins.
+   */
+  async ensureDuration(asset: MediaAsset): Promise<MediaAsset> {
+    if (asset.durationMs && asset.durationMs > 0) return asset;
+    if (!asset.mime || !['audio', 'video'].includes(familyOf(asset.mime) ?? '')) {
+      throw new ValidationError({ sourceKey: 'Choose an audio or video file.' });
+    }
+    const durationMs = await this.probeDuration(asset.key).catch(() => {
+      throw new ValidationError({ sourceKey: 'That audio or video could not be read. Try exporting it again.' });
+    });
+    await this.db.mediaAsset.updateMany({
+      where: { id: asset.id, OR: [{ durationMs: null }, { durationMs: { lte: 0 } }] },
+      data: { durationMs },
+    });
+    return { ...asset, durationMs };
   }
 
   // ---- reads -----------------------------------------------------------------
 
-  /** A short-lived URL for a key the workspace owns. Membership is the caller's job; ownership is checked here. */
-  async readUrl(workspaceId: string, key: string): Promise<string> {
-    if (!key.startsWith(`${workspaceId}/`)) throw new ForbiddenError();
-    return this.signRead(key);
+  /** A short-lived URL for a READY, recorded key the workspace owns. */
+  async readUrl(workspaceId: string, key: string, ttlSec = READ_TTL_SEC): Promise<string> {
+    // `readUrls()` already excluded the vault, but this single-key route is
+    // also customer-facing. Without the same guard a caller who learned a
+    // predictable vault key could mint a URL for an output they had not
+    // unlocked yet.
+    if (!key.startsWith(`${workspaceId}/`) || MediaService.isVault(key)) throw new ForbiddenError();
+    // Prefix ownership alone is not enough. Unlock copies to a public-looking
+    // key before the database update; if that flow crashes, an unrecorded R2
+    // object must not become readable merely because its name can be guessed.
+    const asset = await this.db.mediaAsset.findUnique({
+      where: { key },
+      include: { generation: { select: { outputs: true } } },
+    });
+    if (!asset || asset.workspaceId !== workspaceId || asset.status !== 'READY' || asset.deletedAt || !customerReadable(asset)) {
+      throw new NotFoundError('media');
+    }
+    return this.signRead(key, ttlSec);
   }
 
   /** Many at once; a key the workspace does not own is left out, never an error for the whole batch. */
   async readUrls(workspaceId: string, keys: string[]): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
+    const requested = [...new Set(keys)].filter((key) => key.startsWith(`${workspaceId}/`) && !MediaService.isVault(key));
+    if (requested.length === 0) return out;
+    const assets = await this.db.mediaAsset.findMany({
+      where: { workspaceId, key: { in: requested }, status: 'READY', deletedAt: null, NOT: { key: { startsWith: `${workspaceId}/vault/` } } },
+      include: { generation: { select: { outputs: true } } },
+    });
     await Promise.all(
-      // The vault holds what has not been paid for. No customer-facing path signs it; unlocking copies out of it.
-      [...new Set(keys)]
-        .filter((k) => k.startsWith(`${workspaceId}/`) && !MediaService.isVault(k))
-        .map(async (k) => {
-          out[k] = await this.signRead(k);
-        }),
+      // The vault holds what has not been paid for. No customer-facing path
+      // signs it; unlocking copies and records a READY asset outside it.
+      assets.filter(customerReadable).map(async ({ key }) => {
+        out[key] = await this.signRead(key);
+      }),
     );
     return out;
   }
@@ -273,6 +362,7 @@ export class MediaService {
   async copy(fromKey: string, toKey: string): Promise<void> {
     await this.s3.send(
       new CopyObjectCommand({ Bucket: this.bucket, CopySource: `${this.bucket}/${encodeURIComponent(fromKey).replace(/%2F/g, '/')}`, Key: toKey }),
+      { abortSignal: AbortSignal.timeout(COPY_TIMEOUT_MS) },
     );
   }
 
@@ -311,19 +401,112 @@ export class MediaService {
     await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: bytes, ContentType: mime }));
   }
 
-  /** Record an object the pipeline produced. */
-  async recordOutput(input: {
+  /**
+   * Store a pipeline intermediate behind a durable MediaAsset row.
+   *
+   * The PENDING row is committed before the object upload. If the process
+   * disappears at any point, generation failure/workspace retention still
+   * has a concrete key to delete. A retry uses the same deterministic key and
+   * safely overwrites the object instead of creating another orphan.
+   */
+  async putGenerationWork(input: {
     workspaceId: string;
     generationId: string;
-    key: string;
-    kind: MediaKind;
+    createdAt: Date;
+    name: string;
+    bytes: Uint8Array | Buffer;
     mime: string;
-    bytes: number;
-    width?: number;
-    height?: number;
     durationMs?: number;
-  }): Promise<MediaAsset> {
-    return this.db.mediaAsset.upsert({
+  }): Promise<string> {
+    const key = `${MediaService.generationWorkPrefix(input.workspaceId, input.generationId, input.createdAt)}${input.name}`;
+    const asset = await this.db.mediaAsset.upsert({
+      where: { key },
+      create: {
+        workspaceId: input.workspaceId,
+        generationId: input.generationId,
+        kind: 'DERIVED',
+        status: 'PENDING',
+        key,
+        mime: input.mime,
+        bytes: input.bytes.byteLength,
+        durationMs: input.durationMs,
+      },
+      update: {
+        status: 'PENDING',
+        mime: input.mime,
+        bytes: input.bytes.byteLength,
+        durationMs: input.durationMs,
+        deletedAt: null,
+      },
+    });
+    try {
+      await this.put(key, input.bytes, input.mime);
+      await this.db.mediaAsset.update({ where: { id: asset.id }, data: { status: 'READY' } });
+      return key;
+    } catch (err) {
+      // Keep the row as a deletion target even when the PUT result is
+      // ambiguous. DeleteObject is idempotent, so retention can safely try it.
+      await this.db.mediaAsset
+        .updateMany({ where: { id: asset.id }, data: { status: 'REJECTED', deletedAt: new Date() } })
+        .catch((dbErr) => logger.error({ err: dbErr, key }, 'could not retire failed work upload'));
+      throw err;
+    }
+  }
+
+  /** Mark only scratch objects for deletion; thumbnails and final outputs stay. */
+  async retireGenerationWork(input: { workspaceId: string; generationId: string; createdAt: Date }, tx?: Prisma.TransactionClient): Promise<number> {
+    const db = tx ?? this.db;
+    const { count } = await db.mediaAsset.updateMany({
+      where: {
+        generationId: input.generationId,
+        key: { startsWith: MediaService.generationWorkPrefix(input.workspaceId, input.generationId, input.createdAt) },
+        status: { not: 'PURGED' },
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+    return count;
+  }
+
+  /**
+   * Best-effort immediate deletion after a generation becomes terminal.
+   * Failed storage calls leave their retired rows for the retention sweep.
+   */
+  async purgeGenerationWork(input: { workspaceId: string; generationId: string; createdAt: Date }): Promise<number> {
+    const prefix = MediaService.generationWorkPrefix(input.workspaceId, input.generationId, input.createdAt);
+    const assets = await this.db.mediaAsset.findMany({
+      where: { generationId: input.generationId, key: { startsWith: prefix }, status: { not: 'PURGED' }, deletedAt: { not: null } },
+      select: { id: true, key: true },
+    });
+    let purged = 0;
+    for (const asset of assets) {
+      if (!(await this.deleteObject(asset.key))) continue;
+      const { count } = await this.db.mediaAsset.updateMany({
+        where: { id: asset.id, status: { not: 'PURGED' } },
+        data: { status: 'PURGED', deletedAt: new Date() },
+      });
+      purged += count;
+    }
+    return purged;
+  }
+
+  /** Record an object the pipeline produced. */
+  async recordOutput(
+    input: {
+      workspaceId: string;
+      generationId: string;
+      key: string;
+      kind: MediaKind;
+      mime: string;
+      bytes: number;
+      width?: number;
+      height?: number;
+      durationMs?: number;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<MediaAsset> {
+    const db = tx ?? this.db;
+    return db.mediaAsset.upsert({
       where: { key: input.key },
       create: { ...input, status: 'READY' },
       update: { mime: input.mime, bytes: input.bytes, width: input.width, height: input.height, durationMs: input.durationMs, status: 'READY' },
@@ -332,19 +515,33 @@ export class MediaService {
 
   /** A READY source the workspace owns, or a clear refusal. */
   async requireReady(workspaceId: string, key: string): Promise<MediaAsset> {
-    const asset = await this.db.mediaAsset.findUnique({ where: { key } });
-    if (!asset || asset.workspaceId !== workspaceId || asset.deletedAt) throw new NotFoundError('source file');
+    // Customer-supplied keys pass through here before they become generation
+    // or publishing inputs. A vaulted output exists and is READY, but is not
+    // customer-owned until AudioService copies it out after the unlock debit.
+    if (MediaService.isVault(key)) throw new NotFoundError('source file');
+    const asset = await this.db.mediaAsset.findUnique({ where: { key }, include: { generation: { select: { outputs: true } } } });
+    if (!asset || asset.workspaceId !== workspaceId || asset.deletedAt || !customerReadable(asset)) throw new NotFoundError('source file');
     if (asset.status !== 'READY') throw new ValidationError({ sourceKey: 'That upload has not finished being checked.' });
     return asset;
   }
 
   async list(workspaceId: string, opts: { kind?: MediaKind; take?: number; cursor?: string } = {}): Promise<MediaAsset[]> {
-    return this.db.mediaAsset.findMany({
-      where: { workspaceId, deletedAt: null, status: 'READY', ...(opts.kind ? { kind: opts.kind } : {}) },
+    const rows = await this.db.mediaAsset.findMany({
+      // A locked asset's predictable storage key is itself sensitive: callers
+      // must not be able to feed it into another feature that signs raw keys.
+      where: {
+        workspaceId,
+        deletedAt: null,
+        status: 'READY',
+        NOT: { key: { startsWith: `${workspaceId}/vault/` } },
+        ...(opts.kind ? { kind: opts.kind } : {}),
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: opts.take ?? 50,
       ...(opts.cursor ? { skip: 1, cursor: { id: opts.cursor } } : {}),
+      include: { generation: { select: { outputs: true } } },
     });
+    return rows.filter(customerReadable).map(({ generation: _generation, ...asset }) => asset);
   }
 
   async softDelete(workspaceId: string, assetId: string): Promise<void> {
@@ -377,6 +574,31 @@ export class MediaService {
     for await (const chunk of res.Body as AsyncIterable<Uint8Array>) h.update(chunk);
     return h.digest('hex');
   }
+
+  /** ffprobe reads the container header over a short-lived internal URL. */
+  private async probeDuration(key: string): Promise<number> {
+    const url = await this.signRead(key, PROBE_READ_TTL_SEC);
+    const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=duration', '-of', 'json', url]);
+    const durationMs = durationMsFromFfprobe(stdout);
+    if (durationMs === null) throw new Error('ffprobe returned no finite positive duration');
+    return durationMs;
+  }
+}
+
+/** Parse the longest declared stream/container duration without trusting NaN or overflow. */
+export function durationMsFromFfprobe(stdout: string): number | null {
+  let parsed: { format?: { duration?: unknown }; streams?: Array<{ duration?: unknown }> };
+  try {
+    parsed = JSON.parse(stdout) as typeof parsed;
+  } catch {
+    return null;
+  }
+  const candidates = [parsed.format?.duration, ...(parsed.streams ?? []).map((stream) => stream.duration)]
+    .map((value) => (typeof value === 'number' || typeof value === 'string' ? Number(value) : Number.NaN))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (candidates.length === 0) return null;
+  const durationMs = Math.ceil(Math.max(...candidates) * 1000);
+  return Number.isSafeInteger(durationMs) && durationMs > 0 && durationMs <= MAX_DATABASE_INT ? durationMs : null;
 }
 
 /**

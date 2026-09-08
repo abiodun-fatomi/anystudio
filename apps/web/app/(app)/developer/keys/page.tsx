@@ -4,6 +4,7 @@
  * one-time reveal stays on screen until the person dismisses it, because a
  * key that vanished behind a toast is a key that gets minted again.
  */
+import { SectionLoading } from '@/components/ui/Display';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, type DevKey, type DevProject } from '@/lib/api';
@@ -22,7 +23,7 @@ const SCOPES: Array<{ id: string; label: string; help: string }> = [
 
 export default function KeysPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<SectionLoading />}>
       <Keys />
     </Suspense>
   );

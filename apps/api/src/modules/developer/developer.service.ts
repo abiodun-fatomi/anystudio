@@ -12,6 +12,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type ApiKey, type Project, type WebhookEndpoint } from '@prisma/client';
 import type { Request } from 'express';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
+import { isProductionDeployment } from '../../../config/environment';
 import { authLog } from '../auth/auth.log';
 import type { Actor } from '../auth/policy';
 import { LedgerService } from '../ledger/ledger.service';
@@ -83,7 +84,7 @@ export class DeveloperService {
     if (project.archivedAt) throw new ConflictError('That project is archived. Restore it before adding keys.');
     const active = await this.db.apiKey.count({ where: { workspaceId, revokedAt: null } });
     if (active >= 50) throw new ConflictError('Fifty active keys is the limit for a workspace. Revoke one first.');
-    const env = process.env.APP_ENV === 'production' ? 'live' : 'test';
+    const env = isProductionDeployment() ? 'live' : 'test';
     const minted = mintApiKey(env);
     const scopes = (dto.scopes?.length ? dto.scopes : DEFAULT_SCOPES) as ApiScope[];
     const row = await this.db.apiKey.create({
@@ -312,7 +313,7 @@ export class DeveloperService {
     } catch {
       throw new ValidationError({ url: 'That is not a valid URL.' });
     }
-    const isProd = process.env.APP_ENV === 'production';
+    const isProd = isProductionDeployment();
     const local =
       host === 'localhost' ||
       host.endsWith('.local') ||

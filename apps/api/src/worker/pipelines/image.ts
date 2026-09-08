@@ -28,6 +28,7 @@ import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity, shifted } from './fidelity';
 import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
+import { rethrowIfAborted } from './abort';
 
 const STRICTER =
   '\n\nIMPORTANT: the product must be reproduced EXACTLY as in the reference photo — identical shape, size, colours, label, text and position in frame. Do not restyle, recolour, rotate or reinterpret it. Only the background and surroundings may change.';
@@ -43,14 +44,15 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
   if (p.preserveProduct) {
     await ctx.stage('preparing', 8, 'cutting out your product');
     try {
-      source = (await fetchBytes('image-pipeline', sourceUrl, 60_000)).bytes;
+      source = (await fetchBytes('image-pipeline', sourceUrl, 60_000, ctx.signal)).bytes;
       const cut = await ctx.callCapability(
         'BACKGROUND_REMOVE',
         { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { sourceKey: p.sourceKey, background: 'transparent' }, files: ctx.files },
         { timeoutMs: 60_000, signal: ctx.signal },
       );
-      cutout = await artifactBytes(cut);
+      cutout = await artifactBytes(cut, ctx.signal);
     } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
       ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout unavailable; skipping the fidelity check for this image');
       cutout = null;
     }
@@ -76,7 +78,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
         ...(disappointed ? { route: { exclude: [disappointed] } } : {}),
       },
     );
-    const bytes = await artifactBytes(result);
+    const bytes = await artifactBytes(result, ctx.signal);
 
     if (!source || !cutout) {
       picked = { bytes, result, composited: false };
@@ -157,9 +159,10 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
         // `composited: false` on purpose: the vendor did the compositing in
         // its own frame, so the mask's position in OUR source frame is not
         // where the product is now. The crops find it by sharpness instead.
-        picked = { bytes: await artifactBytes(safe), result: safe, score: report.score, composited: false, placed: null };
+        picked = { bytes: await artifactBytes(safe, ctx.signal), result: safe, score: report.score, composited: false, placed: null };
         ctx.log.info({ providerKey: safe.providerKey }, 'background replaced instead; the product is the seller’s own pixels');
       } catch (err) {
+        rethrowIfAborted(ctx.signal, err);
         ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'the background replace failed too; refusing and refunding');
         throw new ProviderError(
           'LOW_QUALITY',
@@ -199,11 +202,11 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 };
 
 /** The first image artifact's bytes, fetched if the vendor left them at a URL. */
-export async function artifactBytes(result: ProviderResult): Promise<Uint8Array> {
+export async function artifactBytes(result: ProviderResult, signal?: AbortSignal): Promise<Uint8Array> {
   const a = result.artifacts.find((x) => x.role === 'image') ?? result.artifacts[0];
   if (!a) throw new ProviderError('RETRYABLE', `${result.providerKey}: returned no image`, result.providerKey);
   if (a.bytes) return a.bytes;
-  if (a.url) return (await fetchBytes(result.providerKey, a.url, 60_000)).bytes;
+  if (a.url) return (await fetchBytes(result.providerKey, a.url, 60_000, signal)).bytes;
   throw new ProviderError('RETRYABLE', `${result.providerKey}: image had no bytes`, result.providerKey);
 }
 
@@ -335,6 +338,7 @@ export async function applyBrand(
         .png()
         .toBuffer();
     } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
       ctx.log.warn({ err: err instanceof Error ? err.message : err, logoKey: kit.logoKey }, 'brand logo unreadable; falling back to the name');
     }
   }

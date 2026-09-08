@@ -25,6 +25,7 @@ import { EXPORT_SIZES, ProviderError, collageLayoutsFor, type CapabilityParams, 
 import type { Pipeline, PipelineContext } from './index';
 import { applyBrand } from './image';
 import { fetchBytes } from '../../modules/provider/adapters/http';
+import { rethrowIfAborted } from './abort';
 
 /** The frame a collage is built at, before the export sizes are cut from it. */
 const FRAME: Record<string, { w: number; h: number }> = {
@@ -171,13 +172,14 @@ export const collagePipeline: Pipeline = async (ctx) => {
       continue;
     }
     try {
-      const { bytes } = await fetchBytes('collage', file.url, 60_000);
+      const { bytes } = await fetchBytes('collage', file.url, 60_000, ctx.signal);
       // .rotate() first: a phone photo's real shape is in its EXIF orientation,
       // and measuring before honouring it gets every portrait backwards.
       const upright = await sharp(bytes).rotate().toBuffer();
       const meta = await sharp(upright).metadata();
       loaded.push({ index: i, bytes: new Uint8Array(upright), ratio: (meta.width ?? 1) / (meta.height ?? 1) });
     } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
       missing++;
       loaded.push(null);
       ctx.log.warn({ err: err instanceof Error ? err.message : err, index: i }, 'a collage photo could not be read; leaving its tile empty');

@@ -61,7 +61,7 @@ describe('pricing', () => {
 
 type Row = Record<string, unknown> & { id: string };
 
-function harness(opts: { balance?: number; usage?: Array<{ costCode: string; label: string; requests: number; credits: number }> } = {}) {
+function harness(opts: { balance?: number; usage?: Array<{ costCode: string; label: string; requests: number; credits: number }>; inFlight?: number } = {}) {
   const account: Row = {
     id: 'acc1',
     workspaceId: 'w1',
@@ -94,6 +94,7 @@ function harness(opts: { balance?: number; usage?: Array<{ costCode: string; lab
       if (v && typeof v === 'object' && 'gte' in (v as object))
         return (row[k] as Date) >= (v as { gte: Date }).gte && (row[k] as Date) < (v as { lt: Date }).lt;
       if (v && typeof v === 'object' && 'lt' in (v as object)) return (row[k] as Date) < (v as { lt: Date }).lt;
+      if (v && typeof v === 'object' && 'lte' in (v as object)) return (row[k] as Date) <= (v as { lte: Date }).lte;
       if (v && typeof v === 'object' && 'gt' in (v as object)) return (row[k] as number) > (v as { gt: number }).gt;
       return row[k] === v;
     });
@@ -111,6 +112,7 @@ function harness(opts: { balance?: number; usage?: Array<{ costCode: string; lab
         return { count: 1 };
       }),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(account, data)),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(account, data)),
     },
     wallet: {
       findUnique: vi.fn(async () => ({ ...wallet })),
@@ -119,10 +121,11 @@ function harness(opts: { balance?: number; usage?: Array<{ costCode: string; lab
     },
     workspace: {
       findUniqueOrThrow: vi.fn(async () => ({ name: 'Acme' })),
-      findFirst: vi.fn(async () => ({ id: 'w1', currency: 'NGN', type: 'ORGANIZATION' })),
+      findFirst: vi.fn(async () => ({ id: 'w1', currency: 'NGN', type: 'ORGANIZATION', wallet: { id: wallet.id } })),
     },
     workspaceMember: { findMany: vi.fn(async () => [{ role: 'OWNER', user: { email: 'owner@acme.example', name: 'Ada' } }]) },
     usageRate: { findUnique: vi.fn(async () => ({ currency: 'NGN', per100Minor: 160000 })) },
+    generation: { count: vi.fn(async () => opts.inFlight ?? 0) },
     invoice: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const hits = invoices.filter((i) => matches(i, where)).sort((a, b) => (b.periodEnd as Date).getTime() - (a.periodEnd as Date).getTime());
@@ -159,7 +162,32 @@ function harness(opts: { balance?: number; usage?: Array<{ costCode: string; lab
         return { count: hit.length };
       }),
     },
-    $queryRaw: vi.fn(async () => usage.map((u) => ({ ...u, requests: BigInt(u.requests), credits: BigInt(u.credits) }))),
+    $queryRaw: vi.fn(async (query: TemplateStringsArray) => {
+      const sql = Array.from(query).join('');
+      if (sql.includes('FROM "wallets"')) return [{ id: wallet.id }];
+      if (sql.includes('pg_advisory_xact_lock')) return [{ locked: null }];
+      if (sql.includes('clock_timestamp()')) return [{ now: new Date('2026-09-07T18:30:00.000Z') }];
+      return usage.map((u) => ({ ...u, requests: BigInt(u.requests), credits: BigInt(u.credits) }));
+    }),
+    $transaction: vi.fn(async (work: (client: unknown) => Promise<unknown>) => {
+      const accountBefore = { ...account };
+      const walletBefore = { ...wallet };
+      const invoicesBefore = invoices.map((invoice) => ({ ...invoice }));
+      const balanceBefore = balance;
+      const ledgerCallCount = ledgerCalls.length;
+      try {
+        return await work(db);
+      } catch (error) {
+        for (const key of Object.keys(account)) delete account[key];
+        for (const key of Object.keys(wallet)) delete wallet[key];
+        Object.assign(account, accountBefore);
+        Object.assign(wallet, walletBefore);
+        invoices.splice(0, invoices.length, ...invoicesBefore);
+        balance = balanceBefore;
+        ledgerCalls.splice(ledgerCallCount);
+        throw error;
+      }
+    }),
   };
   const ledger = {
     balance: vi.fn(async () => balance),
@@ -191,6 +219,16 @@ function harness(opts: { balance?: number; usage?: Array<{ costCode: string; lab
     },
   };
 }
+
+const staffActor = {
+  userId: 'staff-1',
+  surface: 'ADMIN',
+  staffRole: 'ADMIN',
+  workspaceRoles: new Map(),
+  mfaLevel: 1,
+  lastStepUpAt: new Date(),
+  impersonating: false,
+} as const;
 
 // Prisma's known-error class is what the service checks with instanceof; stand one in.
 import { Prisma } from '@prisma/client';
@@ -254,6 +292,44 @@ describe('dun', () => {
     expect(h.mails.some((m) => m.includes('is paused'))).toBe(true);
   });
 
+  it('rolls back suspension when closing the wallet credit line fails', async () => {
+    const h = harness();
+    await h.svc.closeDue(new Date('2026-09-05T10:00:00Z'));
+    h.invoices[0]!.status = 'PAID';
+    const inv = h.invoices[1]!;
+    inv.status = 'OVERDUE';
+    inv.dueAt = new Date('2026-09-10T00:00:00Z');
+    h.db.wallet.update.mockRejectedValueOnce(new Error('injected wallet write failure'));
+
+    await expect(h.svc.dun(new Date('2026-09-30T00:00:00Z'))).rejects.toThrow('injected wallet write failure');
+    expect(h.account.status).toBe('ACTIVE');
+    expect(h.wallet.overdraftLimit).toBe(5000);
+  });
+
+  it('rechecks the current grace period under the credit-line lock before suspending', async () => {
+    const h = harness();
+    h.invoices.push({
+      id: 'grace-race',
+      accountId: h.account.id,
+      workspaceId: 'w1',
+      number: 'INV-GRACE-RACE',
+      status: 'OVERDUE',
+      totalMinor: 1_000,
+      dueAt: new Date('2026-09-20T00:00:00Z'),
+      periodEnd: new Date('2026-09-01T00:00:00Z'),
+    });
+    const originalTransaction = h.db.$transaction.getMockImplementation()!;
+    h.db.$transaction.mockImplementationOnce(async (work: (client: unknown) => Promise<unknown>) => {
+      h.account.graceDays = 30;
+      return originalTransaction(work);
+    });
+
+    await expect(h.svc.dun(new Date('2026-09-30T00:00:00Z'))).resolves.toEqual({ overdue: 0, suspended: 0 });
+
+    expect(h.account.status).toBe('ACTIVE');
+    expect(h.wallet.overdraftLimit).toBe(5000);
+  });
+
   it('paying the overdue invoice returns the credits and reopens the line', async () => {
     const h = harness();
     await h.svc.closeDue(new Date('2026-09-05T10:00:00Z'));
@@ -272,9 +348,50 @@ describe('dun', () => {
     expect(h.wallet.overdraftLimit).toBe(5000);
     expect(h.mails.some((m) => m.includes('Paid: invoice'))).toBe(true);
 
-    // Settling twice is one grant.
-    await h.svc.settleInvoice(inv.id, 'FLUTTERWAVE', 'flw-1', 'pay1');
+    // Repeating the same manual record is idempotent, but a later online
+    // Payment or a contradictory bank reference must not be attached to an
+    // invoice that was already paid by this exact bank transfer.
+    await h.svc.settleInvoice(inv.id, 'MANUAL', 'GTB-4411', null);
     expect(h.ledgerCalls).toHaveLength(1);
+    await expect(h.svc.settleInvoice(inv.id, 'MANUAL', 'GTB-OTHER', null)).rejects.toMatchObject({ status: 409 });
+    await expect(h.svc.settleInvoice(inv.id, 'OTHER_BANK', 'GTB-4411', null)).rejects.toMatchObject({ status: 409 });
+    await expect(h.svc.settleInvoice(inv.id, 'FLUTTERWAVE', 'flw-1', 'pay1')).rejects.toMatchObject({ status: 409 });
+    expect(h.ledgerCalls).toHaveLength(1);
+  });
+
+  it.each(['DISPUTED', 'REFUNDED'])('does not reopen the line while another invoice is %s', async (blockingStatus) => {
+    const h = harness();
+    h.account.status = 'SUSPENDED';
+    h.wallet.overdraftLimit = 0;
+    h.invoices.push(
+      {
+        id: 'paid-invoice',
+        accountId: h.account.id,
+        workspaceId: 'w1',
+        number: 'INV-202609-0001',
+        status: 'PAID',
+        totalMinor: 100,
+        currency: 'NGN',
+        credits: 10,
+        periodStart: new Date('2026-09-01T00:00:00Z'),
+        dueAt: new Date('2026-09-15T00:00:00Z'),
+        paidVia: 'PADDLE',
+        paidReference: 'txn-paid',
+        ledgerEntryId: 'ledger-paid',
+      },
+      {
+        id: 'blocking-invoice',
+        accountId: h.account.id,
+        workspaceId: 'w1',
+        status: blockingStatus,
+        periodEnd: new Date('2026-09-01T00:00:00Z'),
+      },
+    );
+
+    await h.svc.completeInvoiceSettlement('paid-invoice');
+
+    expect(h.account.status).toBe('SUSPENDED');
+    expect(h.wallet.overdraftLimit).toBe(0);
   });
 });
 
@@ -289,5 +406,70 @@ describe('warnLimits', () => {
   it('stays quiet below the mark', async () => {
     const h = harness({ balance: -1000 });
     expect(await h.svc.warnLimits(new Date('2026-09-05T10:00:00Z'))).toBe(0);
+  });
+});
+
+describe('closeAccount', () => {
+  it('refuses to choose a final cutoff while postpaid work is still in flight', async () => {
+    const h = harness({ inFlight: 1 });
+
+    await expect(h.svc.closeAccount(staffActor, 'w1', 'moving to prepaid', {} as never)).rejects.toMatchObject({ status: 409 });
+
+    expect(h.account.status).toBe('ACTIVE');
+    expect(h.wallet.overdraftLimit).toBe(5000);
+    expect(h.invoices).toHaveLength(0);
+  });
+
+  it('atomically closes the credit line and invoices through the database cutoff', async () => {
+    const h = harness();
+
+    const result = await h.svc.closeAccount(staffActor, 'w1', 'moving to prepaid', {} as never);
+
+    expect(h.account.status).toBe('CLOSED');
+    expect(h.account.closedAt).toEqual(new Date('2026-09-07T18:30:00.000Z'));
+    expect(h.wallet.overdraftLimit).toBe(0);
+    expect(h.invoices).toHaveLength(1);
+    expect(h.invoices[0]?.periodEnd).toEqual(new Date('2026-09-07T18:30:00.000Z'));
+    expect(result.finalInvoice?.number).toBe('INV-202607-0001');
+  });
+});
+
+describe('setTerms', () => {
+  it.each(['OVERDUE', 'DISPUTED', 'REFUNDED'])('refuses to reopen a closed line with a %s invoice', async (status) => {
+    const h = harness();
+    h.account.status = 'CLOSED';
+    h.wallet.overdraftLimit = 0;
+    h.invoices.push({
+      id: 'blocking-invoice',
+      accountId: h.account.id,
+      workspaceId: 'w1',
+      status,
+      periodEnd: new Date('2026-09-01T00:00:00Z'),
+    });
+
+    await expect(h.svc.setTerms(staffActor, 'w1', { creditLimit: 8_000, reason: 'new terms' }, {} as never)).rejects.toMatchObject({ status: 409 });
+
+    expect(h.account.status).toBe('CLOSED');
+    expect(h.wallet.overdraftLimit).toBe(0);
+  });
+});
+
+describe('reactivate', () => {
+  it.each(['OVERDUE', 'DISPUTED', 'REFUNDED'])('refuses to reopen a line with a %s invoice', async (status) => {
+    const h = harness();
+    h.account.status = 'SUSPENDED';
+    h.wallet.overdraftLimit = 0;
+    h.invoices.push({
+      id: 'blocking-invoice',
+      accountId: h.account.id,
+      workspaceId: 'w1',
+      status,
+      periodEnd: new Date('2026-09-01T00:00:00Z'),
+    });
+
+    await expect(h.svc.reactivate(staffActor, 'w1', 'manual review', {} as never)).rejects.toMatchObject({ status: 409 });
+
+    expect(h.account.status).toBe('SUSPENDED');
+    expect(h.wallet.overdraftLimit).toBe(0);
   });
 });

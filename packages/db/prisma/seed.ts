@@ -53,9 +53,8 @@ const CREDIT_COSTS = [
   { code: 'text.description', credits: 2, label: 'Product description' },
   { code: 'text.caption', credits: 1, label: 'Social caption' },
   // A reel is 5–8 seconds of provider video. At launch pricing a credit is
-  // about $0.015, so 120 credits is ~$1.80 — which is UNDER the cost of a
-  // premium model (Veo ~$2–3 per 8 s) and about even with Sora 2 / Wan 2.5.
-  // Video routing therefore defaults to the budget tier; see PROVIDERS.
+  // about $0.015, so 120 credits is ~$1.80. Veo 3.1 Fast and Wan 2.5 are both
+  // $0.10/s at 720p; the quality-first route still leaves operating margin.
   { code: 'video.reel', credits: 120, label: 'Reel ad' },
   { code: 'video.stitch', credits: 20, label: 'Assemble a multi-shot ad' },
   { code: 'video.ad_15s', credits: 260, label: '15-second ad (two shots)' },
@@ -70,18 +69,19 @@ const CREDIT_COSTS = [
   // A shot of a multi-shot ad. The PARENT row holds the price; its children
   // are work units, not money units, and carry zero credits by design.
   { code: 'video.shot', credits: 0, label: 'One shot of an ad' },
-  // Dubbing is priced by the minute at the vendor (ElevenLabs ~$0.50–1/min,
-  // HeyGen more); a Status-length clip at these credits covers a typical
-  // minute with margin. Longer videos are capped by the pipeline, not priced up.
-  { code: 'video.translate', credits: 90, label: 'Translate a video (voice only)' },
-  { code: 'video.translate_lipsync', credits: 240, label: 'Translate a video with matching lips' },
-  { code: 'video.lipsync', credits: 150, label: 'Lip-sync new words onto a video' },
+  // Dubbing and lip animation are metered by verified source duration because
+  // their vendors meter the same way. Quantity is computed before the debit.
+  { code: 'video.translate', credits: 90, label: 'Translate video audio (per started minute)' },
+  { code: 'video.translate_lipsync', credits: 240, label: 'Translate with lip-sync (per started 30 seconds)' },
+  { code: 'video.lipsync', credits: 150, label: 'Lip-sync video (per started 30 seconds)' },
   { code: 'audio.voiceover', credits: 8, label: 'Voiceover' },
-  { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
-  { code: 'audio.music.unlock', credits: 30, label: 'Unlock the full song' },
+  // The whole song is generated before its preview is cut, so generation is
+  // charged up front per started 30 seconds. Unlocking is only the vault copy.
+  { code: 'audio.music.preview', credits: 10, label: 'Song generation (per 30 seconds)' },
+  { code: 'audio.music.unlock', credits: 10, label: 'Unlock the full song' },
   { code: 'audio.music', credits: 40, label: 'Full song' },
   // Sung in the seller's own voice: the song, then stems and a voice conversion on top — vendor cost roughly double.
-  { code: 'audio.music.preview.my_voice', credits: 25, label: 'Song preview, sung in your voice' },
+  { code: 'audio.music.preview.my_voice', credits: 20, label: 'Song in your voice (per 30 seconds)' },
 ];
 
 /**
@@ -158,7 +158,7 @@ const PROVIDERS: Array<{
     priority: 10,
     costPerCall: 13,
     enabled: true,
-    config: { model: 'gemini-3-pro-image-preview' },
+    config: { model: 'gemini-3-pro-image' },
     licenceNote: 'Google Cloud generative AI indemnification covers GA Vertex models; paid-tier inputs are not used for training. Checked 2026-09-04.',
   },
   {
@@ -187,7 +187,7 @@ const PROVIDERS: Array<{
     priority: 10,
     costPerCall: 13,
     enabled: true,
-    config: { model: 'gemini-3-pro-image-preview' },
+    config: { model: 'gemini-3-pro-image' },
     licenceNote: 'As above. Checked 2026-09-04.',
   },
   {
@@ -249,7 +249,7 @@ const PROVIDERS: Array<{
     priority: 20,
     costPerCall: 13,
     enabled: true,
-    config: { model: 'gemini-3-pro-image-preview' },
+    config: { model: 'gemini-3-pro-image' },
     licenceNote: 'As above.',
   },
   { key: 'photoroom:edit', capability: 'RELIGHT', priority: 10, costPerCall: 10, enabled: true, config: { relight: true }, licenceNote: 'As above.' },
@@ -261,7 +261,7 @@ const PROVIDERS: Array<{
     priority: 20,
     costPerCall: 13,
     enabled: true,
-    config: { model: 'gemini-3-pro-image-preview' },
+    config: { model: 'gemini-3-pro-image' },
     licenceNote: 'As above.',
   },
 
@@ -277,34 +277,37 @@ const PROVIDERS: Array<{
   },
 
   // ---- image to video --------------------------------------------------------
-  // Budget tier first: at 120 credits a reel sells for ~$1.80, and the premium
-  // models cost more than that per clip. Promote Veo when the price is raised.
+  // Quality-first at equal 720p unit cost: Veo Fast is the primary and Wan is
+  // the independent fallback. Sora is disabled ahead of its permanent API
+  // shutdown on 2026-09-24; keeping the row preserves historical attribution.
   {
     key: 'fal:wan-2.5-i2v',
     capability: 'IMAGE_TO_VIDEO',
-    priority: 10,
+    priority: 20,
     costPerCall: 80,
     enabled: true,
-    config: { endpoint: 'fal-ai/wan-25-preview/image-to-video', resolution: '720p' },
+    config: { endpoint: 'fal-ai/wan-25-preview/image-to-video', resolution: '720p', costPerSecondMinor: 10 },
     licenceNote: 'Open-weight lineage served under fal.ai commercial terms. Checked 2026-09-04.',
   },
   {
     key: 'openai:sora-2',
     capability: 'IMAGE_TO_VIDEO',
-    priority: 20,
+    priority: 90,
     costPerCall: 80,
-    enabled: true,
-    config: { model: 'sora-2', size: '720x1280' },
-    licenceNote: 'OpenAI API commercial terms permit resale of outputs. Checked 2026-09-04.',
+    enabled: false,
+    config: { model: 'sora-2' },
+    licenceNote: 'Disabled ahead of the Sora API permanent shutdown on 2026-09-24; retained only for historical attribution. Checked 2026-09-08.',
   },
   {
     key: 'vertex:veo-3.1-fast',
     capability: 'IMAGE_TO_VIDEO',
-    priority: 30,
-    costPerCall: 260,
+    priority: 10,
+    costPerCall: 80,
     enabled: true,
-    config: { model: 'veo-3.1-fast-generate-preview' },
-    licenceNote: 'Google Cloud generative AI indemnification (GA models). Native audio. Checked 2026-09-04.',
+    // Vertex and the Gemini Developer API currently use different Veo ids;
+    // the adapter selects the right one from the configured credential door.
+    config: { resolution: '720p', costPerSecondMinor: 10 },
+    licenceNote: 'Google Cloud generative AI terms; Veo 3.1 Fast at 720p is $0.10/s with native audio. Checked 2026-09-08.',
   },
   // Higgsfield's own DoP models (not Kling — a different row). Off until
   // their resale terms are on file; the adapter is ready.
@@ -367,17 +370,19 @@ const PROVIDERS: Array<{
     key: 'elevenlabs:music',
     capability: 'MUSIC',
     priority: 10,
-    costPerCall: 60,
+    // Default MUSIC duration is 120 seconds. The adapter replaces this
+    // estimate with the exact duration cost on success.
+    costPerCall: 30,
     enabled: true,
-    config: { model: 'music_v2', outputFormat: 'mp3_44100_128' },
+    config: { model: 'music_v2', outputFormat: 'mp3_44100_128', costPerMinuteMinor: 15 },
     licenceNote:
-      'Eleven Music: cleared for commercial use incl. ads and social video on paid plans (elevenlabs.io/music-terms). ~$0.11–1.09/track by length. Refuses artist names. Checked 2026-09-05.',
+      'Eleven Music: cleared for commercial use incl. ads and social video on paid plans (elevenlabs.io/music-terms). $0.15/generated minute on the API pricing page. Refuses artist names. Checked 2026-09-08.',
   },
   {
     key: 'fal:minimax-music-v2',
     capability: 'MUSIC',
     priority: 20,
-    costPerCall: 30,
+    costPerCall: 3,
     enabled: true,
     config: { endpoint: 'fal-ai/minimax-music/v2' },
     licenceNote: 'MiniMax Music v2 via fal: fal lists "Commercial use" on the model page. Lyrics with [Verse]/[Chorus] tags. Checked 2026-09-05.',
@@ -398,7 +403,7 @@ const PROVIDERS: Array<{
     costPerCall: 2,
     enabled: true,
     licenceNote:
-      'Google Cloud Text-to-Speech; needs the Vertex service account with the TTS API enabled. en-NG, en-KE, en-ZA voices. Standard commercial terms. Checked 2026-09-05.',
+      "Google Cloud Text-to-Speech; needs a service account with the TTS API enabled. Only voice ids in Google's published catalogue are active; the previously seeded en-NG/en-KE/en-ZA ids are retained disabled. Standard commercial terms. Checked 2026-09-07.",
   },
   {
     key: 'openai:tts',
@@ -445,7 +450,7 @@ const PROVIDERS: Array<{
     priority: 20,
     costPerCall: 190,
     enabled: true,
-    config: { mode: 'speed' },
+    config: {},
     licenceNote:
       'HeyGen Video Translate v3: 175+ languages incl. English (Nigeria/Kenya/SA), Swahili, Zulu, Amharic; lip resync built in. Credits per minute on the API plan; commercial use on paid plans. Consent terms apply to real faces. Checked 2026-09-05.',
   },
@@ -455,7 +460,7 @@ const PROVIDERS: Array<{
     priority: 10,
     costPerCall: 120,
     enabled: true,
-    config: { endpoint: 'fal-ai/sync-lipsync/v2', model: 'lipsync-2', syncMode: 'cut_off' },
+    config: { endpoint: 'fal-ai/sync-lipsync/v2', syncMode: 'cut_off' },
     licenceNote: 'sync.so lipsync-2 via fal; billed per second of output. Commercial use per fal terms. Checked 2026-09-05.',
   },
   {
@@ -464,7 +469,7 @@ const PROVIDERS: Array<{
     priority: 20,
     costPerCall: 190,
     enabled: true,
-    config: { mode: 'speed' },
+    config: {},
     licenceNote: 'HeyGen Lipsync v3. Same plan and consent terms as translate. Checked 2026-09-05.',
   },
   {
@@ -512,7 +517,14 @@ async function reference() {
     await db.usageRate.upsert({ where: { currency: r.currency }, create: r, update: { per100Minor: r.per100Minor } });
   }
   for (const pr of PROVIDERS) {
-    await db.providerModel.upsert({ where: { key_capability: { key: pr.key, capability: pr.capability } }, create: pr, update: pr });
+    await db.providerModel.upsert({
+      where: { key_capability: { key: pr.key, capability: pr.capability } },
+      create: pr,
+      // `enabled` and `priority` are operator-owned after first creation. A
+      // release may refresh model config/cost/licensing metadata, but must not
+      // undo an outage kill switch or a deliberate routing change.
+      update: { costPerCall: pr.costPerCall, workspaceType: pr.workspaceType, config: pr.config, licenceNote: pr.licenceNote },
+    });
   }
   for (const gsd of GENRES) {
     const data = {
@@ -538,6 +550,7 @@ async function reference() {
       gender: vs.gender,
       tags: vs.tags,
       sort: vs.sort,
+      ...(vs.active === undefined ? {} : { active: vs.active }),
     };
     await db.voiceProfile.upsert({ where: { key: vs.key }, create: { key: vs.key, ...data }, update: data });
   }

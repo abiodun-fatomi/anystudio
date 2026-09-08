@@ -126,48 +126,105 @@ required reviewer on the `production` environment, exactly like the web.
 
 ```
 push → Check ──ok──▶ Deploy: API (migrations, then the seed, run in Render's pre-deploy step)
-                            ▶ worker (only where RENDER_WORKER_SERVICE_ID is set)
-                            ▶ smoke: /health.release == sha, /ready == ready
+                            ▶ fast/heavy worker (required)
+                            ▶ local-media worker (required)
+                            ▶ smoke: API + both worker heartbeats == sha, /ready == ready
 ```
 
 ### 3.1 One-time setup on Render
 
-1. Render → **New** → **Blueprint** → this repo → it reads `render.yaml` and
-   creates two resources: `anystudio-api-dev` and its Postgres,
-   `anystudio-db-dev`. The service tracks `development` and has auto-deploy
-   **off**. Staging and production are added to `render.yaml` when they are
-   needed — an idle paid instance per environment costs money from the day it
-   is created, not from the day it is used.
-2. It asks for every `sync: false` value in the `anystudio-dev` env group.
-   Fill in
-   what you have (section 5); anything you do not have yet can stay empty and
-   be added later under **Env Groups**. The API refuses to start without
-   `APP_KEY`, `DATABASE_URL` and the three `ORIGIN_*`.
-3. Render → Account Settings → **API Keys** → create one. In GitHub → repo →
+Each environment has one file, one manually managed secret group, and one
+Blueprint. The resource names do not overlap:
+
+| Environment | Blueprint file           | Secret group           |
+| ----------- | ------------------------ | ---------------------- |
+| development | `render.yaml`            | `anystudio-dev`        |
+| staging     | `render.staging.yaml`    | `anystudio-staging`    |
+| production  | `render.production.yaml` | `anystudio-production` |
+
+1. In Render, open **Environment Groups** and manually create the group from
+   the table. Populate it from section 5 before creating the Blueprint. At
+   minimum, preflight a valid `APP_KEY`, all three `ORIGIN_*` values, all four
+   `R2_*` values, and the credentials for every enabled provider. Set
+   `PADDLE_ENV=sandbox` outside production. Use `live` and set
+   `PADDLE_PRODUCT_APPROVED=true` only after Paddle has approved in writing the
+   exact AnyStudio face, voice, video, ad-generation and publishing feature
+   set—not merely the seller account. The API fails closed otherwise. Render
+   does **not** support `sync: false` inside
+   a Blueprint-managed environment group; those entries are ignored, which is
+   why these groups are deliberately managed in the Dashboard.
+2. Render → **New** → **Blueprint** → this repo → choose the exact custom file
+   path from the table. It creates only that environment's API, fast/heavy
+   worker, local-media worker, Postgres, and Key Value, then links the existing
+   group to all three services. Import each path **once**. If a Blueprint for
+   the environment already exists, update that Blueprint's path; never create
+   a second Blueprint over its resources. On **Settings**, set
+   **Auto Sync: No**: Blueprint auto-sync is separate from service auto-deploy
+   and otherwise a Blueprint change can redeploy infrastructure before CI
+   passes. Every service also declares `autoDeployTrigger: off`.
+3. Before continuing, open **Environment** on the API and both workers. Under
+   **Linked Environment Groups**, confirm the environment's group is present
+   on all three. Check the effective variables on each service for `APP_KEY`,
+   `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and
+   `R2_SECRET_ACCESS_KEY`; on the API also confirm the three `ORIGIN_*`
+   values. Do not deploy while any is absent. Both worker processes refuse an
+   invalid `APP_KEY`, and the release smoke check refuses missing workers.
+4. Render → Account Settings → **API Keys** → create one. In GitHub → repo →
    Settings → Secrets and variables → Actions → **Secrets**: `RENDER_API_KEY`.
-4. For each service, copy its id (`srv-…`, in the URL of its dashboard page).
+5. For each service, copy its id (`srv-…`, in the URL of its dashboard page).
    In GitHub → Settings → **Environments** → `development` → **Environment
    variables** (not secrets — they are not sensitive):
 
-   | Variable                   | Value                                                                                                                   |
-   | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-   | `RENDER_API_SERVICE_ID`    | `srv-…` of `anystudio-api-dev`                                                                                          |
-   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — the blueprint creates it; set this so the workflow deploys the worker after the API |
-   | `API_URL`                  | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.2); then delete it           |
+   | Variable                   | Value                                                                                                         |
+   | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+   | `RENDER_API_SERVICE_ID`    | `srv-…` of `anystudio-api-dev`                                                                                |
+   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — required; consumes only `media.fast,media.heavy`                          |
+   | `RENDER_MEDIA_SERVICE_ID`  | `srv-…` of `anystudio-media-dev` — required; 2 GB worker that consumes only `media.local`                     |
+   | `API_URL`                  | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.3); then delete it |
 
    The worker is the API image started with `node dist/src/worker/main.js`
-   (one Dockerfile, two commands — see `apps/api/Dockerfile`). `render.yaml`
-   declares it alongside a Key Value instance for the queue. Redis is an
-   accelerator, not a dependency: with it unreachable the API still accepts
-   generations and the worker runs QUEUED rows straight from Postgres.
+   (one Dockerfile, two commands — see `apps/api/Dockerfile`). The environment
+   Blueprint declares both workers alongside a Key Value instance for the queue. Verify
+   the boot logs before traffic: `worker` must report two queues (fast/heavy),
+   and `media` must report one (`media.local`). FFmpeg stitching belongs in
+   logs tagged `service: "media"`; seeing a stitch under `service: "worker"`
+   means the isolation is not active. The deploy workflow refuses to release
+   when either worker service id is missing; generation is not an API-only
+   deployment mode. Its final `/ready` smoke check also waits for fresh
+   `worker` and `media` heartbeats from the exact commit being deployed.
 
-   Same for `staging` and `production` with their services.
+   Repeat with the matching names for `staging` and `production`. Before any
+   deploy, CI sends that environment's Blueprint to Render's read-only
+   validator and checks that the three IDs are distinct services from this
+   repo, branch, and queue role.
 
-5. Merge something into `development` that touches `apps/api/**`, or run the
+6. Merge something into `development` that touches `apps/api/**`, or run the
    **API** workflow by hand (Actions → API → Run workflow). The first deploy
    builds the image cold (~8 minutes); later ones reuse the layer cache.
 
-### 3.2 DNS: `api.dev.anystudio.ai`
+### 3.2 Production migration and drain contract
+
+The API, worker, and media worker are three Render deployments, not one atomic
+platform transaction. The workflow stops on the first failure and the final
+SHA/heartbeat smoke gate stays red; it deliberately does not automate a
+rollback across a database migration that may be irreversible.
+
+Every schema change must therefore use expand/contract ordering: add nullable
+or backward-compatible structures first, deploy all consumers, backfill, and
+only remove old structures in a later release. For a migration that builds
+indexes or backfills a live write-heavy table, measure it on a production-sized
+copy and schedule a maintenance window rather than assuming pre-deploy makes
+DDL non-blocking. For the first release containing the serialized song-unlock
+flow, enable Render maintenance mode, stop new unlock/generation requests, let
+in-flight work drain, deploy all three services, pass the smoke gate, then
+disable maintenance mode. That one-time drain prevents an old API replica,
+which predates the database lock, from overlapping a new replica.
+
+Render's 300-second shutdown grace is the platform maximum. A longer vendor
+job can still be interrupted during deploy; the generation sweeper retries or
+refunds it, so deploy outside peak generation traffic.
+
+### 3.3 DNS: `api.dev.anystudio.ai`
 
 The API is the one hostname added to DNS by hand, and the one that is
 proxied (orange cloud): DDoS absorption and the WAF sit in front of the
@@ -217,15 +274,15 @@ resets.
 
 Only the account owner can do these; none can be automated from here.
 
-| Service                  | For                                       | Notes                                                                              |
-| ------------------------ | ----------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Cloudflare**           | DNS, Workers (web), R2 (media), WAF       | One account; the zone is already here                                              |
-| **Render**               | API, Postgres, later the worker and Redis | Import `render.yaml` as a Blueprint; today it creates the dev API and its database |
-| **Google Cloud**         | Sign in with Google                       | One OAuth client, all redirect URIs on it (section 9.1)                            |
-| **Resend**               | transactional mail                        | Verify `anystudio.ai`, one API key (section 9.2)                                   |
-| **Cloudflare R2**        | media                                     | One bucket per environment, with a `dev/` prefix on the staging one                |
-| **Flutterwave / Paddle** | payments                                  | Section 5                                                                          |
-| **Meta for Developers**  | the WhatsApp bot                          | Business verification, a WhatsApp Business app, a System User token (section 10)   |
+| Service                  | For                                  | Notes                                                                             |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
+| **Cloudflare**           | DNS, Workers (web), R2 (media), WAF  | One account; the zone is already here                                             |
+| **Render**               | API, two workers, Postgres and Redis | Import the one environment-specific Blueprint path; local encoding stays isolated |
+| **Google Cloud**         | Sign in with Google                  | One OAuth client, all redirect URIs on it (section 9.1)                           |
+| **Resend**               | transactional mail                   | Verify `anystudio.ai`, one API key (section 9.2)                                  |
+| **Cloudflare R2**        | media                                | One bucket per environment, with a `dev/` prefix on the staging one               |
+| **Flutterwave / Paddle** | payments                             | Section 5                                                                         |
+| **Meta for Developers**  | the WhatsApp bot                     | Business verification, a WhatsApp Business app, a System User token (section 10)  |
 
 ---
 
@@ -236,21 +293,21 @@ which every service in that environment reads. Never in the repo, never in a
 GitHub secret, never in a chat.
 
 `DATABASE_URL` and `DIRECT_URL` are **not** in this list: Render injects them
-from the database itself (`fromDatabase` in `render.yaml`), so nobody ever
+from the database itself (`fromDatabase` in the environment Blueprint), so nobody ever
 copies a connection string by hand.
 
-| Secret                                                                                                      | Notes                                                                                                                                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_KEY`                                                                                                   | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment                                                                        |
-| `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN`                                                                | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set                                                                                                                                                                                |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                                                                 | Section 9.1. With either missing the button degrades to a message, never to a half-working flow                                                                                                                                                                           |
-| `RESEND_API_KEY` / `MAIL_FROM`                                                                              | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain                                                                                                                                                                                    |
-| `R2_*`                                                                                                      | Separate keys per environment. The bucket needs a CORS policy (below) or browser uploads fail as "interrupted"                                                                                                                                                            |
-| `MAIL_ASSET_BASE`                                                                                           | Optional. `https://<marketing host>/email` — where the email images live (apps/web/public/email). Unset, emails send without pictures                                                                                                                                     |
-| `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY`                                                                      | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle                                                                                                                                                      |
-| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                                                      | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments                                                |
-| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV`                              | Paddle Billing API key, notification-endpoint secret, the public client-side token (served to the web app by `/billing/config`), and `sandbox`/`live`. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production logs an error if `PADDLE_ENV` is not `live` |
-| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set                                                                                                                                          |
+| Secret                                                                                                      | Notes                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `APP_KEY`                                                                                                   | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment                                                                                               |
+| `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN`                                                                | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set                                                                                                                                                                                                       |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                                                                 | Section 9.1. With either missing the button degrades to a message, never to a half-working flow                                                                                                                                                                                                  |
+| `RESEND_API_KEY` / `MAIL_FROM`                                                                              | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain                                                                                                                                                                                                           |
+| `R2_*`                                                                                                      | Separate keys per environment. The bucket needs a CORS policy (below) or browser uploads fail as "interrupted"                                                                                                                                                                                   |
+| `MAIL_ASSET_BASE`                                                                                           | Optional. `https://<marketing host>/email` — where the email images live (apps/web/public/email). Unset, emails send without pictures                                                                                                                                                            |
+| `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY`                                                                      | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle                                                                                                                                                                             |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                                                      | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments                                                                       |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV`, `PADDLE_PRODUCT_APPROVED`   | Paddle Billing API key, notification-endpoint secret, public client-side token, `sandbox`/`live`, and the production-only written-product-approval acknowledgement. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production refuses sandbox credentials or an unapproved product. |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set                                                                                                                                                                 |
 
 GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,
 plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for the web; and the
@@ -297,9 +354,9 @@ automatic and the branch protection is decorative.
 ## 7. Order of operations
 
 1. Section 2.1–2.3: the development web Worker, on `app.dev.anystudio.ai`
-2. Section 3: import the blueprint — it creates the dev API and its Postgres
-   together — then set the env group, the GitHub variables, deploy, and add
-   `api.dev.anystudio.ai`
+2. Section 3: create and preflight the manual env group, then import the
+   blueprint — it creates the dev API, both workers, Postgres, and Key Value —
+   set the GitHub variables, deploy, and add `api.dev.anystudio.ai`
 3. Sign up on `dev.anystudio.ai/signup` — landing on `app.dev.anystudio.ai/welcome` proves the whole chain, hand-off included
 4. Repeat for staging
 5. Only then production
@@ -311,9 +368,10 @@ certificate is three problems at once; behind a plain hostname it is one.
 
 ## 8. What is not ready
 
-- **Staging and production** are not yet in `render.yaml` or provisioned:
-  today only the dev environment exists end to end. Add them by copying the
-  dev services (a paid instance costs from the day it is created).
+- **Staging and production** have reviewed Blueprint files but are not
+  provisioned automatically. Creating their one Blueprint and secret group is
+  an account-owner action and starts billing immediately; never copy dev blocks
+  in the Dashboard or let two Blueprints manage the same resource.
 - **Approvals that only the account owner can start**, each taking days to
   weeks: Flutterwave business verification, Paddle live-account website
   review, Meta business verification, Meta and TikTok app review. Until
@@ -365,7 +423,7 @@ sent. So a fresh checkout boots and signs people up without any mail config.
 
 ### 9.3 The database
 
-Render creates it from `render.yaml` and injects `DATABASE_URL` and
+Render creates it from the environment's Blueprint and injects `DATABASE_URL` and
 `DIRECT_URL` into the API. There is nothing to copy and no connection string
 to keep anywhere.
 
@@ -694,5 +752,6 @@ production keys go in. Ten minutes.
    to issue an invoice now. Pay it by card from the invoice page; expect
    `paidVia: PADDLE`, the ledger row, and the paid email.
 
-Only after all six: production keys, `PADDLE_ENV=production`, and the
-production webhook destinations.
+Only after all six: production keys, production webhook destinations, written
+Paddle approval for the exact product, `PADDLE_ENV=live`, and
+`PADDLE_PRODUCT_APPROVED=true`.

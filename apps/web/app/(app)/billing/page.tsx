@@ -24,6 +24,7 @@ const KIND: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' | 'a
 const PAY_STATUS: Record<string, { label: string; tone?: 'ok' | 'warn' | 'danger' }> = {
   SUCCEEDED: { label: 'Paid', tone: 'ok' },
   FAILED: { label: 'Failed', tone: 'danger' },
+  NEEDS_REVIEW: { label: 'Needs review', tone: 'warn' },
   REFUNDED: { label: 'Refunded', tone: 'warn' },
   PENDING: { label: 'Pending' },
 };
@@ -216,7 +217,7 @@ export default function BillingPage() {
                 value={PLAN_WORDS[sub.planCode]?.name ?? sub.planCode}
                 sub={
                   sub.cancelAtPeriodEnd
-                    ? `ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
+                    ? `${sub.cancellationPending ? 'cancellation saved · ' : ''}ends ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'at period end'}`
                     : sub.status === 'PAST_DUE'
                       ? 'payment overdue — update your card'
                       : `renews ${sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'monthly'} · ${sub.interval === 'year' ? 'yearly' : 'monthly'}`
@@ -232,10 +233,10 @@ export default function BillingPage() {
                 </Button>
               </div>
             )}
-            {(!sub || sub.cancelAtPeriodEnd) && canBuy && (
+            {!sub && canBuy && (
               <div style={{ marginTop: 'var(--s-2)' }}>
                 <Button variant="link" size="sm" href="/billing/plans">
-                  {sub ? 'Choose another plan' : 'See plans'}
+                  See plans
                 </Button>
               </div>
             )}
