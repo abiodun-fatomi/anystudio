@@ -149,7 +149,11 @@ check_service() {
   actual="$(normalise_repo "$(jq -r '.repo // empty' <<<"$service")")"
   [ "$actual" = "$(normalise_repo "$EXPECTED_REPO")" ] || fail "$role" repo "$EXPECTED_REPO" "$actual"
   actual="$(jq -r '.autoDeploy | tostring' <<<"$service")"
-  [ "$actual" = "false" ] || fail "$role" autoDeploy false "$actual"
+  # The REST API returns the yes/no enum; some service representations use
+  # booleans. Both explicit disabled values are safe. Missing/unknown values
+  # must never be treated as disabled (jq's // also replaces false).
+  jq -e '(.autoDeploy == "no") or (.autoDeploy == false)' <<<"$service" >/dev/null \
+    || fail "$role" autoDeploy 'no (or boolean false)' "$actual"
   actual="$(jq -r '.serviceDetails.runtime // empty' <<<"$service")"
   [ "$actual" = "docker" ] || fail "$role" runtime docker "$actual"
 
