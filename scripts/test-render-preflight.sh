@@ -23,8 +23,20 @@ service() {
     --argjson instances "$instances" --arg command "$command" --arg predeploy "$predeploy" \
     '{ownerId:"own_fixture",name:$name,type:$type,branch:"development",repo:"https://github.com/owner/repo.git",autoDeploy:$autoDeploy,
       serviceDetails:{runtime:"docker",plan:$plan,region:"frankfurt",numInstances:$instances,maxShutdownDelaySeconds:300,
-        preDeployCommand:$predeploy,envSpecificDetails:{dockerfilePath:"./apps/api/Dockerfile",dockerContext:".",dockerCommand:$command}}}
-      | if env.OMIT_AUTO_DEPLOY == "1" then del(.autoDeploy) else . end'
+        envSpecificDetails:{preDeployCommand:$predeploy,dockerfilePath:"./apps/api/Dockerfile",dockerContext:".",dockerCommand:$command}}}
+      | if env.OMIT_AUTO_DEPLOY == "1" then del(.autoDeploy) else . end
+      | if $name == "anystudio-api-dev" then
+          if env.PREDEPLOY_CASE == "missing" then del(.serviceDetails.envSpecificDetails.preDeployCommand)
+          elif env.PREDEPLOY_CASE == "blank" then .serviceDetails.envSpecificDetails.preDeployCommand = ""
+          elif env.PREDEPLOY_CASE == "wrong" then .serviceDetails.envSpecificDetails.preDeployCommand = "npm run start"
+          elif env.PREDEPLOY_CASE == "write-shape-only" then
+            .serviceDetails.preDeployCommand = $predeploy | del(.serviceDetails.envSpecificDetails.preDeployCommand)
+          else . end
+        elif env.PREDEPLOY_CASE == "worker-release" and $name == "anystudio-worker-dev" then
+          .serviceDetails.envSpecificDetails.preDeployCommand = "npm run release"
+        elif env.PREDEPLOY_CASE == "media-release" and $name == "anystudio-media-dev" then
+          .serviceDetails.envSpecificDetails.preDeployCommand = "npm run release"
+        else . end'
 }
 envs() {
   case "$1" in
@@ -69,3 +81,15 @@ fi
 
 echo '✔ Render live preflight reads the official service response field layout'
 echo '✔ autoDeploy accepts no/false and rejects enabled, missing and unknown values'
+
+for scenario in missing blank wrong write-shape-only worker-release media-release; do
+  role=api
+  [ "$scenario" != worker-release ] || role=worker
+  [ "$scenario" != media-release ] || role=media
+  if output="$(PATH="$fixture_dir:$PATH" RENDER_API_KEY=fixture PREDEPLOY_CASE="$scenario" bash scripts/render-preflight.sh development owner/repo api worker media 2>&1)"; then
+    echo "Expected pre-deploy scenario $scenario to fail" >&2
+    exit 1
+  fi
+  [[ "$output" == *"Render $role service has preDeployCommand="* ]] || { echo "Failed for the wrong reason: $output" >&2; exit 1; }
+done
+echo '✔ pre-deploy reads Docker response nesting, requires API release and rejects worker release commands'
