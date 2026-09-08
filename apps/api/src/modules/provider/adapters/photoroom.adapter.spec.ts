@@ -227,11 +227,12 @@ describe('who asked for a cutout', () => {
     for (const mode of ['ghost_mannequin', 'flat_lay', 'beautify']) expect((await sent(shot({ mode }))).get('removeBackground'), mode).toBeNull();
   });
 
-  it('warns in the studio about the one that takes the background away', async () => {
-    // The behaviour cannot change, so the description has to carry it: a
-    // merchant should read that the background goes, not discover it.
+  it('describes the local photo-preserving Beautify path, not the vendor cutout operation', async () => {
+    // PRODUCT_SHOT beautify now bypasses this adapter entirely (covered by
+    // product-shot.spec); the UI must not promise a regenerated studio scene.
     const { PRODUCT_MODES } = await import('@anystudio/shared');
-    expect(`${PRODUCT_MODES.beautify.note} ${PRODUCT_MODES.beautify.hint}`).toMatch(/background goes|clean ground/i);
+    expect(`${PRODUCT_MODES.beautify.note} ${PRODUCT_MODES.beautify.hint}`).toMatch(/keeping the whole photo/i);
+    expect(PRODUCT_MODES.beautify.hint).toContain('No AI redraw or background removal');
   });
 });
 
