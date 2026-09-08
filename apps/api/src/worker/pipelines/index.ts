@@ -36,6 +36,7 @@ import { productShotPipeline } from './product-shot';
 import { collagePipeline } from './collage';
 import { batchPipeline } from './batch';
 import { adPipeline } from './ad';
+import { videoShotPipeline } from './video-shot';
 import type { GenerationService } from '../../modules/generation/generation.service';
 
 export interface PipelineContext {
@@ -131,6 +132,7 @@ export const passthrough: Pipeline = async (ctx) => {
 @Injectable()
 export class Pipelines {
   private readonly byCapability: Partial<Record<Capability, Pipeline>> = {
+    IMAGE_TO_VIDEO: videoShotPipeline,
     TEXT_GENERATE: copyPipeline,
     IMAGE_EDIT: brandedImagePipeline,
     PRODUCT_SHOT: productShotPipeline,

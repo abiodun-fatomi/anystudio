@@ -163,7 +163,7 @@ export function buildArgs(
     );
     if (p.preserveShotAudio) {
       f.push(
-        io.shotHasAudio?.[i]
+        io.shotHasAudio?.[i] && !p.muteShotAudio?.includes(i)
           ? `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=pad_dur=${seconds},atrim=duration=${seconds},asetpts=PTS-STARTPTS[a${i}]`
           : `anullsrc=r=48000:cl=stereo:d=${seconds}[a${i}]`,
       );
