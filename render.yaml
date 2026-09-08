@@ -163,6 +163,12 @@ services:
       #
       # Raise them with the instance, not before: on a 2 GB standard the old
       # 6/8/2 is fine.
+      #
+      # And raise them the moment anystudio-media-dev exists (below): these
+      # were cut to make room for an encoder, and once WORKER_QUEUES sends
+      # media.local elsewhere there is nothing left here but sockets waiting
+      # on a vendor. 6 / 8 then, and set WORKER_QUEUES on THIS service to
+      # media.fast,media.heavy so it stops claiming stitches it should not.
       - key: WORKER_FAST_CONCURRENCY
         value: '3'
       - key: WORKER_HEAVY_CONCURRENCY
@@ -202,6 +208,65 @@ services:
       #                            own ad, which the sweeper then refunds.
       #
       # Same image, same command, one env var apart.
+
+  # ---------------------------------------------------------------- media
+  # The same image, the same command, serving only media.local.
+  #
+  # WHY IT IS ITS OWN SERVICE
+  # An ad's four shots each grab a video thumbnail as they land (an ffmpeg
+  # apiece, ~80 MB), and the stitch starts on top of them (~260 MB at 720p).
+  # Measured together on a four-shot ad that is 344 MB of ffmpeg beside
+  # Node's 182 — 526 on a 512 MB starter, which is exactly the OOM that
+  # refunded four ads in a day. FFMPEG_CONCURRENCY caps the count; this caps
+  # the blast radius. On its own service a stitch that still overruns takes
+  # its own ad and nothing else, and the sweeper refunds that one.
+  #
+  # It also frees the worker: its concurrencies were cut to make room for an
+  # encoder that no longer lives there, so put them back.
+  #
+  # NO preDeployCommand. Migrations belong to the API alone — two services
+  # running `migrate deploy` against one database is how a schema ends up
+  # half-applied (see the note at the top of this file).
+  #
+  # Set RENDER_MEDIA_SERVICE_ID on the environment or the API workflow will
+  # never deploy it, and it will answer forever on the image it was born with.
+  - type: worker
+    name: anystudio-media-dev
+    runtime: docker
+    branch: development
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: standard
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-dev, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv-dev, property: connectionString }
+      - fromGroup: anystudio-dev
+      - key: APP_ENV
+        value: dev
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: media
+      - key: LOG_LEVEL
+        value: debug
+      # 2 GB, so the heap can have more than a starter's share.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1024
+      # Only the encoder's queue. The other two are the worker's.
+      - key: WORKER_QUEUES
+        value: media.local
+      - key: WORKER_LOCAL_CONCURRENCY
+        value: '1'
+      - key: FFMPEG_CONCURRENCY
+        value: '2'
 
 envVarGroups:
   # Render prompts for each of these on first sync and stores them in the
