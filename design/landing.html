@@ -191,6 +191,13 @@
   --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
 
   --max:1180px;
+  /* The bar carries a logo, eight links, a theme control and three buttons.
+     That row needs ~1260px; the text column is 1180 wide MINUS 48 of padding,
+     so at every desktop width the row was wider than the box it sat in and
+     spilled to the right — which is why the right-hand cluster wandered
+     whenever the window, the font or a breakpoint moved. The bar gets its own
+     width; body copy keeps --max. */
+  --max-nav:1400px;
   --pad:24px;
   --r:4px;
   color-scheme:light;
@@ -260,6 +267,9 @@
    BASE
    ============================================================ */
 *,*::before,*::after{box-sizing:border-box}
+/* Reserve the scrollbar's width whether or not one is showing, so a section
+   that changes the page height cannot shove every centred thing sideways. */
+html{scrollbar-gutter:stable}
 body{
   margin:0;
   background:var(--paper);
@@ -324,7 +334,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btn-wa{border-color:var(--accent);color:var(--accent);background:transparent}
 .btn-wa:hover{background:var(--accent-wash);transform:translateY(-2px)}
 .btn-wa svg{width:16px;height:16px;flex:none}
-@media(max-width:1320px){.btn-wa .wa-txt{display:none}.btn-wa{padding:13px 14px}}
+/* The bar sheds its widest pieces before it runs out of room, never after.
+   1400: the WhatsApp button drops its label (the icon and tooltip remain).
+   1260: the link row goes, which is the only piece that can't be shortened.
+   Both numbers are the measured fit point plus a margin for the webfont
+   arriving after first paint, not round numbers. */
+@media(max-width:1400px){.btn-wa .wa-txt{display:none}.btn-wa{padding:13px 14px}}
 
 /* ============================================================
    NAV
@@ -335,14 +350,21 @@ header.nav{
   backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line-soft);
 }
-.nav-in{display:flex;align-items:center;justify-content:space-between;height:66px;gap:24px}
-.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--f-display);font-weight:800;font-size:19px;letter-spacing:-.03em;padding:10px 0;min-height:44px}
+/* wider than the text column — see --max-nav */
+header.nav .wrap{max-width:var(--max-nav)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:66px;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--f-display);font-weight:800;font-size:19px;letter-spacing:-.03em;padding:10px 0;min-height:44px;flex:none}
 .brand .mark{width:24px;height:24px;flex:none}
-.nav-links{display:flex;gap:20px;align-items:center}
-.nav-links a{text-decoration:none;font-size:14.5px;font-weight:500;color:var(--ink-soft);transition:color .15s;padding:10px 0;white-space:nowrap}
+/* The guarantee, for the case the breakpoints get wrong: brand and buttons
+   never shrink, so if the webfont turns out wider than measured the LINK ROW
+   gives up the space and the last link clips. A clipped link is recoverable;
+   "Start free" walking off the right edge — which is what used to happen — is
+   not. */
+.nav-links{display:flex;gap:14px;align-items:center;flex:0 1 auto;min-width:0;overflow:hidden}
+.nav-links a{text-decoration:none;font-size:13.5px;font-weight:500;color:var(--ink-soft);transition:color .15s;padding:10px 0;white-space:nowrap}
 .nav-links a:hover{color:var(--accent)}
 .nav-links a[aria-current="page"]{color:var(--ink);font-weight:600}
-.nav-cta{display:flex;gap:10px;align-items:center}
+.nav-cta{display:flex;gap:8px;align-items:center;flex:none}
 
 /* theme control — three states, so "Auto" is visible rather than implied */
 .theme{
@@ -355,10 +377,11 @@ header.nav{
 .theme:hover{border-color:var(--ink);color:var(--ink)}
 .theme svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none}
 .theme .lbl{min-width:34px;text-align:left}
-@media(max-width:1040px){.nav-links{display:none}}
+@media(max-width:1260px){.nav-links{display:none}}
 @media(max-width:640px){.nav-cta .btn-ghost{display:none}}
-/* narrow phones: shrink the bar rather than let it push the page sideways */
-@media(max-width:430px){
+/* narrow phones: shrink the bar rather than let it push the page sideways.
+   520, not 430 — measured: between them the bar was still ~30px too wide. */
+@media(max-width:520px){
   .nav-cta{gap:7px}
   .nav-cta .btn{padding:11px 14px;font-size:14px}
   .theme{padding:7px 9px;min-width:36px}
@@ -367,7 +390,14 @@ header.nav{
   /* the hero CTA right below is already WhatsApp — the bar wins the space */
   .nav-cta .btn-wa{display:none}
 }
-@media(max-width:340px){:root{--pad:16px}}
+/* the smallest phones still in the wild (iPhone SE 1st gen is 320) */
+@media(max-width:360px){
+  :root{--pad:16px}
+  .nav-in{gap:10px}
+  .nav-cta .btn{padding:10px 12px;font-size:13.5px}
+  .brand{font-size:16px}
+  .brand .mark{width:21px;height:21px}
+}
 
 /* ============================================================
    HERO
