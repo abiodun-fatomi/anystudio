@@ -560,6 +560,32 @@ export class AccountService {
       const others = await this.db.workspaceMember.count({ where: { workspaceId: o.workspaceId, userId: { not: user.id } } });
       if (others > 0) throw new ConflictError(`You own "${o.workspace.name}", which has other people in it. Transfer ownership or remove them first.`);
     }
+    const closingWorkspaceIds = owned.filter((o) => !o.workspace.deletedAt).map((o) => o.workspaceId);
+    if (closingWorkspaceIds.length > 0) {
+      const [subscription, pendingPayment, outstandingInvoice, creditLine] = await Promise.all([
+        this.db.subscription.findFirst({
+          where: {
+            workspaceId: { in: closingWorkspaceIds },
+            OR: [{ status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } }, { providerCancelPending: true }],
+          },
+          select: { id: true },
+        }),
+        this.db.payment.findFirst({ where: { workspaceId: { in: closingWorkspaceIds }, status: 'PENDING' }, select: { id: true } }),
+        this.db.invoice.findFirst({
+          where: { workspaceId: { in: closingWorkspaceIds }, status: { in: ['OPEN', 'OVERDUE', 'DISPUTED'] } },
+          select: { id: true },
+        }),
+        this.db.billingAccount.findFirst({
+          where: { workspaceId: { in: closingWorkspaceIds }, status: { not: 'CLOSED' } },
+          select: { id: true },
+        }),
+      ]);
+      if (subscription || pendingPayment || outstandingInvoice || creditLine) {
+        throw new ConflictError(
+          'Billing must be closed before account deletion. Cancel active plans, reconcile pending payments, and settle or close organization credit lines first.',
+        );
+      }
+    }
     const now = new Date();
     await this.db.$transaction([
       this.db.user.update({ where: { id: user.id }, data: { deleteRequestedAt: now } }),

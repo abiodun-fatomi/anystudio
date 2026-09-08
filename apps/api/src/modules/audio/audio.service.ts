@@ -3,10 +3,10 @@
  * peculiar to songs — unlocking the rest after the preview.
  *
  * Unlock is a purchase on an existing row: debit the unlock price with a
- * key tied to the generation (so a double tap pays once), copy the track
- * out of the vault to a key the API will sign, and rewrite the output. If
- * the copy fails after the debit, the debit is refunded on the same key —
- * a seller is never charged for a song they cannot hear.
+ * attempt key tied to the generation, copy the track out of the vault to a
+ * key the API will sign, and rewrite the output. A database advisory lock
+ * serialises attempts across every API replica. If the copy fails after the
+ * debit, that attempt is refunded; a retry gets a fresh debit/refund pair.
  */
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -230,52 +230,145 @@ export class AudioService {
   }
 
   async unlock(actor: Actor, workspaceId: string, generationId: string, req: Request) {
-    const row = await this.db.generation.findFirst({ where: { id: generationId, workspaceId, deletedAt: null } });
-    if (!row) throw new NotFoundError('song');
-    if (row.capability !== 'MUSIC') throw new ConflictError('Only songs are unlocked.');
-    if (row.status !== 'SUCCEEDED') throw new ConflictError('The song is not finished yet.');
-    const outputs = (row.outputs as GenerationOutput[] | null) ?? [];
-    const locked = outputs.find((o) => o.role === 'audio' && o.locked);
-    if (!locked) {
-      const open = outputs.find((o) => o.role === 'audio');
-      if (open) return { status: 'already_unlocked' as const, generation: await this.view(row) };
-      throw new ConflictError('This song has no full track to unlock.');
-    }
+    const result = await this.db.$transaction(
+      async (tx) => {
+        // The lock is transaction-scoped, survives multiple API replicas and
+        // is released automatically on commit, rollback or process death.
+        const locks = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+          SELECT pg_try_advisory_xact_lock(hashtextextended(${`audio-unlock:${generationId}`}, 0)) AS acquired
+        `;
+        // Never park a pool connection behind a slow R2 copy. The client can
+        // retry after the in-flight unlock commits, at which point it receives
+        // already_unlocked without another debit.
+        if (!locks[0]?.acquired) return { status: 'in_progress' as const };
 
-    const [wallet, price] = await Promise.all([this.db.wallet.findUniqueOrThrow({ where: { workspaceId }, select: { id: true } }), this.unlockPrice()]);
-    const key = `unlock:${row.id}`;
-    const entry = await this.ledger.debit({ walletId: wallet.id, amount: price.credits, idempotencyKey: key, referenceId: row.id, reason: price.label });
+        // Reload only after acquiring the lock: a concurrent request may have
+        // completed the unlock while this one was waiting.
+        const row = await tx.generation.findFirst({ where: { id: generationId, workspaceId, deletedAt: null } });
+        if (!row) throw new NotFoundError('song');
+        if (row.capability !== 'MUSIC') throw new ConflictError('Only songs are unlocked.');
+        if (row.status !== 'SUCCEEDED') throw new ConflictError('The song is not finished yet.');
+        const outputs = (row.outputs as GenerationOutput[] | null) ?? [];
+        const locked = outputs.find((o) => o.role === 'audio' && o.locked);
+        if (!locked) {
+          const open = outputs.find((o) => o.role === 'audio');
+          if (open) return { status: 'already_unlocked' as const, row };
+          throw new ConflictError('This song has no full track to unlock.');
+        }
 
-    const publicKey = MediaService.key(workspaceId, `gen/${row.id}`, `song.${locked.key.split('.').pop() ?? 'mp3'}`, row.createdAt);
-    try {
-      await this.media.copy(locked.key, publicKey);
-      await this.media.recordOutput({
-        workspaceId,
-        generationId: row.id,
-        key: publicKey,
-        kind: 'OUTPUT',
-        mime: locked.mime,
-        bytes: locked.bytes ?? 0,
-        durationMs: locked.durationMs,
-      });
-    } catch (err) {
-      logger.error({ err, generationId: row.id, from: locked.key, to: publicKey }, 'unlock: copy out of the vault failed; refunding');
-      await this.ledger
-        .refund({ walletId: wallet.id, amount: price.credits, idempotencyKey: key, referenceId: row.id, reason: 'Unlock failed' })
-        .catch((e) => logger.error({ err: e, generationId: row.id }, 'unlock: refund also failed — needs a person'));
+        const [wallet, price] = await Promise.all([
+          tx.wallet.findUniqueOrThrow({ where: { workspaceId }, select: { id: true } }),
+          tx.creditCost.findUnique({ where: { code: MUSIC_UNLOCK_COST_CODE } }),
+        ]);
+        if (!price) throw new NotFoundError('unlock price');
+        const attempt = await this.nextUnlockDebitKey(tx, wallet.id, row.id);
+        const entry = await this.ledger.debit(
+          { walletId: wallet.id, amount: price.credits, idempotencyKey: attempt.key, referenceId: row.id, reason: price.label },
+          tx,
+        );
+        if (entry.kind !== 'DEBIT' || entry.walletId !== wallet.id || entry.referenceId !== row.id || entry.delta >= 0) {
+          throw new Error(`Unlock debit ${attempt.key} did not resolve to the expected ledger entry`);
+        }
+        const chargedCredits = Math.abs(entry.delta);
+        if (!attempt.resumed && chargedCredits !== price.credits) {
+          throw new Error(`Unlock debit ${attempt.key} has ${chargedCredits} credits; expected ${price.credits}`);
+        }
+
+        const publicKey = MediaService.key(workspaceId, `gen/${row.id}`, `song.${locked.key.split('.').pop() ?? 'mp3'}`, row.createdAt);
+        try {
+          await this.media.copy(locked.key, publicKey);
+        } catch (err) {
+          logger.error(
+            { err, generationId: row.id, from: locked.key, to: publicKey, attemptKey: attempt.key },
+            'unlock: copy out of the vault failed; refunding',
+          );
+          const refund = await this.ledger.refund(
+            { walletId: wallet.id, amount: chargedCredits, idempotencyKey: attempt.key, referenceId: row.id, reason: 'Unlock failed' },
+            tx,
+          );
+          if (refund.kind !== 'REFUND' || refund.walletId !== wallet.id || refund.referenceId !== row.id || refund.delta !== chargedCredits) {
+            throw new Error(`Unlock refund ${attempt.key}:refund did not resolve to the expected ledger entry`);
+          }
+          return { status: 'copy_failed' as const, row };
+        }
+
+        // The asset, generation rewrite and debit commit together. If either
+        // database write fails, the debit rolls back and the copied object is
+        // still unreadable because customer signing requires a READY row.
+        await this.media.recordOutput(
+          {
+            workspaceId,
+            generationId: row.id,
+            key: publicKey,
+            kind: 'OUTPUT',
+            mime: locked.mime,
+            bytes: locked.bytes ?? 0,
+            durationMs: locked.durationMs,
+          },
+          tx,
+        );
+        const next = outputs.map((o) => (o === locked ? { ...o, key: publicKey, locked: false } : o));
+        const updated = await tx.generation.update({
+          where: { id: row.id },
+          data: {
+            outputs: next as unknown as Prisma.InputJsonArray,
+            input: { ...(row.input as object), unlockedAt: new Date().toISOString(), unlockLedgerEntryId: entry.id },
+          },
+        });
+        return { status: 'unlocked' as const, row: updated, credits: chargedCredits, ledgerEntryId: entry.id };
+      },
+      // R2 copies are normally short, but the lock must outlive a slow object
+      // store response or another replica could enter the same purchase.
+      { maxWait: 10_000, timeout: 120_000 },
+    );
+
+    if (result.status === 'copy_failed') {
       throw new ConflictError('The song could not be unlocked just now. Nothing was charged — try again in a moment.');
     }
+    if (result.status === 'in_progress') {
+      throw new ConflictError('This song is already being unlocked. Try again in a moment.');
+    }
+    if (result.status === 'already_unlocked') {
+      return { status: 'already_unlocked' as const, generation: await this.view(result.row) };
+    }
+    authLog(
+      'audio.unlock',
+      'succeeded',
+      { userId: actor.userId, workspaceId, generationId, credits: result.credits, ledgerEntryId: result.ledgerEntryId },
+      req,
+    );
+    return { status: 'unlocked' as const, generation: await this.view(result.row), credits: result.credits };
+  }
 
-    const next = outputs.map((o) => (o === locked ? { ...o, key: publicKey, locked: false } : o));
-    const updated = await this.db.generation.update({
-      where: { id: row.id },
-      data: {
-        outputs: next as unknown as Prisma.InputJsonArray,
-        input: { ...(row.input as object), unlockedAt: new Date().toISOString(), unlockLedgerEntryId: entry.id },
-      },
+  /** Reuse a crash-left debit; otherwise make the next retry auditable. */
+  private async nextUnlockDebitKey(tx: Prisma.TransactionClient, walletId: string, generationId: string): Promise<{ key: string; resumed: boolean }> {
+    const base = `unlock:${generationId}`;
+    const entries = await tx.ledgerEntry.findMany({
+      where: { walletId, referenceId: generationId, idempotencyKey: { startsWith: base }, kind: { in: ['DEBIT', 'REFUND'] } },
+      select: { kind: true, idempotencyKey: true },
+      orderBy: { createdAt: 'asc' },
     });
-    authLog('audio.unlock', 'succeeded', { userId: actor.userId, workspaceId, generationId: row.id, credits: price.credits, ledgerEntryId: entry.id }, req);
-    return { status: 'unlocked' as const, generation: await this.view(updated), credits: price.credits };
+    const refunds = new Set(entries.filter((entry) => entry.kind === 'REFUND').map((entry) => entry.idempotencyKey));
+    const debits = entries.filter(
+      (entry) => entry.kind === 'DEBIT' && (entry.idempotencyKey === base || /^unlock:[^:]+:attempt:\d+$/.test(entry.idempotencyKey)),
+    );
+    const outstanding = debits.filter((entry) => !refunds.has(`${entry.idempotencyKey}:refund`));
+    if (outstanding.length > 1) {
+      logger.error(
+        { generationId, walletId, outstandingAttempts: outstanding.map((entry) => entry.idempotencyKey) },
+        'unlock ledger invariant violated: multiple unrefunded debits require manual review',
+      );
+      throw new Error(`Multiple outstanding unlock debits exist for generation ${generationId}; refusing another copy`);
+    }
+    if (outstanding[0]) return { key: outstanding[0].idempotencyKey, resumed: true };
+    const previous = debits.reduce((max, entry) => {
+      // The legacy key is attempt one. Keeping it for the first new attempt
+      // prevents old/new replicas in the first rolling deploy from creating
+      // two distinct debits for the same click.
+      const n = entry.idempotencyKey === base ? 1 : Number(entry.idempotencyKey.match(/:attempt:(\d+)$/)?.[1] ?? 0);
+      return Math.max(max, n);
+    }, 0);
+    return { key: previous === 0 ? base : `${base}:attempt:${previous + 1}`, resumed: false };
   }
 
   private async view(row: Generation) {

@@ -1,0 +1,146 @@
+# Render Blueprint for staging only. Import this path exactly once and keep
+# Blueprint Auto Sync off; GitHub Actions owns deploy timing. Create and
+# populate the manually managed `anystudio-staging` env group first.
+previewsEnabled: false
+
+databases:
+  - name: anystudio-db-staging
+    region: frankfurt
+    postgresMajorVersion: '18'
+    plan: 0.5c-1g
+    diskSizeGB: 15
+    storageAutoscalingEnabled: true
+    ipAllowList: []
+
+services:
+  - type: keyvalue
+    name: anystudio-kv-staging
+    region: frankfurt
+    plan: 256mb
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+
+  - type: web
+    name: anystudio-api-staging
+    runtime: docker
+    branch: staging
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: 0.5c-512mb
+    numInstances: 1
+    region: frankfurt
+    healthCheckPath: /health
+    preDeployCommand: npm run release
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          {
+            type: keyvalue,
+            name: anystudio-kv-staging,
+            property: connectionString,
+          }
+      - fromGroup: anystudio-staging
+      - key: APP_ENV
+        value: staging
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: api
+      - key: PORT
+        value: '3001'
+      - key: LOG_LEVEL
+        value: info
+
+  - type: worker
+    name: anystudio-worker-staging
+    runtime: docker
+    branch: staging
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 0.5c-512mb
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          {
+            type: keyvalue,
+            name: anystudio-kv-staging,
+            property: connectionString,
+          }
+      - fromGroup: anystudio-staging
+      - key: APP_ENV
+        value: staging
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: worker
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      - key: WORKER_FAST_CONCURRENCY
+        value: '6'
+      - key: WORKER_HEAVY_CONCURRENCY
+        value: '8'
+      - key: WORKER_QUEUES
+        value: media.fast,media.heavy
+      - key: FFMPEG_CONCURRENCY
+        value: '1'
+
+  - type: worker
+    name: anystudio-media-staging
+    runtime: docker
+    branch: staging
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 1c-2g
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db-staging, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          {
+            type: keyvalue,
+            name: anystudio-kv-staging,
+            property: connectionString,
+          }
+      - fromGroup: anystudio-staging
+      - key: APP_ENV
+        value: staging
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: media
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1024
+      - key: WORKER_QUEUES
+        value: media.local
+      - key: WORKER_LOCAL_CONCURRENCY
+        value: '1'
+      - key: WORKER_DIRECT_CONCURRENCY
+        value: '1'
+      - key: FFMPEG_CONCURRENCY
+        value: '1'

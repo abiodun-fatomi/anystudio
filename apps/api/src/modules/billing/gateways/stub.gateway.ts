@@ -12,11 +12,15 @@
  */
 
 import type { Payment } from '@prisma/client';
-import type { CheckoutRequest, CheckoutSession, Gateway, ParsedWebhook, Verification, WebhookIntent } from '../billing.types';
+import type { CheckoutRequest, CheckoutSession, Gateway, ParsedWebhook, RefundDiscoveryContext, Verification, WebhookIntent } from '../billing.types';
 
 export class StubGateway implements Gateway {
   readonly provider = 'STUB' as const;
   constructor(private readonly secret = 'stub') {}
+
+  checkoutAvailable(): boolean {
+    return true;
+  }
 
   async createCheckout(req: CheckoutRequest): Promise<CheckoutSession> {
     const url = new URL(req.returnUrl);
@@ -67,7 +71,8 @@ export class StubGateway implements Gateway {
       return { kind: 'charge', reference: b.reference, providerRef: b.providerRef, status: b.status ?? 'succeeded', subscriptionRef: b.subscriptionRef };
     if (parsed.type === 'subscription' && b.subscriptionRef)
       return { kind: 'subscription', subscriptionRef: b.subscriptionRef, status: b.subStatus ?? 'active', reference: b.reference };
-    if (parsed.type === 'refund' && b.providerRef) return { kind: 'refund', providerRef: b.providerRef };
+    if (parsed.type === 'refund' && b.providerRef)
+      return { kind: 'refund', providerRef: b.providerRef, refundRef: `stubrefund_${b.providerRef}`, status: 'succeeded', reason: 'refund' };
     return { kind: 'ignore', why: 'stub' };
   }
 
@@ -75,7 +80,25 @@ export class StubGateway implements Gateway {
     /* nothing to cancel */
   }
 
-  async refund(payment: Payment): Promise<{ providerRef: string }> {
-    return { providerRef: `stubrefund_${payment.id.slice(0, 8)}` };
+  async refund(payment: Payment, _reason?: string, context?: RefundDiscoveryContext) {
+    return {
+      state: 'succeeded' as const,
+      providerRef: `stubrefund_${payment.id.slice(0, 8)}${context ? `_${context.since.getTime()}` : ''}`,
+      amountMinor: payment.amountMinor,
+      currency: payment.currency,
+    };
+  }
+
+  async verifyRefund(payment: Payment, providerRef?: string) {
+    return {
+      state: 'succeeded' as const,
+      providerRef: providerRef ?? `stubrefund_${payment.id.slice(0, 8)}`,
+      amountMinor: payment.amountMinor,
+      currency: payment.currency,
+    };
+  }
+
+  async discoverRefund() {
+    return { state: 'pending' as const, reason: 'stub: no unseen refund' };
   }
 }

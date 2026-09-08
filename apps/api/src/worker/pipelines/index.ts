@@ -10,7 +10,17 @@
 
 import { Injectable } from '@nestjs/common';
 import type { BrandKit, Generation, PrismaClient, Workspace } from '@prisma/client';
-import type { Capability, GenerationOutput, GenerationStage, ProviderArtifact, ProviderFile, ProviderInput, ProviderResult } from '@anystudio/shared';
+import type {
+  Capability,
+  GenerationOutput,
+  GenerationProvider,
+  GenerationStage,
+  ProviderArtifact,
+  ProviderFile,
+  ProviderInput,
+  ProviderOpts,
+  ProviderResult,
+} from '@anystudio/shared';
 import type { Logger } from 'pino';
 import { MediaService } from '../../modules/media/media.service';
 import type { RouteConstraint } from '../../modules/provider/provider.router';
@@ -70,6 +80,19 @@ export interface PipelineContext {
   voiceLab: (providerKey: string) => VoiceLab | null;
   /** The adapter that can put a person on camera for a vendor name ("heygen"); null when it is not configured. */
   presenterLab: (vendor: string) => PresenterLab | null;
+  /**
+   * Journal a paid side-door call (currently presenter video) that is not a
+   * routable capability, with the same submit/resume guarantees as adapters.
+   */
+  callExternal: <T>(
+    provider: GenerationProvider,
+    input: Omit<ProviderInput, 'config'>,
+    execute: (opts: ProviderOpts) => Promise<T>,
+    opts: Pick<ProviderOpts, 'timeoutMs' | 'signal' | 'onProgress'> & {
+      /** Known vendor spend for this non-routable operation. */
+      costMinor?: number | ((result: T) => number);
+    },
+  ) => Promise<T>;
 }
 
 export interface PipelineResult {
@@ -80,6 +103,11 @@ export interface PipelineResult {
   waiting?: boolean;
   providerKey?: string;
   providerJobId?: string;
+  /** Spend already captured on child generations and rolled into this parent. */
+  inheritedCostMinor?: number;
+  /** Adapter-facing subtotal retained for pipeline tests/logs; the runner uses
+   * the durable provider-attempt journal instead so retries are never lost or
+   * counted twice. */
   costMinor?: number;
 }
 

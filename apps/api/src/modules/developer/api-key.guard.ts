@@ -15,6 +15,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { PrismaClient, type ApiKey } from '@prisma/client';
 import { ForbiddenError, UnauthorizedError } from '../../../config/globals/errors';
+import { isProductionDeployment } from '../../../config/environment';
 import { authLog } from '../auth/auth.log';
 import type { Actor } from '../auth/policy';
 import { hashApiKey, looksLikeApiKey, type ApiScope } from './developer.types';
@@ -48,7 +49,7 @@ export class ApiKeyGuard implements CanActivate {
       authLog('api.auth', 'refused', { reason: token ? 'malformed_key' : 'no_key' }, req);
       throw new UnauthorizedError('Send your API key as "Authorization: Bearer as_live_…".');
     }
-    const isProd = process.env.APP_ENV === 'production';
+    const isProd = isProductionDeployment();
     if (isProd && token.startsWith('as_test_')) {
       authLog('api.auth', 'refused', { reason: 'test_key_in_production', prefix: token.slice(0, 16) }, req);
       throw new UnauthorizedError('That is a test key. Production takes live keys only.');

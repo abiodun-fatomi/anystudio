@@ -14,6 +14,7 @@ import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { QueueService } from '../queue/queue.service';
 import type { Actor } from '../auth/policy';
+import type { ApiCreateGenerationDto } from './public-api.dto';
 
 const url = process.env.DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -87,22 +88,29 @@ suite('DeveloperService + PublicApiService', () => {
       where: { id: (await dev.createKey(actor, workspaceId, { projectId: other.id, name: 'k2' }, req)).id },
     });
 
-    const { generation, balance } = await api.create(key, {
+    const attemptedUnderprice: ApiCreateGenerationDto & { costCode: string } = {
       capability: 'TEXT_GENERATE',
       params: { productName: 'Tote', platforms: ['instagram'] },
       merchantRef: 'store-1',
       clientKey: 'c-1',
-    });
+      costCode: 'video.shot',
+    };
+    const { generation, balance } = await api.create(key, attemptedUnderprice);
     expect(balance).toBe(98);
     expect(generation).toMatchObject({ status: 'QUEUED', merchantRef: 'store-1', projectId: p.id, clientKey: 'c-1' });
     const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
-    expect(row).toMatchObject({ channel: 'API', apiKeyId: key.id, projectId: p.id });
+    expect(row).toMatchObject({ channel: 'API', apiKeyId: key.id, projectId: p.id, costCode: 'text.description', credits: 2 });
     // Same clientKey → the same row, not a second charge.
     expect((await api.create(key, { capability: 'TEXT_GENERATE', params: { productName: 'Tote', platforms: ['instagram'] }, clientKey: 'c-1' })).balance).toBe(
       98,
     );
     // The other project's key cannot see it.
     await expect(api.get(otherKey, generation.id)).rejects.toMatchObject({ status: 404 });
+    await expect(api.cancel(otherKey, generation.id)).rejects.toMatchObject({ status: 404 });
+    await expect(api.create(otherKey, { capability: 'TEXT_GENERATE', params: { productName: 'Tote' }, clientKey: 'c-1' })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect((await api.balance(key)).credits).toBe(98);
     expect((await api.list(key, {})).generations.map((g) => g.id)).toEqual([generation.id]);
     expect((await api.list(otherKey, {})).generations).toEqual([]);
 
@@ -116,6 +124,32 @@ suite('DeveloperService + PublicApiService', () => {
     expect(usage.byMerchant).toEqual([{ merchantRef: 'store-1', requests: 1, credits: 2 }]);
     expect(usage.balance).toBe(98);
     expect((await api.balance(key)).credits).toBe(98);
+  });
+
+  it('concurrent sibling-project clientKey collisions create and charge once without leaking the winning row', async () => {
+    const keys = await Promise.all(
+      ['One', 'Two'].map(async (name) => {
+        const project = await dev.createProject(actor, workspaceId, { name }, req);
+        const made = await dev.createKey(actor, workspaceId, { projectId: project.id, name: 'server' }, req);
+        return db.apiKey.findUniqueOrThrow({ where: { id: made.id } });
+      }),
+    );
+    const results = await Promise.allSettled(
+      keys.map((key) =>
+        api.create(key, {
+          capability: 'TEXT_GENERATE',
+          params: { productName: 'Tote' },
+          clientKey: 'collision',
+        }),
+      ),
+    );
+    const accepted = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: { status: 409 } });
+    expect(await db.generation.count({ where: { workspaceId } })).toBe(1);
+    expect((await api.balance(keys[0]!)).credits).toBe(98);
   });
 
   it('a finished API generation queues a delivery for a subscribed endpoint, and the ping test records one', async () => {

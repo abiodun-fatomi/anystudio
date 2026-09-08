@@ -132,7 +132,7 @@ export class BillingController {
     return this.billing.clientConfig();
   }
 
-  // ---- webhooks: no session, signature-checked inside, always 200 once recorded.
+  // ---- webhooks: no session, signature-checked and durably recorded before a fast 200.
 
   @Public()
   @Post('/billing/webhooks/flutterwave')

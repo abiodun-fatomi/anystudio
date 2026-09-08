@@ -18,11 +18,11 @@
  * once they are known, which is the half that keeps regressing.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { ProviderInput } from '@anystudio/shared';
+import type { Capability, ProviderInput } from '@anystudio/shared';
 import { PhotoroomProvider } from './photoroom.adapter';
 
 /** Run the adapter with the network stubbed, and hand back what it asked for. */
-async function sent(params: Record<string, unknown>, files: ProviderInput['files'] = {}): Promise<URLSearchParams> {
+async function sentFor(capability: Capability, params: Record<string, unknown>, files: ProviderInput['files'] = {}): Promise<URLSearchParams> {
   let asked = '';
   vi.stubGlobal(
     'fetch',
@@ -36,7 +36,7 @@ async function sent(params: Record<string, unknown>, files: ProviderInput['files
     {
       generationId: 'g',
       workspaceId: 'ws',
-      capability: 'PRODUCT_SHOT',
+      capability,
       params,
       files: { sourceKey: { url: 'https://x/p.jpg', mime: 'image/jpeg' }, ...files },
       config: {},
@@ -46,6 +46,8 @@ async function sent(params: Record<string, unknown>, files: ProviderInput['files
   vi.unstubAllGlobals();
   return new URL(asked).searchParams;
 }
+
+const sent = (params: Record<string, unknown>, files: ProviderInput['files'] = {}) => sentFor('PRODUCT_SHOT', params, files);
 
 const shot = (over: Record<string, unknown>) => ({
   sourceKey: 'ws/p.jpg',
@@ -57,6 +59,36 @@ const shot = (over: Record<string, unknown>) => ({
   shotSize: 'posting',
   sizes: [],
   ...over,
+});
+
+describe('background and lighting controls', () => {
+  it.each([
+    ['1:1', '1080x1080'],
+    ['4:5', '1080x1350'],
+    ['3:4', '1080x1440'],
+    ['9:16', '1080x1920'],
+    ['16:9', '1920x1080'],
+  ] as const)('turns the public %s background aspect into an exact output frame', async (aspect, outputSize) => {
+    const q = await sentFor('BACKGROUND_REPLACE', { sourceKey: 'ws/p.jpg', prompt: 'warm studio', shadow: true, relight: true, aspect });
+    expect(q.get('outputSize')).toBe(outputSize);
+    expect(q.get('background.prompt')).toBe('warm studio');
+  });
+
+  it('relights automatically without deleting the original background', async () => {
+    const q = await sentFor('RELIGHT', { sourceKey: 'ws/p.jpg' });
+    expect(q.get('removeBackground')).toBe('false');
+    expect(q.get('lighting.mode')).toBe('ai.preserve-hue-and-saturation');
+    expect(q.get('editWithAI.prompt')).toBeNull();
+  });
+
+  it("uses Photoroom's supported free-form edit for a directed relight instead of ignoring the prompt", async () => {
+    const q = await sentFor('RELIGHT', { sourceKey: 'ws/p.jpg', prompt: 'warm sunset rim light' });
+    expect(q.get('removeBackground')).toBe('false');
+    expect(q.get('editWithAI.mode')).toBe('ai.auto');
+    expect(q.get('editWithAI.prompt')).toContain('warm sunset rim light');
+    expect(q.get('editWithAI.prompt')).toContain('Keep the product');
+    expect(q.get('lighting.mode'), 'automatic relighting must not overwrite the directed edit').toBeNull();
+  });
 });
 
 describe('putting a garment on a model', () => {

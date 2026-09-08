@@ -19,9 +19,9 @@ export class GenerationsQueryDto extends SearchDto {
 }
 
 export class PaymentsQueryDto extends SearchDto {
-  @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'] })
+  @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'NEEDS_REVIEW', 'REFUNDED'] })
   @IsOptional()
-  @IsIn(['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'])
+  @IsIn(['PENDING', 'SUCCEEDED', 'FAILED', 'NEEDS_REVIEW', 'REFUNDED'])
   status?: string;
 }
 

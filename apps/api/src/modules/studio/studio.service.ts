@@ -25,6 +25,7 @@ import { PrismaClient, type WorkspaceType } from '@prisma/client';
 import { z } from 'zod';
 import type { LlmRequest, ProviderResult } from '@anystudio/shared';
 import { logger } from '../../../config/logger';
+import { isProductionDeployment } from '../../../config/environment';
 import { MediaService } from '../media/media.service';
 import { ProviderRouter } from '../provider/provider.router';
 import type { CaptionsDto, IdeasDto, IdeaTool } from './studio.dto';
@@ -609,7 +610,7 @@ export class StudioService {
 
   /** Operators and developers get the reason; a customer in production gets the suggestions and no apology. */
   private why(reason: string): { reason?: string } {
-    return process.env.APP_ENV === 'production' ? {} : { reason: reason.slice(0, 300) };
+    return isProductionDeployment() ? {} : { reason: reason.slice(0, 300) };
   }
 
   private allow(workspaceId: string): boolean {

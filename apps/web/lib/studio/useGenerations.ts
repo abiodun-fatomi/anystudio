@@ -151,7 +151,7 @@ export function useGenerations() {
 
   /** Ask for a generation. The card exists before the request is answered. */
   const create = useCallback(
-    async (input: { toolId: string; capability: string; params: Record<string, unknown>; credits: number; sourceKey?: string; costCode?: string }) => {
+    async (input: { toolId: string; capability: string; params: Record<string, unknown>; credits: number; sourceKey?: string }) => {
       const clientKey = crypto.randomUUID();
       const card: GenerationCard = {
         clientKey,
@@ -175,7 +175,6 @@ export function useGenerations() {
           capability: input.capability,
           params: input.params,
           clientKey,
-          costCode: input.costCode,
         });
         setBalance(balance);
         patch(clientKey, (c) => ({ ...c, id: g.id, status: g.status, credits: g.credits }));
@@ -254,7 +253,6 @@ export function useGenerations() {
       try {
         const { generation: g, balance } = await api.generations.create(workspace.id, {
           capability: 'TEXT_GENERATE',
-          costCode: 'text.caption',
           clientKey: crypto.randomUUID(),
           params: {
             task: 'field',

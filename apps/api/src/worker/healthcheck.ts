@@ -1,19 +1,31 @@
 /**
- * Container healthcheck for the worker: alive if its Redis heartbeat is
- * fresh. With no Redis configured there is nothing to read, and a process
- * that is up is the best signal available — exit 0.
+ * Container healthcheck for either worker service.
+ *
+ * Postgres is intentionally the source here. Redis may be unavailable while
+ * the worker is correctly draining its own queue class through the database
+ * fallback; tying liveness to Redis would restart that healthy fallback in a
+ * loop. The supervisor writes this same per-service row every thirty seconds.
  */
-import Redis from 'ioredis';
+import { PrismaClient } from '@prisma/client';
+import { hostname } from 'node:os';
 
-const url = process.env.REDIS_URL;
-if (!url) process.exit(0);
+export function heartbeatIsFresh(seenAt: Date | null | undefined, now = Date.now()): boolean {
+  return seenAt !== null && seenAt !== undefined && now - seenAt.getTime() < 90_000;
+}
 
-const redis = new Redis(url, { maxRetriesPerRequest: 1, connectTimeout: 3000 });
-redis
-  .get('worker:heartbeat')
-  .then((v) => {
-    const fresh = v !== null && Date.now() - Number(v) < 90_000;
-    process.exit(fresh ? 0 : 1);
-  })
-  .catch(() => process.exit(1))
-  .finally(() => void redis.quit());
+async function main(): Promise<void> {
+  const db = new PrismaClient();
+  let code = 1;
+  try {
+    const service = process.env.SERVICE_NAME?.trim() || 'worker';
+    const row = await db.workerHeartbeat.findUnique({ where: { id: `${service}@${hostname()}` }, select: { seenAt: true } });
+    code = heartbeatIsFresh(row?.seenAt) ? 0 : 1;
+  } catch {
+    code = 1;
+  } finally {
+    await db.$disconnect().catch(() => undefined);
+    process.exit(code);
+  }
+}
+
+if (require.main === module) void main();

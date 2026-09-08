@@ -49,22 +49,29 @@ export class HiggsfieldProvider extends BaseProvider {
     const model = this.str(input.config, 'model', this.defaultModel);
     const headers = { 'hf-api-key': this.apiKey, 'hf-api-secret': this.apiSecret };
 
-    const submitted = await http<Submit>(this.key, `${base}/${this.str(input.config, 'endpoint', 'image2video')}`, {
-      headers,
-      body: {
-        params: {
-          model,
-          prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
-          input_images: [{ type: 'image_url', image_url: this.file(input, 'sourceKey') }],
-          duration: p.durationSec,
-          aspect_ratio: p.aspect,
-          enhance_prompt: true,
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+    } else {
+      const submitted = await http<Submit>(this.key, `${base}/${this.str(input.config, 'endpoint', 'image2video')}`, {
+        headers,
+        body: {
+          params: {
+            model,
+            prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
+            input_images: [{ type: 'image_url', image_url: this.file(input, 'sourceKey') }],
+            duration: p.durationSec,
+            aspect_ratio: p.aspect,
+            enhance_prompt: true,
+          },
         },
-      },
-      timeoutMs: 30_000,
-      signal: opts.signal,
-    });
-    const providerJobId = submitted.json.id;
+        timeoutMs: 30_000,
+        signal: opts.signal,
+      });
+      providerJobId = submitted.json.id;
+      if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: submission returned no request id`, this.key, { raw: submitted.json });
+      await opts.onSubmitted?.(providerJobId);
+    }
     opts.onProgress?.('Rendering your video', 25);
     const final = await poll(
       async () => {
@@ -78,12 +85,17 @@ export class HiggsfieldProvider extends BaseProvider {
         onTick: (ms) => opts.onProgress?.(`Rendering your video (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
       },
     );
-    if (final.status !== 'completed')
+    if (final.status !== 'completed') {
+      await opts.onSettled?.('FAILED');
       throw new ProviderError(final.status === 'nsfw' ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: ${final.error ?? final.status}`, this.key, {
         providerJobId,
       });
+    }
     const url = pick<string>(final, 'results.raw.url') ?? pick<string>(final, 'results.min.url');
-    if (!url) throw new ProviderError('RETRYABLE', `${this.key}: completed without a video url`, this.key, { providerJobId });
+    if (!url) {
+      await opts.onSettled?.('FAILED');
+      throw new ProviderError('RETRYABLE', `${this.key}: completed without a video url`, this.key, { providerJobId });
+    }
     return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'video/mp4', role: 'video', durationMs: p.durationSec * 1000 }], meta: { model } };
   }
 }

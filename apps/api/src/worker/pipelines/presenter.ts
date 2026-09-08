@@ -16,7 +16,6 @@
  */
 import { ProviderError, presenter as findPresenter, type CapabilityParams } from '@anystudio/shared';
 import type { PipelineContext } from './index';
-import { MediaService } from '../../modules/media/media.service';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { durationOf } from './ffmpeg';
 
@@ -65,14 +64,20 @@ export async function renderPresenter(
     { timeoutMs: 3 * 60_000, signal: ctx.signal, route: only ? { only } : undefined },
   );
   const take = spoken.artifacts.find((a) => a.role === 'audio');
-  const audio = take?.bytes ?? (take?.url ? (await fetchBytes(spoken.providerKey, take.url, 60_000)).bytes : undefined);
+  const audio = take?.bytes ?? (take?.url ? (await fetchBytes(spoken.providerKey, take.url, 60_000, ctx.signal)).bytes : undefined);
   if (!audio) throw new ProviderError('RETRYABLE', `${spoken.providerKey} returned no audio for the presenter`, spoken.providerKey);
   const audioMime = take?.mime ?? 'audio/mpeg';
   const audioExt = audioMime === 'audio/wav' ? 'wav' : 'mp3';
   const durationMs = await durationOf(audio, audioExt);
-  const scope = `gen/${ctx.row.id}/work`;
-  const audioKey = MediaService.key(ctx.row.workspaceId, scope, `presenter.${audioExt}`, ctx.row.createdAt);
-  await ctx.media.put(audioKey, audio, audioMime);
+  const audioKey = await ctx.media.putGenerationWork({
+    workspaceId: ctx.row.workspaceId,
+    generationId: ctx.row.id,
+    createdAt: ctx.row.createdAt,
+    name: `presenter.${audioExt}`,
+    bytes: audio,
+    mime: audioMime,
+    durationMs,
+  });
   ctx.log.info({ audioKey, durationMs, words: script.split(/\s+/).length, providerKey: spoken.providerKey }, 'presenter speech recorded');
 
   // 2. the face
@@ -81,23 +86,41 @@ export async function renderPresenter(
   const photoAsset = want.kind === 'photo' ? await ctx.media.requireReady(ctx.row.workspaceId, want.photoKey!) : null;
   const photo = photoAsset ? await ctx.media.getBytes(photoAsset.key) : undefined;
   const photoMime = photoAsset?.mime ?? 'image/jpeg';
-  const filmed = await lab.talkingVideo(
+  const audioUrl = await ctx.media.signRead(audioKey, 60 * 60);
+  const talkingInput = {
+    avatarId: stock?.providerAvatarId,
+    photo: photo ? { bytes: new Uint8Array(photo), mime: photoMime } : undefined,
+    audioUrl,
+    aspect: p.aspect,
+    title: `anystudio ${ctx.row.id} presenter`,
+  };
+  const filmed = await ctx.callExternal(
+    lab,
     {
-      avatarId: stock?.providerAvatarId,
-      photo: photo ? { bytes: new Uint8Array(photo), mime: photoMime } : undefined,
-      audioUrl: await ctx.media.signRead(audioKey, 60 * 60),
-      aspect: p.aspect,
-      title: `anystudio ${ctx.row.id} presenter`,
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      capability: lab.capabilities[0] ?? 'DUB',
+      params: { operation: 'presenter-video', presenter: stock?.key ?? 'photo', photoKey: want.photoKey, audioKey, aspect: p.aspect },
+      files: { audioKey: { key: audioKey, url: audioUrl, mime: audioMime, bytes: audio.byteLength } },
     },
+    (opts) => lab.talkingVideo(talkingInput, opts),
     {
       timeoutMs: 8 * 60_000,
       signal: ctx.signal,
+      costMinor: lab.presenterCostMinor(durationMs / 1000),
       onProgress: (detail, progress) => void ctx.stage('generating', Math.min(40, 18 + (progress ?? 0) * 0.2), detail),
     },
   );
-  const { bytes: video } = await fetchBytes(lab.key, filmed.url, 5 * 60_000);
-  const key = MediaService.key(ctx.row.workspaceId, scope, 'presenter.mp4', ctx.row.createdAt);
-  await ctx.media.put(key, video, 'video/mp4');
+  const { bytes: video } = await fetchBytes(lab.key, filmed.url, 5 * 60_000, ctx.signal);
+  const key = await ctx.media.putGenerationWork({
+    workspaceId: ctx.row.workspaceId,
+    generationId: ctx.row.id,
+    createdAt: ctx.row.createdAt,
+    name: 'presenter.mp4',
+    bytes: video,
+    mime: 'video/mp4',
+    durationMs,
+  });
   ctx.log.info({ key, durationMs, providerJobId: filmed.providerJobId, presenter: stock?.key ?? 'photo' }, 'presenter filmed');
 
   return {

@@ -31,23 +31,29 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { Prisma, PrismaClient, type Generation } from '@prisma/client';
+import { Prisma, PrismaClient, type Generation, type MediaAsset } from '@prisma/client';
 import {
   BATCH_MAX,
+  CAPABILITIES,
   COPY_FIELDS,
   CUSTOMER_MESSAGE,
   DEFAULT_COST_CODE,
   DUB_LIPSYNC_COST_CODE,
+  DUB_MAX_SEC,
+  LIPSYNC_MAX_SEC,
   MUSIC_MY_VOICE_COST_CODE,
   presenterCostCode,
   dubLanguage,
   generationDebitKey,
+  isCapability,
   parseCapabilityParams,
+  shotPlanSchema,
   withoutPipelineFields,
   redactLocked,
   type Capability,
   type GenerationOutput,
   type ProviderErrorKind,
+  type ShotPlan,
   adPlan,
   batchUnitCostCode,
   productShotCostCode,
@@ -76,6 +82,82 @@ export const DISPATCH_AFTER_MS = 20 * 1000;
 const VIDEO_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['IMAGE_TO_VIDEO', 'VIDEO_STITCH', 'DUB', 'LIPSYNC']);
 /** Parents and standalone videos per workspace per rolling day. Operators raise it per customer, not globally. */
 const VIDEO_DAILY_LIMIT = Number(process.env.VIDEO_DAILY_LIMIT ?? 20);
+
+/**
+ * The queue capability for a parent's second pass.
+ *
+ * IMAGE_TO_VIDEO becomes local ffmpeg work once its children finish. BATCH
+ * only gathers child outputs and refunds failed shares, so it stays on the
+ * fast orchestration queue. Keeping this decision in one place prevents a
+ * generic "parent" branch from sending every parent to the media worker.
+ */
+export function parentResumeCapability(capability: Capability): Capability {
+  return capability === 'IMAGE_TO_VIDEO' ? 'VIDEO_STITCH' : capability;
+}
+
+/**
+ * Resolve one of the finite server-owned price codes from capability params.
+ *
+ * `request()` calls this only after schema validation. `quote()` also uses it
+ * for an unfinished form, where missing selectors intentionally fall back to
+ * the capability default. No branch ever returns a string supplied as a price
+ * code by the caller.
+ */
+export function generationCostCode(capability: Capability, params: Record<string, unknown>): string {
+  if (capability === 'BATCH') {
+    if (!isCapability(params.of)) return DEFAULT_COST_CODE.BATCH;
+    const unitParams =
+      params.params !== null && typeof params.params === 'object' && !Array.isArray(params.params) ? (params.params as Record<string, unknown>) : {};
+    return batchUnitCostCode(params.of, unitParams);
+  }
+  if (capability === 'PRODUCT_SHOT') return productShotCostCode(params.mode as string, params.shotSize as string);
+  // An instrumental has no singer to replace. Treating the otherwise-ignored
+  // singer selector as a premium would charge for stems/conversion we never run.
+  if (capability === 'MUSIC' && params.singer === 'me' && params.vocal !== 'instrumental') return MUSIC_MY_VOICE_COST_CODE;
+  if (capability === 'TEXT_GENERATE' && params.task === 'field') return 'text.caption';
+  if (capability === 'DUB' && params.lipsync === true) return DUB_LIPSYNC_COST_CODE;
+  if (capability === 'IMAGE_TO_VIDEO') {
+    const shots = Number(params.shots ?? 1);
+    const plan = adPlan(shots);
+    if (!plan) return DEFAULT_COST_CODE[capability];
+    const withPresenter = shots > 1 && params.format === 'ugc' && params.presenter !== null && typeof params.presenter === 'object';
+    return withPresenter ? presenterCostCode(plan.costCode) : plan.costCode;
+  }
+  return DEFAULT_COST_CODE[capability];
+}
+
+/** Number of independently billable outputs or duration blocks. */
+export function generationQuantity(capability: Capability, params: Record<string, unknown>, sourceDurationMs?: number): number {
+  if (capability === 'BATCH') return Math.max(1, Math.min(BATCH_MAX, Array.isArray(params.sourceKeys) ? params.sourceKeys.length : 1));
+  if (capability === 'IMAGE_GENERATE') {
+    const count = Number(params.count ?? 1);
+    return Number.isInteger(count) ? Math.max(1, Math.min(4, count)) : 1;
+  }
+  if (capability === 'MUSIC') {
+    // Match capabilityParams.MUSIC's default so an unfinished quote and the
+    // eventual parsed request cannot disagree about the number of units.
+    const durationSec = Number(params.durationSec ?? 120);
+    return Number.isFinite(durationSec) ? Math.max(1, Math.min(8, Math.ceil(durationSec / 30))) : 1;
+  }
+  if (capability === 'DUB') {
+    const blockMs = params.lipsync === true ? 30_000 : 60_000;
+    const maxBlocks = Math.ceil((DUB_MAX_SEC * 1000) / blockMs);
+    const blocks = durationBlocks(sourceDurationMs, blockMs, maxBlocks);
+    // Precision selects the premium lip-animation model. A voice-only dub is
+    // handled by the same dubbing path regardless of this otherwise-unused field.
+    return blocks * (params.lipsync === true && params.quality === 'precision' ? 2 : 1);
+  }
+  if (capability === 'LIPSYNC') {
+    const blocks = durationBlocks(sourceDurationMs, 30_000, Math.ceil((LIPSYNC_MAX_SEC * 1000) / 30_000));
+    return blocks * (params.quality === 'precision' ? 2 : 1);
+  }
+  return 1;
+}
+
+function durationBlocks(durationMs: number | undefined, blockMs: number, maxBlocks: number): number {
+  if (!Number.isFinite(durationMs) || !durationMs || durationMs <= 0) return 1;
+  return Math.max(1, Math.min(maxBlocks, Math.ceil(durationMs / blockMs)));
+}
 
 @Injectable()
 export class GenerationService {
@@ -111,22 +193,37 @@ export class GenerationService {
     // A caller may send back a row's own params ("do it again"), and those carry
     // what the last run wrote for itself — the lyrics, the shot plan, the filmed
     // presenter. Dropped here, so a new request is genuinely new work.
-    const asked = req.kind === 'CHILD' ? req.params : withoutPipelineFields((req.params ?? {}) as Record<string, unknown>);
+    const asked = withoutPipelineFields((req.params ?? {}) as Record<string, unknown>);
     // Validate before touching money.
     const parsed = parseCapabilityParams(req.capability, asked);
     if (!parsed.ok) throw new ValidationError(parsed.issues);
     const params = parsed.params as Record<string, unknown>;
 
+    // A retry must still work after its source is purged or the daily limit is
+    // reached. Never disclose a sibling project's row through a reused key.
+    if (req.clientKey) {
+      const existing = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
+      if (existing) {
+        this.assertReplayProject(req, existing);
+        const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
+        return { generation: existing, balance: wallet ? await this.ledger.balance(wallet.id) : 0 };
+      }
+    }
+
     // Every storage key named in the params must be a READY object this workspace owns.
+    const readyAssets = new Map<string, MediaAsset>();
     for (const [name, value] of Object.entries(params)) {
       const keys = name.endsWith('Key') && typeof value === 'string' ? [value] : name.endsWith('Keys') && Array.isArray(value) ? (value as string[]) : [];
-      for (const key of keys) await this.media.requireReady(req.workspaceId, key);
+      for (const key of keys) {
+        if (!readyAssets.has(key)) readyAssets.set(key, await this.media.requireReady(req.workspaceId, key));
+      }
     }
+    const sourceDurationMs = await this.billableSourceDuration(req.workspaceId, req.capability, params, readyAssets);
 
     // Video is where a bug becomes a five-figure invoice. A per-workspace
     // daily count is the cheapest guardrail that fails closed; the
     // provider-level kill switch is ProviderModel.enabled.
-    if (VIDEO_CAPABILITIES.has(req.capability) && req.kind !== 'CHILD') {
+    if (VIDEO_CAPABILITIES.has(req.capability)) {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const today = await this.db.generation.count({
         where: { workspaceId: req.workspaceId, capability: { in: [...VIDEO_CAPABILITIES] }, kind: { not: 'CHILD' }, createdAt: { gte: since } },
@@ -137,48 +234,44 @@ export class GenerationService {
       }
     }
 
-    if (req.clientKey) {
-      const existing = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
-      if (existing) {
-        logger.info(
-          { generationId: existing.id, workspaceId: req.workspaceId, clientKey: req.clientKey },
-          'generation request replayed; returning the existing row',
-        );
-        const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
-        return { generation: existing, balance: wallet ? await this.ledger.balance(wallet.id) : 0 };
+    // Validate the expensive personal-voice branch before generating the
+    // base song. The pipeline repeats this ownership check as defence in
+    // depth, but discovering it there would spend a music-provider call and
+    // then refund the customer for a request we could reject for free here.
+    // This follows the client-key replay check: an accepted request remains
+    // idempotently readable even if its voice is deactivated afterwards.
+    if (req.capability === 'MUSIC' && params.singer === 'me' && params.vocal !== 'instrumental') {
+      const voiceId = typeof params.voiceId === 'string' ? params.voiceId : '';
+      const voice = voiceId
+        ? await this.db.voiceProfile.findUnique({ where: { key: voiceId }, select: { active: true, kind: true, workspaceId: true } })
+        : null;
+      if (!voice || !voice.active || voice.kind !== 'CLONE' || voice.workspaceId !== req.workspaceId) {
+        throw new ValidationError({ voiceId: 'Choose one of this workspace’s active cloned voices.' });
       }
     }
 
-    // A multi-shot video is a PARENT priced as an ad; its shots are children the pipeline creates.
-    const shots = req.capability === 'IMAGE_TO_VIDEO' ? Number(params.shots ?? 1) : 1;
-    const kind = req.kind ?? (shots > 1 || req.capability === 'BATCH' ? 'PARENT' : 'STANDALONE');
-    // A song in their own voice is priced above the client's say-so: the extra vendor work is real whatever the request claimed.
-    // An ad with a presenter talking to camera is priced above the plain ad; the server decides, whatever the client sent.
-    const withPresenter = req.capability === 'IMAGE_TO_VIDEO' && shots > 1 && params.format === 'ugc' && Boolean(params.presenter);
-    // A merchant shot is priced by what was actually asked for, from the params
-    // the server just validated — not from a cost code the client chose. The
-    // same reasoning as the batch quantity below: a request that says "on a
-    // model, 4K" and "charge me for a press" must be charged for the first.
-    const costCode =
-      req.capability === 'BATCH'
-        ? batchUnitCostCode(params.of as Capability, (params.params ?? {}) as Record<string, unknown>)
-        : req.capability === 'PRODUCT_SHOT'
-          ? productShotCostCode(params.mode as string, params.shotSize as string)
-          : req.capability === 'MUSIC' && params.singer === 'me'
-            ? MUSIC_MY_VOICE_COST_CODE
-            : withPresenter && adPlan(shots)
-              ? presenterCostCode(adPlan(shots)!.costCode)
-              : (req.costCode ??
-                adPlan(shots)?.costCode ??
-                (req.capability === 'DUB' && params.lipsync === true ? DUB_LIPSYNC_COST_CODE : DEFAULT_COST_CODE[req.capability]));
+    // Every video is a PARENT, including a one-shot reel. Its provider render
+    // is a child and its second pass runs on media.local, which is the only
+    // place allowed to normalize duration/aspect with ffmpeg.
+    const kind = req.capability === 'IMAGE_TO_VIDEO' || req.capability === 'BATCH' ? 'PARENT' : 'STANDALONE';
+    // The code comes only from the capability and the params the server just
+    // validated. There is deliberately no caller-supplied escape hatch: a
+    // normal request cannot name video.shot (zero credits) or another cheaper
+    // row while asking the provider for expensive work.
+    const costCode = generationCostCode(req.capability, params);
     const cost = await this.db.creditCost.findUnique({ where: { code: costCode } });
     if (!cost) throw new NotFoundError(`credit cost "${costCode}"`);
 
-    // HOW MANY. A batch is one row holding one debit for every photo in it,
-    // and the count comes from the params the server just validated — never
-    // from the client, or forty premium renders would cost one.
-    const quantity = req.capability === 'BATCH' ? (params.sourceKeys as string[]).length : 1;
+    // HOW MANY. Output count and duration both come from validated params and
+    // verified media metadata; a browser cannot claim a shorter paid unit.
+    const quantity = generationQuantity(req.capability, params, sourceDurationMs);
     const credits = cost.credits * quantity;
+    let musicBaseCredits: number | null = null;
+    if (costCode === MUSIC_MY_VOICE_COST_CODE) {
+      const base = await this.db.creditCost.findUnique({ where: { code: DEFAULT_COST_CODE.MUSIC } });
+      if (!base) throw new NotFoundError(`credit cost "${DEFAULT_COST_CODE.MUSIC}"`);
+      musicBaseCredits = base.credits * quantity;
+    }
 
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId: req.workspaceId } });
     if (!wallet) throw new NotFoundError('wallet');
@@ -195,12 +288,18 @@ export class GenerationService {
             requestedById: req.requestedById,
             capability: req.capability,
             kind,
-            parentId: req.parentId ?? null,
+            parentId: null,
             clientKey: req.clientKey ?? null,
             costCode: cost.code,
             credits,
             stage: 'queued',
-            input: params as Prisma.InputJsonObject,
+            // Capture the fallback price with the debit. CreditCost rows are
+            // editable, so looking up the base song price after a provider
+            // downgrade could refund using tomorrow's price for today's job.
+            input: {
+              ...params,
+              ...(musicBaseCredits === null ? {} : { _billing: { musicBaseCredits } }),
+            } as Prisma.InputJsonObject,
             channel: req.channel ?? 'WEB',
             apiKeyId: req.apiKeyId ?? null,
             projectId: req.projectId ?? null,
@@ -226,7 +325,10 @@ export class GenerationService {
       // Two requests raced on the same clientKey: the loser returns the winner's row.
       if (req.clientKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await this.db.generation.findUnique({ where: { workspaceId_clientKey: { workspaceId: req.workspaceId, clientKey: req.clientKey } } });
-        if (winner) return { generation: winner, balance: await this.ledger.balance(wallet.id) };
+        if (winner) {
+          this.assertReplayProject(req, winner);
+          return { generation: winner, balance: await this.ledger.balance(wallet.id) };
+        }
       }
       // A postpaid organization refused by the ledger is at its credit line,
       // not out of credits — say so. Only looked up on the refusal path.
@@ -247,9 +349,8 @@ export class GenerationService {
         workspaceId: req.workspaceId,
         capability: req.capability,
         costCode: cost.code,
-        credits: cost.credits,
+        credits,
         balance,
-        parentId: req.parentId,
       },
       'generation requested: row written, credits held',
     );
@@ -267,14 +368,21 @@ export class GenerationService {
    * support ticket.
    */
   async createChild(parent: Generation, capability: Capability, params: Record<string, unknown>, index: number): Promise<Generation> {
-    const child = await this.db.generation.create({
-      data: {
+    const clientKey = `${parent.id}:shot:${index}`;
+    // A parent can die after dispatching only some of its shots. Its next
+    // attempt must reuse those exact work units: inserting them again either
+    // violates the client-key constraint forever or, without that constraint,
+    // pays a vendor twice for the same frame. The parent id and shot index are
+    // the durable idempotency key.
+    const child = await this.db.generation.upsert({
+      where: { workspaceId_clientKey: { workspaceId: parent.workspaceId, clientKey } },
+      create: {
         workspaceId: parent.workspaceId,
         requestedById: parent.requestedById,
         capability,
         kind: 'CHILD',
         parentId: parent.id,
-        clientKey: `${parent.id}:shot:${index}`,
+        clientKey,
         costCode: 'video.shot',
         credits: 0,
         stage: 'queued',
@@ -284,8 +392,15 @@ export class GenerationService {
         projectId: parent.projectId,
         merchantRef: parent.merchantRef,
       },
+      update: {},
     });
-    await this.queue.enqueue(child.id, capability);
+    if (child.parentId !== parent.id || child.kind !== 'CHILD' || child.capability !== capability || child.credits !== 0) {
+      throw new ConflictError(`Shot ${index + 1} belongs to a different generation request.`);
+    }
+    // Re-enqueueing QUEUED work is safe (the queue job id is the generation
+    // id) and repairs a crash between the database commit and queue publish.
+    // A RUNNING or terminal child already has an owner or an answer.
+    if (child.status === 'QUEUED') await this.queue.enqueue(child.id, capability);
     return child;
   }
 
@@ -304,11 +419,23 @@ export class GenerationService {
    */
   async resume(id: string): Promise<Generation | null> {
     const { count } = await this.db.generation.updateMany({
-      where: { id, status: 'RUNNING', kind: 'PARENT', stage: 'waiting' },
-      data: { stage: 'composing', heartbeatAt: new Date() },
+      where: { id, status: 'RUNNING', kind: 'PARENT', stage: 'waiting', attempts: { lt: MAX_ATTEMPTS } },
+      // Planning is attempt one; every assembly claim is another attempt. If
+      // ffmpeg or its worker repeatedly disappears, the normal retry ceiling
+      // eventually refunds the parent instead of looping forever.
+      data: { stage: 'composing', heartbeatAt: new Date(), attempts: { increment: 1 } },
     });
     if (count === 0) return null;
     return this.db.generation.findUnique({ where: { id } });
+  }
+
+  /** Put a failed parent assembly back into the one state resume() may claim. */
+  async retryParentAssembly(id: string, reason: string): Promise<boolean> {
+    const { count } = await this.db.generation.updateMany({
+      where: { id, status: 'RUNNING', kind: 'PARENT', stage: 'composing', attempts: { lt: MAX_ATTEMPTS } },
+      data: { stage: 'waiting', heartbeatAt: new Date(), failureReason: reason.slice(0, 2000) },
+    });
+    return count > 0;
   }
 
   /** A child checked in: its parent is alive too. */
@@ -337,21 +464,24 @@ export class GenerationService {
     return { done, running, total: children.length, progress, detail };
   }
 
-  /**
-   * What a generation would cost, before the customer commits. The studio
-   * shows this next to the button; the balance after is what the customer
-   * is really deciding about.
-   */
+  private assertReplayProject(req: GenerationRequest, existing: Generation): void {
+    if (req.channel === 'API' && (existing.projectId !== req.projectId || existing.channel !== 'API' || existing.kind === 'CHILD' || existing.deletedAt)) {
+      throw new ConflictError('That clientKey is already in use outside this project. Use a workspace-unique key.');
+    }
+  }
+
+  /** Estimate the current charge without creating a generation or debiting credits. */
   async quote(
     workspaceId: string,
     capability: Capability,
-    costCode?: string,
-    /** How many photos this will be done to. A batch quotes its whole folder. */
-    quantity = 1,
+    params: Record<string, unknown> = {},
   ): Promise<{ costCode: string; credits: number; label: string; balance: number; balanceAfter: number; expectedMs: number }> {
-    const code = costCode ?? DEFAULT_COST_CODE[capability];
+    const code = generationCostCode(capability, params);
     const cost = await this.db.creditCost.findUnique({ where: { code } });
     if (!cost) throw new NotFoundError(`credit cost "${code}"`);
+    /** Counts come from the same capability fields and media metadata the eventual request uses. */
+    const sourceDurationMs = await this.billableSourceDuration(workspaceId, capability, params);
+    const quantity = generationQuantity(capability, params, sourceDurationMs);
     const each = cost.credits;
     const total = each * Math.max(1, Math.min(quantity, BATCH_MAX));
     const wallet = await this.db.wallet.findUnique({ where: { workspaceId } });
@@ -365,6 +495,33 @@ export class GenerationService {
       balanceAfter: balance - total,
       expectedMs: EXPECTED_MS[capability] * (capability === 'BATCH' ? Math.max(1, quantity) : 1),
     };
+  }
+
+  /**
+   * Dubbing vendors bill by source length. Use the duration verified from the
+   * stored bytes, and reject an over-limit input before reserving credits.
+   */
+  private async billableSourceDuration(
+    workspaceId: string,
+    capability: Capability,
+    params: Record<string, unknown>,
+    readyAssets?: ReadonlyMap<string, MediaAsset>,
+  ): Promise<number | undefined> {
+    if (capability !== 'DUB' && capability !== 'LIPSYNC') return undefined;
+    const key = typeof params.sourceKey === 'string' ? params.sourceKey : '';
+    // Quotes are also requested while a form is incomplete. The final request
+    // schema requires a source, so one base unit is only a provisional quote.
+    if (!key) return undefined;
+    const asset = readyAssets?.get(key) ?? (await this.media.requireReady(workspaceId, key));
+    if (!asset.mime?.startsWith('video/')) throw new ValidationError({ sourceKey: 'Choose a video file.' });
+    const measured = await this.media.ensureDuration(asset);
+    const durationMs = measured.durationMs;
+    if (!durationMs || durationMs <= 0) throw new ValidationError({ sourceKey: 'That video has no measurable duration.' });
+    const maxSec = capability === 'DUB' ? DUB_MAX_SEC : LIPSYNC_MAX_SEC;
+    if (durationMs > maxSec * 1000) {
+      throw new ValidationError({ sourceKey: `That video is ${Math.ceil(durationMs / 1000)} seconds long; the limit is ${maxSec / 60} minutes.` });
+    }
+    return durationMs;
   }
 
   /**
@@ -445,11 +602,12 @@ export class GenerationService {
    * calls this, and only for failures whose kind says retrying could help.
    * The attempt count already went up in start(); it is never reset.
    */
-  async requeue(id: string, reason: string): Promise<void> {
-    await this.db.generation.updateMany({
-      where: { id, status: 'RUNNING' },
+  async requeue(id: string, reason: string, guard: Prisma.GenerationWhereInput = {}): Promise<boolean> {
+    const { count } = await this.db.generation.updateMany({
+      where: { id, status: 'RUNNING', AND: guard },
       data: { status: 'QUEUED', heartbeatAt: null, stage: 'queued', progress: 0, failureReason: reason.slice(0, 2000) },
     });
+    return count > 0;
   }
 
   /**
@@ -476,51 +634,103 @@ export class GenerationService {
     logger.info({ generationId: row.id, credits: amount, of: row.credits, reason }, 'refunded the share of a batch that failed');
   }
 
-  /** Outputs are stored. The debit stands; there is nothing to refund. */
+  /** Outputs are stored. The debit stands, except a captured premium for an explicitly downgraded result. */
   async succeed(id: string, outcome: GenerationOutcome): Promise<Generation> {
-    const row = await this.claimTerminal(id);
-    // The copy that came back is the most searchable thing about a text generation.
-    const copyText = (outcome.outputs ?? [])
-      .filter((o) => o.role === 'text' && o.text !== undefined)
-      .map((o) => flattenText(o.text))
-      .join(' ')
-      .trim();
-    const searchText = [row.searchText, copyText].filter(Boolean).join(' ').slice(0, 8000) || undefined;
-    const done = await this.db.generation.update({
-      where: { id: row.id },
-      data: {
-        status: 'SUCCEEDED',
-        finishedAt: new Date(),
-        stage: 'done',
-        progress: 100,
-        ...(searchText ? { searchText } : {}),
-        outputs: (outcome.outputs ?? []) as unknown as Prisma.InputJsonArray,
-        ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
-        ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
-        ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
-      },
+    const done = await this.db.$transaction(async (tx) => {
+      const row = await this.terminalCandidate(tx, id);
+      // Invoice closing uses this same wallet row as its serialization point.
+      // If completion wins, this generation is visible in that invoice; if
+      // closing wins, finishedAt is stamped afterwards and the next period
+      // picks it up. A pre-cutoff transaction can therefore never disappear
+      // between period snapshots.
+      const wallets = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "wallets" WHERE "workspaceId" = CAST(${row.workspaceId} AS uuid) FOR UPDATE
+      `;
+      const walletId = wallets[0]?.id;
+      if (!walletId) throw new NotFoundError('wallet');
+      const finishedAt = new Date();
+      // The copy that came back is the most searchable thing about a text generation.
+      const copyText = (outcome.outputs ?? [])
+        .filter((o) => o.role === 'text' && o.text !== undefined)
+        .map((o) => flattenText(o.text))
+        .join(' ')
+        .trim();
+      const searchText = [row.searchText, copyText].filter(Boolean).join(' ').slice(0, 8000) || undefined;
+      const downgrade = musicVoiceDowngradeCredits(row, outcome.outputs);
+      const { count } = await tx.generation.updateMany({
+        where: { id: row.id, status: { notIn: [...TERMINAL_STATUSES] } },
+        data: {
+          status: 'SUCCEEDED',
+          finishedAt,
+          stage: 'done',
+          progress: 100,
+          ...(downgrade > 0 ? { credits: row.credits - downgrade } : {}),
+          ...(searchText ? { searchText } : {}),
+          outputs: (outcome.outputs ?? []) as unknown as Prisma.InputJsonArray,
+          ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
+          ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
+          ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
+        },
+      });
+      if (count === 0) await this.throwTerminalConflict(tx, id);
+      // A waiting parent still needs its presenter clip. This runs only in
+      // the terminal transaction, after assembly has stored the final output.
+      await this.media.retireGenerationWork({ workspaceId: row.workspaceId, generationId: row.id, createdAt: row.createdAt }, tx);
+      if (downgrade > 0) {
+        await this.ledger.refund(
+          {
+            walletId,
+            amount: downgrade,
+            idempotencyKey: `${generationDebitKey(row.id)}:music-voice-downgrade`,
+            referenceId: row.id,
+            reason: 'Personal voice was not applied; charged the base song price only',
+          },
+          tx,
+        );
+      }
+      return tx.generation.findUniqueOrThrow({ where: { id } });
     });
+    await this.purgeRetiredWork(done);
     this.hooks.finished(done);
     return done;
   }
 
   /** It ended badly. Give the credits back. */
-  async fail(id: string, outcome: GenerationOutcome): Promise<Generation> {
-    const row = await this.claimTerminal(id);
-    if (row.credits > 0) await this.refund(row, outcome.failureReason ?? 'generation failed');
-    const done = await this.db.generation.update({
-      where: { id: row.id },
-      data: {
-        status: 'FAILED',
-        finishedAt: new Date(),
-        stage: 'failed',
-        failureReason: outcome.failureReason ?? null,
-        failureKind: outcome.failureKind ?? null,
-        ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
-        ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
-        ...(outcome.providerCostMinor !== undefined ? { providerCostMinor: outcome.providerCostMinor } : {}),
-      },
+  async fail(id: string, outcome: GenerationOutcome, guard: Prisma.GenerationWhereInput = {}): Promise<Generation> {
+    const done = await this.db.$transaction(async (tx) => {
+      const row = await this.terminalCandidate(tx, id);
+      const finishedAt = new Date();
+      const [ownAttempts, childSpend] = await Promise.all([
+        tx.providerAttempt.aggregate({ where: { generationId: row.id, status: 'SUCCEEDED' }, _sum: { costMinor: true } }),
+        row.kind === 'PARENT'
+          ? tx.generation.aggregate({ where: { parentId: row.id }, _sum: { providerCostMinor: true } })
+          : Promise.resolve({ _sum: { providerCostMinor: null } }),
+      ]);
+      // A sweeper has no in-memory runner totals, and a process may disappear
+      // after provider acceptance but before it can copy spend onto Generation.
+      // The journal is the durable source of truth. `max` accepts a runner's
+      // legacy/un-journaled total without adding the same operation twice.
+      const journalledCost = (ownAttempts._sum.costMinor ?? 0) + (childSpend._sum.providerCostMinor ?? 0);
+      const providerCostMinor = Math.max(row.providerCostMinor ?? 0, outcome.providerCostMinor ?? 0, journalledCost);
+      const { count } = await tx.generation.updateMany({
+        where: { id: row.id, status: { notIn: [...TERMINAL_STATUSES] }, AND: guard },
+        data: {
+          status: 'FAILED',
+          finishedAt,
+          stage: 'failed',
+          failureReason: outcome.failureReason ?? null,
+          failureKind: outcome.failureKind ?? null,
+          ...(outcome.providerKey ? { providerKey: outcome.providerKey } : {}),
+          ...(outcome.providerJobId ? { providerJobId: outcome.providerJobId } : {}),
+          ...(providerCostMinor > 0 || outcome.providerCostMinor !== undefined ? { providerCostMinor } : {}),
+        },
+      });
+      if (count === 0) await this.throwTerminalConflict(tx, id);
+      await this.media.retireGenerationWork({ workspaceId: row.workspaceId, generationId: row.id, createdAt: row.createdAt }, tx);
+      if (row.credits > 0) await this.refund(row, outcome.failureReason ?? 'generation failed', tx);
+      return tx.generation.findUniqueOrThrow({ where: { id } });
     });
+    await this.purgeRetiredWork(done);
     this.hooks.finished(done);
     return done;
   }
@@ -533,17 +743,22 @@ export class GenerationService {
    * refunding work we have already paid for.
    */
   async cancel(id: string, workspaceId?: string): Promise<Generation> {
-    const row = await this.db.generation.findUnique({ where: { id } });
-    if (!row || (workspaceId && row.workspaceId !== workspaceId)) throw new NotFoundError('generation');
-    if (row.status !== 'QUEUED') {
-      throw new ConflictError('That generation has already started and cannot be cancelled.');
-    }
-    if (row.credits > 0) await this.refund(row, 'cancelled before it started');
-    logger.info({ generationId: id, workspaceId: row.workspaceId, credits: row.credits }, 'generation cancelled; credits returned');
-    return this.db.generation.update({
-      where: { id },
-      data: { status: 'CANCELLED', finishedAt: new Date(), stage: 'failed' },
+    const done = await this.db.$transaction(async (tx) => {
+      const row = await tx.generation.findUnique({ where: { id } });
+      if (!row || (workspaceId && row.workspaceId !== workspaceId)) throw new NotFoundError('generation');
+      if (row.status !== 'QUEUED') throw new ConflictError('That generation has already started and cannot be cancelled.');
+      const { count } = await tx.generation.updateMany({
+        where: { id, status: 'QUEUED', ...(workspaceId ? { workspaceId } : {}) },
+        data: { status: 'CANCELLED', finishedAt: new Date(), stage: 'failed' },
+      });
+      if (count === 0) throw new ConflictError('That generation has already started and cannot be cancelled.');
+      await this.media.retireGenerationWork({ workspaceId: row.workspaceId, generationId: row.id, createdAt: row.createdAt }, tx);
+      if (row.credits > 0) await this.refund(row, 'cancelled before it started', tx);
+      return tx.generation.findUniqueOrThrow({ where: { id } });
     });
+    await this.purgeRetiredWork(done);
+    logger.info({ generationId: id, workspaceId: done.workspaceId, credits: done.credits }, 'generation cancelled; credits returned');
+    return done;
   }
 
   /**
@@ -608,7 +823,7 @@ export class GenerationService {
           { status: 'QUEUED', createdAt: { lt: queuedCutoff } },
         ],
       },
-      select: { id: true, status: true, kind: true, capability: true, attempts: true, heartbeatAt: true, createdAt: true },
+      select: { id: true, status: true, kind: true, capability: true, attempts: true, heartbeatAt: true, createdAt: true, stage: true, input: true },
       take: 100, // bounded: a backlog is drained over several runs, not one long lock
     });
 
@@ -616,25 +831,74 @@ export class GenerationService {
     for (const row of stale) {
       try {
         const quietMin = Math.round((now.getTime() - (row.heartbeatAt ?? row.createdAt).getTime()) / 60_000);
-        if (row.status === 'RUNNING' && row.kind !== 'PARENT' && row.attempts < MAX_ATTEMPTS) {
+        // The heartbeat value we selected is an optimistic claim token. If a
+        // supposedly dead worker checks in before this write, the predicate
+        // no longer matches and the sweeper leaves its live job alone.
+        const staleGuard: Prisma.GenerationWhereInput =
+          row.status === 'RUNNING'
+            ? row.heartbeatAt
+              ? { heartbeatAt: row.heartbeatAt }
+              : { heartbeatAt: null, createdAt: { lt: runningCutoff } }
+            : { status: 'QUEUED', createdAt: { lt: queuedCutoff } };
+        if (row.status === 'RUNNING' && row.attempts < MAX_ATTEMPTS) {
           const reason = `the worker stopped mid-job (no heartbeat for ${quietMin} min — usually a restart); trying again, attempt ${row.attempts + 1} of ${MAX_ATTEMPTS}`;
-          await this.requeue(row.id, reason);
-          const r = await this.queue.enqueue(row.id, row.capability);
+          let queuedCapability: Capability = row.capability;
+          let claimed = false;
+          if (row.kind === 'PARENT') {
+            const [children, activeChildren] = await Promise.all([
+              this.db.generation.count({ where: { parentId: row.id } }),
+              this.db.generation.count({ where: { parentId: row.id, status: { in: ['QUEUED', 'RUNNING'] } } }),
+            ]);
+            const savedPlan = shotPlanFromInput(row.input);
+            const input = row.input as { shots?: number; sourceKeys?: unknown } | null;
+            const singleReel = row.capability === 'IMAGE_TO_VIDEO' && Number(input?.shots ?? 1) === 1;
+            const batchSize = row.capability === 'BATCH' && Array.isArray(input?.sourceKeys) ? input.sourceKeys.length : null;
+            const expectedChildren = batchSize ?? savedPlan?.shots.length ?? (singleReel ? 1 : null);
+            const readyToAssemble = expectedChildren !== null && children === expectedChildren && activeChildren === 0;
+            if (readyToAssemble) {
+              // Keep the row RUNNING and put it back into the one legitimate
+              // resume state. The media queue then calls resume(), which
+              // atomically claims and counts this assembly attempt.
+              const { count } = await this.db.generation.updateMany({
+                where: { id: row.id, status: 'RUNNING', AND: staleGuard },
+                data: { stage: 'waiting', heartbeatAt: now, failureReason: reason.slice(0, 2000) },
+              });
+              claimed = count > 0;
+              queuedCapability = parentResumeCapability(row.capability);
+            } else {
+              // Planning or dispatch stopped part-way through. createChild()
+              // is idempotent, so the next parent attempt reuses every shot
+              // already committed and fills in only the missing indices.
+              claimed = await this.requeue(row.id, reason, staleGuard);
+            }
+          } else {
+            claimed = await this.requeue(row.id, reason, staleGuard);
+          }
+          if (!claimed) continue;
+          const r = await this.queue.enqueue(row.id, queuedCapability);
           logger.warn(
-            { generationId: row.id, capability: row.capability, attempts: row.attempts, queued: r.queued },
+            { generationId: row.id, capability: row.capability, queuedCapability, attempts: row.attempts, queued: r.queued },
             'sweeper requeued an interrupted generation',
           );
         } else if (row.status === 'RUNNING') {
-          await this.fail(row.id, {
-            failureReason:
-              row.kind === 'PARENT'
-                ? `the ad's shots stopped reporting for ${quietMin} min; the worker that ran them was probably restarted. Credits refunded — try again.`
-                : `the worker stopped mid-job ${row.attempts} times (no heartbeat for ${quietMin} min each time). Credits refunded.`,
-          });
+          await this.fail(
+            row.id,
+            {
+              failureReason:
+                row.kind === 'PARENT'
+                  ? `the ad worker stopped reporting ${row.attempts} times while planning or assembling (last heartbeat ${quietMin} min ago). Credits refunded — try again.`
+                  : `the worker stopped mid-job ${row.attempts} times (no heartbeat for ${quietMin} min each time). Credits refunded.`,
+            },
+            staleGuard,
+          );
         } else {
-          await this.fail(row.id, {
-            failureReason: `waited ${quietMin} min and no worker picked it up. Credits refunded — check the worker is running.`,
-          });
+          await this.fail(
+            row.id,
+            {
+              failureReason: `waited ${quietMin} min and no worker picked it up. Credits refunded — check the worker is running.`,
+            },
+            staleGuard,
+          );
         }
         reclaimed.push(row.id);
       } catch (err) {
@@ -649,22 +913,42 @@ export class GenerationService {
   /**
    * Parents whose shots have all finished but that nobody woke — the wake-up
    * enqueue failed, or the worker that ran the last shot died between the
-   * update and the enqueue. The dispatcher calls this on its timer. Returns
-   * what it queued so the direct-mode worker can run them itself.
+   * update and the enqueue. The dispatcher calls this on its timer. The row
+   * remains IMAGE_TO_VIDEO, but that resume job belongs on media.local because
+   * its next step is ffmpeg assembly. A BATCH resume stays on media.fast because
+   * it only gathers already-stored child outputs. When `servedCapabilities` is
+   * supplied, only parents whose resume work belongs to one of those queue
+   * capabilities are returned, preserving the service boundary in direct mode.
    */
-  async wakeReadyParents(): Promise<string[]> {
+  async wakeReadyParents(servedCapabilities?: readonly Capability[]): Promise<string[]> {
+    // Filter before `take`: if fifty ready ads are ahead of a batch, the fast
+    // worker must still be able to see that batch rather than filtering an
+    // already-truncated page down to nothing forever (and vice versa).
+    const parentCapabilities = servedCapabilities
+      ? CAPABILITIES.filter((capability) => servedCapabilities.includes(parentResumeCapability(capability)))
+      : undefined;
     const parents = await this.db.generation.findMany({
-      where: { status: 'RUNNING', kind: 'PARENT', stage: 'waiting', children: { none: { status: { in: ['QUEUED', 'RUNNING'] } } } },
+      where: {
+        status: 'RUNNING',
+        kind: 'PARENT',
+        stage: 'waiting',
+        children: { none: { status: { in: ['QUEUED', 'RUNNING'] } } },
+        ...(parentCapabilities ? { capability: { in: [...parentCapabilities] } } : {}),
+      },
       select: { id: true, capability: true },
       take: 50,
     });
+    const ready = parents.filter((parent) => {
+      const resumeCapability = parentResumeCapability(parent.capability);
+      return !servedCapabilities || servedCapabilities.includes(resumeCapability);
+    });
     const woken: string[] = [];
-    for (const p of parents) {
-      const r = await this.queue.enqueue(p.id, p.capability);
+    for (const p of ready) {
+      const r = await this.queue.enqueue(p.id, parentResumeCapability(p.capability));
       if (r.queued) woken.push(p.id);
     }
     if (woken.length) logger.warn({ count: woken.length, woken }, 'dispatcher woke parents whose shots had all finished');
-    return parents.map((p) => p.id);
+    return ready.map((p) => p.id);
   }
 
   /** The customer's history, newest first. Children ride inside their parent, not beside it. */
@@ -679,15 +963,15 @@ export class GenerationService {
   }
 
   /**
-   * Fetch a row and refuse to move it if it has already finished.
+   * Read the row needed to build a terminal update.
    *
-   * Every terminal transition goes through here. A provider that answers twice,
-   * a retried webhook, a sweeper racing a worker that just came back — all of
-   * them land here and are turned away, which is what keeps the refund exactly
-   * once.
+   * This early check gives a useful error, but it is not the race guard: the
+   * subsequent update still includes a non-terminal status predicate in the
+   * same transaction. A provider answer and a sweeper can both read RUNNING;
+   * only one of those conditional updates can claim it.
    */
-  private async claimTerminal(id: string): Promise<Generation> {
-    const row = await this.db.generation.findUnique({ where: { id } });
+  private async terminalCandidate(tx: Prisma.TransactionClient, id: string): Promise<Generation> {
+    const row = await tx.generation.findUnique({ where: { id } });
     if (!row) throw new NotFoundError('generation');
     if ((TERMINAL_STATUSES as readonly string[]).includes(row.status)) {
       throw new ConflictError(`That generation already ${row.status.toLowerCase()}.`);
@@ -695,18 +979,69 @@ export class GenerationService {
     return row;
   }
 
-  /** Give back exactly what was taken, keyed so it can only happen once. */
-  private async refund(row: Generation, reason: string): Promise<void> {
-    const wallet = await this.db.wallet.findUnique({ where: { workspaceId: row.workspaceId } });
-    if (!wallet) throw new NotFoundError('wallet');
-    await this.ledger.refund({
-      walletId: wallet.id,
-      amount: row.credits,
-      idempotencyKey: generationDebitKey(row.id),
-      referenceId: row.id,
-      reason,
-    });
+  /** Resolve the winner after a conditional update lost a terminal race. */
+  private async throwTerminalConflict(tx: Prisma.TransactionClient, id: string): Promise<never> {
+    const row = await tx.generation.findUnique({ where: { id } });
+    if (!row) throw new NotFoundError('generation');
+    throw new ConflictError(`That generation already ${row.status.toLowerCase()}.`);
   }
+
+  /**
+   * Terminal truth and money must never roll back because object storage is
+   * temporarily unavailable. Work rows were retired in the transaction; this
+   * is the fast path, while retention is the durable retry path.
+   */
+  private async purgeRetiredWork(row: Pick<Generation, 'id' | 'workspaceId' | 'createdAt'>): Promise<void> {
+    try {
+      const objects = await this.media.purgeGenerationWork({
+        workspaceId: row.workspaceId,
+        generationId: row.id,
+        createdAt: row.createdAt,
+      });
+      if (objects > 0) logger.info({ generationId: row.id, workspaceId: row.workspaceId, objects }, 'generation work objects purged');
+    } catch (err) {
+      logger.warn({ err, generationId: row.id, workspaceId: row.workspaceId }, 'generation work cleanup deferred to retention');
+    }
+  }
+
+  /** Give back exactly what was taken, keyed so it can only happen once. */
+  private async refund(row: Generation, reason: string, tx: Prisma.TransactionClient | PrismaClient = this.db): Promise<void> {
+    const wallet = await tx.wallet.findUnique({ where: { workspaceId: row.workspaceId } });
+    if (!wallet) throw new NotFoundError('wallet');
+    await this.ledger.refund(
+      {
+        walletId: wallet.id,
+        amount: row.credits,
+        idempotencyKey: generationDebitKey(row.id),
+        referenceId: row.id,
+        reason,
+      },
+      tx,
+    );
+  }
+}
+
+/** Exact captured premium to return when a successful song stayed in the model voice. */
+export function musicVoiceDowngradeCredits(row: Pick<Generation, 'capability' | 'costCode' | 'credits' | 'input'>, outputs?: GenerationOutput[]): number {
+  if (row.capability !== 'MUSIC' || row.costCode !== MUSIC_MY_VOICE_COST_CODE) return 0;
+  const downgraded = (outputs ?? []).some((output) => {
+    if (output.role !== 'text' || !output.text || typeof output.text !== 'object' || Array.isArray(output.text)) return false;
+    const myVoice = (output.text as Record<string, unknown>).myVoice;
+    return Boolean(myVoice && typeof myVoice === 'object' && !Array.isArray(myVoice) && (myVoice as Record<string, unknown>).applied === false);
+  });
+  if (!downgraded || !row.input || typeof row.input !== 'object' || Array.isArray(row.input)) return 0;
+  const billing = (row.input as Record<string, unknown>)._billing;
+  if (!billing || typeof billing !== 'object' || Array.isArray(billing)) return 0;
+  const baseCredits = Number((billing as Record<string, unknown>).musicBaseCredits);
+  if (!Number.isInteger(baseCredits) || baseCredits < 0) return 0;
+  return Math.max(0, row.credits - baseCredits);
+}
+
+/** A parent plan is usable for recovery only after its full schema was committed. */
+function shotPlanFromInput(input: Prisma.JsonValue): ShotPlan | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const parsed = shotPlanSchema.safeParse((input as Record<string, unknown>).plan);
+  return parsed.success ? parsed.data : null;
 }
 
 /** The sentence a customer reads on a failed row. Never the vendor's words. */

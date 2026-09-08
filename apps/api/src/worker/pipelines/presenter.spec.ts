@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { renderPresenter, wantsPresenter } from './presenter';
@@ -7,6 +7,7 @@ import { HAS_FFMPEG } from '../../test/ffmpeg';
 
 /** These make real audio and read real durations; without ffmpeg there is nothing to make it with. */
 const ffIt = HAS_FFMPEG ? it : it.skip;
+afterEach(() => vi.restoreAllMocks());
 
 const exec = promisify(execFile);
 
@@ -20,31 +21,35 @@ async function tone(seconds: number): Promise<Uint8Array> {
 }
 
 function ctxWith(opts: { lab: object | null; voice?: object | null; audio: Uint8Array }) {
-  const put = vi.fn(async () => undefined);
+  const put = vi.fn(async (input: { workspaceId: string; generationId: string; name: string }) => {
+    return `${input.workspaceId}/2026/09/gen/${input.generationId}/work/${input.name}`;
+  });
   const callCapability = vi.fn(async () => ({
     providerKey: 'elevenlabs:tts',
     artifacts: [{ role: 'audio', mime: 'audio/mpeg', bytes: opts.audio }],
     costMinor: 5,
   }));
+  const callExternal = vi.fn(async (_provider, _input, execute: (opts: object) => Promise<unknown>, externalOpts: object) => execute(externalOpts));
   const ctx = {
     row: { id: 'gen-1', workspaceId: 'ws-1', createdAt: new Date('2026-09-06T00:00:00Z'), input: {} },
     db: {
       voiceProfile: { findUnique: vi.fn(async () => opts.voice ?? null) },
     },
     media: {
-      put,
+      putGenerationWork: put,
       signRead: vi.fn(async (k: string) => `https://signed/${k}`),
       requireReady: vi.fn(async (_ws: string, key: string) => ({ key, mime: 'image/jpeg' })),
       getBytes: vi.fn(async () => Buffer.from('jpegbytes')),
     },
     presenterLab: () => opts.lab,
     callCapability,
+    callExternal,
     stage: vi.fn(async () => undefined),
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     signal: new AbortController().signal,
     budgetMs: 480_000,
   } as unknown as PipelineContext;
-  return { ctx, put, callCapability };
+  return { ctx, put, callCapability, callExternal };
 }
 
 const base = {
@@ -69,6 +74,7 @@ describe('a presenter on camera', () => {
     const audio = await tone(3);
     const lab = {
       key: 'heygen:translate',
+      capabilities: ['DUB'],
       talkingVideo: vi.fn(async () => ({ url: 'https://vendor/clip.mp4', providerJobId: 'hg-1' })),
       presenterCostMinor: (s: number) => Math.ceil(s / 60) * 100,
     };
@@ -81,7 +87,7 @@ describe('a presenter on camera', () => {
       providerVoiceId: 'v1',
       language: 'en-NG',
     };
-    const { ctx, put, callCapability } = ctxWith({ lab, voice, audio });
+    const { ctx, put, callCapability, callExternal } = ctxWith({ lab, voice, audio });
     vi.spyOn(await import('../../modules/provider/adapters/http'), 'fetchBytes').mockResolvedValue({
       bytes: new Uint8Array([1, 2, 3, 4]),
       mime: 'video/mp4',
@@ -100,6 +106,12 @@ describe('a presenter on camera', () => {
       expect.objectContaining({ avatarId: 'Daphne_public_4', aspect: '9:16', audioUrl: expect.stringMatching(/^https:\/\/signed\//) }),
       expect.anything(),
     );
+    expect(callExternal).toHaveBeenCalledWith(
+      lab,
+      expect.objectContaining({ params: expect.objectContaining({ operation: 'presenter-video' }) }),
+      expect.any(Function),
+      expect.objectContaining({ timeoutMs: 480_000 }),
+    );
     expect(out.clip.durationMs).toBeGreaterThan(2500);
     expect(out.clip.key).toMatch(/gen\/gen-1\/work\/presenter\.mp4$/);
     expect(out.clip.audioKey).toMatch(/presenter\.mp3$/);
@@ -109,7 +121,7 @@ describe('a presenter on camera', () => {
 
   ffIt('refuses another workspace’s voice, a photo without consent, and an unknown presenter', async () => {
     const audio = await tone(1);
-    const lab = { key: 'heygen:translate', talkingVideo: vi.fn(), presenterCostMinor: () => 0 };
+    const lab = { key: 'heygen:translate', capabilities: ['DUB'], talkingVideo: vi.fn(), presenterCostMinor: () => 0 };
     const other = { key: 'mine:x', active: true, kind: 'CLONE', workspaceId: 'ws-2', providerKey: 'elevenlabs:tts', providerVoiceId: 'v', language: 'en' };
     await expect(
       renderPresenter(ctxWith({ lab, voice: other, audio }).ctx, { ...base, presenter: { kind: 'stock', key: 'daphne', voiceId: 'mine:x' } }, 'hi'),

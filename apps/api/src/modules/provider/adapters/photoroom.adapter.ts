@@ -19,7 +19,7 @@ import {
   type ProviderResult,
 } from '@anystudio/shared';
 import { BaseProvider } from './base';
-import { kindForStatus } from './http';
+import { kindForStatus, linkedTimeoutSignal, MAX_PROVIDER_JSON_BYTES, MAX_PROVIDER_OUTPUT_BYTES, readLimitedResponseBytes } from './http';
 
 const KNOWN: Record<string, Capability[]> = {
   'photoroom:edit': ['BACKGROUND_REPLACE', 'RELIGHT', 'BACKGROUND_REMOVE', 'PRODUCT_SHOT'],
@@ -43,6 +43,15 @@ type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
 
 /** The per-feature frame name, for the modes whose size is set on themselves. */
 const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD';
+
+/** Exact social frames supported through Photoroom's custom `outputSize`. */
+const OUTPUT_SIZE_BY_ASPECT: Record<CapabilityParams<'BACKGROUND_REPLACE'>['aspect'], string> = {
+  '1:1': '1080x1080',
+  '4:5': '1080x1350',
+  '3:4': '1080x1440',
+  '9:16': '1080x1920',
+  '16:9': '1920x1080',
+};
 
 /**
  * WHO ASKED FOR A CUTOUT.
@@ -188,12 +197,31 @@ export class PhotoroomProvider extends BaseProvider {
       case 'BACKGROUND_REPLACE': {
         const p = this.params(input, 'BACKGROUND_REPLACE');
         q.set('background.prompt', p.prompt);
+        // `originalImage` silently ignored the public aspect control. The API
+        // accepts an exact WIDTHxHEIGHT outputSize and generates the new
+        // background into that frame.
+        q.set('outputSize', OUTPUT_SIZE_BY_ASPECT[p.aspect]);
         if (p.shadow) q.set('shadow.mode', this.str(input.config, 'shadow', 'ai.soft'));
         if (p.relight) q.set('lighting.mode', 'ai.auto');
         break;
       }
       case 'RELIGHT': {
-        q.set('lighting.mode', 'ai.auto');
+        const p = this.params(input, 'RELIGHT');
+        // Background removal is the endpoint default; a relight must not turn
+        // the customer's photograph into an unrelated transparent cutout.
+        q.set('removeBackground', 'false');
+        if (p.prompt?.trim()) {
+          // `lighting.mode` is automatic and has no prompt field. Photoroom's
+          // supported free-form edit feature is the honest way to honour a
+          // directed light request instead of silently discarding it.
+          q.set('editWithAI.mode', 'ai.auto');
+          q.set(
+            'editWithAI.prompt',
+            `Change only the lighting as follows: ${p.prompt.trim()}. Keep the product, colours, text, background and composition unchanged.`,
+          );
+        } else {
+          q.set('lighting.mode', 'ai.preserve-hue-and-saturation');
+        }
         q.set('shadow.mode', this.str(input.config, 'shadow', 'ai.soft'));
         break;
       }
@@ -219,20 +247,26 @@ export class PhotoroomProvider extends BaseProvider {
     }
 
     opts.onProgress?.('Editing your photo', 30);
-    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${q.toString()}`, {
-      headers: { 'x-api-key': this.apiKey, accept: 'image/png, application/json' },
-      signal: AbortSignal.timeout(opts.timeoutMs),
-    }).catch((err: Error) => {
-      throw new ProviderError('RETRYABLE', `${this.key}: ${err.message}`, this.key);
-    });
+    const linked = linkedTimeoutSignal(opts.signal, opts.timeoutMs);
+    try {
+      const res = await fetch(`https://image-api.photoroom.com/v2/edit?${q.toString()}`, {
+        headers: { 'x-api-key': this.apiKey, accept: 'image/png, application/json' },
+        signal: linked.signal,
+      });
 
-    const mime = res.headers.get('content-type')?.split(';')[0] ?? '';
-    if (!res.ok || !mime.startsWith('image/')) {
-      const text = await res.text();
-      const kind = res.status === 400 && /prompt|content|policy/i.test(text) ? 'CONTENT_REJECTED' : kindForStatus(res.status);
-      throw new ProviderError(kind, `${this.key}: HTTP ${res.status}: ${text.slice(0, 400)}`, this.key, { status: res.status });
+      const mime = res.headers.get('content-type')?.split(';')[0] ?? '';
+      if (!res.ok || !mime.startsWith('image/')) {
+        const text = new TextDecoder().decode(await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_JSON_BYTES, 'error response'));
+        const kind = res.status === 400 && /prompt|content|policy/i.test(text) ? 'CONTENT_REJECTED' : kindForStatus(res.status);
+        throw new ProviderError(kind, `${this.key}: HTTP ${res.status}: ${text.slice(0, 400)}`, this.key, { status: res.status });
+      }
+      const bytes = await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_OUTPUT_BYTES, 'image response');
+      return { providerKey: this.key, providerJobId: res.headers.get('x-request-id') ?? undefined, artifacts: [{ bytes, mime, role: 'image' }] };
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key);
+    } finally {
+      linked.dispose();
     }
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    return { providerKey: this.key, providerJobId: res.headers.get('x-request-id') ?? undefined, artifacts: [{ bytes, mime, role: 'image' }] };
   }
 }

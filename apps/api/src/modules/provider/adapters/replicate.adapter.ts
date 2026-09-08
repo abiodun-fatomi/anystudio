@@ -43,21 +43,34 @@ export class ReplicateProvider extends BaseProvider {
     const headers = { authorization: `Bearer ${this.token}`, prefer: 'wait=30' };
     const body = { input: { image: this.file(input, 'sourceKey'), ...(p.background === 'transparent' ? {} : { background_color: p.background }) } };
 
-    const first = await http<Prediction>(this.key, `https://api.replicate.com/v1/models/${model}/predictions`, {
-      headers,
-      body,
-      timeoutMs: 45_000,
-      signal: opts.signal,
-    });
-    const providerJobId = first.json.id;
+    let providerJobId: string;
+    let pollUrl: string;
+    let first: Prediction | undefined;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+      const saved = opts.resume.data?.pollUrl;
+      pollUrl = typeof saved === 'string' && saved ? saved : `https://api.replicate.com/v1/predictions/${encodeURIComponent(providerJobId)}`;
+    } else {
+      const response = await http<Prediction>(this.key, `https://api.replicate.com/v1/models/${model}/predictions`, {
+        headers,
+        body,
+        timeoutMs: 45_000,
+        signal: opts.signal,
+      });
+      first = response.json;
+      providerJobId = first.id;
+      if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: submission returned no prediction id`, this.key, { raw: first });
+      pollUrl = first.urls?.get ?? `https://api.replicate.com/v1/predictions/${encodeURIComponent(providerJobId)}`;
+      await opts.onSubmitted?.(providerJobId, { pollUrl });
+    }
     opts.onProgress?.('Cutting out your product', 30);
 
     const final =
-      first.json.status === 'succeeded' || first.json.status === 'failed'
-        ? first.json
+      first && (first.status === 'succeeded' || first.status === 'failed')
+        ? first
         : await poll(
             async () => {
-              const s = await http<Prediction>(this.key, first.json.urls?.get ?? `https://api.replicate.com/v1/predictions/${providerJobId}`, {
+              const s = await http<Prediction>(this.key, pollUrl, {
                 headers: { authorization: headers.authorization },
                 timeoutMs: 15_000,
                 signal: opts.signal,
@@ -69,10 +82,14 @@ export class ReplicateProvider extends BaseProvider {
 
     if (final.status !== 'succeeded') {
       const msg = final.error ?? final.status;
+      await opts.onSettled?.('FAILED');
       throw new ProviderError(/nsfw|safety/i.test(msg) ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: ${msg}`, this.key, { providerJobId });
     }
     const url = typeof final.output === 'string' ? final.output : pick<string>(final.output, '0');
-    if (!url) throw new ProviderError('RETRYABLE', `${this.key}: no output url`, this.key, { providerJobId, raw: final.output });
+    if (!url) {
+      await opts.onSettled?.('FAILED');
+      throw new ProviderError('RETRYABLE', `${this.key}: no output url`, this.key, { providerJobId, raw: final.output });
+    }
     return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'image/png', role: 'image' }], meta: { model } };
   }
 }

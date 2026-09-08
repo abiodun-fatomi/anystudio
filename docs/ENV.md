@@ -7,13 +7,17 @@ nowhere else:
 
 | Place                                                                                     | What goes there                                                                             |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Render → Env Groups → `anystudio-dev`** (and `-staging`, `-production` when they exist) | Everything the API and worker read. One group per environment; every service in it inherits |
+| **Render → Env Groups → `anystudio-dev`** (and `-staging`, `-production` when they exist) | Everything the API and both workers read. One group per environment; every service inherits |
 | **GitHub → repo → Settings → Secrets and variables → Actions**                            | Only what the deploy workflows need to reach Render and Cloudflare                          |
 | **`.env` on your machine** (copied from `.env.example`, never committed)                  | Local development                                                                           |
 
 Render's own values (`DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `PORT`,
-`NODE_ENV`, `APP_ENV`, `SERVICE_NAME`, `LOG_LEVEL`, `WORKER_*_CONCURRENCY`)
-are set by `render.yaml` and are never typed by a person.
+`NODE_ENV`, `APP_ENV`, `SERVICE_NAME`, `LOG_LEVEL`, `WORKER_QUEUES`,
+`WORKER_*_CONCURRENCY`, `FFMPEG_CONCURRENCY`) are set by the environment's
+Blueprint (`render.yaml`, `render.staging.yaml`, or
+`render.production.yaml`) and are never typed by a person. The shared secret
+group is created and populated manually before that one Blueprint path is
+imported; see `docs/DEPLOY.md` §3.
 
 Work through the tiers in order. Tier 1 is the API refusing to boot; tier 2
 is a customer being able to pay; tiers 3 and 4 switch on features one at a
@@ -129,7 +133,7 @@ production a stub grants credits for free.
    (`openssl rand -hex 24` is fine) → that string is
    `FLUTTERWAVE_WEBHOOK_SECRET`. Tick "Receive webhook in test mode" on dev.
 
-### `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_ENV`, `PADDLE_USAGE_PRODUCT_ID` — USD, GBP, EUR and everything else
+### `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_ENV`, `PADDLE_PRODUCT_APPROVED`, `PADDLE_USAGE_PRODUCT_ID` — USD, GBP, EUR and everything else
 
 Paddle is the merchant of record for the rest of the world: it handles VAT
 and sales tax. Without it, non-African currencies fall to the stub outside
@@ -139,7 +143,13 @@ production and are refused in production.
    The **live** account (vendors.paddle.com) needs website approval: they
    check `https://anystudio.ai` has visible pricing, terms, a privacy policy
    and a refund policy — all four pages exist now (`/pricing`, `/terms`,
-   `/privacy`, `/refunds`). Apply early; approval takes days.
+   `/privacy`, `/refunds`). Apply early; approval takes days. Separately,
+   disclose the complete AnyStudio feature inventory (human-like presenters,
+   talking photos, voice cloning/singing, dubbing/lip-sync, ad creation and
+   automated publishing) and obtain written product approval. [Paddle's current
+   AUP](https://www.paddle.com/help/start/intro-to-paddle/what-am-i-not-allowed-to-sell-on-paddle)
+   restricts or prohibits several of those categories; a generally active
+   live seller account is not evidence that this product is approved.
 2. **Developer tools → Authentication → API keys → Generate** → copy
    (`pdl_sdbx_apikey_…` in sandbox). That is `PADDLE_API_KEY`.
 3. Same page → **Client-side tokens → Generate** → `PADDLE_CLIENT_TOKEN`
@@ -152,10 +162,22 @@ production and are refused in production.
 5. **Catalog → Products → New product** → name `AnyStudio usage`, tax
    category _Standard digital goods_ → Save → copy its id (`pro_…`) →
    `PADDLE_USAGE_PRODUCT_ID`. Usage invoices for organizations are billed as
-   one-off prices under this product. (Credit packs are created by the seed
-   as catalogue prices; nothing to do there.)
-6. `PADDLE_ENV` = `sandbox` on dev and staging, `live` on production. Repeat
-   steps 2–5 in the live account for production; the ids differ.
+   one-off prices under this product.
+6. Create Paddle prices for every active plan (monthly and yearly) and every
+   active credit pack. Create matching monthly and yearly Flutterwave payment
+   plans. The seed deliberately does **not** create provider catalogue objects:
+   record their `pri_…` / numeric ids in each environment's `providerRefs`.
+7. Before production traffic, rehearse a real sandbox checkout, webhook,
+   renewal, cancellation and refund in staging. Production `/ready` stays 503
+   until both gateways, every active catalogue reference, and the Paddle usage
+   product id are locally complete; it never calls either vendor.
+8. `PADDLE_ENV` = `sandbox` on dev and staging, `live` on production. Keep
+   `PADDLE_PRODUCT_APPROVED=false` everywhere until Paddle's written approval
+   names the exact feature set; set it to `true` only in production after that
+   approval. The API deliberately refuses to start with live Paddle credentials
+   before this acknowledgement. Repeat
+   steps 2–6 in the live account for production; every key, product, price,
+   and plan id differs from its sandbox counterpart.
 
 ### `BANK_TRANSFER_DETAILS` (optional, tier 2)
 
@@ -190,7 +212,7 @@ demos without any of them. Costs and the full model map are in
 | `ELEVENLABS_API_KEY`                                                       | Voiceovers (multilingual TTS), music, dubbing, and "Your voice" (instant clone, stems, speech-to-speech — paid plan)    | elevenlabs.io → profile menu → **API Keys → Create**. Commercial use of generated music needs the Creator plan or above.                                                                                                                                           |
 | `PHOTOROOM_API_KEY`                                                        | Background replacement with generated scenes, shadows, relighting                                                       | photoroom.com/api → **Get API key**; apply to the startup programme for the discount.                                                                                                                                                                              |
 | `REPLICATE_API_TOKEN`                                                      | BiRefNet background removal (the cheap tier)                                                                            | replicate.com → **Account → API tokens → Create**.                                                                                                                                                                                                                 |
-| `OPENAI_API_KEY`                                                           | Sora image-to-video, TTS fallback                                                                                       | platform.openai.com → **API keys → Create new secret key**. Sora needs a funded organisation.                                                                                                                                                                      |
+| `OPENAI_API_KEY`                                                           | TTS fallback; the historical Sora adapter is disabled before its 2026-09-24 API shutdown                                | platform.openai.com → **API keys → Create new secret key**.                                                                                                                                                                                                        |
 | `BFL_API_KEY`                                                              | Flux Kontext, the budget edit tier                                                                                      | api.bfl.ai → sign up → **API keys**.                                                                                                                                                                                                                               |
 | `HEYGEN_API_KEY`                                                           | Video translate and lip-sync                                                                                            | app.heygen.com → **Settings → API** → copy the key (you already hold one).                                                                                                                                                                                         |
 | `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET`                             | Higgsfield's own image-to-video models (rows stay disabled until resale terms are agreed)                               | cloud.higgsfield.ai (Higgsfield Cloud, a separate account from the consumer app) → sign in → **Account settings → API keys** → key and secret pair. `platform.higgsfield.ai` is the API host, not a dashboard.                                                     |
@@ -276,8 +298,9 @@ Leave empty and nothing starts. To turn it on:
 | Repo **Secrets**                             | `RENDER_API_KEY`           | Render → Account Settings → **API Keys → Create API key**                                                                                                   |
 | Repo **Secrets**                             | `CLOUDFLARE_API_TOKEN`     | Cloudflare → My Profile → **API Tokens → Create Token** → template _Edit Cloudflare Workers_, plus **Zone → DNS → Edit** on `anystudio.ai` (custom domains) |
 | Repo **Secrets**                             | `CLOUDFLARE_ACCOUNT_ID`    | Cloudflare dashboard → any zone → right-hand column **Account ID**                                                                                          |
-| **Environments** → `development` → Variables | `RENDER_API_SERVICE_ID`    | `srv-…` from the URL of `anystudio-api-dev` in Render                                                                                                       |
-| same                                         | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev`                                                                                                                           |
+| **Environments** → `development` → Variables | `RENDER_API_SERVICE_ID`    | required; `srv-…` from the URL of `anystudio-api-dev` in Render                                                                                             |
+| same                                         | `RENDER_WORKER_SERVICE_ID` | required; `srv-…` of `anystudio-worker-dev` (fast/heavy queues)                                                                                             |
+| same                                         | `RENDER_MEDIA_SERVICE_ID`  | required; `srv-…` of `anystudio-media-dev` (local media queue)                                                                                              |
 | same                                         | `API_URL`                  | `https://anystudio-api-dev.onrender.com` — only until `api.dev.anystudio.ai` exists, then delete it                                                         |
 | same                                         | `NEXT_PUBLIC_SENTRY_DSN`   | optional, see above                                                                                                                                         |
 

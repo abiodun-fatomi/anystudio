@@ -21,7 +21,7 @@
  * never once run. See routes.spec.ts, which now refuses a duplicate path.
  *
  * Every answer is the same envelope the portal gets; every error has a
- * `code` and, for a 400, `fields`. See docs/API.md.
+ * `error` identifier and may include a `fields` array. See docs/API.md.
  */
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -32,7 +32,7 @@ import { ProviderRegistry } from '../provider/provider.registry';
 import { PresignUploadDto } from '../media/media.dto';
 import { ApiKeyGuard, RequireScope } from './api-key.guard';
 import { PublicApiService } from './public-api.service';
-import { ApiCreateGenerationDto, ApiListGenerationsDto, ApiUploadUrlDto } from './public-api.dto';
+import { ApiCreateGenerationDto, ApiListGenerationsDto, ApiQuoteGenerationDto, ApiUploadUrlDto } from './public-api.dto';
 
 @ApiTags('public api')
 @ApiBearerAuth('apiKey')
@@ -89,6 +89,14 @@ export class PublicApiController {
     return this.api.create(req.apiKey!, body);
   }
 
+  @Post('/generations/quote')
+  @RequireScope('catalogue:read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Validate complete parameters and estimate credits without creating a generation or reserving credits' })
+  quote(@Req() req: Request, @Body() body: ApiQuoteGenerationDto) {
+    return this.api.quote(req.apiKey!, body);
+  }
+
   @Get('/generations')
   @RequireScope('generations:read')
   @ApiOperation({ summary: "This project's generations, newest first" })
@@ -115,7 +123,8 @@ export class PublicApiController {
   @RequireScope('generations:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Pay for the rest of a song' })
-  unlock(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) {
+  async unlock(@Req() req: Request, @Param('generationId', ParseUUIDPipe) id: string) {
+    await this.api.own(req.apiKey!, id);
     return this.audio.unlock(req.actor!, req.apiKey!.workspaceId, id, req);
   }
 
@@ -131,6 +140,13 @@ export class PublicApiController {
   @ApiOperation({ summary: 'Voices this environment can serve' })
   voices() {
     return this.audio.voices((k) => this.registry.get(k) !== undefined);
+  }
+
+  @Get('/catalogue/audio/unlock-price')
+  @RequireScope('catalogue:read')
+  @ApiOperation({ summary: 'Current additional credit price to unlock a full song' })
+  unlockPrice() {
+    return this.audio.unlockPrice();
   }
 
   @Get('/catalogue/audio/dub-languages')

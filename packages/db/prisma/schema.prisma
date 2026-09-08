@@ -700,6 +700,9 @@ enum PaymentStatus {
   PENDING
   SUCCEEDED
   FAILED
+  /// The provider confirms money moved, but automatic fulfilment/refund is not
+  /// safe (for example a duplicate invoice charge or a partial adjustment).
+  NEEDS_REVIEW
   REFUNDED
 }
 
@@ -733,18 +736,24 @@ model Payment {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription  Subscription?       @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   refundRequest RefundRequest?
+  adjustments   PaymentAdjustment[]
 
+  /// A provider transaction is money once. Paddle may emit both `paid` and
+  /// `completed`, and Flutterwave may redeliver under a different event id;
+  /// neither may create two Payment rows for the same charge.
+  @@unique([provider, providerRef])
   @@index([workspaceId, createdAt])
-  @@index([provider, providerRef])
   @@index([status, createdAt])
   @@map("payments")
 }
 
 enum RefundRequestStatus {
   REQUESTED
+  PROCESSING
+  NEEDS_REVIEW
   APPROVED
   REFUSED
   CANCELLED
@@ -756,7 +765,8 @@ model RefundRequest {
   id               String              @id @default(uuid()) @db.Uuid
   paymentId        String              @unique @db.Uuid
   workspaceId      String              @db.Uuid
-  requestedById    String              @db.Uuid
+  /// Null for a system-created recovery such as an automatic duplicate-charge refund.
+  requestedById    String?             @db.Uuid
   reason           String
   status           RefundRequestStatus @default(REQUESTED)
   /// The wallet balance when asked — the credits had to be unspent to ask.
@@ -765,6 +775,16 @@ model RefundRequest {
   decidedAt        DateTime?
   /// Staff's words to the customer on refusal, or the gateway reference on approval.
   decisionNote     String?
+  /// Gateway refund/adjustment id. The original transaction remains on Payment.
+  gatewayRef       String?
+  processingAt     DateTime?
+  nextAttemptAt    DateTime?
+  attempts         Int                 @default(0)
+  /// Monotonic identity for each approval attempt when a refused/cancelled
+  /// request is reopened. Ledger reservation keys include this value so a
+  /// released first attempt can never satisfy a later refund.
+  refundCycle      Int                 @default(1)
+  lastError        String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
@@ -772,8 +792,58 @@ model RefundRequest {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
   @@index([workspaceId])
   @@map("refund_requests")
+}
+
+enum PaymentAdjustmentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REVERSED
+  NEEDS_REVIEW
+}
+
+enum PaymentAdjustmentReason {
+  REFUND
+  CHARGEBACK
+}
+
+/// Provider truth for refunds, disputes, and reversals. A Payment can receive
+/// several partial adjustments, so these cannot safely be represented by the
+/// Payment's single status alone. Signed deltas make the aggregate auditable:
+/// negative means money/credits left us, positive means a reversal restored it.
+model PaymentAdjustment {
+  id                String                  @id @default(uuid()) @db.Uuid
+  paymentId         String                  @db.Uuid
+  provider          PaymentProvider
+  /// Refund/adjustment/chargeback id from the provider, never the original transaction id.
+  providerRef       String
+  reason            PaymentAdjustmentReason
+  status            PaymentAdjustmentStatus @default(PENDING)
+  amountMinor       Int?
+  amountDeltaMinor  Int                     @default(0)
+  currency          String?
+  creditDelta       Int                     @default(0)
+  /// Increments only when a new ledger movement commits. It makes each
+  /// partial-change/reversal transition independently idempotent.
+  ledgerRevision    Int                     @default(0)
+  providerUpdatedAt DateTime?
+  appliedAt         DateTime?
+  failureReason     String?
+  /// RefundRequest.refundCycle that submitted this adjustment. Null for an
+  /// unsolicited chargeback/refund discovered only from a webhook.
+  refundCycle       Int?
+  payload           Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRef])
+  @@index([paymentId, status])
+  @@map("payment_adjustments")
 }
 
 // ---------------------------------------------------------------------------
@@ -879,22 +949,32 @@ enum SubscriptionStatus {
 /// A workspace's plan, as the gateway sees it. One live subscription per
 /// workspace; a cancelled one stays as history.
 model Subscription {
-  id                 String             @id @default(uuid()) @db.Uuid
-  workspaceId        String             @db.Uuid
-  provider           PaymentProvider
+  id                     String             @id @default(uuid()) @db.Uuid
+  workspaceId            String             @db.Uuid
+  provider               PaymentProvider
   /// Paddle sub_… or Flutterwave subscription id. Null until the gateway has told us.
-  providerRef        String?
-  planCode           String
-  interval           String /// month | year
-  status             SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  cancelAtPeriodEnd  Boolean            @default(false)
-  cancelledAt        DateTime?
+  providerRef            String?
+  /// Gateway catalogue price/payment-plan id; unlike providerRef this may be shared by many customers.
+  catalogueRef           String?
+  planCode               String
+  interval               String /// month | year
+  status                 SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  cancelledAt            DateTime?
   /// The gateway's customer id, so renewals without our reference can still be matched.
-  customerRef        String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  customerRef            String?
+  /// Last provider status timestamp applied; older webhook events are ignored.
+  providerUpdatedAt      DateTime?
+  /// Durable gateway-cancel command. Customer requests run at period end;
+  /// confirmed refunds/chargebacks make the row terminal and cancel now.
+  providerCancelPending  Boolean            @default(false)
+  providerCancelAttempts Int                @default(0)
+  providerCancelNextAt   DateTime?
+  providerCancelError    String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   plan      Plan      @relation(fields: [planCode], references: [code])
@@ -902,29 +982,38 @@ model Subscription {
 
   @@index([workspaceId, status])
   @@index([provider, providerRef])
+  @@index([provider, catalogueRef, customerRef])
+  @@index([providerCancelPending, providerCancelNextAt])
   @@map("subscriptions")
 }
 
-/// Every webhook we were sent, verified or not. The answer to "did Paddle
-/// tell us?" is a row here, and the answer to "did we act on it?" is
+/// Every authenticated provider webhook. Invalid signatures are rejected
+/// before persistence; the answer to "did we act on a verified delivery?" is
 /// `processedAt` and `outcome`.
 model WebhookReceipt {
-  id          String          @id @default(uuid()) @db.Uuid
-  provider    PaymentProvider
+  id            String          @id @default(uuid()) @db.Uuid
+  provider      PaymentProvider
   /// The gateway's event id, or a stable derivation when it has none. Unique
   /// per provider: a redelivery finds this row and stops.
-  eventId     String
-  eventType   String
-  signatureOk Boolean
-  payload     Json
-  processedAt DateTime?
+  eventId       String
+  eventType     String
+  signatureOk   Boolean
+  payload       Json
+  /// Number of processing claims, including the first delivery.
+  attempts      Int             @default(0)
+  lastAttemptAt DateTime?
+  /// Local retry time after a transient processing failure. Gateway retries
+  /// are still accepted sooner and atomically take the same claim.
+  nextAttemptAt DateTime?
+  processedAt   DateTime?
   /// granted | already_granted | ignored | mismatch | no_payment | error
-  outcome     String?
-  error       String?
-  receivedAt  DateTime        @default(now())
+  outcome       String?
+  error         String?
+  receivedAt    DateTime        @default(now())
 
   @@unique([provider, eventId])
   @@index([receivedAt])
+  @@index([outcome, nextAttemptAt])
   @@map("webhook_receipts")
 }
 
@@ -999,6 +1088,10 @@ enum InvoiceStatus {
   OPEN
   PAID
   OVERDUE
+  /// A bound online payment was returned in full by the provider.
+  REFUNDED
+  /// Some, but not all, of the invoice payment was adjusted or disputed.
+  DISPUTED
   VOID
 }
 
@@ -1031,7 +1124,7 @@ model Invoice {
   paidVia       String?
   /// The gateway's or the bank's reference for the payment.
   paidReference String?
-  paymentId     String?       @db.Uuid
+  paymentId     String?       @unique @db.Uuid
   /// The ledger row that put the invoiced credits back, once paid.
   ledgerEntryId String?       @db.Uuid
   remindedAt    DateTime?
@@ -1156,7 +1249,8 @@ enum ProviderCapability {
 /// seconds while it lives. The console reads it to say whether anyone is
 /// draining the queue — the question behind every "why is it still queued".
 model WorkerHeartbeat {
-  /// "worker@<hostname>" — one row per process, not per deploy.
+  /// "<service>@<hostname>" — one row per process, not per deploy. The main
+  /// worker and the dedicated media worker must never overwrite one another.
   id        String   @id
   service   String
   host      String
@@ -1199,9 +1293,10 @@ model ProviderModel {
 // ---------------------------------------------------------------------------
 // CREDITS — the ledger
 //
-// There is no balance column anywhere. The balance is the sum of a wallet's
-// entries, and `balanceAfter` is denormalised onto each row for cheap reads and
-// for detecting drift. Debits and refunds go through Postgres functions that
+// There is no balance column anywhere. The authoritative balance is the sum of
+// a wallet's entries under its row lock. `balanceAfter` is denormalised onto
+// each row as an audit snapshot only: timestamps can tie and UUIDs are random,
+// so no row is treated as a trustworthy "latest" balance. Debits and refunds go through Postgres functions that
 // lock the wallet row and append inside one transaction — never through
 // application code holding two statements. This is the single decision in the
 // codebase that cannot be fixed retroactively: you cannot reconstruct a history
@@ -1243,7 +1338,7 @@ model LedgerEntry {
   kind           LedgerKind
   /// Signed. Negative for DEBIT and EXPIRY, positive for everything else.
   delta          Int
-  /// The wallet balance after this row was applied. Denormalised on purpose.
+  /// The wallet balance after this row was applied. An audit snapshot; reads and future writes use SUM(delta).
   balanceAfter   Int
   /// The generation, payment or staff action this row belongs to.
   referenceId    String?    @db.Uuid
@@ -1296,6 +1391,16 @@ enum GenerationKind {
   CHILD // one shot of a parent; refunded and retried on its own
 }
 
+/// Durable boundary around a paid external provider call. A worker writes
+/// SUBMITTING before the POST, SUBMITTED immediately after it has a vendor
+/// job id, then a terminal state only when the adapter has evidence.
+enum ProviderAttemptStatus {
+  SUBMITTING
+  SUBMITTED
+  SUCCEEDED
+  FAILED
+}
+
 model Generation {
   id            String @id @default(uuid()) @db.Uuid
   workspaceId   String @db.Uuid
@@ -1320,7 +1425,8 @@ model Generation {
   costCode String
   /// What it actually cost, captured at request time. Prices are rows and
   /// operators change them; a later change must never rewrite what this
-  /// customer was charged.
+  /// customer was charged. An explicit successful downgrade may reduce this
+  /// only in the same transaction that appends its partial refund.
   credits  Int
 
   status GenerationStatus @default(QUEUED)
@@ -1397,14 +1503,18 @@ model Generation {
   startedAt  DateTime?
   finishedAt DateTime?
 
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  requestedBy User         @relation(fields: [requestedById], references: [id], onDelete: Restrict)
-  parent      Generation?  @relation("GenerationChildren", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Generation[] @relation("GenerationChildren")
-  assets      MediaAsset[]
-  apiKey      ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
-  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  publishJobs PublishJob[]
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requestedBy      User              @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  parent           Generation?       @relation("GenerationChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children         Generation[]      @relation("GenerationChildren")
+  /// Every external call, including helper capabilities used by a pipeline.
+  /// These rows are what make an accepted async job resumable after a worker
+  /// restart without paying a second provider for the same work.
+  providerAttempts ProviderAttempt[]
+  assets           MediaAsset[]
+  apiKey           ApiKey?           @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  publishJobs      PublishJob[]
 
   /// One row per client request, per workspace.
   @@unique([workspaceId, clientKey])
@@ -1422,6 +1532,42 @@ model Generation {
   @@index([projectId, createdAt])
   @@index([apiKeyId, createdAt])
   @@map("generations")
+}
+
+/// A single external provider submission for one deterministic pipeline
+/// operation. `operationKey` is derived from the stable request (never from a
+/// signed URL), while `submissionNo` permits a new call only after the vendor
+/// has definitively failed the previous one.
+model ProviderAttempt {
+  id                String                @id @default(uuid()) @db.Uuid
+  generationId      String                @db.Uuid
+  operationKey      String
+  providerKey       String
+  capability        ProviderCapability
+  submissionNo      Int                   @default(1)
+  generationAttempt Int
+  status            ProviderAttemptStatus @default(SUBMITTING)
+  providerJobId     String?
+  /// What this one accepted operation cost, in the provider's billing minor
+  /// unit. Written when the successful response is reconciled; one durable
+  /// row means replaying the same accepted job cannot count it twice.
+  costMinor         Int?
+  /// Polling URLs or operation names needed to resume. No credentials or
+  /// signed customer input URLs belong here.
+  resumeData        Json?
+  errorKind         String?
+  errorMessage      String?
+  submittedAt       DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  generation Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@unique([generationId, operationKey, providerKey, submissionNo], map: "provider_attempts_submission_key")
+  @@index([generationId, operationKey, status])
+  @@index([providerKey, providerJobId])
+  @@map("provider_attempts")
 }
 
 enum GenerationChannel {

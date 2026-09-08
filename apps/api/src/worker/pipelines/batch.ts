@@ -82,5 +82,11 @@ async function gather(ctx: PipelineContext): Promise<ReturnType<Pipeline>> {
 
   await ctx.stage('storing', 92, `${done.length} of ${children.length} done`);
   ctx.log.info({ of: p.of, done: done.length, failed: failed.length, outputs: outputs.length }, 'batch gathered');
-  return { artifacts: [], extraOutputs: outputs };
+  return {
+    artifacts: [],
+    extraOutputs: outputs,
+    // Children own the paid calls; the parent is the customer-visible row and
+    // therefore carries their combined spend for margin reporting.
+    inheritedCostMinor: children.reduce((sum, child) => sum + (child.providerCostMinor ?? 0), 0),
+  };
 }

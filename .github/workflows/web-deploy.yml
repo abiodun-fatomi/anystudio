@@ -18,14 +18,21 @@ on:
       - apps/web/**
       - packages/shared/**
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - package.json
       - tsconfig.base.json
+      - turbo.json
       - .github/workflows/web-deploy.yml
   pull_request:
     paths:
       - apps/web/**
       - packages/shared/**
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - tsconfig.base.json
+      - turbo.json
+      - .github/workflows/web-deploy.yml
   workflow_dispatch:
 
 concurrency:
@@ -53,8 +60,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Production dependency audit
+        run: pnpm audit --prod --audit-level=moderate
+
       - name: Typecheck
         run: pnpm --filter @anystudio/shared build && pnpm --filter @anystudio/web typecheck
+
+      - name: Lint and test
+        run: pnpm --filter @anystudio/web lint && pnpm --filter @anystudio/web test
 
       - name: Build for Cloudflare
         run: pnpm --filter @anystudio/web cf:build

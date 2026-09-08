@@ -8,17 +8,27 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, type ApiKey, type Generation } from '@prisma/client';
 import { z } from 'zod';
-import { CAPABILITIES, DEFAULT_COST_CODE, DUB_LANGUAGES, capabilityParams, type Capability } from '@anystudio/shared';
-import { NotFoundError } from '../../../config/globals/errors';
+import {
+  API_SCENARIOS,
+  PUBLIC_CAPABILITIES,
+  DEFAULT_COST_CODE,
+  DUB_LANGUAGES,
+  PIPELINE_WRITTEN_KEYS,
+  capabilityParams,
+  parseCapabilityParams,
+  withoutPipelineFields,
+  type Capability,
+} from '@anystudio/shared';
+import { NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { GenerationService, customerMessage } from '../generation/generation.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { MediaService } from '../media/media.service';
 import { WebhookDispatcher } from './webhook.dispatcher';
-import type { ApiCreateGenerationDto, ApiListGenerationsDto } from './public-api.dto';
+import type { ApiCreateGenerationDto, ApiListGenerationsDto, ApiQuoteGenerationDto } from './public-api.dto';
 
 const CAPABILITY_BLURB: Record<Capability, string> = {
   IMAGE_GENERATE: 'An image from a prompt — flyers, posters, scenes with no source photo.',
-  IMAGE_EDIT: 'A product photo placed in a new scene, with the product itself kept exactly as photographed; branded and exported in every size.',
+  IMAGE_EDIT: 'A product photo edited into a scene, branded and exported in selected sizes. Review product fidelity before publishing.',
   BACKGROUND_REMOVE: 'The product cut out, on transparency or a flat colour.',
   BACKGROUND_REPLACE: 'A new background behind the product, with a natural shadow and matched lighting.',
   RELIGHT: 'The product relit to match a described light.',
@@ -50,14 +60,16 @@ export class PublicApiService {
   async capabilities() {
     const costs = await this.db.creditCost.findMany();
     const price = new Map(costs.map((c) => [c.code, c]));
-    return CAPABILITIES.filter((c) => c !== 'VIDEO_STITCH').map((c) => {
+    return PUBLIC_CAPABILITIES.map((c) => {
       const cost = price.get(DEFAULT_COST_CODE[c]);
       return {
         capability: c,
         description: CAPABILITY_BLURB[c],
         costCode: DEFAULT_COST_CODE[c],
         credits: cost?.credits ?? null,
-        params: describeSchema(capabilityParams[c]),
+        params: describeSchema(capabilityParams[c]).filter((field) => !PIPELINE_WRITTEN_KEYS.includes(field.name) && field.name !== 'negativePrompt'),
+        pricing: 'Base rate only; POST /generations/quote with complete params for the request total.',
+        examples: API_SCENARIOS.filter((scenario) => scenario.body.capability === c),
       };
     });
   }
@@ -68,13 +80,13 @@ export class PublicApiService {
   }
 
   async create(key: ApiKey, dto: ApiCreateGenerationDto) {
+    this.assertPublicCapability(dto.capability);
     const { generation, balance } = await this.generations.request({
       workspaceId: key.workspaceId,
       requestedById: key.createdById,
       capability: dto.capability,
       params: dto.params,
       clientKey: dto.clientKey ?? `api:${crypto.randomUUID()}`,
-      costCode: dto.costCode,
       channel: 'API',
       apiKeyId: key.id,
       projectId: key.projectId,
@@ -96,6 +108,7 @@ export class PublicApiService {
         projectId: key.projectId,
         channel: 'API',
         kind: { not: 'CHILD' },
+        deletedAt: null,
         ...(q.merchantRef ? { merchantRef: q.merchantRef } : {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -143,10 +156,23 @@ export class PublicApiService {
     return { languages: DUB_LANGUAGES.map((l) => ({ code: l.code, name: l.name, region: l.region })) };
   }
 
-  private async own(key: ApiKey, id: string): Promise<Generation> {
+  async quote(key: ApiKey, dto: ApiQuoteGenerationDto) {
+    this.assertPublicCapability(dto.capability);
+    const parsed = parseCapabilityParams(dto.capability, withoutPipelineFields(dto.params));
+    if (!parsed.ok) throw new ValidationError(parsed.issues);
+    return this.generations.quote(key.workspaceId, dto.capability, parsed.params as Record<string, unknown>);
+  }
+
+  private assertPublicCapability(capability: Capability) {
+    if (!(PUBLIC_CAPABILITIES as readonly string[]).includes(capability))
+      throw new ValidationError({ capability: 'That capability is internal, not customer-callable.' });
+  }
+
+  async own(key: ApiKey, id: string): Promise<Generation> {
     const row = await this.db.generation.findUnique({ where: { id } });
     // A key sees its own project's rows, and nothing from a sibling project — projects are the org's own boundary.
-    if (!row || row.workspaceId !== key.workspaceId || row.projectId !== key.projectId) throw new NotFoundError('generation');
+    if (!row || row.workspaceId !== key.workspaceId || row.projectId !== key.projectId || row.channel !== 'API' || row.kind === 'CHILD' || row.deletedAt)
+      throw new NotFoundError('generation');
     return row;
   }
 
@@ -172,7 +198,7 @@ export class PublicApiService {
  */
 export function describeSchema(
   schema: z.ZodTypeAny,
-): Array<{ name: string; type: string; required: boolean; default?: unknown; values?: string[]; description?: string }> {
+): Array<{ name: string; type: string; required: boolean; default?: unknown; values?: unknown[]; description?: string }> {
   const kind = (s: z.ZodTypeAny): string => String((s._def as { typeName?: string }).typeName ?? '');
   let inner: z.ZodTypeAny = schema;
   while (kind(inner) === 'ZodEffects') inner = (inner._def as { schema: z.ZodTypeAny }).schema;
@@ -202,20 +228,30 @@ export function describeSchema(
       break;
     }
     const k = kind(f);
-    const values = k === 'ZodEnum' ? (f._def as { values: string[] }).values : k === 'ZodLiteral' ? [String((f._def as { value: unknown }).value)] : undefined;
-    const type =
-      (
-        {
-          ZodString: 'string',
-          ZodNumber: 'number',
-          ZodBoolean: 'boolean',
-          ZodArray: 'array',
-          ZodEnum: 'enum',
-          ZodLiteral: 'literal',
-          ZodObject: 'object',
-          ZodUnion: 'string',
-        } as Record<string, string>
-      )[k] ?? 'unknown';
+    const options = k === 'ZodUnion' ? (f._def as { options: z.ZodTypeAny[] }).options : [];
+    const literalUnion = options.length > 0 && options.every((option) => kind(option) === 'ZodLiteral');
+    const values =
+      k === 'ZodEnum'
+        ? (f._def as { values: string[] }).values
+        : k === 'ZodLiteral'
+          ? [(f._def as { value: unknown }).value]
+          : literalUnion
+            ? options.map((option) => (option._def as { value: unknown }).value)
+            : undefined;
+    const type = literalUnion
+      ? [...new Set(values!.map((value) => typeof value))].join(' | ')
+      : ((
+          {
+            ZodString: 'string',
+            ZodNumber: 'number',
+            ZodBoolean: 'boolean',
+            ZodArray: 'array',
+            ZodEnum: 'enum',
+            ZodLiteral: 'literal',
+            ZodObject: 'object',
+            ZodUnion: 'union',
+          } as Record<string, string>
+        )[k] ?? 'unknown');
     const description = field.description ?? f.description;
     return { name, type, required, ...(def !== undefined ? { default: def } : {}), ...(values ? { values } : {}), ...(description ? { description } : {}) };
   });

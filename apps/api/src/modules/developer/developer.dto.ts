@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { isProductionDeployment } from '../../../config/environment';
 import { API_SCOPES, WEBHOOK_EVENTS } from './developer.types';
 
 export class CreateProjectDto {
@@ -66,7 +67,7 @@ export class CreateApiKeyDto {
 
 export class CreateWebhookDto {
   @ApiProperty({ example: 'https://example.com/anystudio/webhook' })
-  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: process.env.APP_ENV === 'production' })
+  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: isProductionDeployment() })
   @MaxLength(500)
   url!: string;
 
@@ -85,7 +86,7 @@ export class CreateWebhookDto {
 export class UpdateWebhookDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: process.env.APP_ENV === 'production' })
+  @IsUrl({ protocols: ['https'], require_protocol: true, require_tld: isProductionDeployment() })
   @MaxLength(500)
   url?: string;
 

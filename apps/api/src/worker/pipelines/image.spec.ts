@@ -24,6 +24,7 @@ import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { brandedImagePipeline } from './image';
 import type { PipelineContext } from './index';
+import { fetchBytes } from '../../modules/provider/adapters/http';
 
 const SIZE = 256;
 const BLOCK = 96;
@@ -309,5 +310,18 @@ describe('when the cutout cannot be made', () => {
 
     expect(bluish(await patch(image, 160, 160))).toBe(true);
     expect(warn.mock.calls.map((c) => String(c[1])).join(' | ')).toContain('skipping the fidelity check');
+  });
+
+  it('does not treat a cancelled cutout as an optional fidelity failure', async () => {
+    sourceBytes = await photoAt(RED, 80, 80);
+    const cancellation = new Error('generation cancelled');
+    const controller = new AbortController();
+    controller.abort(cancellation);
+    const { ctx, callProvider } = ctxWith({ output: await photoAt(BLUE, 130, 130), mask: null });
+    ctx.signal = controller.signal;
+
+    await expect(brandedImagePipeline(ctx)).rejects.toBe(cancellation);
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(fetchBytes).toHaveBeenLastCalledWith('image-pipeline', 'https://signed/p.png', 60_000, controller.signal);
   });
 });

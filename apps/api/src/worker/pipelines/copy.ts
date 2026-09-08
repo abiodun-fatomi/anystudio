@@ -42,6 +42,7 @@ import {
 import type { z } from 'zod';
 import type { Pipeline, PipelineContext } from './index';
 import { NEAR_DUPLICATE, minhash, sharedPhrases, similarity } from './uniqueness';
+import { rethrowIfAborted } from './abort';
 
 const LANGUAGE: Record<string, { name: string; guidance: string }> = {
   en: { name: 'English', guidance: '' },
@@ -103,6 +104,7 @@ export const copyPipeline: Pipeline = async (ctx) => {
     try {
       result = await ask(ctx, p, again, copyOutputSchema);
     } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
       ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'second attempt failed; shipping the first');
     }
   }

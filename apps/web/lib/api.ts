@@ -557,11 +557,12 @@ export interface SubscriptionView {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   cancelledAt: string | null;
+  cancellationPending: boolean;
 }
 export interface RefundRequestView {
   id: string;
   paymentId: string;
-  status: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  status: 'REQUESTED' | 'PROCESSING' | 'NEEDS_REVIEW' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
   reason: string;
   createdAt: string;
   decidedAt: string | null;
@@ -581,7 +582,7 @@ export interface PaymentView {
   reference: string;
   provider: PaymentProvider;
   kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL' | 'INVOICE';
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'NEEDS_REVIEW' | 'REFUNDED';
   itemCode: string;
   interval: string | null;
   credits: number;
@@ -1133,7 +1134,6 @@ export const api = {
         'GET',
         `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
       ),
-    refundPayment: (id: string, reason: string) => request<AdminPayment>('POST', `/admin/payments/${id}/refund`, { reason }),
     refunds: (q: { status?: string; cursor?: string | null; take?: number } = {}) =>
       request<{ rows: AdminRefundRequest[]; nextCursor: string | null }>(
         'GET',
@@ -1462,12 +1462,9 @@ export const api = {
     remove: (workspaceId: string, assetId: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/media/${assetId}`),
   },
   generations: {
-    quote: (workspaceId: string, capability: string, costCode?: string, quantity?: number) =>
-      request<Quote>(
-        'GET',
-        `/workspaces/${workspaceId}/generations/quote?capability=${capability}${costCode ? `&costCode=${costCode}` : ''}${quantity && quantity > 1 ? `&quantity=${quantity}` : ''}`,
-      ),
-    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string; costCode?: string }) =>
+    quote: (workspaceId: string, capability: string, params: Record<string, unknown>) =>
+      request<Quote>('POST', `/workspaces/${workspaceId}/generations/quote`, { capability, params }),
+    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string }) =>
       request<GenerationResult>('POST', `/workspaces/${workspaceId}/generations`, body),
     get: (workspaceId: string, id: string) => request<GenerationView>('GET', `/workspaces/${workspaceId}/generations/${id}`),
     history: (workspaceId: string, cursor?: string) =>

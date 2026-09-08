@@ -19,7 +19,6 @@ import {
   type Capability,
   type CollageLayout,
   type ExportSize,
-  adPlan,
   collageLayoutsFor,
   BATCH_MAX,
   MODEL_POSES,
@@ -30,15 +29,12 @@ import {
   preset,
   presetCapability,
   productMode,
-  productModeCostCode,
-  productShotCostCode,
   SHOT_SIZES,
   SHOT_SIZE_KEYS,
   TAKES_SHOT_SIZE,
   TEXT_KINDS,
   TEXT_KIND_KEYS,
   OFFERED_PRODUCT_MODES,
-  presenterCostCode,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
@@ -147,11 +143,6 @@ export interface Tool {
    * this.
    */
   capabilityFor?: (values: Record<string, unknown>) => Capability;
-  /**
-   * How many units this will be charged for — a batch is one row priced per
-   * photo, so the panel must quote the folder rather than one picture.
-   */
-  quantityFor?: (values: Record<string, unknown>) => number;
   /** Needs a source photo on the canvas. Copy can work from a photo or from text alone. */
   needsSource: boolean;
   /**
@@ -163,8 +154,6 @@ export interface Tool {
   narrative: Record<string, string>;
   fields: ConditionalField[];
   defaults: Record<string, unknown>;
-  /** A tool whose price depends on its settings names the CreditCost code; otherwise the capability's default applies. */
-  costCodeFor?: (values: Record<string, unknown>) => string | undefined;
   /** Values the panel keeps for itself (which branch is showing); never sent as params. */
   localKeys?: string[];
   /**
@@ -597,10 +586,6 @@ export const TOOLS: Tool[] = [
       storing: 'Saving your images',
       done: 'Done',
     },
-    // Priced by what was asked for: a model wearing it costs more than a press,
-    // and a 4K render costs more than a 1K one. The server derives this again
-    // from the params it validated; this is only so the price shown is right.
-    costCodeFor: (v) => productShotCostCode(v.mode as string, v.shotSize as string),
     fields: [
       { key: 'mode', kind: 'modes', label: 'What do you need?' },
       {
@@ -766,10 +751,6 @@ export const TOOLS: Tool[] = [
       storing: 'Saving what came back',
       done: 'Done',
     },
-    // Priced per photo, under whatever the chosen shot costs. The server works
-    // the total out again from the photos it was actually given.
-    costCodeFor: (v) => productModeCostCode(v.mode as string),
-    quantityFor: (v) => countOf(v.sourceKeys),
     fields: [
       {
         key: 'sourceKeys',
@@ -1087,11 +1068,6 @@ export const TOOLS: Tool[] = [
     // `brief` decides what the panel shows, not what is sent: a blank prompt
     // is filled from the format on the server either way.
     localKeys: ['presenterKind', 'brief'],
-    costCodeFor: (v) => {
-      const plan = adPlan(Number(v.shots));
-      if (!plan) return undefined;
-      return canPresent(v) && v.presenterKind && v.presenterKind !== 'none' ? presenterCostCode(plan.costCode) : plan.costCode;
-    },
     assemble: (p) => {
       const kind = p.presenterKind;
       const out = { ...p };
@@ -1239,7 +1215,6 @@ export const TOOLS: Tool[] = [
       },
     ],
     defaults: { vocal: 'female', language: 'en', tempo: 'mid', durationSec: 120, lyricsMode: 'auto', singer: 'model' },
-    costCodeFor: (v) => (v.singer === 'me' ? 'audio.music.preview.my_voice' : undefined),
   },
   {
     id: 'voice',
@@ -1338,7 +1313,6 @@ export const TOOLS: Tool[] = [
       },
     ],
     defaults: { sourceLanguage: 'auto', lipsync: false, speakers: 0, keepBackground: true, quality: 'speed', consent: false },
-    costCodeFor: (v) => (v.lipsync === true ? 'video.translate_lipsync' : undefined),
   },
   {
     id: 'lipsync',

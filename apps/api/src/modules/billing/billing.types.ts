@@ -88,25 +88,76 @@ export type WebhookIntent =
     }
   | {
       kind: 'subscription';
-      subscriptionRef: string;
+      subscriptionRef?: string;
+      catalogueRef?: string;
       customerRef?: string;
       reference?: string;
       status: 'active' | 'past_due' | 'cancelled' | 'paused';
       periodStart?: Date;
       periodEnd?: Date;
       cancelAtPeriodEnd?: boolean;
+      /** Provider event time, used to refuse out-of-order status regression. */
+      occurredAt?: Date;
     }
-  | { kind: 'refund'; providerRef: string; amountMinor?: number }
+  | {
+      kind: 'refund';
+      /** The original charge/transaction being adjusted. */
+      providerRef?: string;
+      /** The gateway's refund/adjustment id, used for idempotency and polling. */
+      refundRef?: string;
+      status: 'pending' | 'succeeded' | 'failed' | 'reversed';
+      amountMinor?: number;
+      currency?: string;
+      reason?: 'refund' | 'chargeback';
+    }
   | { kind: 'ignore'; why: string };
+
+export interface RefundVerification {
+  /** `ignored` is a non-financial provider event such as Paddle's early
+   * chargeback warning; it must never move money, credits or subscriptions. */
+  state: 'pending' | 'succeeded' | 'failed' | 'reversed' | 'ignored';
+  providerRef?: string;
+  amountMinor?: number;
+  currency?: string;
+  reason?: string;
+  /** Provider-native adjustment action. This is financial metadata, not a
+   * caller-controlled reason; adapters populate it only from provider truth. */
+  providerAction?: string;
+  /** Some providers, notably Paddle, represent one reversal twice: the
+   * original adjustment changes to `reversed` and a separate reverse-action
+   * adjustment is created. Billing uses this marker to count that economic
+   * reversal exactly once regardless of webhook order. */
+  reversalMode?: 'separate_adjustment';
+}
+
+/** Resolve a provider adjustment webhook that does not name its transaction. */
+export interface ResolvedAdjustment {
+  /** Provider id of the original Payment transaction. */
+  paymentProviderRef: string;
+  /** Canonical provider id used to de-duplicate and re-fetch the adjustment. */
+  providerAdjustmentRef: string;
+}
+
+export interface RefundDiscoveryContext {
+  /** Adjustment ids already consumed by earlier refund cycles. */
+  excludeProviderRefs: string[];
+  /** Provider records older than this cycle cannot acknowledge its command. */
+  since: Date;
+}
 
 export interface Gateway {
   readonly provider: PaymentProvider;
+  /** Whether this adapter has everything it needs for this catalogue item. */
+  checkoutAvailable(item: Pick<CheckoutItem, 'kind' | 'providerRef'>): boolean;
   createCheckout(req: CheckoutRequest): Promise<CheckoutSession>;
   /** Re-fetch the charge from the gateway. `hint` is the gateway id when the webhook or return URL carried one. */
   verify(payment: Payment, hint?: { providerRef?: string }): Promise<Verification>;
+  /** Resolve a recurring charge's unique subscription id when the webhook only carries a transaction id. */
+  resolveSubscriptionRef?(transactionRef: string): Promise<string | undefined>;
   parseWebhook(rawBody: Buffer, headers: Record<string, string | string[] | undefined>): ParsedWebhook;
   interpret(parsed: ParsedWebhook): WebhookIntent;
-  cancelSubscription(subscriptionRef: string, atPeriodEnd: boolean): Promise<void>;
+  /** Gateway-specific subscription lookup stays behind the adapter boundary. */
+  cancelSubscription(input: { providerRef: string; customerRef?: string; catalogueRef?: string; atPeriodEnd: boolean }): Promise<void>;
   /**
    * Send the money back, in full. Returns the gateway's reference for the
    * refund. Idempotent where the gateway allows (Paddle refuses a second
@@ -114,7 +165,13 @@ export interface Gateway {
    * existing refund). The caller marks the row and claws the credits back
    * only after this resolves.
    */
-  refund(payment: Payment, reason: string): Promise<{ providerRef: string }>;
+  refund(payment: Payment, reason: string, context?: RefundDiscoveryContext): Promise<RefundVerification>;
+  /** Reconcile an asynchronous or response-lost refund from provider truth. */
+  verifyRefund(payment: Payment, providerRef?: string): Promise<RefundVerification>;
+  /** Discover an unrecorded refund after a response-lost POST. */
+  discoverRefund(payment: Payment, context: RefundDiscoveryContext): Promise<RefundVerification>;
+  /** Some dispute webhooks only carry a chargeback reference, not the original transaction id. */
+  resolveAdjustment?(providerRef: string): Promise<ResolvedAdjustment | undefined>;
 }
 
 /** Which gateway takes which currency. Anything not listed goes to Paddle. */

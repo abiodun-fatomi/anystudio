@@ -8,7 +8,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
-import { BATCH_MAX, CAPABILITIES, type Capability } from '@anystudio/shared';
+import { CAPABILITIES, type Capability } from '@anystudio/shared';
 
 export class CreateGenerationDto {
   @ApiProperty({ enum: CAPABILITIES })
@@ -24,12 +24,6 @@ export class CreateGenerationDto {
   @MaxLength(80)
   @Matches(/^[A-Za-z0-9_\-:.]+$/)
   clientKey!: string;
-
-  @ApiPropertyOptional({ description: 'Override the CreditCost code (e.g. a plan pricing its shots under video.ad_30s)' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  costCode?: string;
 }
 
 export class GenerationHistoryQueryDto {
@@ -47,25 +41,14 @@ export class GenerationHistoryQueryDto {
   take?: number;
 }
 
-export class QuoteQueryDto {
+export class QuoteGenerationDto {
   @ApiProperty({ enum: CAPABILITIES })
   @IsIn(CAPABILITIES as readonly string[])
   capability!: Capability;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  costCode?: string;
-
-  /** How many photos this will be done to, so a batch can be priced before the button. */
-  @ApiPropertyOptional({ minimum: 1, maximum: BATCH_MAX })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(BATCH_MAX)
-  quantity?: number;
+  @ApiProperty({ description: "The capability's current form parameters; the server derives the price code from these", type: Object })
+  @IsObject()
+  params!: Record<string, unknown>;
 }
 
 export class EditTextDto {

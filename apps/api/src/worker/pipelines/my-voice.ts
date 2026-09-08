@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { ProviderError, type CapabilityParams } from '@anystudio/shared';
 import type { PipelineContext } from './index';
 import { runFfmpeg } from '../../../config/ffmpeg';
+import { rethrowIfAborted } from './abort';
 
 export interface MyVoiceOutcome {
   bytes: Uint8Array;
@@ -74,10 +75,23 @@ export async function singInMyVoice(
   let stems: { vocals: Uint8Array; instrumental: Uint8Array; mime: string };
   try {
     await ctx.stage('composing', 72, 'separating the vocal');
-    stems = await lab.separateStems({ bytes: track.bytes, mime: track.mime, filename: `song.${track.ext}` }, { timeoutMs: budget, signal });
+    stems = await ctx.callExternal(
+      lab,
+      {
+        generationId: ctx.row.id,
+        workspaceId: ctx.row.workspaceId,
+        capability: lab.capabilities[0] ?? 'VOICEOVER',
+        params: { operation: 'music-stems', voiceId: voice.key, seconds: track.seconds, bytes: track.bytes.byteLength },
+        files: {},
+      },
+      () => lab.separateStems({ bytes: track.bytes, mime: track.mime, filename: `song.${track.ext}` }, { timeoutMs: budget, signal }),
+      { timeoutMs: budget, signal, costMinor: lab.voiceLabCostMinor('stems', track.seconds) },
+    );
     cost += lab.voiceLabCostMinor('stems', track.seconds);
     ctx.log.info({ vocalsBytes: stems.vocals.byteLength, instrumentalBytes: stems.instrumental.byteLength }, 'my-voice: stems separated');
   } catch (err) {
+    rethrowIfAborted(ctx.signal, err);
+    if (err instanceof ProviderError && (err.kind === 'SUBMISSION_UNKNOWN' || err.meta.providerJobId)) throw err;
     ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'my-voice: stem separation failed; keeping the model singer');
     return keep(
       `stems: ${err instanceof Error ? err.message : String(err)}`,
@@ -89,14 +103,28 @@ export async function singInMyVoice(
   let converted: { bytes: Uint8Array; mime: string };
   try {
     await ctx.stage('composing', 80, 'singing it in your voice');
-    converted = await lab.convertVoice(
-      voice.providerVoiceId,
-      { bytes: stems.vocals, mime: stems.mime, filename: 'vocals.mp3' },
-      { timeoutMs: budget, signal, language: p.language },
+    converted = await ctx.callExternal(
+      lab,
+      {
+        generationId: ctx.row.id,
+        workspaceId: ctx.row.workspaceId,
+        capability: lab.capabilities[0] ?? 'VOICEOVER',
+        params: { operation: 'music-voice-convert', voiceId: voice.key, language: p.language, seconds: track.seconds, bytes: stems.vocals.byteLength },
+        files: {},
+      },
+      () =>
+        lab.convertVoice(
+          voice.providerVoiceId,
+          { bytes: stems.vocals, mime: stems.mime, filename: 'vocals.mp3' },
+          { timeoutMs: budget, signal, language: p.language },
+        ),
+      { timeoutMs: budget, signal, costMinor: lab.voiceLabCostMinor('convert', track.seconds) },
     );
     cost += lab.voiceLabCostMinor('convert', track.seconds);
     ctx.log.info({ bytes: converted.bytes.byteLength, voiceKey: voice.key }, 'my-voice: vocal converted');
   } catch (err) {
+    rethrowIfAborted(ctx.signal, err);
+    if (err instanceof ProviderError && (err.kind === 'SUBMISSION_UNKNOWN' || err.meta.providerJobId)) throw err;
     const kind = err instanceof ProviderError ? err.kind : 'unknown';
     ctx.log.warn({ err: err instanceof Error ? err.message : err, kind }, 'my-voice: voice conversion failed; keeping the model singer');
     return {
@@ -124,6 +152,7 @@ export async function singInMyVoice(
       voiceKey: voice.key,
     };
   } catch (err) {
+    rethrowIfAborted(ctx.signal, err);
     ctx.log.error({ err: err instanceof Error ? err.message : err }, 'my-voice: mixing failed; keeping the model singer');
     return {
       ...keep(

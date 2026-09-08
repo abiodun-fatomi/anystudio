@@ -8,9 +8,7 @@
  * limit, and the human endpoints get per-IP and per-account brakes tuned to
  * how fast a person can legitimately act.
  *
- * Enforcement is a Redis token bucket in the guard that reads this table.
- * Until that guard lands, Cloudflare's WAF rule on /auth/* is the only limit
- * in force — and this file is the spec it will be built to.
+ * The global RateLimitGuard reads this table; its store applies the limit.
  */
 
 export type RateScope = 'ip' | 'account' | 'apiKey' | 'merchant';
@@ -64,6 +62,8 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   'POST /api/v1/uploads/from-url': [{ limit: 60, windowSec: 60, scope: 'apiKey' }],
   'POST /api/v1/uploads': [{ limit: 120, windowSec: 60, scope: 'apiKey' }],
   'GET /api/v1/generations': [{ limit: 300, windowSec: 60, scope: 'apiKey' }],
+  'GET /api/v1/generations/:generationId': [{ limit: 300, windowSec: 60, scope: 'apiKey' }],
+  'POST /api/v1/generations/quote': [{ limit: 60, windowSec: 60, scope: 'apiKey' }],
   // Portal: minting keys and endpoints is rare by nature.
   'POST /api/v1/workspaces/:workspaceId/developer/keys': [{ limit: 10, windowSec: 3600, scope: 'account' }],
   'POST /api/v1/workspaces/:workspaceId/developer/webhooks': [{ limit: 10, windowSec: 3600, scope: 'account' }],

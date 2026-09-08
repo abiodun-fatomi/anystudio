@@ -66,6 +66,8 @@ describe('RetentionService', () => {
     expect(media.deleteObject).toHaveBeenCalledTimes(2);
     expect(calls['media.update']).toHaveLength(1);
     expect(calls['media.update']![0]).toMatchObject({ where: { id: 'm1' }, data: { status: 'PURGED' } });
+    const query = calls['media.findMany']![0] as { where: { OR: Array<Record<string, unknown>> } };
+    expect(query.where.OR).toContainEqual({ kind: 'DERIVED', deletedAt: { not: null }, key: { contains: '/work/' } });
   });
 
   it('prunes events, applications (with the CV) and closed support conversations on their clocks', async () => {

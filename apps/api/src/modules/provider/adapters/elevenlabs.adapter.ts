@@ -31,7 +31,7 @@
 
 import { ProviderError, dubLanguage, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
-import { http, poll } from './http';
+import { http, kindForStatus, linkedTimeoutSignal, MAX_PROVIDER_JSON_BYTES, MAX_PROVIDER_OUTPUT_BYTES, poll, readLimitedResponseBytes } from './http';
 import { unzip } from './unzip';
 import type { VoiceLab, VoiceSample } from './voice-lab';
 
@@ -75,20 +75,30 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     if (!lang) throw new ProviderError('INVALID_INPUT', `${this.key}: cannot dub into "${p.targetLanguage}"`, this.key);
     const headers = { 'xi-api-key': this.apiKey };
 
-    // Multipart, by URL: the vendor fetches the signed source itself, so a 200 MB video never passes through the worker twice.
-    const form = new FormData();
-    form.set('source_url', this.file(input, 'sourceKey'));
-    form.set('target_lang', lang);
-    form.set('source_lang', p.sourceLanguage && p.sourceLanguage !== 'auto' ? p.sourceLanguage : 'auto');
-    form.set('num_speakers', String(p.speakers));
-    form.set('watermark', String(this.str(input.config, 'watermark', 'false') === 'true'));
-    form.set('highest_resolution', String(this.str(input.config, 'highestResolution', 'true') === 'true'));
-    form.set('drop_background_audio', String(!p.keepBackground));
-    form.set('name', `anystudio ${input.generationId}`);
-    const submitted = await this.multipart<{ dubbing_id?: string; expected_duration_sec?: number; detail?: unknown }>(`${API}/dubbing`, form, headers, opts);
-    const providerJobId = submitted.dubbing_id;
-    if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: no dubbing_id in response`, this.key, { raw: submitted });
-    const expectMs = Math.max(30_000, Math.round((submitted.expected_duration_sec ?? 120) * 1000));
+    let providerJobId: string;
+    let expectedDurationSec = 120;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+      const saved = Number(opts.resume.data?.expectedDurationSec);
+      if (Number.isFinite(saved) && saved > 0) expectedDurationSec = saved;
+    } else {
+      // Multipart, by URL: the vendor fetches the signed source itself, so a 200 MB video never passes through the worker twice.
+      const form = new FormData();
+      form.set('source_url', this.file(input, 'sourceKey'));
+      form.set('target_lang', lang);
+      form.set('source_lang', p.sourceLanguage && p.sourceLanguage !== 'auto' ? p.sourceLanguage : 'auto');
+      form.set('num_speakers', String(p.speakers));
+      form.set('watermark', String(this.str(input.config, 'watermark', 'false') === 'true'));
+      form.set('highest_resolution', String(this.str(input.config, 'highestResolution', 'true') === 'true'));
+      form.set('drop_background_audio', String(!p.keepBackground));
+      form.set('name', `anystudio ${input.generationId}`);
+      const submitted = await this.multipart<{ dubbing_id?: string; expected_duration_sec?: number; detail?: unknown }>(`${API}/dubbing`, form, headers, opts);
+      if (!submitted.dubbing_id) throw new ProviderError('RETRYABLE', `${this.key}: no dubbing_id in response`, this.key, { raw: submitted });
+      providerJobId = submitted.dubbing_id;
+      expectedDurationSec = submitted.expected_duration_sec ?? expectedDurationSec;
+      await opts.onSubmitted?.(providerJobId, { expectedDurationSec });
+    }
+    const expectMs = Math.max(30_000, Math.round(expectedDurationSec * 1000));
     opts.onProgress?.('Translating the speech', 15);
 
     const status = await poll(
@@ -100,10 +110,12 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
         });
         const st = s.json.status ?? '';
         if (st === 'dubbed') return s.json;
-        if (st === 'failed' || s.json.error)
+        if (st === 'failed' || s.json.error) {
+          await opts.onSettled?.('FAILED');
           throw new ProviderError(classifyDubError(s.json.error), `${this.key}: dubbing failed: ${s.json.error ?? 'no reason given'}`, this.key, {
             providerJobId,
           });
+        }
         return null;
       },
       {
@@ -170,6 +182,7 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     return {
       providerKey: this.key,
       artifacts: [{ bytes, mime: mimeOf(format), role: 'audio', durationMs: lengthMs }],
+      costMinor: musicCostMinor(p.durationSec, input.config.costPerMinuteMinor),
       meta: { model, mode: 'composition_plan' in body ? 'plan' : 'prompt' },
     };
   }
@@ -207,25 +220,25 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     // A phone recording in a room: let the vendor take the room out before it learns the voice.
     form.set('remove_background_noise', 'true');
     for (const s of input.samples) form.append('files', new Blob([s.bytes as unknown as ArrayBuffer], { type: s.mime }), s.filename);
-    const res = await this.raw(
+    const json = await this.json<{ voice_id?: string; requires_verification?: boolean }>(
       `${API}/voices/add`,
       { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'application/json' }, body: form },
       { timeoutMs: 120_000, signal },
       'voice clone',
     );
-    const json = (await res.json()) as { voice_id?: string; requires_verification?: boolean };
     if (!json.voice_id) throw new ProviderError('RETRYABLE', `${this.key}: no voice_id in clone response`, this.key, { raw: json });
     return { providerVoiceId: json.voice_id };
   }
 
   async deleteVoice(providerVoiceId: string, signal?: AbortSignal): Promise<void> {
     try {
-      await this.raw(
+      const request = await this.raw(
         `${API}/voices/${encodeURIComponent(providerVoiceId)}`,
         { method: 'DELETE', headers: { 'xi-api-key': this.apiKey } },
         { timeoutMs: 30_000, signal },
         'voice delete',
       );
+      request.dispose();
     } catch (err) {
       // Already gone is the outcome we wanted.
       if (err instanceof ProviderError && err.meta.status === 404) return;
@@ -238,13 +251,12 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     form.set('file', new Blob([audio.bytes as unknown as ArrayBuffer], { type: audio.mime }), audio.filename);
     form.set('stem_variation_id', 'two_stems_v1');
     form.set('output_format', 'mp3_44100_128');
-    const res = await this.raw(
+    const { bytes: zip } = await this.bytes(
       `${API}/music/stem-separation`,
       { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'application/zip' }, body: form },
       { timeoutMs: opts.timeoutMs, signal: opts.signal },
       'stem separation',
     );
-    const zip = new Uint8Array(await res.arrayBuffer());
     let entries: ReturnType<typeof unzip>;
     try {
       entries = unzip(zip).filter((e) => /\.(mp3|wav|flac|ogg)$/i.test(e.name));
@@ -270,13 +282,12 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
     form.set('remove_background_noise', 'false');
     // Similarity high, stability middling: it is their voice we want, on the model's melody.
     form.set('voice_settings', JSON.stringify({ stability: 0.45, similarity_boost: 0.9, style: 0.15, use_speaker_boost: true }));
-    const res = await this.raw(
+    const { bytes } = await this.bytes(
       `${API}/speech-to-speech/${encodeURIComponent(providerVoiceId)}?output_format=mp3_44100_128`,
       { method: 'POST', headers: { 'xi-api-key': this.apiKey, accept: 'audio/mpeg' }, body: form },
       { timeoutMs: opts.timeoutMs, signal: opts.signal },
       'voice conversion',
     );
-    const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.byteLength < 1000) throw new ProviderError('RETRYABLE', `${this.key}: voice conversion returned ${bytes.byteLength} bytes`, this.key);
     return { bytes, mime: 'audio/mpeg' };
   }
@@ -290,81 +301,108 @@ export class ElevenLabsProvider extends BaseProvider implements VoiceLab {
 
   /** POST JSON and take the bytes. */
   private async audio(url: string, body: unknown, opts: ProviderOpts, what: string): Promise<Uint8Array> {
-    const res = await this.raw(
+    const { bytes: buf } = await this.bytes(
       url,
       { method: 'POST', headers: { 'xi-api-key': this.apiKey, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify(body) },
       opts,
       what,
     );
-    const buf = new Uint8Array(await res.arrayBuffer());
     if (buf.byteLength < 1000) throw new ProviderError('RETRYABLE', `${this.key}: ${what} returned ${buf.byteLength} bytes`, this.key);
     return buf;
   }
 
   /** POST a form (the dubbing endpoint), take the JSON. */
   private async multipart<T>(url: string, form: FormData, headers: Record<string, string>, opts: ProviderOpts): Promise<T> {
-    const res = await this.raw(
+    return this.json<T>(
       url,
       { method: 'POST', headers: { ...headers, accept: 'application/json' }, body: form },
       { ...opts, timeoutMs: Math.min(opts.timeoutMs, 120_000) },
       'dubbing',
     );
-    return (await res.json()) as T;
   }
 
   /** GET a finished file; what comes back may be video or audio. */
   private async download(url: string, headers: Record<string, string>, opts: ProviderOpts): Promise<{ bytes: Uint8Array; mime: string }> {
-    const res = await this.raw(url, { method: 'GET', headers }, { ...opts, timeoutMs: Math.min(opts.timeoutMs, 300_000) }, 'download');
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    const { bytes, mime } = await this.bytes(url, { method: 'GET', headers }, { ...opts, timeoutMs: Math.min(opts.timeoutMs, 300_000) }, 'download');
     if (bytes.byteLength < 1000) throw new ProviderError('RETRYABLE', `${this.key}: download returned ${bytes.byteLength} bytes`, this.key);
-    return { bytes, mime: res.headers.get('content-type')?.split(';')[0]?.trim() ?? '' };
+    return { bytes, mime };
   }
 
   /** One fetch with the vendor's error vocabulary mapped: `detail.status` slugs and the usual status codes. */
-  private async raw(url: string, init: RequestInit, opts: ProviderOpts, what: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
-    opts.signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  private async raw(url: string, init: RequestInit, opts: Pick<ProviderOpts, 'timeoutMs' | 'signal'>, what: string) {
+    const linked = linkedTimeoutSignal(opts.signal, opts.timeoutMs);
     let res: Response;
     try {
-      res = await fetch(url, { ...init, signal: controller.signal });
+      res = await fetch(url, { ...init, signal: linked.signal });
     } catch (err) {
-      clearTimeout(timer);
+      linked.dispose();
       throw new ProviderError('RETRYABLE', `${this.key}: network error on ${what}: ${err instanceof Error ? err.message : err}`, this.key);
     }
-    clearTimeout(timer);
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      let text = '';
+      try {
+        text = new TextDecoder().decode(await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_JSON_BYTES, `${what} error response`));
+      } finally {
+        linked.dispose();
+      }
       let slug = '';
       try {
         slug = String((JSON.parse(text) as { detail?: { status?: string } }).detail?.status ?? '');
       } catch {
         /* not json */
       }
-      const kind =
-        res.status === 429
-          ? 'RATE_LIMITED'
-          : slug === 'bad_prompt' || slug === 'bad_composition_plan' || slug === 'dubbing_content_moderation' || res.status === 422
-            ? 'CONTENT_REJECTED'
-            : res.status === 401 || res.status === 402 || res.status === 403
-              ? 'PROVIDER_DOWN'
-              : res.status >= 500
-                ? 'RETRYABLE'
-                : 'INVALID_INPUT';
+      const kind = slug === 'dubbing_content_moderation' ? 'CONTENT_REJECTED' : kindForStatus(res.status);
       throw new ProviderError(kind, `${this.key}: HTTP ${res.status} on ${what}${slug ? ` (${slug})` : ''}: ${text.slice(0, 300)}`, this.key, {
         status: res.status,
       });
     }
-    return res;
+    return { res, dispose: linked.dispose };
+  }
+
+  private async bytes(
+    url: string,
+    init: RequestInit,
+    opts: Pick<ProviderOpts, 'timeoutMs' | 'signal'>,
+    what: string,
+  ): Promise<{ bytes: Uint8Array; mime: string }> {
+    const request = await this.raw(url, init, opts, what);
+    try {
+      return {
+        bytes: await readLimitedResponseBytes(this.key, request.res, MAX_PROVIDER_OUTPUT_BYTES, `${what} body`),
+        mime: request.res.headers.get('content-type')?.split(';')[0]?.trim() ?? '',
+      };
+    } finally {
+      request.dispose();
+    }
+  }
+
+  private async json<T>(url: string, init: RequestInit, opts: Pick<ProviderOpts, 'timeoutMs' | 'signal'>, what: string): Promise<T> {
+    const request = await this.raw(url, init, opts, what);
+    try {
+      const text = new TextDecoder().decode(await readLimitedResponseBytes(this.key, request.res, MAX_PROVIDER_JSON_BYTES, `${what} body`));
+      return JSON.parse(text) as T;
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError('RETRYABLE', `${this.key}: ${what} returned invalid JSON`, this.key);
+    } finally {
+      request.dispose();
+    }
   }
 }
 
 /** A failed dub is the vendor's problem unless its reason names the content. */
-export function classifyDubError(error: string | null | undefined): 'CONTENT_REJECTED' | 'INVALID_INPUT' | 'RETRYABLE' {
+export function classifyDubError(error: string | null | undefined): 'CONTENT_REJECTED' | 'REQUEST_REJECTED' | 'RETRYABLE' {
   const e = (error ?? '').toLowerCase();
   if (/moderation|policy|prohibited|inappropriate/.test(e)) return 'CONTENT_REJECTED';
-  if (/no speech|no audio|could not detect|unsupported|too long|too short|corrupt/.test(e)) return 'INVALID_INPUT';
+  if (/no speech|no audio|could not detect|unsupported|too long|too short|corrupt/.test(e)) return 'REQUEST_REJECTED';
   return 'RETRYABLE';
+}
+
+/** Eleven Music is billed by generated duration; default is $0.15/minute. */
+export function musicCostMinor(durationSec: number, configured: unknown): number {
+  const rate = Number(configured);
+  const perMinute = Number.isFinite(rate) && rate > 0 ? rate : 15;
+  return Math.max(1, Math.ceil((durationSec / 60) * perMinute));
 }
 
 /** The style words a genre row carries, plus what the seller chose. */

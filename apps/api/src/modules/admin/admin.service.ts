@@ -90,7 +90,9 @@ export class AdminService {
       }),
       this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'WHATSAPP' } }),
       this.db.generation.count({ where: { createdAt: { gte: day }, channel: 'API' } }),
-      this.db.workerHeartbeat.findFirst({ orderBy: { seenAt: 'desc' } }),
+      // The media encoder has its own heartbeat. It must not make the console
+      // report the fast/heavy worker healthy when that service is down.
+      this.db.workerHeartbeat.findFirst({ where: { service: 'worker' }, orderBy: { seenAt: 'desc' } }),
     ]);
     const breakers = providers.filter((p) => p.breakerOpenedAt && now - p.breakerOpenedAt.getTime() < 10 * 60_000);
     const missing = providers.filter((p) => !this.registry.get(p.key));
@@ -112,7 +114,7 @@ export class AdminService {
 
   /** Just the liveness, for pages that must not wait on the whole overview. */
   async workerStatus() {
-    const worker = await this.db.workerHeartbeat.findFirst({ orderBy: { seenAt: 'desc' } });
+    const worker = await this.db.workerHeartbeat.findFirst({ where: { service: 'worker' }, orderBy: { seenAt: 'desc' } });
     return worker ? { seenAt: worker.seenAt, host: worker.host, version: worker.version, alive: Date.now() - worker.seenAt.getTime() < 90_000 } : null;
   }
 
@@ -489,30 +491,6 @@ export class AdminService {
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
     });
     return { payments: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
-  }
-
-  /** Mark refunded here after refunding at the gateway; the credits are clawed back, into the negative if they were spent. */
-  async refundPayment(actor: Actor, id: string, reason: string, req: Request) {
-    const p = await this.db.payment.findUnique({ where: { id }, include: { workspace: { include: { wallet: { select: { id: true } } } } } });
-    if (!p) throw new NotFoundError('payment');
-    assertStaffMutation(actor, { min: 'OPERATOR', workspaceId: p.workspaceId, stepUpMinutes: STEP_UP_MIN });
-    if (p.status !== 'SUCCEEDED') throw new ConflictError(`That payment is ${p.status.toLowerCase()}.`);
-    if (!p.workspace.wallet) throw new NotFoundError('wallet');
-    const entry = await this.ledger.clawback({
-      walletId: p.workspace.wallet.id,
-      amount: p.credits,
-      idempotencyKey: `payment:${p.id}`,
-      referenceId: p.id,
-      reason: `refund: ${reason}`,
-    });
-    const updated = await this.db.payment.update({ where: { id }, data: { status: 'REFUNDED', failureReason: `refunded by staff: ${reason}` } });
-    authLog(
-      'admin.payment',
-      'succeeded',
-      { userId: actor.userId, paymentId: id, workspaceId: p.workspaceId, credits: p.credits, reason, ledgerEntryId: entry.id },
-      req,
-    );
-    return updated;
   }
 
   // ---------------------------------------------------------------- audit and staff

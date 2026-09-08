@@ -279,8 +279,9 @@ export class PublishingService {
       if (!this.connectors[a.platform].formats().includes(dto.format))
         throw new ValidationError({ format: `${a.platform === 'INSTAGRAM' ? 'Instagram' : 'TikTok'} does not take a ${dto.format.toLowerCase()} post.` });
     }
-    const asset = await this.db.mediaAsset.findFirst({ where: { key: dto.mediaKey, workspaceId, deletedAt: null } });
-    if (!asset) throw new NotFoundError('file');
+    // This is a customer-supplied key. requireReady is the shared boundary
+    // that rejects another workspace, deleted/incomplete media, and the vault.
+    const asset = await this.media.requireReady(workspaceId, dto.mediaKey);
     if (dto.generationId) {
       const g = await this.db.generation.findFirst({ where: { id: dto.generationId, workspaceId }, select: { id: true } });
       if (!g) throw new NotFoundError('generation');
@@ -378,9 +379,8 @@ export class PublishingService {
 
   /** The share sheet: a link to the file that lives an hour, for WhatsApp Status and any native share. */
   async share(workspaceId: string, mediaKey: string): Promise<{ url: string; mime: string | null; expiresInSec: number }> {
-    const asset = await this.db.mediaAsset.findFirst({ where: { key: mediaKey, workspaceId, deletedAt: null }, select: { mime: true } });
-    if (!asset) throw new NotFoundError('file');
-    return { url: await this.media.signRead(mediaKey, MEDIA_URL_TTL_SEC), mime: asset.mime, expiresInSec: MEDIA_URL_TTL_SEC };
+    const asset = await this.media.requireReady(workspaceId, mediaKey);
+    return { url: await this.media.readUrl(workspaceId, mediaKey, MEDIA_URL_TTL_SEC), mime: asset.mime, expiresInSec: MEDIA_URL_TTL_SEC };
   }
 
   // --------------------------------------------------------------- worker
@@ -433,7 +433,9 @@ export class PublishingService {
         throw new PublishError('account not connected', true, false, `${account.handle ?? 'The account'} needs to be connected again.`);
       if (!connector.configured())
         throw new PublishError('platform not configured in this environment', false, false, 'Posting to this platform is not switched on yet.');
-      const url = await this.media.signRead(job.mediaKey, MEDIA_URL_TTL_SEC);
+      // Re-check at delivery time as well. This stops a legacy or manually
+      // inserted publish job from turning a vault key into a signed URL.
+      const url = await this.media.readUrl(job.workspaceId, job.mediaKey, MEDIA_URL_TTL_SEC);
       const outcome = await connector.publish(
         { externalId: account.externalId, accessToken: decrypt(account.accessToken), pageId: account.pageId },
         {

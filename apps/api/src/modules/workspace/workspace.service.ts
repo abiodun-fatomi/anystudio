@@ -87,13 +87,44 @@ export class WorkspaceService {
         logo = { logoKey: dto.logoKey };
       }
     }
-    // Currency only changes what the next purchase is priced in; credits are
-    // credits. The region (where files live) stays — that is a support action.
-    const ws = await this.db.workspace.update({
-      where: { id: workspaceId },
-      data: { ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.currency !== undefined ? { currency: dto.currency } : {}), ...logo },
-      select: { id: true, name: true, currency: true, region: true, logoKey: true },
-    });
+    // A gateway subscription is permanently denominated in the currency it
+    // was created with. Letting the workspace change currency underneath it
+    // makes a legitimate renewal look like the wrong amount/currency and can
+    // leave a paid customer without credits. Packs remain portable because
+    // credits themselves have no currency, but a live or pending plan must be
+    // cancelled/finished before the checkout currency can change.
+    const updateData = {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+      ...logo,
+    };
+    // Region (where files live) stays a support action. Currency changes and
+    // subscription checkout take the same workspace-row lock, closing the
+    // race where each request could pass its check before either wrote.
+    const select = { id: true, name: true, currency: true, region: true, logoKey: true } as const;
+    const ws =
+      dto.currency !== undefined && dto.currency !== current.currency
+        ? await this.db.$transaction(async (tx) => {
+            const [lockedWorkspace] = await tx.$queryRaw<Array<{ id: string }>>`
+              SELECT "id" FROM "workspaces" WHERE "id" = CAST(${workspaceId} AS uuid) AND "deletedAt" IS NULL FOR UPDATE
+            `;
+            if (!lockedWorkspace) throw new NotFoundError('workspace');
+            const [subscription, pendingPlan] = await Promise.all([
+              tx.subscription.findFirst({
+                where: { workspaceId, status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } },
+                select: { id: true },
+              }),
+              tx.payment.findFirst({
+                where: { workspaceId, kind: 'SUBSCRIPTION', status: 'PENDING' },
+                select: { id: true },
+              }),
+            ]);
+            if (subscription || pendingPlan) {
+              throw new ConflictError('Currency cannot change while a plan is active or its checkout is pending. Cancel the plan first, then change currency.');
+            }
+            return tx.workspace.update({ where: { id: workspaceId }, data: updateData, select });
+          })
+        : await this.db.workspace.update({ where: { id: workspaceId }, data: updateData, select });
     authLog(
       'workspace.update',
       'succeeded',
@@ -122,7 +153,27 @@ export class WorkspaceService {
     if (others === 0) throw new ConflictError('This is your only workspace. To close everything, delete your account instead.');
     const live = await this.db.generation.count({ where: { workspaceId, status: { in: ['QUEUED', 'RUNNING'] } } });
     if (live > 0) throw new ConflictError(`${live} generation${live === 1 ? ' is' : 's are'} still running. Wait for them, or cancel them, first.`);
-    await this.db.workspace.update({ where: { id: workspaceId }, data: { deletedAt: new Date() } });
+    await this.db.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "workspaces" WHERE "id" = CAST(${workspaceId} AS uuid) AND "deletedAt" IS NULL FOR UPDATE
+      `;
+      if (!locked) throw new NotFoundError('workspace');
+      const [subscription, pendingPayment, outstandingInvoice, creditLine] = await Promise.all([
+        tx.subscription.findFirst({
+          where: { workspaceId, OR: [{ status: { in: ['ACTIVE', 'PAST_DUE', 'PAUSED'] } }, { providerCancelPending: true }] },
+          select: { id: true },
+        }),
+        tx.payment.findFirst({ where: { workspaceId, status: 'PENDING' }, select: { id: true } }),
+        tx.invoice.findFirst({ where: { workspaceId, status: { in: ['OPEN', 'OVERDUE', 'DISPUTED'] } }, select: { id: true } }),
+        tx.billingAccount.findFirst({ where: { workspaceId, status: { not: 'CLOSED' } }, select: { id: true } }),
+      ]);
+      if (subscription || pendingPayment || outstandingInvoice || creditLine) {
+        throw new ConflictError(
+          'Billing must be closed before this workspace can be deleted. Cancel its plan, reconcile pending payments, and settle or close its credit line first.',
+        );
+      }
+      await tx.workspace.update({ where: { id: workspaceId }, data: { deletedAt: new Date() } });
+    });
     authLog('workspace.delete', 'succeeded', { userId: actorId, workspaceId }, req);
     return Helpers.successResponse(200, 'Workspace deleted', { id: workspaceId, deleted: true });
   }

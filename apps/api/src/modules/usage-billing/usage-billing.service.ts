@@ -139,49 +139,91 @@ export class UsageBillingService {
 
   /**
    * Money arrived for an invoice — online through BillingService, or a bank
-   * transfer recorded by staff. Idempotent on the invoice's status and on
-   * the ledger key, so a webhook and a return page settling together add
-   * the credits once.
+   * transfer recorded by staff. A PAID retry is idempotent only when its full
+   * settlement identity (method, external reference and Payment row) matches.
+   * The invoice lock makes a webhook and a staff action choose one winner,
+   * while the ledger key ensures that winner adds the credits once.
    */
-  async settleInvoice(invoiceId: string, via: string, reference: string | null, paymentId: string | null): Promise<Invoice> {
-    const inv = await this.db.invoice.findUnique({ where: { id: invoiceId }, include: { account: true, workspace: { select: { name: true } } } });
-    if (!inv) throw new NotFoundError('invoice');
-    if (inv.status === 'PAID') return inv;
-    if (inv.status === 'VOID') throw new ConflictError(`Invoice ${inv.number} was voided.`);
+  async settleInvoice(invoiceId: string, via: string, reference: string | null, paymentId: string | null, tx?: Prisma.TransactionClient): Promise<Invoice> {
+    const settle = async (client: Prisma.TransactionClient) => {
+      await client.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "invoices" WHERE "id" = CAST(${invoiceId} AS uuid) FOR UPDATE
+      `;
+      const inv = await client.invoice.findUnique({ where: { id: invoiceId } });
+      if (!inv) throw new NotFoundError('invoice');
+      if (inv.status === 'PAID') {
+        const sameSettlement = inv.paidVia === via && inv.paidReference === reference && inv.paymentId === paymentId;
+        if (!sameSettlement) {
+          throw new ConflictError(`Invoice ${inv.number} was already paid with a different settlement identity; billing review is required.`);
+        }
+        return { paid: inv, changed: false };
+      }
+      if (inv.status === 'VOID') throw new ConflictError(`Invoice ${inv.number} was voided.`);
+      if (inv.status === 'REFUNDED' || inv.status === 'DISPUTED') {
+        throw new ConflictError(`Invoice ${inv.number} requires billing review before it can be paid again.`);
+      }
+      // Invoice.paymentId is also the checkout reservation. Staff must not
+      // record a bank transfer over a still-payable hosted checkout, and a
+      // gateway may settle only the Payment that owns the reservation.
+      if (inv.paymentId && inv.paymentId !== paymentId) {
+        throw new ConflictError(`Invoice ${inv.number} already has a different payment transaction.`);
+      }
 
-    let ledgerEntryId: string | null = null;
-    if (inv.credits > 0) {
-      const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: inv.workspaceId }, select: { id: true } });
-      const entry = await this.ledger.purchase({
-        walletId: wallet.id,
-        amount: inv.credits,
-        idempotencyKey: `invoice:${inv.id}`,
-        referenceId: inv.id,
-        reason: `Invoice ${inv.number} paid`,
+      let ledgerEntryId: string | null = null;
+      if (inv.credits > 0) {
+        const wallet = await client.wallet.findUniqueOrThrow({ where: { workspaceId: inv.workspaceId }, select: { id: true } });
+        const entry = await this.ledger.purchase(
+          {
+            walletId: wallet.id,
+            amount: inv.credits,
+            idempotencyKey: `invoice:${inv.id}`,
+            referenceId: inv.id,
+            reason: `Invoice ${inv.number} paid`,
+          },
+          client,
+        );
+        ledgerEntryId = entry.id;
+      }
+      const paid = await client.invoice.update({
+        where: { id: inv.id },
+        data: { status: 'PAID', paidAt: new Date(), paidVia: via, paidReference: reference, paymentId, ledgerEntryId },
       });
-      ledgerEntryId = entry.id;
-    }
-    const paid = await this.db.invoice.update({
-      where: { id: inv.id },
-      data: { status: 'PAID', paidAt: new Date(), paidVia: via, paidReference: reference, paymentId, ledgerEntryId },
+      return { paid, changed: true };
+    };
+
+    if (tx) return (await settle(tx)).paid;
+    const result = await this.db.$transaction(settle);
+    if (result.changed) await this.completeInvoiceSettlement(result.paid.id);
+    return result.paid;
+  }
+
+  /** Run non-financial follow-up only after the settlement transaction commits. */
+  async completeInvoiceSettlement(invoiceId: string): Promise<void> {
+    const inv = await this.db.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { account: true, workspace: { select: { name: true } } },
     });
+    if (!inv || inv.status !== 'PAID') return;
     logger.info(
       {
         invoiceId: inv.id,
         number: inv.number,
         workspaceId: inv.workspaceId,
-        via,
-        reference,
+        via: inv.paidVia,
+        reference: inv.paidReference,
         totalMinor: inv.totalMinor,
         currency: inv.currency,
-        ledgerEntryId,
+        ledgerEntryId: inv.ledgerEntryId,
       },
       'invoice paid; credits returned to the line',
     );
     await this.reactivateIfClear(inv.account);
     if (inv.totalMinor > 0) {
-      const facts = this.mailFacts(paid, inv.workspace.name);
-      await this.mailAll(inv.workspaceId, inv.account.billingEmail, (to, name) => invoicePaid(to, name, { ...facts, via: VIA_WORDS[via] ?? via, reference }));
+      const facts = this.mailFacts(inv, inv.workspace.name);
+      const via = inv.paidVia ?? 'MANUAL';
+      await this.mailAll(inv.workspaceId, inv.account.billingEmail, (to, name) =>
+        invoicePaid(to, name, { ...facts, via: VIA_WORDS[via] ?? via, reference: inv.paidReference }),
+      );
       await this.notifications.notifyWorkspace(inv.workspaceId, null, {
         kind: 'CREDITS',
         title: `Invoice ${inv.number} paid`,
@@ -190,7 +232,6 @@ export class UsageBillingService {
         refId: `invoice-paid:${inv.id}`,
       });
     }
-    return paid;
   }
 
   // ------------------------------------------------------------- the worker
@@ -220,14 +261,19 @@ export class UsageBillingService {
 
   /** Issue an invoice for every completed period that has none. */
   async closeDue(now = new Date()): Promise<number> {
-    const accounts = await this.db.billingAccount.findMany({ where: { status: { in: ['ACTIVE', 'SUSPENDED'] } } });
+    // CLOSED accounts remain visible until their serialized closedAt cutoff
+    // has an invoice. This is the durable retry if a process dies after
+    // closing the line but before writing its final partial-period invoice.
+    const accounts = await this.db.billingAccount.findMany({ where: { status: { in: ['ACTIVE', 'SUSPENDED', 'CLOSED'] } } });
     let n = 0;
     for (const account of accounts) {
       for (;;) {
         const start = await this.openPeriodStart(account, now);
-        const end = monthOf(start).end;
+        const monthEnd = monthOf(start).end;
+        const end = account.status === 'CLOSED' && account.closedAt && account.closedAt < monthEnd ? account.closedAt : monthEnd;
+        if (start >= end) break;
         if (end > now) break;
-        const issued = await this.issue(account, start, end);
+        const issued = await this.issue(account, start, end, account.status === 'CLOSED');
         if (!issued) break;
         n++;
       }
@@ -265,26 +311,45 @@ export class UsageBillingService {
     });
     const byAccount = new Map<string, typeof lapsed>();
     for (const inv of lapsed) {
-      if (addDays(inv.dueAt, inv.account.graceDays) > now) continue;
       byAccount.set(inv.accountId, [...(byAccount.get(inv.accountId) ?? []), inv]);
     }
     for (const [, invs] of byAccount) {
       const account = invs[0]!.account;
-      const r = await this.db.billingAccount.updateMany({
-        where: { id: account.id, status: 'ACTIVE' },
-        data: { status: 'SUSPENDED', suspendedAt: now, suspendedReason: `overdue: ${invs.map((i) => i.number).join(', ')}` },
+      const changed = await this.db.$transaction(async (tx) => {
+        await this.lockCreditLine(tx, account.workspaceId);
+        const fresh = await tx.billingAccount.findUnique({ where: { id: account.id } });
+        if (!fresh || fresh.status !== 'ACTIVE') return false;
+        // Terms may change while this pass waits for the credit-line lock.
+        // Decide from the fresh grace period and all current overdue invoices,
+        // not from the stale candidate snapshot above.
+        const graceCutoff = addDays(now, -fresh.graceDays);
+        const qualifying = await tx.invoice.findMany({
+          where: {
+            accountId: fresh.id,
+            status: 'OVERDUE',
+            dueAt: { lte: graceCutoff },
+          },
+          select: { number: true, totalMinor: true },
+        });
+        if (qualifying.length === 0) return false;
+        await tx.billingAccount.update({
+          where: { id: account.id },
+          data: { status: 'SUSPENDED', suspendedAt: now, suspendedReason: `overdue: ${qualifying.map((i) => i.number).join(', ')}` },
+        });
+        await tx.wallet.update({ where: { workspaceId: account.workspaceId }, data: { overdraftLimit: 0 } });
+        return qualifying;
       });
-      if (r.count === 0) continue;
-      await this.db.wallet.update({ where: { workspaceId: account.workspaceId }, data: { overdraftLimit: 0 } });
+      if (!changed) continue;
       suspended++;
-      const total = invs.reduce((n, i) => n + i.totalMinor, 0);
+      const numbers = changed.map((invoice) => invoice.number);
+      const total = changed.reduce((n, invoice) => n + invoice.totalMinor, 0);
       logger.error(
-        { accountId: account.id, workspaceId: account.workspaceId, invoices: invs.map((i) => i.number), totalMinor: total, currency: account.currency },
+        { accountId: account.id, workspaceId: account.workspaceId, invoices: numbers, totalMinor: total, currency: account.currency },
         'ACCOUNT PAUSED: invoices overdue past grace; credit line closed',
       );
       const url = `${this.orgOrigin()}/billing`;
       await this.mailAll(account.workspaceId, account.billingEmail, (to, name) =>
-        accountPaused(to, name, { workspaceName: invs[0]!.workspace.name, numbers: invs.map((i) => i.number), total: money(total, account.currency), url }),
+        accountPaused(to, name, { workspaceName: invs[0]!.workspace.name, numbers, total: money(total, account.currency), url }),
       );
       await this.notifications.notifyWorkspace(account.workspaceId, null, {
         kind: 'SYSTEM',
@@ -382,12 +447,7 @@ export class UsageBillingService {
     if (!ws) throw new NotFoundError('workspace');
     if (ws.type !== 'ORGANIZATION') throw new ValidationError({ workspaceId: 'Only organization workspaces can be invoiced.' });
     if (!ws.wallet) throw new NotFoundError('wallet');
-    const existing = await this.db.billingAccount.findUnique({ where: { workspaceId } });
-    if (!existing && dto.creditLimit === undefined) throw new ValidationError({ creditLimit: 'A credit limit is needed to open the account.' });
-    if (!existing) {
-      const listed = await this.db.usageRate.findUnique({ where: { currency: ws.currency.toUpperCase() } });
-      if (!listed && !dto.per100Minor) throw new ValidationError({ per100Minor: `There is no list rate in ${ws.currency}; set a negotiated rate.` });
-    }
+    const walletId = ws.wallet.id;
     const data = {
       ...(dto.creditLimit !== undefined ? { creditLimit: dto.creditLimit } : {}),
       ...(dto.per100Minor !== undefined ? { per100Minor: dto.per100Minor } : {}),
@@ -397,15 +457,35 @@ export class UsageBillingService {
       ...(dto.billingEmail !== undefined ? { billingEmail: dto.billingEmail?.trim().toLowerCase() || null } : {}),
       ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
     };
-    const account = existing
-      ? await this.db.billingAccount.update({
-          where: { id: existing.id },
-          data: existing.status === 'CLOSED' ? { ...data, status: 'ACTIVE', closedAt: null, startedAt: new Date() } : data,
-        })
-      : await this.db.billingAccount.create({
-          data: { workspaceId, currency: ws.currency.toUpperCase(), creditLimit: dto.creditLimit!, createdById: actor.userId, ...data },
+    const { account, opened } = await this.db.$transaction(async (tx) => {
+      await this.lockCreditLine(tx, workspaceId);
+      const existing = await tx.billingAccount.findUnique({ where: { workspaceId } });
+      if (!existing && dto.creditLimit === undefined) throw new ValidationError({ creditLimit: 'A credit limit is needed to open the account.' });
+      if (!existing) {
+        const listed = await tx.usageRate.findUnique({ where: { currency: ws.currency.toUpperCase() } });
+        if (!listed && !dto.per100Minor) throw new ValidationError({ per100Minor: `There is no list rate in ${ws.currency}; set a negotiated rate.` });
+      }
+      if (existing?.status === 'CLOSED') {
+        const blockers = await tx.invoice.count({
+          where: { accountId: existing.id, status: { in: ['OVERDUE', 'DISPUTED', 'REFUNDED'] } },
         });
-    if (account.status === 'ACTIVE') await this.db.wallet.update({ where: { id: ws.wallet.id }, data: { overdraftLimit: account.creditLimit } });
+        if (blockers > 0) {
+          throw new ConflictError(
+            `Resolve the ${blockers} overdue, disputed, or refunded invoice${blockers === 1 ? '' : 's'} before reopening this credit line.`,
+          );
+        }
+      }
+      const updated = existing
+        ? await tx.billingAccount.update({
+            where: { id: existing.id },
+            data: existing.status === 'CLOSED' ? { ...data, status: 'ACTIVE', closedAt: null, startedAt: new Date() } : data,
+          })
+        : await tx.billingAccount.create({
+            data: { workspaceId, currency: ws.currency.toUpperCase(), creditLimit: dto.creditLimit!, createdById: actor.userId, ...data },
+          });
+      if (updated.status === 'ACTIVE') await tx.wallet.update({ where: { id: walletId }, data: { overdraftLimit: updated.creditLimit } });
+      return { account: updated, opened: !existing };
+    });
     authLog(
       'billing.terms',
       'succeeded',
@@ -413,7 +493,7 @@ export class UsageBillingService {
         userId: actor.userId,
         workspaceId,
         accountId: account.id,
-        opened: !existing,
+        opened,
         changed: Object.keys(data),
         creditLimit: account.creditLimit,
         reason: dto.reason,
@@ -421,8 +501,8 @@ export class UsageBillingService {
       req,
     );
     logger.info(
-      { accountId: account.id, workspaceId, creditLimit: account.creditLimit, opened: !existing, by: actor.userId },
-      existing ? 'credit line terms changed' : 'credit line opened',
+      { accountId: account.id, workspaceId, creditLimit: account.creditLimit, opened, by: actor.userId },
+      opened ? 'credit line opened' : 'credit line terms changed',
     );
     return this.accountView(account, await this.rateFor(account));
   }
@@ -432,13 +512,32 @@ export class UsageBillingService {
     assertStaffMutation(actor, { min: 'ADMIN', workspaceId, stepUpMinutes: STEP_UP_MIN });
     const account = await this.db.billingAccount.findUnique({ where: { workspaceId } });
     if (!account || account.status === 'CLOSED') throw new NotFoundError('billing account');
-    const now = new Date();
-    const final = await this.closePeriod(account, now);
-    await this.db.billingAccount.update({
-      where: { id: account.id },
-      data: { status: 'CLOSED', closedAt: now, notes: joinNotes(account.notes, `Closed: ${reason}`) },
+    const closed = await this.db.$transaction(async (tx) => {
+      await this.lockCreditLine(tx, workspaceId);
+      const fresh = await tx.billingAccount.findUnique({ where: { id: account.id } });
+      if (!fresh || fresh.status === 'CLOSED') throw new NotFoundError('billing account');
+      // Existing paid work must reach a terminal state before the final
+      // billing cutoff. That makes SUCCEEDED work billable and FAILED work
+      // free, without leaving an in-flight hold stranded after CLOSED drops
+      // out of the periodic close worker.
+      const inFlight = await tx.generation.count({
+        where: { workspaceId, status: { in: ['QUEUED', 'RUNNING'] } },
+      });
+      if (inFlight > 0) throw new ConflictError(`Wait for ${inFlight} in-progress generation${inFlight === 1 ? '' : 's'} before closing this credit line.`);
+      const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`;
+      const cutoff = clock?.now ?? new Date();
+      const updated = await tx.billingAccount.update({
+        where: { id: fresh.id },
+        data: { status: 'CLOSED', closedAt: cutoff, notes: joinNotes(fresh.notes, `Closed: ${reason}`) },
+      });
+      await tx.wallet.update({ where: { workspaceId }, data: { overdraftLimit: 0 } });
+      return { account: updated, cutoff };
     });
-    await this.db.wallet.update({ where: { workspaceId }, data: { overdraftLimit: 0 } });
+    // New debits after cutoff are prepaid because overdraft is already zero.
+    // The final invoice is allowed to read the now-CLOSED account and covers
+    // every successful postpaid generation through the serialized cutoff.
+    const start = await this.openPeriodStart(closed.account, closed.cutoff);
+    const final = start < closed.cutoff ? await this.issue(closed.account, start, closed.cutoff, true) : null;
     authLog(
       'billing.terms',
       'succeeded',
@@ -454,11 +553,25 @@ export class UsageBillingService {
     assertStaffMutation(actor, { min: 'ADMIN', workspaceId, stepUpMinutes: STEP_UP_MIN });
     const account = await this.db.billingAccount.findUnique({ where: { workspaceId } });
     if (!account || account.status !== 'SUSPENDED') throw new ConflictError('This account is not paused.');
-    const updated = await this.db.billingAccount.update({
-      where: { id: account.id },
-      data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null, notes: joinNotes(account.notes, `Reactivated: ${reason}`) },
+    const updated = await this.db.$transaction(async (tx) => {
+      await this.lockCreditLine(tx, workspaceId);
+      const fresh = await tx.billingAccount.findUnique({ where: { id: account.id } });
+      if (!fresh || fresh.status !== 'SUSPENDED') throw new ConflictError('This account is not paused.');
+      const blockers = await tx.invoice.count({
+        where: { accountId: fresh.id, status: { in: ['OVERDUE', 'DISPUTED', 'REFUNDED'] } },
+      });
+      if (blockers > 0) {
+        throw new ConflictError(
+          `Resolve the ${blockers} overdue, disputed, or refunded invoice${blockers === 1 ? '' : 's'} before reopening this credit line.`,
+        );
+      }
+      const active = await tx.billingAccount.update({
+        where: { id: fresh.id },
+        data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null, notes: joinNotes(fresh.notes, `Reactivated: ${reason}`) },
+      });
+      await tx.wallet.update({ where: { workspaceId }, data: { overdraftLimit: active.creditLimit } });
+      return active;
     });
-    await this.db.wallet.update({ where: { workspaceId }, data: { overdraftLimit: updated.creditLimit } });
     authLog('billing.terms', 'succeeded', { userId: actor.userId, workspaceId, accountId: account.id, reactivated: true, reason }, req);
     return this.accountView(updated, await this.rateFor(updated));
   }
@@ -498,34 +611,49 @@ export class UsageBillingService {
     return this.invoiceView(paid);
   }
 
-  /** Cancel an invoice. The credits it billed are put back so the line is square. Its period stays closed; anything owed for it is settled by hand or on the next invoice. */
+  /** Cancel an invoice. The invoice lock, credit grant and VOID state commit together so payment cannot race the cancellation. */
   async voidInvoice(actor: Actor, invoiceId: string, reason: string, req: Request) {
-    const inv = await this.db.invoice.findUnique({ where: { id: invoiceId } });
-    if (!inv) throw new NotFoundError('invoice');
-    assertStaffMutation(actor, { min: 'ADMIN', workspaceId: inv.workspaceId, stepUpMinutes: STEP_UP_MIN });
-    if (inv.status === 'PAID') throw new ConflictError('A paid invoice cannot be voided. Refund the payment instead.');
-    if (inv.status === 'VOID') return this.invoiceView(inv);
-    if (inv.credits > 0) {
-      const wallet = await this.db.wallet.findUniqueOrThrow({ where: { workspaceId: inv.workspaceId }, select: { id: true } });
-      await this.ledger.grant({
-        walletId: wallet.id,
-        amount: inv.credits,
-        idempotencyKey: `invoice:${inv.id}:void`,
-        referenceId: inv.id,
-        reason: `Invoice ${inv.number} voided`,
-      });
-    }
-    const voided = await this.db.invoice.update({ where: { id: inv.id }, data: { status: 'VOID', voidedAt: new Date(), voidReason: reason } });
-    const account = await this.db.billingAccount.findUnique({ where: { id: inv.accountId } });
+    const visible = await this.db.invoice.findUnique({ where: { id: invoiceId }, select: { workspaceId: true } });
+    if (!visible) throw new NotFoundError('invoice');
+    assertStaffMutation(actor, { min: 'ADMIN', workspaceId: visible.workspaceId, stepUpMinutes: STEP_UP_MIN });
+
+    const { voided, changed } = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "invoices" WHERE "id" = CAST(${invoiceId} AS uuid) FOR UPDATE
+      `;
+      const inv = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      if (!inv) throw new NotFoundError('invoice');
+      if (inv.status === 'PAID') throw new ConflictError('A paid invoice cannot be voided. Refund the payment instead.');
+      if (inv.status === 'VOID') return { voided: inv, changed: false };
+
+      if (inv.credits > 0) {
+        const wallet = await tx.wallet.findUniqueOrThrow({ where: { workspaceId: inv.workspaceId }, select: { id: true } });
+        await this.ledger.grant(
+          {
+            walletId: wallet.id,
+            amount: inv.credits,
+            idempotencyKey: `invoice:${inv.id}:void`,
+            referenceId: inv.id,
+            reason: `Invoice ${inv.number} voided`,
+          },
+          tx,
+        );
+      }
+      const updated = await tx.invoice.update({ where: { id: inv.id }, data: { status: 'VOID', voidedAt: new Date(), voidReason: reason } });
+      return { voided: updated, changed: true };
+    });
+    if (!changed) return this.invoiceView(voided);
+
+    const account = await this.db.billingAccount.findUnique({ where: { id: voided.accountId } });
     if (account) await this.reactivateIfClear(account);
     authLog(
       'billing.invoice',
       'succeeded',
-      { userId: actor.userId, workspaceId: inv.workspaceId, invoiceId: inv.id, number: inv.number, voided: true, reason },
+      { userId: actor.userId, workspaceId: voided.workspaceId, invoiceId: voided.id, number: voided.number, voided: true, reason },
       req,
     );
     logger.warn(
-      { invoiceId: inv.id, number: inv.number, workspaceId: inv.workspaceId, credits: inv.credits, by: actor.userId, reason },
+      { invoiceId: voided.id, number: voided.number, workspaceId: voided.workspaceId, credits: voided.credits, by: actor.userId, reason },
       'invoice voided; credits returned',
     );
     return this.invoiceView(voided);
@@ -537,19 +665,60 @@ export class UsageBillingService {
 
   // ---------------------------------------------------------------- private
 
-  /** Net debits in [start, end) grouped by what was made. Refunds count against the code they refund. */
-  private async usage(walletId: string, start: Date, end: Date): Promise<RawUsage[]> {
-    const rows = await this.db.$queryRaw<Array<{ costCode: string | null; label: string | null; requests: bigint; credits: bigint }>>`
-      SELECT g."costCode" AS "costCode", cc.label AS label,
-             COUNT(*) FILTER (WHERE le.kind = 'DEBIT') AS requests,
-             -SUM(le.delta) AS credits
-        FROM ledger_entries le
-        LEFT JOIN generations g ON g.id = le."referenceId"
-        LEFT JOIN credit_costs cc ON cc.code = g."costCode"
-       WHERE le."walletId" = ${walletId}::uuid
-         AND le.kind IN ('DEBIT', 'REFUND')
-         AND le."createdAt" >= ${start} AND le."createdAt" < ${end}
-       GROUP BY 1, 2`;
+  /**
+   * Bill completed work, not temporary credit holds. A generation is assigned
+   * to the period in which it succeeds; failures are never billed, even when
+   * their debit and refund straddle a month boundary. Synchronous non-
+   * generation debits (currently song unlocks) count only when no matching
+   * refund exists.
+   */
+  private async usage(walletId: string, start: Date, end: Date, tx?: Prisma.TransactionClient): Promise<RawUsage[]> {
+    const client = tx ?? this.db;
+    const rows = await client.$queryRaw<Array<{ costCode: string | null; label: string | null; requests: bigint; credits: bigint }>>`
+      SELECT usage."costCode", usage.label,
+             SUM(usage.requests)::bigint AS requests,
+             SUM(usage.credits)::bigint AS credits
+        FROM (
+          SELECT g."costCode" AS "costCode", cc.label AS label,
+                 COUNT(*) FILTER (
+                   WHERE le.kind = 'DEBIT'
+                     AND le."idempotencyKey" = 'gen:' || g.id::text
+                 )::bigint AS requests,
+                 (-SUM(le.delta))::bigint AS credits
+            FROM ledger_entries le
+            JOIN generations g ON g.id = le."referenceId"
+            LEFT JOIN credit_costs cc ON cc.code = g."costCode"
+           WHERE le."walletId" = ${walletId}::uuid
+             AND g.status = 'SUCCEEDED'
+             AND g."finishedAt" >= ${start} AND g."finishedAt" < ${end}
+             AND le.kind IN ('DEBIT', 'REFUND')
+             AND (
+               le."idempotencyKey" = 'gen:' || g.id::text
+               OR le."idempotencyKey" LIKE 'gen:' || g.id::text || ':%'
+             )
+           GROUP BY g."costCode", cc.label
+
+          UNION ALL
+
+          SELECT CASE WHEN le."idempotencyKey" LIKE 'unlock:%' THEN 'audio.music.unlock' ELSE 'other' END AS "costCode",
+                 CASE WHEN le."idempotencyKey" LIKE 'unlock:%' THEN unlock_cost.label ELSE COALESCE(le.reason, 'Other usage') END AS label,
+                 COUNT(*)::bigint AS requests,
+                 (-SUM(le.delta))::bigint AS credits
+            FROM ledger_entries le
+            LEFT JOIN credit_costs unlock_cost ON unlock_cost.code = 'audio.music.unlock'
+           WHERE le."walletId" = ${walletId}::uuid
+             AND le.kind = 'DEBIT'
+             AND le."idempotencyKey" NOT LIKE 'gen:%'
+             AND le."createdAt" >= ${start} AND le."createdAt" < ${end}
+             AND NOT EXISTS (
+               SELECT 1 FROM ledger_entries returned
+                WHERE returned."walletId" = le."walletId"
+                  AND returned."idempotencyKey" = le."idempotencyKey" || ':refund'
+                  AND returned.kind = 'REFUND'
+             )
+           GROUP BY 1, 2
+        ) AS usage
+       GROUP BY usage."costCode", usage.label`;
     return rows.map((r) => ({
       costCode: r.costCode ?? 'other',
       label: r.label ?? (r.costCode ? r.costCode : 'Other usage'),
@@ -577,94 +746,103 @@ export class UsageBillingService {
     return this.issue(account, start, now);
   }
 
-  /**
-   * Price and write one invoice. The unique (account, periodStart) makes a
-   * second worker's attempt a no-op; the number is taken from a count and
-   * retried on collision, which at this volume is the whole story.
-   */
-  private async issue(account: BillingAccount, start: Date, end: Date): Promise<Invoice | null> {
-    const wallet = await this.db.wallet.findUnique({ where: { workspaceId: account.workspaceId }, select: { id: true } });
-    if (!wallet) return null;
-    const [raw, rate, ws] = await Promise.all([
-      this.usage(wallet.id, start, end),
-      this.rateFor(account),
-      this.db.workspace.findUniqueOrThrow({ where: { id: account.workspaceId }, select: { name: true } }),
-    ]);
-    const priced = priceUsage(raw, rate, account.minimumMinor);
-    const zero = priced.totalMinor === 0;
-    const issuedAt = new Date();
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const seq = (await this.db.invoice.count({ where: { periodStart: { gte: monthOf(start).start, lt: monthOf(start).end } } })) + 1 + attempt;
-      try {
-        const inv = await this.db.invoice.create({
-          data: {
-            number: invoiceNumber(start, seq),
-            workspaceId: account.workspaceId,
-            accountId: account.id,
-            periodStart: start,
-            periodEnd: end,
-            currency: account.currency,
-            credits: priced.credits,
-            per100Minor: rate,
-            usageMinor: priced.usageMinor,
-            minimumMinor: priced.minimumMinor,
-            totalMinor: priced.totalMinor,
-            lines: priced.lines as unknown as Prisma.InputJsonValue,
-            billTo: (account.billTo ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-            issuedAt,
-            dueAt: addDays(issuedAt, account.netDays),
-            ...(zero ? { status: 'PAID', paidAt: issuedAt, paidVia: 'ZERO' } : {}),
-          },
-        });
-        logger.info(
-          {
-            invoiceId: inv.id,
-            number: inv.number,
-            workspaceId: account.workspaceId,
-            periodStart: start,
-            periodEnd: end,
-            credits: inv.credits,
-            totalMinor: inv.totalMinor,
-            currency: inv.currency,
-            zero,
-          },
-          zero ? 'period closed; nothing to bill' : 'invoice issued',
-        );
-        if (!zero) {
-          const facts = this.mailFacts(inv, ws.name);
-          await this.mailAll(account.workspaceId, account.billingEmail, (to, name) => invoiceIssued(to, name, facts));
-          await this.notifications.notifyWorkspace(account.workspaceId, null, {
-            kind: 'CREDITS',
-            title: `Invoice ${inv.number}: ${money(inv.totalMinor, inv.currency)}`,
-            body: `${periodWords(start)} · ${inv.credits.toLocaleString()} credits · due ${dateWords(inv.dueAt)}.`,
-            href: `/billing/invoices/${inv.id}`,
-            refId: `invoice:${inv.id}`,
-          });
-        }
-        return inv;
-      } catch (e) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-          const target = (e.meta?.target as string[] | undefined)?.join(',') ?? '';
-          if (target.includes('periodStart')) return null; // another worker closed it
-          continue; // number collided; count again
-        }
-        throw e;
-      }
+  /** Price and write one invoice under the wallet/billing serialization lock. */
+  private async issue(account: BillingAccount, start: Date, end: Date, allowClosed = false): Promise<Invoice | null> {
+    const result = await this.db.$transaction(async (tx) => {
+      await this.lockCreditLine(tx, account.workspaceId);
+      const fresh = await tx.billingAccount.findUnique({ where: { id: account.id } });
+      if (!fresh || (fresh.status === 'CLOSED' && !allowClosed)) return null;
+      const wallet = await tx.wallet.findUniqueOrThrow({ where: { workspaceId: fresh.workspaceId }, select: { id: true } });
+      const existing = await tx.invoice.findFirst({ where: { accountId: fresh.id, periodStart: start }, select: { id: true } });
+      if (existing) return null;
+      const [raw, rate, ws] = await Promise.all([
+        this.usage(wallet.id, start, end, tx),
+        this.rateFor(fresh, tx),
+        tx.workspace.findUniqueOrThrow({ where: { id: fresh.workspaceId }, select: { name: true } }),
+      ]);
+      const priced = priceUsage(raw, rate, fresh.minimumMinor);
+      const zero = priced.totalMinor === 0;
+      const issuedAt = new Date();
+      // Invoice numbers are global within their month. This transaction-level
+      // advisory lock removes the count+insert race without holding a process
+      // mutex that would disappear on restart.
+      await tx.$queryRaw<Array<{ locked: null }>>`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`usage-invoice:${monthOf(start).start.toISOString()}`}, 0)) AS locked
+      `;
+      const seq = (await tx.invoice.count({ where: { periodStart: { gte: monthOf(start).start, lt: monthOf(start).end } } })) + 1;
+      const inv = await tx.invoice.create({
+        data: {
+          number: invoiceNumber(start, seq),
+          workspaceId: fresh.workspaceId,
+          accountId: fresh.id,
+          periodStart: start,
+          periodEnd: end,
+          currency: fresh.currency,
+          credits: priced.credits,
+          per100Minor: rate,
+          usageMinor: priced.usageMinor,
+          minimumMinor: priced.minimumMinor,
+          totalMinor: priced.totalMinor,
+          lines: priced.lines as unknown as Prisma.InputJsonValue,
+          billTo: (fresh.billTo ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+          issuedAt,
+          dueAt: addDays(issuedAt, fresh.netDays),
+          ...(zero ? { status: 'PAID', paidAt: issuedAt, paidVia: 'ZERO' } : {}),
+        },
+      });
+      return { inv, fresh, workspaceName: ws.name, zero };
+    });
+    if (!result) return null;
+    const { inv, fresh, workspaceName, zero } = result;
+    logger.info(
+      {
+        invoiceId: inv.id,
+        number: inv.number,
+        workspaceId: fresh.workspaceId,
+        periodStart: start,
+        periodEnd: end,
+        credits: inv.credits,
+        totalMinor: inv.totalMinor,
+        currency: inv.currency,
+        zero,
+      },
+      zero ? 'period closed; nothing to bill' : 'invoice issued',
+    );
+    if (!zero) {
+      const facts = this.mailFacts(inv, workspaceName);
+      await this.mailAll(fresh.workspaceId, fresh.billingEmail, (to, name) => invoiceIssued(to, name, facts));
+      await this.notifications.notifyWorkspace(fresh.workspaceId, null, {
+        kind: 'CREDITS',
+        title: `Invoice ${inv.number}: ${money(inv.totalMinor, inv.currency)}`,
+        body: `${periodWords(start)} · ${inv.credits.toLocaleString()} credits · due ${dateWords(inv.dueAt)}.`,
+        href: `/billing/invoices/${inv.id}`,
+        refId: `invoice:${inv.id}`,
+      });
     }
-    logger.error({ accountId: account.id, periodStart: start }, 'INVOICE NOT ISSUED: could not allocate a number');
-    return null;
+    return inv;
   }
 
   private async reactivateIfClear(account: BillingAccount): Promise<void> {
     if (account.status !== 'SUSPENDED') return;
-    const stillOpen = await this.db.invoice.count({ where: { accountId: account.id, status: 'OVERDUE' } });
-    if (stillOpen > 0) return;
-    const r = await this.db.billingAccount.updateMany({
-      where: { id: account.id, status: 'SUSPENDED' },
-      data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null },
+    const changed = await this.db.$transaction(async (tx) => {
+      await this.lockCreditLine(tx, account.workspaceId);
+      const fresh = await tx.billingAccount.findUnique({ where: { id: account.id } });
+      if (!fresh || fresh.status !== 'SUSPENDED') return false;
+      // A dispute or refund has removed a previously accepted settlement and
+      // is just as blocking as an overdue invoice. Only restore the credit
+      // line when every financial blocker is cleared.
+      const stillOpen = await tx.invoice.count({
+        where: { accountId: account.id, status: { in: ['OVERDUE', 'DISPUTED', 'REFUNDED'] } },
+      });
+      if (stillOpen > 0) return false;
+      await tx.billingAccount.update({
+        where: { id: account.id },
+        data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null },
+      });
+      await tx.wallet.update({ where: { workspaceId: account.workspaceId }, data: { overdraftLimit: fresh.creditLimit } });
+      return true;
     });
-    if (r.count === 0) return;
-    await this.db.wallet.update({ where: { workspaceId: account.workspaceId }, data: { overdraftLimit: account.creditLimit } });
+    if (!changed) return;
     logger.info({ accountId: account.id, workspaceId: account.workspaceId }, 'account reactivated; overdue invoices cleared');
     await this.notifications.notifyWorkspace(account.workspaceId, null, {
       kind: 'SYSTEM',
@@ -675,9 +853,21 @@ export class UsageBillingService {
     });
   }
 
-  private async rateFor(account: Pick<BillingAccount, 'per100Minor' | 'currency'>): Promise<number> {
+  /**
+   * Serialize every BillingAccount/Wallet limit transition with ledger_apply,
+   * whose own serialization point is the same wallet row. The surrounding
+   * transaction then makes account state and spendable overdraft one fact.
+   */
+  private async lockCreditLine(tx: Prisma.TransactionClient, workspaceId: string): Promise<void> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "wallets" WHERE "workspaceId" = CAST(${workspaceId} AS uuid) FOR UPDATE
+    `;
+    if (rows.length === 0) throw new NotFoundError('wallet');
+  }
+
+  private async rateFor(account: Pick<BillingAccount, 'per100Minor' | 'currency'>, tx: Prisma.TransactionClient | PrismaClient = this.db): Promise<number> {
     if (account.per100Minor) return account.per100Minor;
-    const r = await this.db.usageRate.findUnique({ where: { currency: account.currency.toUpperCase() } });
+    const r = await tx.usageRate.findUnique({ where: { currency: account.currency.toUpperCase() } });
     return r?.per100Minor ?? 0;
   }
 

@@ -1,0 +1,137 @@
+# Render Blueprint for production only. Import this path exactly once and keep
+# Blueprint Auto Sync off; GitHub Actions plus the protected production
+# environment own deploy timing. Create and preflight `anystudio-production`
+# before importing. Production Postgres requires a Render Pro workspace for HA.
+previewsEnabled: false
+
+databases:
+  - name: anystudio-db
+    region: frankfurt
+    postgresMajorVersion: '18'
+    plan: 1c-2g
+    diskSizeGB: 100
+    storageAutoscalingEnabled: true
+    highAvailability:
+      enabled: true
+    ipAllowList: []
+
+services:
+  - type: keyvalue
+    name: anystudio-kv
+    region: frankfurt
+    plan: 1g
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+
+  - type: web
+    name: anystudio-api
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: 1c-2g
+    numInstances: 2
+    region: frankfurt
+    healthCheckPath: /health
+    preDeployCommand: npm run release
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: api
+      - key: PORT
+        value: '3001'
+      - key: LOG_LEVEL
+        value: info
+
+  - type: worker
+    name: anystudio-worker
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 1c-2g
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: worker
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1536
+      - key: WORKER_FAST_CONCURRENCY
+        value: '12'
+      - key: WORKER_HEAVY_CONCURRENCY
+        value: '16'
+      - key: WORKER_QUEUES
+        value: media.fast,media.heavy
+      - key: FFMPEG_CONCURRENCY
+        value: '1'
+
+  - type: worker
+    name: anystudio-media
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 1c-2g
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: media
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1024
+      - key: WORKER_QUEUES
+        value: media.local
+      - key: WORKER_LOCAL_CONCURRENCY
+        value: '1'
+      - key: WORKER_DIRECT_CONCURRENCY
+        value: '1'
+      - key: FFMPEG_CONCURRENCY
+        value: '1'

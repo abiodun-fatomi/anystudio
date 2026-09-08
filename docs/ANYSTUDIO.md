@@ -241,7 +241,7 @@ publish_jobs        asset_id, platform, status, external_post_id
 
 **The ledger is append-only. There is no balance column.**
 
-Every purchase, debit, refund, promotional grant and adjustment is a row. The balance is derived, with `balance_after` denormalized onto each row for cheap reads and for detecting drift.
+Every purchase, debit, refund, promotional grant and adjustment is a row. The authoritative balance is `SUM(delta)` under the wallet lock. `balance_after` is retained on each row as an audit snapshot, but timestamps can tie and UUIDs are random, so no single row is trusted as the latest balance.
 
 This is the single most common thing teams get wrong, and it cannot be fixed retroactively — you cannot reconstruct a history you never wrote. When a user disputes a charge, or a generation fails halfway, or an organization queries its spend for a month, the ledger is the only defensible answer.
 
@@ -327,26 +327,31 @@ Live conversion produces ugly prices, margin swings on every rate move, and a di
 
 ### Keys
 
-An API key is a **public key ID** plus a **secret**. Only an Argon2 hash of the secret is stored. The secret is displayed exactly once at creation.
+An API key is an environment-prefixed, randomly generated server secret (`as_live_` or `as_test_`, followed by 32 base62 characters). Its SHA-256 hash and a display prefix are stored, not the raw key. The key is displayed exactly once at creation.
 
 Keys are scoped to a project, carry their own rate limit and scopes, and are independently revocable. Separate keys per environment. `last_used_at` tracked so dormant keys can be surfaced and retired.
 
 ### Metering
 
-Every authenticated API call writes a `usage_record` with endpoint, units and unit type. Aggregation runs on a schedule into per-project, per-day rollups that back both the customer's analytics and the invoice. The raw records are the audit trail when a customer disputes a bill.
+The developer dashboard aggregates API generation rows by day, project, key and merchant. Request counts are generation counts, not every HTTP call. Reported generation credits are not a net-of-refunds ledger statement; the wallet ledger is authoritative for actual debits, grants and refunds.
 
 ### Public API surface (v1)
 
 ```
-POST   /v1/generations              create a generation
-GET    /v1/generations/:id          poll status
-GET    /v1/generations              list, filter
-POST   /v1/products                 register a product for reuse
-GET    /v1/usage                    current period usage
-POST   /v1/webhooks                 register a completion webhook
+GET    /api/v1/capabilities         schemas, base rates, scenario examples
+POST   /api/v1/uploads/from-url     ingest public media
+POST   /api/v1/uploads              presign a raw PUT; complete afterwards
+POST   /api/v1/generations/quote    validate and estimate complete params
+POST   /api/v1/generations          create a generation
+GET    /api/v1/generations/:id      poll status and refresh signed URLs
+GET    /api/v1/generations          list this project's generations
+POST   /api/v1/generations/:id/cancel   cancel queued work
+POST   /api/v1/generations/:id/unlock   unlock a song
+GET    /api/v1/catalogue/audio/*    voices, genres, dub languages, unlock price
+GET    /api/v1/balance              workspace credit balance
 ```
 
-Versioned from the first release. OpenAPI spec generated from the NestJS decorators and published.
+See [API.md](API.md) for the complete contract, scopes and scenario mapping. Project/key/webhook management and usage reports use the signed-in portal, not public bearer-key routes. Production docs live in Developer → Docs; interactive Swagger is disabled in production. Projects isolate API generations; uploads and wallet are workspace-wide, so untrusted tenants need separate workspaces.
 
 ---
 

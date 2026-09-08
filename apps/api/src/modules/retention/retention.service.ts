@@ -144,13 +144,22 @@ export class RetentionService {
 
   // -------------------------------------------------------------- objects
 
-  /** Storage behind soft-deleted media, and behind soft-deleted workspaces, once the undo window has passed. */
+  /**
+   * Storage behind soft-deleted media/workspaces once the undo window passes,
+   * plus retired pipeline scratch immediately. Scratch has no customer-facing
+   * undo contract and a failed immediate delete must not occupy storage for a
+   * month before its first retry.
+   */
   async purgeObjects(): Promise<number> {
     const cutoff = ago(DELETION_GRACE_DAYS);
     const assets = await this.db.mediaAsset.findMany({
       where: {
         status: { not: 'PURGED' },
-        OR: [{ deletedAt: { lte: cutoff } }, { workspace: { deletedAt: { lte: cutoff } } }],
+        OR: [
+          { deletedAt: { lte: cutoff } },
+          { workspace: { deletedAt: { lte: cutoff } } },
+          { kind: 'DERIVED', deletedAt: { not: null }, key: { contains: '/work/' } },
+        ],
       },
       select: { id: true, key: true },
       take: BATCH,

@@ -63,10 +63,10 @@ export class RefundDecisionDto {
 }
 
 export class RefundsQueryDto {
-  @ApiPropertyOptional({ enum: ['REQUESTED', 'APPROVED', 'REFUSED', 'CANCELLED'] })
+  @ApiPropertyOptional({ enum: ['REQUESTED', 'PROCESSING', 'NEEDS_REVIEW', 'APPROVED', 'REFUSED', 'CANCELLED'] })
   @IsOptional()
-  @IsIn(['REQUESTED', 'APPROVED', 'REFUSED', 'CANCELLED'])
-  status?: 'REQUESTED' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  @IsIn(['REQUESTED', 'PROCESSING', 'NEEDS_REVIEW', 'APPROVED', 'REFUSED', 'CANCELLED'])
+  status?: 'REQUESTED' | 'PROCESSING' | 'NEEDS_REVIEW' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
 
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() cursor?: string;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 25 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) take?: number;

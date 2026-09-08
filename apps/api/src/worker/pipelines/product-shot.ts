@@ -51,6 +51,7 @@ import { FIDELITY, fidelity, type FidelityReport } from './fidelity';
 import { applyBrand, artifactBytes, pasteProductAt } from './image';
 import { focalCrop, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
+import { rethrowIfAborted } from './abort';
 
 type Params = CapabilityParams<'PRODUCT_SHOT'>;
 
@@ -79,7 +80,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
       { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'PRODUCT_SHOT', params: p, files: ctx.files },
       { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
     );
-    const bytes = await artifactBytes(result);
+    const bytes = await artifactBytes(result, ctx.signal);
 
     if (!source || !cutout) {
       picked = { bytes, result, report: null, repaired: false };
@@ -145,14 +146,15 @@ export const productShotPipeline: Pipeline = async (ctx) => {
 async function productMask(ctx: PipelineContext, p: Params): Promise<{ source: Uint8Array | null; cutout: Uint8Array | null }> {
   await ctx.stage('preparing', 8, 'Reading your photo');
   try {
-    const source = (await fetchBytes('product-shot', ctx.files.sourceKey!.url, 60_000)).bytes;
+    const source = (await fetchBytes('product-shot', ctx.files.sourceKey!.url, 60_000, ctx.signal)).bytes;
     const cut = await ctx.callCapability(
       'BACKGROUND_REMOVE',
       { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, params: { sourceKey: p.sourceKey, background: 'transparent' }, files: ctx.files },
       { timeoutMs: 60_000, signal: ctx.signal },
     );
-    return { source, cutout: await artifactBytes(cut) };
+    return { source, cutout: await artifactBytes(cut, ctx.signal) };
   } catch (err) {
+    rethrowIfAborted(ctx.signal, err);
     ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout unavailable; making this shot without the fidelity check');
     return { source: null, cutout: null };
   }

@@ -12,6 +12,7 @@ export * from './billing/credits';
 export * from './billing/markets';
 export * from './generation/brand';
 export * from './generation/capabilities';
+export * from './generation/api-scenarios';
 export * from './generation/providers';
 export * from './generation/copy';
 export * from './generation/presenters';

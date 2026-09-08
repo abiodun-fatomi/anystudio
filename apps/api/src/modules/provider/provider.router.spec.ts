@@ -171,4 +171,24 @@ describe('ProviderRouter', () => {
     expect(writes.at(-1)).toEqual({ key: 'a:cheap', openedAt: null });
     expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
   });
+
+  it.each(['CONTENT_REJECTED', 'REQUEST_REJECTED', 'SUBMISSION_UNKNOWN', 'INVALID_INPUT', 'LOW_QUALITY'] as const)(
+    'releases an inconclusive half-open probe after %s so the provider is not excluded forever',
+    async (kind) => {
+      const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT')]);
+      const router = new ProviderRouter(db, registry);
+      await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'PROVIDER_DOWN', latencyMs: 1 });
+
+      const h = (router as unknown as { health: Map<string, { openedAt: number }> }).health.get('a:cheap|IMAGE_EDIT')!;
+      h.openedAt = Date.now() - 61_000;
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+
+      await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind, latencyMs: 1 });
+      // The verdict was about this request, not provider health. It releases
+      // the lease so the next request can be the next probe immediately.
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+      // Still only one probe at a time.
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(0);
+    },
+  );
 });

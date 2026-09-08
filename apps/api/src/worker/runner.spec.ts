@@ -6,8 +6,8 @@
  * Skipped without DATABASE_URL, like the other integration suites; CI sets it.
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma, PrismaClient, type MediaAsset, type MediaKind } from '@prisma/client';
 import { GenerationService } from '../modules/generation/generation.service';
 import { GenerationHooks } from '../modules/generation/generation.hooks';
 import { GenerationEvents } from '../modules/generation/generation.events';
@@ -38,18 +38,22 @@ class MemoryMedia extends MediaService {
   override async signRead(key: string): Promise<string> {
     return `memory://${key}`;
   }
-  override async requireReady(_workspaceId: string, key: string): Promise<MediaAsset> {
-    return { key } as MediaAsset;
+  override async deleteObject(key: string): Promise<boolean> {
+    this.objects.delete(key);
+    return true;
   }
-  override async recordOutput(input: {
-    workspaceId: string;
-    generationId: string;
-    key: string;
-    kind: MediaKind;
-    mime: string;
-    bytes: number;
-  }): Promise<MediaAsset> {
-    return super.recordOutput(input);
+  override async recordOutput(
+    input: {
+      workspaceId: string;
+      generationId: string;
+      key: string;
+      kind: MediaKind;
+      mime: string;
+      bytes: number;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<MediaAsset> {
+    return super.recordOutput(input, tx);
   }
 }
 
@@ -137,7 +141,7 @@ suite('GenerationRunner', () => {
       { code: 'video.ad_15s', credits: 260, label: 'Ad' },
       { code: 'video.shot', credits: 0, label: 'Shot' },
       { code: 'audio.music.preview', credits: 10, label: 'Song preview' },
-      { code: 'audio.music.unlock', credits: 30, label: 'Unlock' },
+      { code: 'audio.music.unlock', credits: 10, label: 'Unlock' },
       { code: 'audio.voiceover', credits: 8, label: 'Voiceover' },
       { code: 'video.translate', credits: 90, label: 'Translate' },
       { code: 'video.translate_lipsync', credits: 240, label: 'Translate with lips' },
@@ -173,7 +177,9 @@ suite('GenerationRunner', () => {
     workspaceId = workspace.id;
     walletId = wallet.id;
     await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/src.png`, mime: 'image/png' } });
-    await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/clip.mp4`, mime: 'video/mp4' } });
+    await db.mediaAsset.create({
+      data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/clip.mp4`, mime: 'video/mp4', durationMs: 30_000 },
+    });
   });
 
   it('a dub with lips: priced as such, dubbed by one vendor, lips finished by a LIPSYNC vendor when the first left them alone', async () => {
@@ -203,8 +209,10 @@ suite('GenerationRunner', () => {
     expect(outputs.filter((o) => o.role === 'video')).toHaveLength(1);
     expect(outputs.find((o) => o.role === 'text')?.text).toMatchObject({ lipsync: true, language: 'English (Nigeria)', dubbedBy: 'stub:any' });
     expect(row.providerKey).toBe('stub:any+stub:any');
-    // The dubbed intermediate and its soundtrack were stored for the lip-sync vendor, outside the outputs.
-    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/dubbed.mp3`))).toBe(true);
+    // The dubbed intermediate and its soundtrack lived long enough for the
+    // lip-sync vendor, then the terminal transition removed them.
+    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/`))).toBe(false);
+    expect(await db.mediaAsset.count({ where: { generationId: generation.id, kind: 'DERIVED', status: 'PURGED' } })).toBe(2);
     expect(await ledger.balance(walletId)).toBe(START - 240);
 
     // Voice only: cheaper, no second vendor.
@@ -252,7 +260,8 @@ suite('GenerationRunner', () => {
     expect(outputs.find((o) => o.role === 'video')).toBeTruthy();
     expect(outputs.find((o) => o.role === 'text')?.text).toMatchObject({ script: 'New stock today.', voice: 'test-voice' });
     expect(row.providerKey).toBe('stub:any+stub:any');
-    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/voice.mp3`))).toBe(true);
+    expect([...media.objects.keys()].some((k) => k.includes(`gen/${generation.id}/work/`))).toBe(false);
+    expect(await db.mediaAsset.count({ where: { generationId: generation.id, kind: 'DERIVED', status: 'PURGED' } })).toBe(1);
     expect(await ledger.balance(walletId)).toBe(START - 150);
   }, 60_000);
 
@@ -264,7 +273,7 @@ suite('GenerationRunner', () => {
       clientKey: 'song-1',
       params: { brief: 'a song about my ankara bags', genre: 'test-afrobeats', vocal: 'female', durationSec: 60 },
     });
-    expect(generation.credits).toBe(10);
+    expect(generation.credits).toBe(20);
     expect(await runner.run(generation.id)).toBe('succeeded');
     const row = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
     const outputs = row.outputs as Array<{ role: string; key: string; locked?: boolean; text?: { lyrics?: string } }>;
@@ -279,16 +288,18 @@ suite('GenerationRunner', () => {
     // The customer view never carries the vault key.
     const view = await generations.get(workspaceId, generation.id);
     expect((view.generation.outputs as Array<{ role: string; key: string }>).find((o) => o.role === 'audio')?.key).toBe('');
-    expect(await ledger.balance(walletId)).toBe(START - 10);
+    expect(await ledger.balance(walletId)).toBe(START - 20);
 
     const audio = new AudioService(
       db,
       ledger,
       Object.assign(media, {
         copy: async (from: string, to: string) => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
           media.objects.set(to, media.objects.get(from)!);
         },
       }),
+      registry,
     );
     const actor = {
       userId,
@@ -300,12 +311,13 @@ suite('GenerationRunner', () => {
       impersonating: false,
     };
     const req = { ip: '127.0.0.1', requestId: 'r', get: () => 'test' } as never;
-    const first = await audio.unlock(actor, workspaceId, generation.id, req);
-    expect(first.status).toBe('unlocked');
-    expect(await ledger.balance(walletId)).toBe(START - 40);
+    const concurrent = await Promise.allSettled([audio.unlock(actor, workspaceId, generation.id, req), audio.unlock(actor, workspaceId, generation.id, req)]);
+    expect(concurrent.filter((result) => result.status === 'fulfilled').map((result) => result.value.status)).toEqual(['unlocked']);
+    expect(concurrent.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await ledger.balance(walletId)).toBe(START - 30);
     const again = await audio.unlock(actor, workspaceId, generation.id, req);
     expect(again.status).toBe('already_unlocked');
-    expect(await ledger.balance(walletId)).toBe(START - 40);
+    expect(await ledger.balance(walletId)).toBe(START - 30);
     const after = await db.generation.findUniqueOrThrow({ where: { id: generation.id } });
     const opened = (after.outputs as Array<{ role: string; key: string; locked?: boolean }>).find((o) => o.role === 'audio')!;
     expect(opened.locked).toBe(false);
@@ -436,6 +448,7 @@ suite('GenerationRunner', () => {
   });
 
   it('runs a two-shot ad: parent plans and steps aside, shots run, the last one wakes it, it assembles', async () => {
+    const enqueue = vi.spyOn(queue, 'enqueue');
     const { generation: parent } = await generations.request({
       workspaceId,
       requestedById: userId,
@@ -465,9 +478,14 @@ suite('GenerationRunner', () => {
     expect(await runner.run(children[0]!.id)).toBe('succeeded');
     expect((await db.generation.findUniqueOrThrow({ where: { id: parent.id } })).stage).toBe('waiting'); // one to go
     expect(await runner.run(children[1]!.id)).toBe('succeeded');
+    // The parent row is still IMAGE_TO_VIDEO, but its resume pass is ffmpeg
+    // assembly and must be consumed by the isolated media.local worker.
+    expect(enqueue).toHaveBeenCalledWith(parent.id, 'VIDEO_STITCH');
 
     // No Redis in tests, so the wake-up enqueue did nothing; the dispatcher's sweep finds it.
+    enqueue.mockClear();
     expect(await generations.wakeReadyParents()).toContain(parent.id);
+    expect(enqueue).toHaveBeenCalledWith(parent.id, 'VIDEO_STITCH');
     expect(await runner.run(parent.id)).toBe('succeeded');
 
     const done = await db.generation.findUniqueOrThrow({ where: { id: parent.id } });
@@ -478,6 +496,7 @@ suite('GenerationRunner', () => {
     // Children are hidden from the customer's history; the parent is one row.
     expect((await generations.history(workspaceId)).map((g) => g.id)).toContain(parent.id);
     expect((await generations.history(workspaceId)).map((g) => g.id)).not.toContain(children[0]!.id);
+    enqueue.mockRestore();
   }, 60_000);
 
   it('refunds the whole ad when a shot fails for good', async () => {

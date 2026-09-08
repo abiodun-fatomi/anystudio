@@ -171,6 +171,7 @@ describe('collagePipeline', () => {
         },
         brandKit: null,
         files: Object.fromEntries(bodies.map((_, i) => [`sourceKeys[${i}]`, { url: `http://127.0.0.1:${port}/${i}`, mime: 'image/jpeg' }])),
+        signal: new AbortController().signal,
         log: { info: () => undefined, warn: () => undefined },
         stage: async (_s: string, _p: number, detail?: string) => void stages.push(detail ?? ''),
       };
@@ -220,6 +221,7 @@ describe('collagePipeline', () => {
           'sourceKeys[0]': { url: `http://127.0.0.1:${port}/ok`, mime: 'image/png' },
           'sourceKeys[1]': { url: `http://127.0.0.1:${port}/bad`, mime: 'image/jpeg' },
         },
+        signal: new AbortController().signal,
         log: { info: () => undefined, warn: (o: unknown) => void warnings.push(o) },
         stage: async () => undefined,
       };
@@ -240,10 +242,31 @@ describe('collagePipeline', () => {
       },
       brandKit: null,
       files: {},
+      signal: new AbortController().signal,
       log: { info: () => undefined, warn: () => undefined },
       stage: async () => undefined,
     };
     await expect(collagePipeline(ctx as never)).rejects.toThrow(/none of the photos/);
+  });
+
+  it('does not turn a cancelled photo download into an empty tile', async () => {
+    const cancellation = new Error('generation cancelled');
+    const controller = new AbortController();
+    controller.abort(cancellation);
+    const ctx = {
+      row: {
+        id: 'g',
+        workspaceId: 'w',
+        input: { sourceKeys: ['a'], layout: 'grid', aspect: '1:1', gap: 10, background: '#FFFFFF', rounded: false, labels: [], sizes: [] },
+      },
+      brandKit: null,
+      files: { 'sourceKeys[0]': { url: 'https://signed.invalid/a.jpg', mime: 'image/jpeg' } },
+      signal: controller.signal,
+      log: { info: () => undefined, warn: () => undefined },
+      stage: async () => undefined,
+    };
+
+    await expect(collagePipeline(ctx as never)).rejects.toBe(cancellation);
   });
 });
 

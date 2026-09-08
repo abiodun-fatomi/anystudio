@@ -821,6 +821,8 @@ export interface VoiceSeed {
   gender?: string;
   tags: string[];
   sort: number;
+  /** False only for retired/invalid vendor catalogue entries retained to deactivate existing database rows. */
+  active?: boolean;
 }
 const v = (
   key: string,
@@ -832,7 +834,8 @@ const v = (
   gender: string | undefined,
   tags: string[],
   sort: number,
-): VoiceSeed => ({ key, providerKey, providerVoiceId, name, language, accent, gender, tags, sort });
+  active?: boolean,
+): VoiceSeed => ({ key, providerKey, providerVoiceId, name, language, accent, gender, tags, sort, ...(active === undefined ? {} : { active }) });
 
 export const VOICES: VoiceSeed[] = [
   v('el-rachel', 'elevenlabs:tts', '21m00Tcm4TlvDq8ikWAM', 'Rachel', 'en', 'American', 'female', ['calm', 'narration'], 10),
@@ -841,13 +844,16 @@ export const VOICES: VoiceSeed[] = [
   v('el-antoni', 'elevenlabs:tts', 'ErXwobaYiN019PkySvjV', 'Antoni', 'en', 'American', 'male', ['warm', 'conversational'], 13),
   v('el-domi', 'elevenlabs:tts', 'AZnzlk1XvdvUeBnXmlld', 'Domi', 'en', 'American', 'female', ['energetic', 'ad'], 14),
   v('el-josh', 'elevenlabs:tts', 'TxGEqnHWrfWFTfGW9XjX', 'Josh', 'en', 'American', 'male', ['young', 'energetic'], 15),
-  v('g-ng-a', 'google:tts', 'en-NG-Standard-A', 'Adaeze', 'en-NG', 'Nigerian', 'female', ['clear', 'announcer'], 20),
-  v('g-ng-b', 'google:tts', 'en-NG-Standard-B', 'Emeka', 'en-NG', 'Nigerian', 'male', ['clear', 'announcer'], 21),
-  v('g-ng-c', 'google:tts', 'en-NG-Standard-C', 'Funmi', 'en-NG', 'Nigerian', 'female', ['warm'], 22),
-  v('g-ng-d', 'google:tts', 'en-NG-Standard-D', 'Tunde', 'en-NG', 'Nigerian', 'male', ['warm'], 23),
-  v('g-ke-a', 'google:tts', 'en-KE-Standard-A', 'Wanjiru', 'en-KE', 'Kenyan', 'female', ['clear'], 24),
-  v('g-ke-b', 'google:tts', 'en-KE-Standard-B', 'Otieno', 'en-KE', 'Kenyan', 'male', ['clear'], 25),
-  v('g-za-a', 'google:tts', 'en-ZA-Standard-A', 'Naledi', 'en-ZA', 'South African', 'female', ['clear'], 26),
+  // Google does not list these regional English voice ids. Keep the natural
+  // keys solely so a deploy deactivates rows seeded by older releases; do not
+  // relabel a different accent as Nigerian, Kenyan or South African.
+  v('g-ng-a', 'google:tts', 'en-NG-Standard-A', 'Adaeze', 'en-NG', 'Nigerian', 'female', ['clear', 'announcer'], 20, false),
+  v('g-ng-b', 'google:tts', 'en-NG-Standard-B', 'Emeka', 'en-NG', 'Nigerian', 'male', ['clear', 'announcer'], 21, false),
+  v('g-ng-c', 'google:tts', 'en-NG-Standard-C', 'Funmi', 'en-NG', 'Nigerian', 'female', ['warm'], 22, false),
+  v('g-ng-d', 'google:tts', 'en-NG-Standard-D', 'Tunde', 'en-NG', 'Nigerian', 'male', ['warm'], 23, false),
+  v('g-ke-a', 'google:tts', 'en-KE-Standard-A', 'Wanjiru', 'en-KE', 'Kenyan', 'female', ['clear'], 24, false),
+  v('g-ke-b', 'google:tts', 'en-KE-Standard-B', 'Otieno', 'en-KE', 'Kenyan', 'male', ['clear'], 25, false),
+  v('g-za-a', 'google:tts', 'en-ZA-Standard-A', 'Naledi', 'en-ZA', 'South African', 'female', ['clear'], 26, false),
   v('g-fr-a', 'google:tts', 'fr-FR-Standard-A', 'Camille', 'fr', 'French', 'female', ['clear'], 27),
   v('g-pt-br-a', 'google:tts', 'pt-BR-Standard-A', 'Ana', 'pt-BR', 'Brazilian', 'female', ['clear'], 28),
   v('oa-nova', 'openai:tts', 'nova', 'Nova', 'en', 'American', 'female', ['friendly', 'fast'], 30),

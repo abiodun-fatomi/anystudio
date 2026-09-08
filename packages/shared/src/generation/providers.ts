@@ -12,7 +12,7 @@
  * A vendor says "429 slow down", another says "quota exceeded", a third
  * returns 200 with {"status":"rejected","reason":"unsafe"}. The pipeline
  * cannot make a retry, refund or fallback decision from any of those. So
- * each adapter maps its failures onto five kinds, and the five kinds — not
+ * each adapter maps its failures onto these kinds, and the kinds — not
  * the vendor's words — decide what happens next and what the customer is
  * told. The vendor's words are kept, logged, and shown only to operators.
  */
@@ -23,7 +23,9 @@ export const PROVIDER_ERROR_KINDS = [
   'RETRYABLE', // transient: timeout, 5xx, network — try again, then fall back
   'RATE_LIMITED', // back off and try again; the breaker counts these
   'CONTENT_REJECTED', // the vendor's policy refused the input — no retry, refund, explain
-  'INVALID_INPUT', // our request was malformed — a bug, no retry, refund, alert
+  'REQUEST_REJECTED', // the vendor rejected this request/media — no cross-provider fallback or second paid call
+  'SUBMISSION_UNKNOWN', // a paid request may have been accepted but no durable job id exists — fail closed, refund, reconcile
+  'INVALID_INPUT', // caught locally: our adapter request/invariant was malformed — refund and alert
   'PROVIDER_DOWN', // auth failure, 404 on the model, sustained 5xx — open the breaker
   'LOW_QUALITY', // the vendor answered, but what it made failed our own check — refund, no retry beyond the pipeline's own
 ] as const;
@@ -35,7 +37,7 @@ export class ProviderError extends Error {
     /** Operator-facing. Never rendered to a customer. */
     message: string,
     readonly providerKey: string,
-    readonly meta: { status?: number; providerJobId?: string; raw?: unknown } = {},
+    readonly meta: { status?: number; providerJobId?: string; submissionState?: 'NOT_STARTED' | 'ACCEPTED' | 'TERMINAL'; raw?: unknown } = {},
   ) {
     super(message);
     this.name = 'ProviderError';
@@ -52,6 +54,9 @@ export const CUSTOMER_MESSAGE: Record<ProviderErrorKind, string> = {
   RETRYABLE: 'That took longer than it should have. Your credits are back — try again in a moment.',
   RATE_LIMITED: 'We are busier than usual. Your credits are back — try again in a minute.',
   CONTENT_REJECTED: 'That image or text could not be used. Your credits are back. Try a different photo or wording.',
+  REQUEST_REJECTED: 'That file or request could not be used. Your credits are back. Check the file and settings, then try again.',
+  SUBMISSION_UNKNOWN:
+    'We could not safely confirm that job after a connection interruption. Your credits are back; support can reconcile it without charging twice.',
   INVALID_INPUT: 'Something about that request did not work. Your credits are back and we have been notified.',
   PROVIDER_DOWN: 'This tool is briefly unavailable. Your credits are back — try again shortly.',
   LOW_QUALITY: 'We could not make a version that kept your product looking right. Your credits are back — try a clearer photo or a simpler scene.',
@@ -59,6 +64,8 @@ export const CUSTOMER_MESSAGE: Record<ProviderErrorKind, string> = {
 
 /** A file the adapter can read: a short-lived signed URL, or bytes when the vendor needs an upload. */
 export interface ProviderFile {
+  /** Stable storage identity. Unlike a signed URL, this survives host/key rotation. */
+  key?: string;
   url: string;
   mime: string;
   bytes?: number;
@@ -98,6 +105,18 @@ export interface ProviderOpts {
   /** Refresh the generation's heartbeat and narrate progress while waiting. */
   onProgress?: (detail: string, progress?: number) => void;
   signal?: AbortSignal;
+  /**
+   * Resume an async vendor job that was durably recorded before this worker
+   * disappeared. Adapters must skip their create/submit request when set.
+   */
+  resume?: { providerJobId: string; data?: Record<string, unknown> };
+  /**
+   * Durability barrier immediately after an async create response. The
+   * adapter must await this before it polls or downloads anything.
+   */
+  onSubmitted?: (providerJobId: string, data?: Record<string, unknown>) => Promise<void>;
+  /** The vendor has definitively settled the recorded job. */
+  onSettled?: (outcome: 'SUCCEEDED' | 'FAILED') => Promise<void>;
 }
 
 /** A produced file the pipeline must copy into our storage. */

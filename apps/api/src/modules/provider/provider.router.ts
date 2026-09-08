@@ -23,8 +23,9 @@
  * result decides whether the row is back.
  *
  * Only RETRYABLE, RATE_LIMITED and PROVIDER_DOWN count against a provider.
- * CONTENT_REJECTED is about the customer's input and INVALID_INPUT is about
- * our request; neither says anything about the vendor's health.
+ * CONTENT_REJECTED, REQUEST_REJECTED and SUBMISSION_UNKNOWN are about one
+ * request; INVALID_INPUT is about our adapter. None says anything about the
+ * vendor's health.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -196,7 +197,19 @@ export class ProviderRouter {
     }
 
     const counts = outcome.kind === 'RETRYABLE' || outcome.kind === 'RATE_LIMITED' || outcome.kind === 'PROVIDER_DOWN';
-    if (!counts) return; // the customer's input or our bug — says nothing about the vendor
+    if (!counts) {
+      // A half-open request can still end inconclusively: moderation, invalid
+      // customer media, or a quality verdict says nothing about availability.
+      // It must nevertheless release the single-probe lease, otherwise every
+      // future request in this process is excluded as "a probe is already in
+      // flight" forever. Keep the breaker open at its old timestamp so the
+      // next request may become the next probe immediately.
+      if (h.probing) {
+        h.probing = false;
+        logger.info({ providerKey: key, capability, kind: outcome.kind, ...ctx }, 'breaker probe was inconclusive: released for another probe');
+      }
+      return; // the customer's request or our bug — says nothing about the vendor
+    }
     h.window.push({ at: now, ok: false });
 
     if (h.probing) {

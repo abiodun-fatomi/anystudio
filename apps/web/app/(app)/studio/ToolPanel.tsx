@@ -7,14 +7,14 @@
  * error — the panel says what this would cost and offers the two ways to
  * fix it, and the button stays visible but disabled so the intent is kept.
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api, type BrandKitRow, type DubLanguages, type Genre, type Idea, type IdeasOut, type MediaAssetRow, type Quote } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { filesFromDrop, uploadMany } from '@/lib/studio/folder';
 import { voicesCache } from '@/lib/studio/voices-cache';
-import { PLATFORM_OPTIONS, SIZE_OPTIONS, missingFor, type Field, type Tool } from '@/lib/studio/tools';
+import { PLATFORM_OPTIONS, SIZE_OPTIONS, coerceParams, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import {
   BRAND_OFF,
   PHOTO_PRESETS,
@@ -120,13 +120,12 @@ export function ToolPanel({
     return () => clearTimeout(t);
   }, [askAngles]);
 
-  const costCode = tool.costCodeFor?.(values);
   // A tool whose capability depends on the chosen look must quote the one it
   // will actually send — otherwise "Plain white" shows the price of a scene.
   const capability = tool.capabilityFor?.(values) ?? tool.capability;
-  // A batch is priced per photo, so the quote has to know how many. The
-  // server works the same number out again from what it is actually sent.
-  const quantity = tool.quantityFor?.(values) ?? 1;
+  // Send the same assembled params the request will use. The server maps
+  // these settings to a price code; the browser never chooses one.
+  const quoteParams = useMemo(() => coerceParams(tool, values), [tool, values]);
   // Some tools need the canvas photo only for some settings, and some
   // capabilities cannot take a photo at all. Both must be visible before the
   // button is pressed, never discovered in the result.
@@ -136,7 +135,7 @@ export function ToolPanel({
     let live = true;
     setQuote(null);
     api.generations
-      .quote(workspace.id, capability, costCode, quantity)
+      .quote(workspace.id, capability, quoteParams)
       .then((q) => {
         if (live) setQuote(q);
       })
@@ -144,7 +143,7 @@ export function ToolPanel({
     return () => {
       live = false;
     };
-  }, [workspace.id, capability, costCode, quantity]);
+  }, [workspace.id, capability, quoteParams]);
 
   const credits = quote?.credits ?? null;
   const after = credits !== null && balance !== null ? balance - credits : null;

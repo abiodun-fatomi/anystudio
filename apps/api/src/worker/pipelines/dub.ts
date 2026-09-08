@@ -16,7 +16,6 @@
  */
 import { DUB_MAX_SEC, ProviderError, dubLanguage, type CapabilityParams, type ProviderArtifact } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
-import { MediaService } from '../../modules/media/media.service';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { extractAudio, extOf, guardLength } from './ffmpeg';
 
@@ -76,16 +75,34 @@ export const dubPipeline: Pipeline = async (ctx) => {
 
 /** Store the dubbed video, pull its soundtrack, and send both to a lip-sync vendor. */
 async function syncLips(ctx: PipelineContext, video: ProviderArtifact, quality: 'speed' | 'precision', dubbedBy: string) {
-  const bytes = video.bytes ?? (video.url ? (await fetchBytes(dubbedBy, video.url, 300_000)).bytes : undefined);
+  const bytes = video.bytes ?? (video.url ? (await fetchBytes(dubbedBy, video.url, 300_000, ctx.signal)).bytes : undefined);
   if (!bytes) throw new ProviderError('RETRYABLE', `${dubbedBy} returned a video with no bytes`, dubbedBy);
   const ext = extOf(video.mime) === 'bin' ? 'mp4' : extOf(video.mime);
   const { audio, durationMs } = await extractAudio(bytes, ext);
 
-  // Intermediates live beside the outputs; they are not outputs (never recorded on the row), and a later sweep may drop them.
-  const scope = `gen/${ctx.row.id}/work`;
-  const videoKey = MediaService.key(ctx.row.workspaceId, scope, `dubbed.${ext}`, ctx.row.createdAt);
-  const audioKey = MediaService.key(ctx.row.workspaceId, scope, 'dubbed.mp3', ctx.row.createdAt);
-  await Promise.all([ctx.media.put(videoKey, bytes, video.mime || 'video/mp4'), ctx.media.put(audioKey, audio, 'audio/mpeg')]);
+  // Intermediates are durable DERIVED assets rather than untracked objects.
+  // The generation's terminal transition retires them after every consumer is
+  // done, and retention retries any storage deletion that fails.
+  const [videoKey, audioKey] = await Promise.all([
+    ctx.media.putGenerationWork({
+      workspaceId: ctx.row.workspaceId,
+      generationId: ctx.row.id,
+      createdAt: ctx.row.createdAt,
+      name: `dubbed.${ext}`,
+      bytes,
+      mime: video.mime || 'video/mp4',
+      durationMs,
+    }),
+    ctx.media.putGenerationWork({
+      workspaceId: ctx.row.workspaceId,
+      generationId: ctx.row.id,
+      createdAt: ctx.row.createdAt,
+      name: 'dubbed.mp3',
+      bytes: audio,
+      mime: 'audio/mpeg',
+      durationMs,
+    }),
+  ]);
   const [videoUrl, audioUrl] = await Promise.all([ctx.media.signRead(videoKey, 60 * 60), ctx.media.signRead(audioKey, 60 * 60)]);
   ctx.log.info({ videoKey, audioKey, durationMs }, 'dubbed video stored; asking a lip-sync vendor');
 
@@ -97,8 +114,8 @@ async function syncLips(ctx: PipelineContext, video: ProviderArtifact, quality: 
       workspaceId: ctx.row.workspaceId,
       params,
       files: {
-        sourceKey: { url: videoUrl, mime: video.mime || 'video/mp4', bytes: bytes.byteLength },
-        audioKey: { url: audioUrl, mime: 'audio/mpeg', bytes: audio.byteLength },
+        sourceKey: { key: videoKey, url: videoUrl, mime: video.mime || 'video/mp4', bytes: bytes.byteLength },
+        audioKey: { key: audioKey, url: audioUrl, mime: 'audio/mpeg', bytes: audio.byteLength },
       },
     },
     {

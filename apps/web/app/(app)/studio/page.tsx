@@ -320,7 +320,6 @@ function Studio() {
         params: p,
         credits,
         sourceKey: cardSource,
-        costCode: t.costCodeFor?.(p),
       });
       setBusy(false);
       if (!r.ok) {
