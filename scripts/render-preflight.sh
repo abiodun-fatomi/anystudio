@@ -173,7 +173,9 @@ check_service() {
   [ "$actual" = "$EXPECTED_DOCKER_CONTEXT" ] || fail "$role" dockerContext "$EXPECTED_DOCKER_CONTEXT" "$actual"
   actual="$(jq -r '.serviceDetails.envSpecificDetails.dockerCommand // empty' <<<"$service")"
   [ "$actual" = "$expected_command" ] || fail "$role" dockerCommand "${expected_command:-<Dockerfile CMD>}" "${actual:-<Dockerfile CMD>}"
-  actual="$(jq -r '.serviceDetails.preDeployCommand // empty' <<<"$service")"
+  # Retrieve Service nests this in Docker details. POST/PATCH place it on
+  # serviceDetails, but that write schema is not the response we are checking.
+  actual="$(jq -r '.serviceDetails.envSpecificDetails.preDeployCommand // empty' <<<"$service")"
   [ "$actual" = "$expected_pre_deploy" ] || fail "$role" preDeployCommand "${expected_pre_deploy:-<unset>}" "${actual:-<unset>}"
   if [ -n "$expected_shutdown" ]; then
     actual="$(jq -r '.serviceDetails.maxShutdownDelaySeconds // empty | tostring' <<<"$service")"
