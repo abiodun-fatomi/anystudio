@@ -304,7 +304,7 @@ export const capabilityParams = {
   }),
   IMAGE_EDIT: z.object({
     /** Non-generative, whole-photo treatment. Never remove or redraw a subject. */
-    restyle: z.enum(['natural', 'warm', 'cool', 'vivid', 'monochrome']).optional(),
+    restyle: z.enum(['natural', 'warm', 'cool', 'vivid', 'monochrome', 'enhance']).optional(),
     useCase: z.enum(['design', 'photography']).optional(),
     sourceKey: objectKey,
     prompt: z.string().min(3).max(2000),
@@ -811,6 +811,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
  * price of forty presses.
  */
 export function batchUnitCostCode(of: Capability, params: Record<string, unknown>): string {
+  if (of === 'IMAGE_EDIT' && params.restyle === 'enhance') return DEFAULT_COST_CODE.UPSCALE;
   if (of === 'PRODUCT_SHOT')
     return productShotCostCode(typeof params.mode === 'string' ? params.mode : undefined, typeof params.shotSize === 'string' ? params.shotSize : undefined);
   return DEFAULT_COST_CODE[of];

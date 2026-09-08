@@ -43,6 +43,7 @@ export type ToolId =
   | 'background'
   | 'cutout'
   | 'enhance'
+  | 'upscale'
   | 'copy'
   | 'video'
   | 'flyer'
@@ -316,6 +317,37 @@ export const TOOLS: Tool[] = [
     id: 'enhance',
     label: 'Enhance',
     short: 'Enhance',
+    icon: 'insights',
+    capability: 'IMAGE_EDIT',
+    needsSource: true,
+    narrative: { ...IMAGE_STAGES, generating: 'Improving your photo', composing: 'Refining light, colour and detail' },
+    fields: [
+      {
+        key: 'restyle',
+        kind: 'segment',
+        label: 'Photo enhancement',
+        options: [
+          {
+            id: 'enhance',
+            label: 'Natural enhancement',
+            note: 'Gently improves brightness, colour and sharpness. Keeps the original dimensions, people and background. No enlargement or cropping.',
+          },
+        ],
+      },
+    ],
+    defaults: { restyle: 'enhance', sizes: [] },
+    assemble: (p) => ({
+      sourceKey: p.sourceKey,
+      restyle: 'enhance',
+      prompt: 'Enhance light, colour and sharpness without redrawing the photo.',
+      preserveProduct: false,
+      sizes: [],
+    }),
+  },
+  {
+    id: 'upscale',
+    label: 'Upscale',
+    short: 'Upscale',
     icon: 'insights',
     capability: 'UPSCALE',
     needsSource: true,
@@ -1524,7 +1556,8 @@ export const TOOL_META: Record<ToolId, { group: ToolGroup; blurb: string; keywor
     blurb: 'The product on its own, on transparency or a colour.',
     keywords: 'cut out cutout remove background transparent png isolate',
   },
-  enhance: { group: 'photo', blurb: 'Sharper and bigger, for print or a big screen.', keywords: 'enhance upscale sharpen bigger resolution quality blurry' },
+  enhance: { group: 'photo', blurb: 'Better light, colour and sharpness. Same image size.', keywords: 'enhance sharpen quality blurry brightness colour' },
+  upscale: { group: 'photo', blurb: 'Enlarge your image to 2× or 4× resolution.', keywords: 'upscale enlarge bigger resolution print' },
   restyle: { group: 'photo', blurb: 'Your whole photo, with a new colour and lighting look.', keywords: 'restyle style look vibe colour mood' },
   collage: {
     group: 'photo',

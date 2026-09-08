@@ -64,6 +64,15 @@ import {
 const ownsSource = (t: Tool): boolean => t.fields.some((f) => (f.kind === 'file' && f.key === 'sourceKey') || f.kind === 'photos');
 
 describe('Restyle preserves the whole photo', () => {
+  it('Enhance corrects the photo without retaining legacy enlargement settings', () => {
+    const tool = toolById('enhance')!;
+    expect(tool.capability).toBe('IMAGE_EDIT');
+    const params = coerceParams(tool, { sourceKey: 'ws/photo.jpg', factor: 4, sizes: ['story'] });
+    expect(params).toMatchObject({ restyle: 'enhance', sizes: [], sourceKey: 'ws/photo.jpg' });
+    expect(params).not.toHaveProperty('factor');
+    expect(parseCapabilityParams(tool.capability, params).ok).toBe(true);
+    expect(toolById('upscale')!.capability).toBe('UPSCALE');
+  });
   it('forces a non-generative treatment even when repeating legacy settings', () => {
     const tool = toolById('restyle')!;
     const params = coerceParams(tool, { sourceKey: 'ws/photo.jpg', prompt: 'Reinvent the room', preserveProduct: true, aspect: '1:1' });

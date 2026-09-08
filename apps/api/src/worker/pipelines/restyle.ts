@@ -9,6 +9,9 @@ export const restylePipeline: Pipeline = async (ctx) => {
   const source = await ctx.media.getBytes(p.sourceKey);
   let photo = sharp(source, { limitInputPixels: 40_000_000 }).rotate().toColourspace('srgb');
   switch (p.restyle) {
+    case 'enhance':
+      photo = photo.modulate({ brightness: 1.03, saturation: 1.04 }).sharpen({ sigma: 0.7, m1: 0.5, m2: 1.5 });
+      break;
     case 'natural':
       photo = photo.modulate({ brightness: 1.04, saturation: 1.03 });
       break;

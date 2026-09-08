@@ -5,7 +5,7 @@ import { brandedImagePipeline } from './image';
 import type { PipelineContext } from './index';
 
 describe('photo-preserving Restyle', () => {
-  it.each(['natural', 'warm', 'cool', 'vivid', 'monochrome'])('keeps the complete source geometry for %s without calling an AI', async (restyle) => {
+  it.each(['natural', 'warm', 'cool', 'vivid', 'monochrome', 'enhance'])('keeps the complete source geometry for %s without calling an AI', async (restyle) => {
     // Four different quadrants, including content at every edge.
     const pixels = Buffer.alloc(80 * 120 * 3);
     for (let y = 0; y < 120; y++)

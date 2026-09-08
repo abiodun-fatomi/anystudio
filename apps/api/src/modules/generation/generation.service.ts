@@ -106,6 +106,8 @@ export function parentResumeCapability(capability: Capability): Capability {
  * code by the caller.
  */
 export function generationCostCode(capability: Capability, params: Record<string, unknown>): string {
+  // Keep the existing Enhance price when moving it from enlargement to local photo correction.
+  if (capability === 'IMAGE_EDIT' && params.restyle === 'enhance') return DEFAULT_COST_CODE.UPSCALE;
   if (capability === 'BATCH') {
     if (!isCapability(params.of)) return DEFAULT_COST_CODE.BATCH;
     const unitParams =
