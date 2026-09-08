@@ -517,6 +517,23 @@ export const capabilityParams = {
       caption: z.string().max(120).optional(),
       shotIndex: z.number().int().min(0).max(7).optional(),
     })
+    .superRefine((v, ctx) => {
+      const ugcAd = v.format === 'ugc' && v.shots > 1;
+      if (ugcAd && !v.presenter) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter'], message: 'Choose a presenter for your UGC ad.' });
+      if (v.presenter && !ugcAd)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['presenter'],
+          message: 'Presenters are only available for UGC ads of 15 seconds or longer, not reels.',
+        });
+      if (v.presenter?.kind === 'stock' && !v.presenter.key?.trim())
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter', 'key'], message: 'Choose who talks to camera.' });
+      if (v.presenter?.kind === 'photo') {
+        if (!v.presenter.photoKey) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter', 'photoKey'], message: 'Upload a presenter photo.' });
+        if (v.presenter.consent !== true)
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter', 'consent'], message: 'Permission from the person in the photo is required.' });
+      }
+    })
     /**
      * A format with no words is a complete request, so it is completed here —
      * once, on the server, and recorded on the row. Filling it in downstream
@@ -538,6 +555,8 @@ export const capabilityParams = {
       targetDurationMs: z.number().int().min(500).max(120_000).optional(),
       /** Keep native audio from the video segments; absent/false produces silence. */
       preserveShotAudio: z.boolean().default(false),
+      /** Internal stitch control: omit embedded speech already supplied as voiceover. */
+      muteShotAudio: z.array(z.number().int().min(0).max(7)).max(8).optional(),
       aspect: z.enum(['9:16', '1:1', '16:9']).default('9:16'),
       captions: z.array(z.object({ text: z.string().max(200), fromMs: z.number().int().min(0), toMs: z.number().int().min(0) })).default([]),
       musicKey: objectKey.optional(),

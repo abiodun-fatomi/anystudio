@@ -62,6 +62,26 @@ import {
 /** Whether the tool brings its own source rather than using the canvas photo. */
 const ownsSource = (t: Tool): boolean => t.fields.some((f) => (f.kind === 'file' && f.key === 'sourceKey') || f.kind === 'photos');
 
+describe('video presenter selection', () => {
+  const video = toolById('video')!;
+  it('requires a face for UGC and rejects legacy no-presenter selections', () => {
+    const values = { ...video.defaults, format: 'ugc', shots: 4 };
+    expect(missingFor(video, values)).toBe('Pick who talks to camera.');
+    expect(missingFor(video, { ...values, presenterKind: 'none' })).toBe('Choose a presenter for your UGC ad.');
+    const params = coerceParams(video, { ...values, presenterKey: 'daphne', presenterVoiceId: 'voice-1' });
+    expect(params.presenter).toMatchObject({ kind: 'stock', key: 'daphne' });
+    expect(parseCapabilityParams('IMAGE_TO_VIDEO', { ...params, sourceKey: 'ws/bottle.jpg' }).ok).toBe(true);
+  });
+  it.each([
+    { shots: 1, format: 'ugc' },
+    { shots: 4, format: 'reveal' },
+  ])('removes stale presenters when switching to %j', (selection) => {
+    const values = { ...video.defaults, ...selection, presenterKey: 'daphne', presenter: { kind: 'stock', key: 'daphne' } };
+    expect(missingFor(video, values)).toBeNull();
+    expect(coerceParams(video, values)).not.toHaveProperty('presenter');
+  });
+});
+
 /**
  * Every setting of every switch. Conditional bugs live in the combinations —
  * the flyer was only broken on one branch of one control.

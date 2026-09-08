@@ -56,6 +56,7 @@ describe('the deterministic stitch timeline', () => {
         captions: [],
         musicKey: 'ws/music.mp3',
         voiceoverKey: 'ws/presenter.mp3',
+        muteShotAudio: [0],
         watermark: true,
       },
       ['/tmp/presenter.mp4', '/tmp/product.mp4'],
@@ -72,6 +73,9 @@ describe('the deterministic stitch timeline', () => {
 
     const filters = args[args.indexOf('-filter_complex') + 1]!;
     expect(filters).toContain('concat=n=2:v=1:a=1[vcat][acat]');
+    expect(filters).not.toContain('[0:a]');
+    expect(filters).toContain('anullsrc=r=48000:cl=stereo:d=5.000[a0]');
+    expect(filters).toContain('[1:a]aresample=48000');
     expect(filters).toContain('[acat]volume=0.80[anative]');
     expect(filters).toContain('[anative][amusic]amix=inputs=2');
     expect(filters).toContain('[abed][voside]sidechaincompress');

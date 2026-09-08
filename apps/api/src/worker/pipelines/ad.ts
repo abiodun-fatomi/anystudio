@@ -49,6 +49,23 @@ const FORMAT_BRIEF: Record<CapabilityParams<'IMAGE_TO_VIDEO'>['format'], string>
 const END_CARD_MS = 2_000;
 const MIN_SEGMENT_MS = 500;
 
+/** Keep readable caption windows even for the shortest valid timeline slots. */
+export function adCaptionWindow(startMs: number, durationMs: number, maxVisibleMs = durationMs): { fromMs: number; toMs: number } {
+  const padding = Math.min(300, Math.floor(durationMs / 4));
+  const fromMs = startMs + padding;
+  return { fromMs, toMs: Math.min(startMs + durationMs - padding, fromMs + maxVisibleMs) };
+}
+
+/** Creation timestamps can tie; shot indices, not completion order, define the story. */
+export function orderedAdChildren(children: Generation[], p: CapabilityParams<'IMAGE_TO_VIDEO'>): Generation[] {
+  const offset = wantsPresenter(p) ? 1 : 0;
+  const expected = p.shots - offset;
+  const ordered = [...children].sort((a, b) => Number((a.input as { shotIndex?: number }).shotIndex) - Number((b.input as { shotIndex?: number }).shotIndex));
+  if (ordered.length !== expected || ordered.some((child, i) => (child.input as { shotIndex?: number }).shotIndex !== i + offset))
+    throw new ProviderError('RETRYABLE', 'the ad does not have its complete ordered set of shots', 'shots');
+  return ordered;
+}
+
 export const adPipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'IMAGE_TO_VIDEO'>;
   if (ctx.resume) return assemble(ctx, p);
@@ -94,6 +111,7 @@ function fitDurations(rawMs: number[], targetMs: number): number[] {
 /** First run: write the plan, create the shots, step aside. */
 async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): Promise<PipelineResult> {
   const withPresenter = wantsPresenter(p);
+  if (p.format === 'ugc' && p.shots > 1 && !withPresenter) throw new ProviderError('INVALID_INPUT', 'choose a presenter for your UGC ad', 'ad-pipeline');
   if (p.presenter && !withPresenter)
     throw new ProviderError('INVALID_INPUT', 'a presenter needs the "filmed by a customer" format and at least two shots', 'ad-pipeline');
   if (withPresenter && !ctx.presenterLab('heygen'))
@@ -205,7 +223,7 @@ async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>)
 
 /** Second run: every child is terminal. Stitch, or fail with the whole price refunded. */
 async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): Promise<PipelineResult> {
-  const children = await ctx.db.generation.findMany({ where: { parentId: ctx.row.id }, orderBy: { createdAt: 'asc' } });
+  const children = orderedAdChildren(await ctx.db.generation.findMany({ where: { parentId: ctx.row.id }, orderBy: { createdAt: 'asc' } }), p);
   const failed = children.filter((c) => c.status !== 'SUCCEEDED');
   if (failed.length) {
     const first = failed[0]!;
@@ -238,7 +256,7 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
   const productDurationsMs = clip ? shotDurationsMs.slice(1) : shotDurationsMs;
   let t = 0;
   if (clip) {
-    if (plan?.hook) captions.push({ text: plan.hook, fromMs: 300, toMs: Math.min(shotDurationsMs[0]! - 300, 3500) });
+    if (plan?.hook) captions.push({ text: plan.hook, ...adCaptionWindow(0, shotDurationsMs[0]!, 3200) });
     t = shotDurationsMs[0]!;
   }
   for (const [i] of children.entries()) {
@@ -249,7 +267,7 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
     // follow the plan, not the raw provider file.
     const durationMs = productDurationsMs[i]!;
     const text = !clip && i === 0 && plan?.hook ? plan.hook : (plan?.shots[i]?.caption ?? '');
-    if (text) captions.push({ text, fromMs: t + 300, toMs: t + durationMs - 300 });
+    if (text) captions.push({ text, ...adCaptionWindow(t, durationMs) });
     t += durationMs;
   }
   const allKeys = clip ? [clip.key, ...shotKeys] : shotKeys;
@@ -269,6 +287,7 @@ async function assemble(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDE
         shotDurationsMs,
         targetDurationMs,
         preserveShotAudio: p.audio,
+        muteShotAudio: clip ? [0] : undefined,
         aspect: p.aspect,
         captions,
         endCard: endCard?.text ? endCard : undefined,

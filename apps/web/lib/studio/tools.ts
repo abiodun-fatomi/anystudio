@@ -949,7 +949,10 @@ export const TOOLS: Tool[] = [
         key: 'format',
         kind: 'select',
         label: 'Ad format',
-        hintFor: (v) => REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
+        hintFor: (v) =>
+          canPresent(v)
+            ? 'UGC ads open with a HeyGen presenter, followed by product footage. Choose who appears below.'
+            : REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         options: [
           { value: 'reveal', label: 'Product reveal' },
           { value: 'benefits', label: 'Three benefits' },
@@ -1017,7 +1020,6 @@ export const TOOLS: Tool[] = [
         kind: 'segment',
         label: 'Someone talking to camera',
         options: [
-          { id: 'none', label: 'No one' },
           { id: 'stock', label: 'A presenter' },
           { id: 'photo', label: 'Me, from a photo' },
         ],
@@ -1065,13 +1067,15 @@ export const TOOLS: Tool[] = [
         showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
       },
     ],
-    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'none' },
+    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: false, presenterKind: 'stock' },
     // `brief` decides what the panel shows, not what is sent: a blank prompt
     // is filled from the format on the server either way.
     localKeys: ['presenterKind', 'brief'],
     assemble: (p) => {
       const kind = p.presenterKind;
       const out = { ...p };
+      // Changing a previous UGC run into a reel must not retain its presenter.
+      delete out.presenter;
       for (const k of ['presenterKind', 'presenterKey', 'presenterPhotoKey', 'presenterConsent', 'presenterVoiceId', 'presenterScript']) delete out[k];
       if (canPresent(p) && (kind === 'stock' || kind === 'photo')) {
         out.presenter = {
@@ -1420,6 +1424,8 @@ export function coerceParams(tool: Tool, values: Record<string, unknown>): Recor
 
 /** What stops the button: a required file, an empty required text, a catalogue with nothing picked, or a consent box left unticked. */
 export function missingFor(tool: Tool, values: Record<string, unknown>): string | null {
+  if (tool.id === 'video' && canPresent(values) && values.presenterKind !== 'stock' && values.presenterKind !== 'photo')
+    return 'Choose a presenter for your UGC ad.';
   for (const f of tool.fields) {
     if (f.showIf && !f.showIf(values)) continue;
     const v = values[f.key];

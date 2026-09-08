@@ -276,13 +276,15 @@ const PROVIDERS: Array<{
   },
 
   // ---- image to video --------------------------------------------------------
-  // Quality-first at equal 720p unit cost: Veo Fast is the primary and Wan is
-  // the independent fallback. Sora is disabled ahead of its permanent API
+  // Fal/Wan first for reels and UGC product footage; HeyGen separately renders
+  // the UGC presenter. Veo is the independent fallback for eligible failures.
+  // This is a product routing choice, not a claim of benchmark supremacy.
+  // Sora is disabled ahead of its permanent API
   // shutdown on 2026-09-24; keeping the row preserves historical attribution.
   {
     key: 'fal:wan-2.5-i2v',
     capability: 'IMAGE_TO_VIDEO',
-    priority: 20,
+    priority: 10,
     costPerCall: 80,
     enabled: true,
     config: { endpoint: 'fal-ai/wan-25-preview/image-to-video', resolution: '720p', costPerSecondMinor: 10 },
@@ -300,7 +302,7 @@ const PROVIDERS: Array<{
   {
     key: 'vertex:veo-3.1-fast',
     capability: 'IMAGE_TO_VIDEO',
-    priority: 10,
+    priority: 20,
     costPerCall: 80,
     enabled: true,
     // Vertex and the Gemini Developer API currently use different Veo ids;

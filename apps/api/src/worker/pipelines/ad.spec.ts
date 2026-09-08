@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { allocateAdTimeline } from './ad';
+import { adCaptionWindow, allocateAdTimeline, orderedAdChildren } from './ad';
+import { capabilityParams } from '@anystudio/shared';
+import type { Generation } from '@prisma/client';
+
+describe('safe ad assembly', () => {
+  const child = (shotIndex: number) => ({ input: { shotIndex } }) as Generation;
+  it('orders shots by their durable indices and rejects missing or duplicate shots', () => {
+    const p = capabilityParams.IMAGE_TO_VIDEO.parse({ sourceKey: 'ws/product.jpg', shots: 2 });
+    expect(orderedAdChildren([child(1), child(0)], p).map((c) => c.input)).toEqual([{ shotIndex: 0 }, { shotIndex: 1 }]);
+    expect(() => orderedAdChildren([], p)).toThrow(/complete ordered set/);
+    expect(() => orderedAdChildren([child(0)], p)).toThrow(/complete ordered set/);
+    expect(() => orderedAdChildren([child(0), child(0)], p)).toThrow(/complete ordered set/);
+  });
+  it('accounts for the presenter slot without expecting it to be a child', () => {
+    const p = capabilityParams.IMAGE_TO_VIDEO.parse({ sourceKey: 'ws/product.jpg', shots: 2, format: 'ugc', presenter: { kind: 'stock', key: 'daphne' } });
+    expect(orderedAdChildren([child(1)], p)).toHaveLength(1);
+    expect(() => orderedAdChildren([child(0)], p)).toThrow(/complete ordered set/);
+  });
+  it.each([500, 550, 600, 8000])('keeps captions inside a %i ms shot with positive duration', (duration) => {
+    const window = adCaptionWindow(12000, duration);
+    expect(window.fromMs).toBeGreaterThanOrEqual(12000);
+    expect(window.toMs).toBeGreaterThan(window.fromMs);
+    expect(window.toMs).toBeLessThanOrEqual(12000 + duration);
+  });
+});
 
 describe('the customer-facing ad timeline', () => {
   it.each([

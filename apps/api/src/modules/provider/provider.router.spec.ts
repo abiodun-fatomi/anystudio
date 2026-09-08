@@ -82,6 +82,19 @@ describe('ProviderRouter', () => {
     expect((await router.route('IMAGE_EDIT', 'PERSONAL', { prefer: ['z:none'] })).candidates.map((c) => c.row.key)).toEqual(['a:cheap', 'b:good']);
   });
 
+  it('routes video through fal first and preserves Veo when fal is disabled or unavailable', async () => {
+    const wan = row('fal:wan-2.5-i2v', 'IMAGE_TO_VIDEO', { priority: 10 });
+    const veo = row('vertex:veo-3.1-fast', 'IMAGE_TO_VIDEO', { priority: 20 });
+    const { db } = fakeDb([veo, wan]);
+    registry.register(new Fake(veo.key, ['IMAGE_TO_VIDEO']));
+    const router = new ProviderRouter(db, registry);
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([veo.key]);
+    registry.register(new Fake(wan.key, ['IMAGE_TO_VIDEO']));
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([wan.key, veo.key]);
+    wan.enabled = false;
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([veo.key]);
+  });
+
   it('orders candidates by priority and excludes rows with no adapter, with a reason', async () => {
     const { db } = fakeDb([
       row('b:good', 'IMAGE_EDIT', { priority: 20 }),

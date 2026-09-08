@@ -19,6 +19,24 @@ import { AD_FORMATS, REEL_BRIEF, namesAVendor, parseCapabilityParams, type AdFor
 
 const reel = (over: Record<string, unknown> = {}) => parseCapabilityParams('IMAGE_TO_VIDEO', { sourceKey: 'ws/a.jpg', ...over });
 
+describe('UGC presenters versus product reels', () => {
+  it('requires a presenter for multi-shot UGC before accepting the request', () => {
+    expect(reel({ format: 'ugc', shots: 4 }).ok).toBe(false);
+    expect(reel({ format: 'ugc', shots: 4, presenter: { kind: 'stock', key: 'daphne' } }).ok).toBe(true);
+  });
+  it('keeps reels and internal UGC product shots presenter-free', () => {
+    expect(reel({ format: 'ugc' }).ok).toBe(true);
+    expect(reel({ format: 'ugc', shotIndex: 0 }).ok).toBe(true);
+    expect(reel({ presenter: { kind: 'stock', key: 'daphne' } }).ok).toBe(false);
+    expect(reel({ format: 'reveal', shots: 4, presenter: { kind: 'stock', key: 'daphne' } }).ok).toBe(false);
+  });
+  it('requires an explicit face selection and permission for uploaded faces', () => {
+    expect(reel({ format: 'ugc', shots: 2, presenter: { kind: 'stock' } }).ok).toBe(false);
+    expect(reel({ format: 'ugc', shots: 2, presenter: { kind: 'photo', photoKey: 'ws/me.jpg' } }).ok).toBe(false);
+    expect(reel({ format: 'ugc', shots: 2, presenter: { kind: 'photo', photoKey: 'ws/me.jpg', consent: true } }).ok).toBe(true);
+  });
+});
+
 describe('a reel with nothing typed', () => {
   it('is a valid request', () => {
     const r = reel({ format: 'price_drop' });

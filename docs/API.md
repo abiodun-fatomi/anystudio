@@ -109,6 +109,8 @@ and returned in each capability's `examples`. They are validated in tests.
 | Translate an existing video            | DUB                | sourceKey, targetLanguage, lipsync, quality, consent: true                              |
 | Make a video speak new words           | LIPSYNC            | sourceKey plus audioKey OR script + voiceId, quality, consent: true                     |
 
+Multi-shot UGC ads (`format: "ugc"`, `shots: 2 | 4 | 6 | 8`) require a `presenter`: either a selected stock presenter or an uploaded face with explicit consent. The presenter segment uses HeyGen; product footage uses the image-to-video providers. Configure `HEYGEN_API_KEY` on the worker running ad planning. One-shot reels (`shots: 1`), including handheld UGC-style reels, and non-UGC ads must not include a presenter. Missing presenter selections are rejected before credits are held. Do not invent personal testimonials; supply an approved factual script when needed.
+
 PRODUCT_SHOT modes: `on_model`, `ghost_mannequin`, `flat_lay`, `ironing`,
 `beautify`, `text_removal`, `edit`, `expand`. Custom edit needs a prompt.
 Remove only text you have the right to remove. Do not fabricate endorsements
