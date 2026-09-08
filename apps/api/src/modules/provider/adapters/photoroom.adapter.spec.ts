@@ -174,7 +174,13 @@ describe('widening the frame', () => {
     const q = await sent(shot({ mode: 'expand' }));
     expect(q.get('expand.mode')).toBe('ai.auto');
     expect(q.get('removeBackground')).toBe('false');
-    expect(q.get('outputSize')).toBe('auto');
+    expect(q.get('outputSize')).toBe('1080x1080');
+    expect(q.get('referenceBox')).toBe('originalImage');
+    expect(q.get('padding')).toBe('0.1');
+  });
+  it('expands into the selected wide canvas', async () => {
+    const q = await sent(shot({ mode: 'expand', aspect: '16:9' }));
+    expect(q.get('outputSize')).toBe('1920x1080');
   });
 });
 

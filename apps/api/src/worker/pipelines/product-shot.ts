@@ -88,7 +88,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
     }
 
     await ctx.stage('composing', 62, 'Checking it is still your product');
-    const report = await fidelity(source, cutout, bytes);
+    const report = await fidelity(source, cutout, bytes, { expandedCanvas: p.mode === 'expand' });
     ctx.log.info({ mode: p.mode, pass: attempt, strict, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'product shot fidelity measured');
 
     // A mode that reshapes the product on purpose is measured for the record
@@ -110,10 +110,15 @@ export const productShotPipeline: Pipeline = async (ctx) => {
       ctx.log.warn({ mode: p.mode, pass: attempt, score: report.score }, 'product not kept; asking once more');
       await ctx.stage('generating', 30, 'That one changed your product — trying again');
     } else {
-      throw new ProviderError('LOW_QUALITY', `product fidelity ${report.score} below ${FIDELITY.composite} on ${attempts} attempts`, result.providerKey, {
-        providerJobId: result.providerJobId,
-        raw: report,
-      });
+      throw new ProviderError(
+        'LOW_QUALITY',
+        `product quality check failed after ${attempts} attempts: fidelity ${report.score} (keep ${FIDELITY.keep}); structure ${report.structure} (locate ${FIDELITY.locate})`,
+        result.providerKey,
+        {
+          providerJobId: result.providerJobId,
+          raw: report,
+        },
+      );
     }
   }
   if (!picked) throw new ProviderError('RETRYABLE', 'no image produced', 'product-shot');

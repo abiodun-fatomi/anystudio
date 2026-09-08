@@ -20,6 +20,8 @@ export interface HttpOpts {
   bytes?: Uint8Array;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Opt-in for APIs returning inline media inside bounded JSON responses. */
+  maxResponseBytes?: number;
 }
 
 export interface HttpResponse<T = unknown> {
@@ -86,7 +88,9 @@ export async function http<T = unknown>(providerKey: string, url: string, opts: 
       body: opts.bytes ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
       signal: linked.signal,
     });
-    const text = new TextDecoder().decode(await readLimitedResponseBytes(providerKey, res, MAX_PROVIDER_JSON_BYTES, 'response body'));
+    const text = new TextDecoder().decode(
+      await readLimitedResponseBytes(providerKey, res, res.ok ? (opts.maxResponseBytes ?? MAX_PROVIDER_JSON_BYTES) : MAX_PROVIDER_JSON_BYTES, 'response body'),
+    );
     let json: unknown = null;
     try {
       json = text ? JSON.parse(text) : null;

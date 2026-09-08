@@ -13,6 +13,7 @@ import type { Capability, ProviderInput, ProviderResult } from '@anystudio/share
 import { ProviderRegistry } from './provider.registry';
 import { ProviderRouter } from './provider.router';
 import { BaseProvider } from './adapters/base';
+import { imageQualityPreference } from './quality-routing';
 
 class Fake extends BaseProvider {
   constructor(key: string, caps: Capability[]) {
@@ -92,6 +93,20 @@ describe('ProviderRouter', () => {
 
     expect(d.candidates.map((c) => c.row.key)).toEqual(['a:cheap', 'b:good']);
     expect(d.excluded).toEqual([{ key: 'z:nokey', reason: 'no adapter or credential in this process' }]);
+  });
+
+  it('does not revive a disabled design leader or route an unavailable fallback', async () => {
+    registry.register(new Fake('fal:seedream-4.5-edit', ['IMAGE_EDIT']));
+    const { db } = fakeDb([
+      row('vertex:gemini-3-pro-image', 'IMAGE_EDIT', { enabled: false }),
+      row('fal:seedream-4.5-edit', 'IMAGE_EDIT', { priority: 20 }),
+      row('bfl:flux-kontext-pro', 'IMAGE_EDIT', { priority: 30 }),
+    ]);
+    const decision = await new ProviderRouter(db, registry).route('IMAGE_EDIT', 'PERSONAL', {
+      prefer: imageQualityPreference('IMAGE_EDIT', { useCase: 'design' }),
+    });
+    expect(decision.candidates.map((candidate) => candidate.row.key)).toEqual(['fal:seedream-4.5-edit']);
+    expect(decision.excluded).toContainEqual({ key: 'bfl:flux-kontext-pro', reason: 'no adapter or credential in this process' });
   });
 
   it('outside production, a capability with no vendor falls to the stub — but a real vendor always comes first', async () => {

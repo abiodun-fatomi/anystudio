@@ -292,6 +292,8 @@ export const REEL_BRIEF: Record<AdFormat, string> = {
 
 export const capabilityParams = {
   IMAGE_GENERATE: z.object({
+    /** Explicit intent for quality routing; never inferred from prompt keywords. */
+    useCase: z.enum(['design', 'photography']).optional(),
     prompt: z.string().min(3).max(2000),
     aspect: z.enum(ASPECTS).default('1:1'),
     style: z.string().max(200).optional(),
@@ -301,6 +303,7 @@ export const capabilityParams = {
     count: z.number().int().min(1).max(4).default(1),
   }),
   IMAGE_EDIT: z.object({
+    useCase: z.enum(['design', 'photography']).optional(),
     sourceKey: objectKey,
     prompt: z.string().min(3).max(2000),
     /** Keep the product pixel-identical and only change its surroundings. */

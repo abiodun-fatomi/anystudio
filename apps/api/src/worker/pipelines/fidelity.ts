@@ -119,7 +119,12 @@ interface Patch {
  * @param cutout   the source with the background removed (RGBA); its alpha is the product mask
  * @param output   what the model produced, any size and any shape
  */
-export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uint8Array, output: Buffer | Uint8Array): Promise<FidelityReport> {
+export async function fidelity(
+  source: Buffer | Uint8Array,
+  cutout: Buffer | Uint8Array,
+  output: Buffer | Uint8Array,
+  options: { expandedCanvas?: boolean } = {},
+): Promise<FidelityReport> {
   const none: FidelityReport = { score: 0, structure: 0, colour: 0, coverage: 0, placed: null, origin: null };
   const srcMeta = await sharp(source).metadata();
   const sw = srcMeta.width ?? 0;
@@ -172,7 +177,13 @@ export async function fidelity(source: Buffer | Uint8Array, cutout: Buffer | Uin
   const baseH = box.height * base;
 
   let best: { ncc: number; x: number; y: number; scale: number; patch: Patch } | null = null;
-  for (const scale of SCALES) {
+  // Outpainting may retain every source pixel while making the canvas many
+  // times larger. Include its exact pixel-preserving scale, plus smaller
+  // relative scales; the old 0.5 floor could never find those valid results.
+  // Only expansion opts in: ordinary edits must not match tiny incidental
+  // objects elsewhere in an otherwise unchanged frame.
+  const scales = options.expandedCanvas ? [...new Set([...SCALES, 0.125, 0.167, 0.25, 0.333, 0.4, k / base])] : SCALES;
+  for (const scale of scales) {
     const tw = Math.round(baseW * scale);
     const th = Math.round(baseH * scale);
     if (tw < 4 || th < 4 || tw > OW || th > OH) continue;
