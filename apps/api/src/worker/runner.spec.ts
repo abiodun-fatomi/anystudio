@@ -19,6 +19,7 @@ import { ProviderRouter } from '../modules/provider/provider.router';
 import { GenerationRunner } from './runner';
 import { AudioService } from '../modules/audio/audio.service';
 import { Pipelines } from './pipelines';
+import sharp from 'sharp';
 
 const url = process.env.DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -177,6 +178,15 @@ suite('GenerationRunner', () => {
     workspaceId = workspace.id;
     walletId = wallet.id;
     await db.mediaAsset.create({ data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/src.png`, mime: 'image/png' } });
+    // Video preparation reads the original, unlike the old stub passthrough.
+    // A READY fixture must have a real object just as a completed upload does.
+    await media.put(
+      `${workspaceId}/2026/09/uploads/src.png`,
+      await sharp({ create: { width: 600, height: 800, channels: 3, background: '#aa3355' } })
+        .png()
+        .toBuffer(),
+      'image/png',
+    );
     await db.mediaAsset.create({
       data: { workspaceId, kind: 'SOURCE', status: 'READY', key: `${workspaceId}/2026/09/uploads/clip.mp4`, mime: 'video/mp4', durationMs: 30_000 },
     });
