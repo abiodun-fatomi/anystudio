@@ -7,8 +7,8 @@
  * key, quick to start) and through Vertex AI (a service account, and the
  * only door with Google's generative-AI indemnification on GA models). The
  * adapter takes whichever credential is configured and prefers Vertex when
- * both are; the request bodies are identical, only the URL and the auth
- * header differ. Start on the key; move to Vertex before selling to an
+ * both are. Veo parameters, operation polling and output formats differ
+ * between the two APIs. Start on the key; move to Vertex before selling to an
  * ORGANIZATION customer whose procurement asks about indemnity.
  *
  * Model names live on the ProviderModel row's config, not here.
@@ -26,6 +26,11 @@ export interface GoogleCredentials {
   project?: string;
   location?: string;
 }
+
+// Inline JSON has simultaneous encoded, parsed and decoded copies. Keep its
+// limit below the streamed-download limit on the 512 MiB orchestration worker.
+const MAX_INLINE_VIDEO_BYTES = 32 * 1024 * 1024;
+const MAX_INLINE_IMAGE_BYTES = 16 * 1024 * 1024;
 
 const KNOWN: Record<string, { capabilities: Capability[]; model: string; vertexModel?: string }> = {
   'vertex:gemini-3-pro-image': { capabilities: ['IMAGE_EDIT', 'IMAGE_GENERATE', 'BACKGROUND_REPLACE', 'RELIGHT'], model: 'gemini-3-pro-image' },
@@ -102,7 +107,7 @@ export class GoogleProvider extends BaseProvider {
         const p = this.params(input, 'IMAGE_EDIT');
         aspect = p.aspect;
         prompt = p.preserveProduct
-          ? `${p.prompt}\n\nThe product in the reference image must remain exactly as it is: identical shape, colours, label, text and proportions. Change only the background, surface, lighting and surroundings. Photorealistic, commercial product photography.`
+          ? `${p.prompt}\n\nThe subject in the reference image must remain exactly as it is: identical shape, colours, label, text and proportions. ${p.useCase === 'design' ? 'Build the requested layout and typography around the preserved subject; follow the requested design style.' : 'Change only the background, surface, lighting and surroundings. Photorealistic, commercial product photography.'}`
           : p.prompt;
         parts.push(await inline(this.key, this.file(input, 'sourceKey'), opts.timeoutMs, opts.signal));
         break;
@@ -134,22 +139,22 @@ export class GoogleProvider extends BaseProvider {
 
     opts.onProgress?.('Writing', 20);
     // Gemini emits one image per generateContent call. Honour the same public
-    // `count` contract as fal by making the calls together and aggregating the
-    // artifacts; billing reserves one unit per call before the worker starts.
+    // `count` contract as fal, but consume/decode one response at a time:
+    // retaining several large base64 JSON bodies at once can exhaust a worker.
     const [url, headers] = await Promise.all([this.auth.url(`models/${model}:generateContent`), this.auth.headers()]);
-    const responses = await Promise.all(
-      Array.from({ length: count }, () =>
-        http<unknown>(this.key, url, {
-          headers,
-          body: { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: aspect } } },
-          timeoutMs: opts.timeoutMs,
-          signal: opts.signal,
-        }),
-      ),
-    );
-
     const artifacts: ProviderArtifact[] = [];
-    for (const res of responses) {
+    const usage: unknown[] = [];
+    const deadline = Date.now() + opts.timeoutMs;
+    for (let i = 0; i < count; i++) {
+      if (opts.signal?.aborted || Date.now() >= deadline) throw new ProviderError('RETRYABLE', `${this.key}: image generation budget exhausted`, this.key);
+      const res = await http<unknown>(this.key, url, {
+        headers,
+        body: { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: aspect } } },
+        timeoutMs: Math.max(1, deadline - Date.now()),
+        signal: opts.signal,
+        // generateContent returns the image itself inside JSON, not a URL.
+        maxResponseBytes: Math.ceil(MAX_INLINE_IMAGE_BYTES / 3) * 4 + 64 * 1024,
+      });
       const finish = pick<string>(res.json, 'candidates.0.finishReason');
       const blocked = pick<string>(res.json, 'promptFeedback.blockReason');
       if (blocked || finish === 'SAFETY' || finish === 'PROHIBITED_CONTENT' || finish === 'IMAGE_SAFETY') {
@@ -157,10 +162,23 @@ export class GoogleProvider extends BaseProvider {
       }
       const candParts = pick<Array<{ inlineData?: { mimeType: string; data: string } }>>(res.json, 'candidates.0.content.parts') ?? [];
       const images = candParts
-        .filter((part) => part.inlineData)
-        .map((part) => ({ bytes: Buffer.from(part.inlineData!.data, 'base64'), mime: part.inlineData!.mimeType, role: 'image' as const }));
+        .filter((part) => part.inlineData?.mimeType?.startsWith('image/'))
+        .map((part) => {
+          const { data, mimeType } = part.inlineData!;
+          if (
+            typeof data !== 'string' ||
+            !data.length ||
+            data.length > Math.ceil(MAX_INLINE_IMAGE_BYTES / 3) * 4 ||
+            data.length % 4 !== 0 ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(data)
+          ) {
+            throw new ProviderError('RETRYABLE', `${this.key}: invalid or oversized inline image`, this.key);
+          }
+          return { bytes: Buffer.from(data, 'base64'), mime: mimeType, role: 'image' as const };
+        });
       if (images.length === 0) throw new ProviderError('RETRYABLE', `${this.key}: no image in response (finish=${finish})`, this.key, { raw: res.json });
       artifacts.push(...images);
+      usage.push(pick(res.json, 'usageMetadata'));
     }
     return {
       providerKey: this.key,
@@ -168,7 +186,7 @@ export class GoogleProvider extends BaseProvider {
       // Gemini needs one paid HTTP call per requested image. The model row's
       // unit cost is injected into config by the runner.
       costMinor: repeatedCallCostMinor(count, input.config.costMinor),
-      meta: { model, count, usage: responses.map((res) => pick(res.json, 'usageMetadata')) },
+      meta: { model, count, usage },
     };
   }
 
@@ -196,7 +214,9 @@ export class GoogleProvider extends BaseProvider {
             durationSeconds: durationSec,
             resolution: this.str(input.config, 'resolution', '720p'),
             personGeneration: 'allow_adult',
-            generateAudio: p.audio,
+            // Gemini generates native audio and rejects this Vertex-only
+            // switch. The assembly pipeline controls the delivered soundtrack.
+            ...(this.auth.vertex ? { generateAudio: p.audio } : {}),
           },
         },
         timeoutMs: 60_000,
@@ -210,15 +230,26 @@ export class GoogleProvider extends BaseProvider {
 
     const done = await poll(
       async () => {
-        const op = await http<{ done?: boolean; error?: { message: string; code: number }; response?: unknown }>(this.key, await this.auth.url(providerJobId), {
-          headers,
+        const pollPath = this.auth.vertex ? `${providerJobId.split('/operations/')[0]}:fetchPredictOperation` : providerJobId;
+        const op = await http<{ done?: boolean; error?: { message: string; code: number }; response?: unknown }>(this.key, await this.auth.url(pollPath), {
+          headers: await this.auth.headers(),
+          ...(this.auth.vertex ? { body: { operationName: providerJobId }, maxResponseBytes: Math.ceil(MAX_INLINE_VIDEO_BYTES / 3) * 4 + 64 * 1024 } : {}),
           timeoutMs: 20_000,
           signal: opts.signal,
         });
         if (op.json.error) {
-          const rejected = /safety|policy|prohibited|moderation/i.test(op.json.error.message) ? 'CONTENT_REJECTED' : 'REQUEST_REJECTED';
+          const code = op.json.error.code;
+          const kind = /safety|policy|prohibited|moderation/i.test(op.json.error.message)
+            ? 'CONTENT_REJECTED'
+            : code === 3 || code === 400
+              ? 'REQUEST_REJECTED'
+              : [5, 7, 16, 401, 403, 404].includes(code)
+                ? 'PROVIDER_DOWN'
+                : code === 8 || code === 429
+                  ? 'RATE_LIMITED'
+                  : 'RETRYABLE';
           await opts.onSettled?.('FAILED');
-          throw new ProviderError(op.json.error.code === 400 ? rejected : 'RETRYABLE', `${this.key}: ${op.json.error.message}`, this.key, {
+          throw new ProviderError(kind, `${this.key}: ${op.json.error.message}`, this.key, {
             providerJobId,
           });
         }
@@ -233,8 +264,9 @@ export class GoogleProvider extends BaseProvider {
     );
 
     const uri = pick<string>(done, 'response.generateVideoResponse.generatedSamples.0.video.uri') ?? pick<string>(done, 'response.videos.0.uri');
-    const filtered = pick<number>(done, 'response.generateVideoResponse.raiMediaFilteredCount');
-    if (!uri) {
+    const encoded = this.auth.vertex ? pick<string>(done, 'response.videos.0.bytesBase64Encoded') : undefined;
+    const filtered = pick<number>(done, 'response.generateVideoResponse.raiMediaFilteredCount') ?? pick<number>(done, 'response.raiMediaFilteredCount');
+    if (!uri && !encoded) {
       await opts.onSettled?.('FAILED');
       throw new ProviderError(filtered ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no video in finished operation`, this.key, {
         providerJobId,
@@ -242,7 +274,12 @@ export class GoogleProvider extends BaseProvider {
       });
     }
     // The file URL needs the same credential as the API.
-    const { bytes, mime } = await fetchBytesWith(this.key, uri, headers, 120_000, opts.signal);
+    if (encoded && (encoded.length > Math.ceil(MAX_INLINE_VIDEO_BYTES / 3) * 4 || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))) {
+      throw new ProviderError('RETRYABLE', `${this.key}: invalid or oversized inline video`, this.key, { providerJobId });
+    }
+    const { bytes, mime } = encoded
+      ? { bytes: Buffer.from(encoded, 'base64'), mime: pick<string>(done, 'response.videos.0.mimeType') ?? 'video/mp4' }
+      : await fetchBytesWith(this.key, uri!, await this.auth.headers(), 120_000, opts.signal);
     return {
       providerKey: this.key,
       providerJobId,

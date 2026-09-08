@@ -26,6 +26,13 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
+
+describe('flyer quality routing', () => {
+  it.each(['new', 'photo'])('tags the %s path as design rather than photographic generation', (useSource) => {
+    const flyer = toolById('flyer')!;
+    expect(flyer.assemble!({ ...flyer.defaults, useSource, prompt: 'A birthday flyer' }).useCase).toBe('design');
+  });
+});
 import {
   CAPABILITIES,
   PRODUCT_REFERENCE_ANGLES,

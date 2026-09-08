@@ -29,6 +29,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { imageQualityPreference } from '../modules/provider/quality-routing';
 import { PrismaClient, type Generation, type Workspace } from '@prisma/client';
 import {
   DUB_VENDOR_KEYS,
@@ -168,7 +169,11 @@ export class GenerationRunner {
           // picture at all.
           let candidates = (await routePrimary()).candidates;
           if (opts.route) {
-            const steered = await this.router.route(row.capability, workspace.type, { generationId, ...opts.route });
+            const steered = await this.router.route(row.capability, workspace.type, {
+              generationId,
+              prefer: imageQualityPreference(row.capability, input.params),
+              ...opts.route,
+            });
             if (steered.candidates.length > 0) candidates = steered.candidates;
             else log.warn({ route: opts.route }, 'nobody left after steering; keeping the original candidates');
           }
@@ -182,7 +187,11 @@ export class GenerationRunner {
         callCapability: async (capability, input, opts) => {
           const providerInput = { ...input, capability };
           const operationKey = providerAttempts.nextOperation(providerInput);
-          const d = await this.router.route(capability, workspace.type, { generationId, ...(opts.route ?? {}) });
+          const d = await this.router.route(capability, workspace.type, {
+            generationId,
+            prefer: imageQualityPreference(capability, input.params),
+            ...(opts.route ?? {}),
+          });
           return this.callWithFallback(
             d.candidates,
             providerInput,
@@ -294,6 +303,8 @@ export class GenerationRunner {
    * that does both in one pass is tried first.
    */
   private async routingConstraint(row: Generation): Promise<RouteConstraint> {
+    const prefer = imageQualityPreference(row.capability, row.input);
+    if (prefer) return { prefer };
     if (row.capability === 'VOICEOVER') {
       const voiceId = (row.input as { voiceId?: string }).voiceId;
       if (!voiceId) return {};

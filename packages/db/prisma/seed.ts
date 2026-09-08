@@ -155,7 +155,7 @@ const PROVIDERS: Array<{
   {
     key: 'vertex:gemini-3-pro-image',
     capability: 'IMAGE_EDIT',
-    priority: 10,
+    priority: 20,
     costPerCall: 13,
     enabled: true,
     config: { model: 'gemini-3-pro-image' },
@@ -164,7 +164,7 @@ const PROVIDERS: Array<{
   {
     key: 'fal:seedream-4.5-edit',
     capability: 'IMAGE_EDIT',
-    priority: 20,
+    priority: 10,
     costPerCall: 4,
     enabled: true,
     config: { endpoint: 'fal-ai/bytedance/seedream/v4.5/edit' },
@@ -204,7 +204,7 @@ const PROVIDERS: Array<{
   {
     key: 'replicate:birefnet',
     capability: 'BACKGROUND_REMOVE',
-    priority: 10,
+    priority: 30,
     costPerCall: 1,
     enabled: true,
     config: { model: '851-labs/background-remover' },
@@ -220,13 +220,12 @@ const PROVIDERS: Array<{
     config: { endpoint: 'fal-ai/bria/background/remove' },
     licenceNote: 'Bria trains only on licensed data and sells enterprise resale terms. Checked 2026-09-04.',
   },
-  // Photoroom's cut-out for everyone, behind BiRefNet on price: with no
-  // Replicate key set, a personal workspace still gets a real result.
+  // Commerce-specific cutouts first; BiRefNet remains an available fallback.
   // (Bria cannot appear twice: a row is keyed on vendor + capability.)
   {
     key: 'photoroom:edit',
     capability: 'BACKGROUND_REMOVE',
-    priority: 30,
+    priority: 10,
     costPerCall: 2,
     enabled: true,
     config: {},

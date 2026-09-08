@@ -12,7 +12,16 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderInput } from '@anystudio/shared';
-import { GoogleProvider, googleDefaultModel, parseJson, repeatedCallCostMinor, stripUnsupported, veoCostMinor, veoDuration } from './google.adapter';
+import {
+  GoogleAuth,
+  GoogleProvider,
+  googleDefaultModel,
+  parseJson,
+  repeatedCallCostMinor,
+  stripUnsupported,
+  veoCostMinor,
+  veoDuration,
+} from './google.adapter';
 
 /** The shape the studio actually sends — the one that broke. */
 const IDEAS = {
@@ -43,7 +52,150 @@ const IDEAS = {
 type Node = Record<string, unknown>;
 const at = (schema: Node, path: string[]): Node => path.reduce((n, k) => (n as Record<string, Node>)[k]!, schema as Node);
 
-afterEach(() => vi.unstubAllGlobals());
+describe('Gemini inline image response limits', () => {
+  const input: ProviderInput = {
+    generationId: 'g-image',
+    workspaceId: 'w1',
+    capability: 'IMAGE_EDIT',
+    params: { sourceKey: 'x', prompt: 'Make a flyer', aspect: '4:5', preserveProduct: true },
+    files: { sourceKey: { url: 'https://source/image.png', mime: 'image/png' } },
+    config: {},
+  };
+  const provider = () => GoogleProvider.all({ apiKey: 'test-key' }).find((p) => p.key === 'vertex:gemini-3-pro-image')!;
+  it.each([false, true])('accepts image JSON larger than 2 MiB (content-length=%s)', async (declared) => {
+    const bytes = Buffer.alloc(3 * 1024 * 1024, 42);
+    const body = JSON.stringify({
+      candidates: [{ finishReason: 'STOP', content: { parts: [{ inlineData: { mimeType: 'image/png', data: bytes.toString('base64') } }] } }],
+    });
+    const fetchMock = vi.fn(async (url: string | URL | Request) =>
+      String(url) === 'https://source/image.png'
+        ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } })
+        : new Response(body, { headers: declared ? { 'content-length': String(Buffer.byteLength(body)) } : {} }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await provider().generate(input, { timeoutMs: 5000 });
+    expect(Buffer.from(result.artifacts[0]!.bytes!).equals(bytes)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('still refuses an oversized response instead of removing the memory guard', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) =>
+        String(url) === 'https://source/image.png'
+          ? new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/png' } })
+          : new Response('oversized', { headers: { 'content-length': String(24 * 1024 * 1024) } }),
+      ),
+    );
+    await expect(provider().generate(input, { timeoutMs: 5000 })).rejects.toThrow('safety limit');
+  });
+
+  it('processes multi-image requests sequentially and retains usage and cost', async () => {
+    let active = 0;
+    let peak = 0;
+    const fetchMock = vi.fn(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      return Response.json({
+        usageMetadata: { candidatesTokenCount: 1 },
+        candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'AQID' } }] } }],
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await provider().generate(
+      { ...input, capability: 'IMAGE_GENERATE', params: { prompt: 'poster', aspect: '4:5', count: 3 }, files: {}, config: { costMinor: 7 } },
+      { timeoutMs: 5000 },
+    );
+    expect(peak).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.artifacts).toHaveLength(3);
+    expect(result.costMinor).toBe(21);
+    expect(result.meta?.usage).toHaveLength(3);
+  });
+});
+
+describe('Vertex Veo wire contract', () => {
+  const resource = 'projects/test-project/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001';
+  const operation = `${resource}/operations/saved-job`;
+  const source: ProviderInput = {
+    generationId: 'g1',
+    workspaceId: 'w1',
+    capability: 'IMAGE_TO_VIDEO',
+    params: { sourceKey: 'x', prompt: 'move', durationSec: 5, aspect: '9:16', audio: false, shots: 1, format: 'reveal' },
+    files: { sourceKey: { url: 'https://source/image.png', mime: 'image/png' } },
+    config: {},
+  };
+  function provider() {
+    vi.spyOn(GoogleAuth.prototype, 'headers').mockResolvedValue({ authorization: 'Bearer test-token' });
+    return GoogleProvider.all({ saJson: '{}', project: 'test-project' }).find((p) => p.key === 'vertex:veo-3.1-fast')!;
+  }
+
+  it.each([false, true])('uses POST fetchPredictOperation and decodes inline video (resume=%s)', async (resume) => {
+    const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+    // Larger than the ordinary 2 MiB JSON limit, like real inline video.
+    const video = Buffer.alloc(2 * 1024 * 1024, 42);
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      calls.push({ url: target, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (target === 'https://source/image.png') return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } });
+      if (target.endsWith(':predictLongRunning')) return Response.json({ name: operation });
+      if (target.endsWith(':fetchPredictOperation'))
+        return Response.json({ done: true, response: { videos: [{ bytesBase64Encoded: video.toString('base64'), mimeType: 'video/mp4' }] } });
+      throw new Error(`Unexpected request: ${target}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onSubmitted = vi.fn();
+    const result = await provider().generate(source, { timeoutMs: 1000, onSubmitted, ...(resume ? { resume: { providerJobId: operation } } : {}) });
+    expect(result.providerJobId).toBe(operation);
+    expect(Buffer.from(result.artifacts[0]!.bytes!).equals(video)).toBe(true);
+    expect(calls.at(-1)).toEqual({
+      url: `https://us-central1-aiplatform.googleapis.com/v1/${resource}:fetchPredictOperation`,
+      method: 'POST',
+      body: { operationName: operation },
+    });
+    if (resume) {
+      expect(calls).toHaveLength(1);
+      expect(onSubmitted).not.toHaveBeenCalled();
+    } else {
+      expect(calls).toHaveLength(3);
+      expect(calls[1]!.body).toMatchObject({
+        parameters: { generateAudio: false, durationSeconds: 6 },
+        instances: [{ image: { bytesBase64Encoded: 'AQID', mimeType: 'image/png' } }],
+      });
+      expect(onSubmitted).toHaveBeenCalledWith(operation);
+    }
+  });
+
+  it.each([
+    [{ error: { code: 3, message: 'invalid argument' } }, 'REQUEST_REJECTED'],
+    [{ error: { code: 3, message: 'safety policy blocked' } }, 'CONTENT_REJECTED'],
+    [{ error: { code: 7, message: 'permission denied' } }, 'PROVIDER_DOWN'],
+    [{ error: { code: 8, message: 'quota exhausted' } }, 'RATE_LIMITED'],
+    [{ response: { raiMediaFilteredCount: 1, videos: [] } }, 'CONTENT_REJECTED'],
+    [{ response: { videos: [] } }, 'RETRYABLE'],
+  ])('classifies finished operations without resubmitting: %j', async (payload, kind) => {
+    const fetchMock = vi.fn(async () => Response.json({ done: true, ...payload }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onSettled = vi.fn();
+    await expect(provider().generate(source, { timeoutMs: 1000, resume: { providerJobId: operation }, onSettled })).rejects.toMatchObject({ kind });
+    expect(onSettled).toHaveBeenCalledWith('FAILED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects malformed inline video without downloading or starting another job', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ done: true, response: { videos: [{ bytesBase64Encoded: 'not video!' }] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(provider().generate(source, { timeoutMs: 1000, resume: { providerJobId: operation } })).rejects.toThrow('invalid or oversized inline video');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('the schema handed to Gemini', () => {
   it('keeps every property the schema says is required', () => {
@@ -194,6 +346,9 @@ describe('registering Google providers for the credentials actually present', ()
     );
 
     expect(submittedBody).toMatchObject({ parameters: { durationSeconds: 6 } });
+    expect(submittedBody?.parameters).not.toHaveProperty('generateAudio');
+    // Matches Google's SDK wire converter for Image in the Developer API.
+    expect(submittedBody).toMatchObject({ instances: [{ image: { bytesBase64Encoded: 'AQID', mimeType: 'image/png' } }] });
     expect(result.artifacts[0]).toMatchObject({ role: 'video', durationMs: 6_000 });
     expect(result.costMinor).toBe(60);
   });

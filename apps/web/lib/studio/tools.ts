@@ -436,13 +436,14 @@ export const TOOLS: Tool[] = [
     assemble: (p) => {
       if (p.useSource === 'new') {
         const { sizes: _sizes, ...rest } = p;
-        return rest;
+        return { ...rest, useCase: 'design' };
       }
       // The edit path: the style belongs in the prompt, and the person or
       // product in the photo is held exactly as photographed.
       const style = typeof p.style === 'string' && p.style ? ` Style: ${p.style}.` : '';
       return {
         prompt: `Design a flyer around the subject of this photo. ${String(p.prompt ?? '')}${style} Keep the person or product exactly as photographed; build the flyer around them.`,
+        useCase: 'design',
         preserveProduct: true,
         aspect: p.aspect,
         sizes: p.sizes,

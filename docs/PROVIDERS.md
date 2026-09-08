@@ -5,6 +5,9 @@ costs, and what has to be true before it serves a paying customer. The
 routing itself is `ProviderModel` rows (seeded in `packages/db/prisma/seed.ts`);
 this file is the reasoning behind those rows.
 
+The [2026-09-08 quality review](PROVIDER_QUALITY.md) records the latest
+use-case rankings, evidence, limitations and explicit `useCase` API routing.
+
 Prices are from the vendors' September 2026 price lists. They move monthly.
 
 ## The rule
@@ -52,9 +55,9 @@ Later phases, not yet needed: Spitch (Yoruba/Igbo/Hausa TTS; direct quote), Mube
 
 | Capability         | Order                                                                                                           | Note                                                                          |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| IMAGE_EDIT         | vertex:gemini-3-pro-image → fal:seedream-4.5-edit → bfl:flux-kontext-pro                                        | fidelity first, then cost                                                     |
-| IMAGE_GENERATE     | vertex:gemini-3-pro-image → fal:flux-2-pro                                                                      |                                                                               |
-| BACKGROUND_REMOVE  | fal:bria-rmbg-2 (ORGANIZATION only) → replicate:birefnet → photoroom:edit                                       | Bria trains on licensed data; enterprise procurement asks                     |
+| IMAGE_EDIT         | fal:seedream-4.5-edit → vertex:gemini-3-pro-image → bfl:flux-kontext-pro                                        | `useCase: design` (including Flyer UI) puts Gemini first                      |
+| IMAGE_GENERATE     | vertex:gemini-3-pro-image → fal:flux-2-pro                                                                      | `useCase: photography` puts FLUX.2 Pro first                                  |
+| BACKGROUND_REMOVE  | fal:bria-rmbg-2 (ORGANIZATION only) → photoroom:edit → replicate:birefnet                                       | quality-oriented commerce default; organization restriction retained          |
 | BACKGROUND_REPLACE | photoroom:edit → vertex:gemini-3-pro-image                                                                      |                                                                               |
 | RELIGHT            | photoroom:edit → vertex:gemini-3-pro-image                                                                      |                                                                               |
 | UPSCALE            | fal:clarity-upscaler                                                                                            |                                                                               |

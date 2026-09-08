@@ -168,9 +168,12 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('removeBackground', 'false');
   },
   // Widening the frame is the whole point, so this one must not keep the original size.
-  expand: (_p, q) => {
+  expand: (p, q) => {
     q.set('expand.mode', 'ai.auto');
-    q.set('outputSize', 'auto');
+    q.set('outputSize', OUTPUT_SIZE_BY_ASPECT[p.aspect]);
+    q.set('referenceBox', 'originalImage');
+    // Reserve room even when the requested aspect matches the source.
+    q.set('padding', '0.1');
     // The vendor refuses outright: "expand.mode will activate when
     // `removeBackground` is set to false". Which is right — continuing the
     // surroundings requires surroundings to continue.

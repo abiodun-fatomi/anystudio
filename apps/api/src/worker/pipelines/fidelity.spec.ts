@@ -46,6 +46,30 @@ const MARBLE =
   '<rect width="100%" height="100%" fill="#8A8A8A"/><circle cx="60" cy="60" r="40" fill="#BBBBBB"/><rect x="200" y="220" width="100" height="80" fill="#666666"/>';
 
 describe('fidelity', () => {
+  it('does not accept a replaced product when the expanded-canvas search is enabled', async () => {
+    const src = await scene(PLAIN, PRODUCT);
+    const mask = await cutout(PRODUCT);
+    const replaced = await scene(MARBLE, productSvg('#0066CC', '#0066CC', 160, 160, 60));
+    const out = await sharp(replaced).extend({ left: 320, right: 320, top: 320, bottom: 320, background: '#888888' }).png().toBuffer();
+    const report = await fidelity(src, mask, out, { expandedCanvas: true });
+    expect(report.score).toBeLessThan(FIDELITY.keep);
+    expect(report.structure).toBeLessThan(FIDELITY.locate);
+  });
+
+  it.each([3, 4])('keeps an unchanged product when outpainting enlarges both canvas dimensions %sx', async (factor) => {
+    const src = await scene(PLAIN, PRODUCT);
+    const mask = await cutout(PRODUCT);
+    const pad = (W * (factor - 1)) / 2;
+    const out = await sharp(src).extend({ left: pad, right: pad, top: pad, bottom: pad, background: '#888888' }).png().toBuffer();
+    const report = await fidelity(src, mask, out, { expandedCanvas: true });
+    // Heavy downsampling can lose fine detail, but it must still locate the
+    // original confidently and qualify for the existing repair path.
+    expect(report.score).toBeGreaterThanOrEqual(FIDELITY.composite);
+    expect(report.structure).toBeGreaterThanOrEqual(FIDELITY.locate);
+    expect(report.placed?.scale).toBeLessThan(0.5);
+    expect(report.placed?.x).toBeCloseTo(0.5, 1);
+  });
+
   it('scores an untouched product on a new background as kept', async () => {
     const src = await scene(PLAIN, PRODUCT);
     const cut = await cutout(PRODUCT);
