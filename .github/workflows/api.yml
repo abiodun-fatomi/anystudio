@@ -184,6 +184,9 @@ jobs:
           if [ -z "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]; then
             echo "::notice::No RENDER_WORKER_SERVICE_ID for '${{ github.ref_name }}': deploying the API only."
           fi
+          if [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ] && [ -z "${{ vars.RENDER_MEDIA_SERVICE_ID }}" ]; then
+            echo "::notice::No RENDER_MEDIA_SERVICE_ID: this worker serves every queue, ffmpeg included. See render.yaml."
+          fi
 
       # The API first: its pre-deploy step runs the migrations, so by the time
       # the worker starts on the new code the schema it expects is there.
@@ -193,6 +196,17 @@ jobs:
       - name: Deploy worker
         if: vars.RENDER_WORKER_SERVICE_ID != ''
         run: bash scripts/render-deploy.sh "${{ vars.RENDER_WORKER_SERVICE_ID }}" "${{ github.sha }}"
+
+      # The media worker: the same image again, serving only media.local.
+      # Optional per environment like the worker above — but with a sharper
+      # edge if it is forgotten. An undeployed API is obvious within minutes;
+      # an undeployed media worker keeps answering, on whatever code it was
+      # created with, and the only symptom is ads that behave like a release
+      # nobody remembers shipping. Set RENDER_MEDIA_SERVICE_ID when the
+      # service exists.
+      - name: Deploy media worker
+        if: vars.RENDER_MEDIA_SERVICE_ID != ''
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_MEDIA_SERVICE_ID }}" "${{ github.sha }}"
 
       # Render saying "live" means the new instance answered its health check
       # once. This proves it from the outside, through Cloudflare, and that

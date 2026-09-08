@@ -12,16 +12,15 @@
  * stitches; it would tie up a request for thirty seconds.
  */
 
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { ProviderError, type CapabilityParams, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
+import { logger } from '../../../../config/logger';
+import { runFfmpeg, runFfprobe } from '../../../../config/ffmpeg';
+import { memoryMb } from '../../../../config/media-runtime';
 import { BaseProvider } from './base';
 import { fetchBytes } from './http';
-
-const exec = promisify(execFile);
 
 const FRAME: Record<'9:16' | '1:1' | '16:9', { w: number; h: number }> = {
   '9:16': { w: 1080, h: 1920 },
@@ -67,12 +66,18 @@ export class LocalProvider extends BaseProvider {
       // The end card starts where the last shot ends; that needs the real durations.
       const durations = await Promise.all(shotPaths.map((s) => probeDurationMs(s).catch(() => 5000)));
       const endStartSec = durations.reduce((a, b) => a + b, 0) / 1000;
-      const size = outputSize(p.aspect, await probeWidth(shotPaths[0]!));
+      const sourceWidth = await probeWidth(shotPaths[0]!);
+      const size = outputSize(p.aspect, sourceWidth);
       const out = join(dir, 'out.mp4');
       const args = buildArgs(p, shotPaths, { musicPath, voPath, out, endStartSec, size });
+      // Said BEFORE ffmpeg runs, because the interesting case is the one where
+      // it never returns: a stitch that takes the instance down leaves no
+      // artifact, no meta and no error, just the log starting over. What it
+      // chose has to be on the record before it starts.
+      logger.info({ shots: shotPaths.length, sourceWidth, width: size.w, height: size.h, seconds: Math.round(endStartSec), ...memoryMb() }, 'stitching');
       const started = Date.now();
       try {
-        await exec('ffmpeg', args, { maxBuffer: 16 * 1024 * 1024, timeout: opts.timeoutMs, signal: opts.signal });
+        await runFfmpeg('stitch', args, { maxBuffer: 4 * 1024 * 1024, timeout: opts.timeoutMs, signal: opts.signal });
       } catch (err) {
         const e = err as { stderr?: string; message?: string };
         throw new ProviderError('RETRYABLE', `ffmpeg failed: ${(e.stderr ?? e.message ?? '').slice(-800)}`, this.key);
@@ -80,10 +85,13 @@ export class LocalProvider extends BaseProvider {
       opts.onProgress?.('Finishing the file', 90);
       const bytes = await readFile(out);
       const durationMs = await probeDurationMs(out).catch(() => undefined);
+      // A view over the same memory, not a second copy of a 20 MB file.
+      const view = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      logger.info({ encodeMs: Date.now() - started, bytes: bytes.byteLength, width: size.w, height: size.h, ...memoryMb() }, 'ad assembled');
       return {
         providerKey: this.key,
         costMinor: 0,
-        artifacts: [{ bytes: new Uint8Array(bytes), mime: 'video/mp4', role: 'video', width: size.w, height: size.h, durationMs }],
+        artifacts: [{ bytes: view, mime: 'video/mp4', role: 'video', width: size.w, height: size.h, durationMs }],
         meta: { shots: shotPaths.length, encodeMs: Date.now() - started, width: size.w, height: size.h },
       };
     } finally {
@@ -205,14 +213,14 @@ function esc(text: string): string {
 }
 
 async function probeDurationMs(path: string): Promise<number> {
-  const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]);
+  const stdout = await runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]);
   return Math.round(Number(stdout.trim()) * 1000);
 }
 
 /** The pixel width of a shot, or null when ffprobe cannot say. */
 async function probeWidth(path: string): Promise<number | null> {
   try {
-    const { stdout } = await exec('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path]);
+    const stdout = await runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path]);
     const w = Number(stdout.trim());
     return Number.isFinite(w) && w > 0 ? w : null;
   } catch {
