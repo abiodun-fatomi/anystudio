@@ -40,7 +40,8 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
   if (!sourceUrl) throw new ProviderError('INVALID_INPUT', 'no source', 'image-pipeline');
   if (p.restyle) return restylePipeline(ctx);
 
-  // 1. The mask. If the cutout cannot be made, the loop degrades to a single trusted call rather than failing the customer.
+  // 1. Preservation is a requirement, not a best-effort hint. If its check
+  // cannot run, do not silently publish an unchecked generative edit.
   let source: Uint8Array | null = null;
   let cutout: Uint8Array | null = null;
   if (p.preserveProduct) {
@@ -55,8 +56,9 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       cutout = await artifactBytes(cut, ctx.signal);
     } catch (err) {
       rethrowIfAborted(ctx.signal, err);
-      ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout unavailable; skipping the fidelity check for this image');
-      cutout = null;
+      ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout unavailable; refusing unchecked product edit');
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError('LOW_QUALITY', 'Could not verify product preservation because the cutout was unavailable.', 'image-pipeline');
     }
   }
 
@@ -117,34 +119,20 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
         picked = { bytes: await pasteProductAt(bytes, cutout, report.placed!), result, score: report.score, composited: true, placed: report.placed };
         ctx.log.warn({ pass: attempt, score: report.score, placed: report.placed }, 'product drifted; original pixels composited back where the model put it');
       } else {
-        picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
-        ctx.log.warn({ pass: attempt, score: report.score }, 'product drifted but the frame changed and it could not be located; shipping the model output');
+        throw new ProviderError('LOW_QUALITY', 'The changed product could not be located safely for repair.', result.providerKey, {
+          providerJobId: result.providerJobId,
+          raw: report,
+        });
       }
     } else if (attempt === 1) {
       disappointed = result.providerKey;
       ctx.log.warn({ pass: attempt, score: report.score, avoiding: disappointed }, 'product not kept; asking someone else, with a stricter prompt');
       await ctx.stage('generating', 30, 'the first try changed your product — trying again');
     } else {
-      /**
-       * Two different models both redrew the product. Refunding is honest,
-       * but it leaves a seller with a photo and no picture — and we are one
-       * call away from a good one.
-       *
-       * BACKGROUND_REPLACE cannot get this wrong. It is a cutout-and-
-       * composite service, not a model that reimagines the frame: the
-       * seller's own pixels come back untouched and only what is behind
-       * them changes, with a real contact shadow and the lighting matched.
-       * It is a narrower answer than the scene they asked for — no hands
-       * holding the bottle, no depth behind it — but it is their product,
-       * on the surface they described, and it is a picture they can post.
-       *
-       * This is most likely to fire on a photo where the product fills the
-       * frame: `origin` in the log will show it, and there is nowhere for a
-       * model to put a scene without shrinking and re-drawing the product.
-       */
+      // A background specialist is another candidate, not a fidelity bypass.
       ctx.log.warn(
         { pass: attempt, score: report.score, origin: report.origin },
-        'no model kept the product; falling back to a background replace, which cannot redraw it',
+        'no model kept the product; trying a background replacement subject to the same fidelity check',
       );
       await ctx.stage('composing', 58, 'keeping your product exactly and rebuilding only what is behind it');
       try {
@@ -153,16 +141,21 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
           {
             generationId: ctx.row.id,
             workspaceId: ctx.row.workspaceId,
-            params: { sourceKey: p.sourceKey, prompt: p.prompt, shadow: true, relight: true, aspect: p.aspect },
+            params: { sourceKey: p.sourceKey, prompt: p.prompt, shadow: true, relight: false, aspect: p.aspect },
             files: ctx.files,
           },
           { timeoutMs: 90_000, signal: ctx.signal },
         );
-        // `composited: false` on purpose: the vendor did the compositing in
-        // its own frame, so the mask's position in OUR source frame is not
-        // where the product is now. The crops find it by sharpness instead.
-        picked = { bytes: await artifactBytes(safe, ctx.signal), result: safe, score: report.score, composited: false, placed: null };
-        ctx.log.info({ providerKey: safe.providerKey }, 'background replaced instead; the product is the seller’s own pixels');
+        const replacement = await artifactBytes(safe, ctx.signal);
+        const checked = await fidelity(source, cutout, replacement);
+        ctx.log.info({ ...checked, providerKey: safe.providerKey }, 'background replacement fidelity measured');
+        if (checked.score < FIDELITY.keep) {
+          throw new ProviderError('LOW_QUALITY', 'Background replacement changed the product.', safe.providerKey, {
+            providerJobId: safe.providerJobId,
+            raw: checked,
+          });
+        }
+        picked = { bytes: replacement, result: safe, score: checked.score, composited: false, placed: checked.placed };
       } catch (err) {
         rethrowIfAborted(ctx.signal, err);
         ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'the background replace failed too; refusing and refunding');

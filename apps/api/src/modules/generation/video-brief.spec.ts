@@ -25,8 +25,9 @@ describe('UGC presenters versus product reels', () => {
     expect(reel({ narration: { voiceId: 'voice-1', script: 'word '.repeat(100) } }).ok).toBe(false);
     expect(reel({ shots: 2, format: 'ugc', presenter: { kind: 'stock', key: 'daphne' }, narration: { voiceId: 'voice-1', script: 'Hello.' } }).ok).toBe(false);
   });
-  it('requires a presenter for multi-shot UGC before accepting the request', () => {
-    expect(reel({ format: 'ugc', shots: 4 }).ok).toBe(false);
+  it('accepts product-only and visible-presenter multi-shot UGC', () => {
+    expect(reel({ format: 'ugc', shots: 4 }).ok).toBe(true);
+    expect(reel({ format: 'ugc', shots: 4, narration: { script: 'Take a closer look.', voiceId: 'voice-1' } }).ok).toBe(true);
     expect(reel({ format: 'ugc', shots: 4, presenter: { kind: 'stock', key: 'daphne' } }).ok).toBe(true);
   });
   it('keeps reels and internal UGC product shots presenter-free', () => {

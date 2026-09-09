@@ -39,6 +39,7 @@
   },
   "pnpm": {
     "overrides": {
+      "multer": "2.3.0",
       "postcss": ">=8.5.23"
     }
   }

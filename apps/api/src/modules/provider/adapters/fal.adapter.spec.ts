@@ -16,6 +16,37 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderInput } from '@anystudio/shared';
 import { FalProvider, lipsyncModel, snapDuration, WAN_PROMPT_MAX, wanPrompt } from './fal.adapter';
 
+describe('Kling reel input contract', () => {
+  it.each([true, false])('sends the native audio flag %s without Wan-only fields', async (audio) => {
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init: RequestInit = {}) => {
+        body = JSON.parse(String(init.body));
+        return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } });
+      }),
+    );
+    const provider = FalProvider.all('key').find((p) => p.key === 'fal:kling-3-pro-i2v')!;
+    await expect(
+      provider.generate(
+        {
+          generationId: 'g',
+          workspaceId: 'ws',
+          capability: 'IMAGE_TO_VIDEO',
+          params: { sourceKey: 'ws/photo.jpg', prompt: 'Show the bottle', durationSec: 8, audio },
+          files: { sourceKey: { url: 'https://example.test/photo.jpg', mime: 'image/jpeg' } },
+          config: {},
+        },
+        { timeoutMs: 1000, signal: new AbortController().signal },
+      ),
+    ).rejects.toBeDefined();
+    expect(body).toMatchObject({ start_image_url: 'https://example.test/photo.jpg', duration: '8', generate_audio: audio });
+    expect(body.prompt).toContain('Do not add people, captions, prices or overlay text');
+    expect(body.prompt).toContain('avoiding an abrupt stop');
+    for (const key of ['image_url', 'aspect_ratio', 'resolution', 'enable_prompt_expansion']) expect(body).not.toHaveProperty(key);
+  });
+});
+
 const WAN = [5, 10] as const;
 
 describe('choosing a clip length a vendor will accept', () => {

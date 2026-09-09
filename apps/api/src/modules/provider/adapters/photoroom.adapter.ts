@@ -200,6 +200,11 @@ export class PhotoroomProvider extends BaseProvider {
       case 'BACKGROUND_REPLACE': {
         const p = this.params(input, 'BACKGROUND_REPLACE');
         q.set('background.prompt', p.prompt);
+        // Honour the requested scene instead of letting prompt expansion invent props.
+        q.set('background.expandPrompt.mode', 'ai.never');
+        q.set('removeBackground', 'true');
+        q.set('referenceBox', 'originalImage');
+        q.set('scaling', 'fit');
         // `originalImage` silently ignored the public aspect control. The API
         // accepts an exact WIDTHxHEIGHT outputSize and generates the new
         // background into that frame.
@@ -225,7 +230,6 @@ export class PhotoroomProvider extends BaseProvider {
         } else {
           q.set('lighting.mode', 'ai.preserve-hue-and-saturation');
         }
-        q.set('shadow.mode', this.str(input.config, 'shadow', 'ai.soft'));
         break;
       }
       case 'BACKGROUND_REMOVE': {
@@ -247,6 +251,16 @@ export class PhotoroomProvider extends BaseProvider {
       }
       default:
         return this.unsupported(input.capability);
+    }
+
+    // removeBackground=false alone still defaults to a subject bounding box,
+    // which zoomed/cropped our live relight and text-removal samples. Photoroom's
+    // feature guides explicitly pair it with referenceBox=originalImage.
+    if (q.get('removeBackground') === 'false') {
+      q.set('referenceBox', 'originalImage');
+      q.set('scaling', 'fit');
+      // Do not add a second creative shadow operation to a preservation edit.
+      q.delete('shadow.mode');
     }
 
     opts.onProgress?.('Editing your photo', 30);

@@ -276,11 +276,21 @@ const PROVIDERS: Array<{
   },
 
   // ---- image to video --------------------------------------------------------
-  // Fal/Wan first for reels and UGC product footage; HeyGen separately renders
+  // Fal/Kling first for reels and UGC product footage; HeyGen separately renders
   // the UGC presenter. Veo is the independent fallback for eligible failures.
   // This is a product routing choice, not a claim of benchmark supremacy.
   // Sora is disabled ahead of its permanent API
   // shutdown on 2026-09-24; keeping the row preserves historical attribution.
+  {
+    key: 'fal:kling-3-pro-i2v',
+    capability: 'IMAGE_TO_VIDEO',
+    priority: 5,
+    costPerCall: 135,
+    enabled: true,
+    config: { endpoint: 'fal-ai/kling-video/v3/pro/image-to-video', costPerSecondMinor: 16.8, costPerSecondSilentMinor: 11.2 },
+    licenceNote:
+      'fal endpoint lists commercial use. $0.168/s with native audio, $0.112/s without; no voice-control surcharge used. Checked 2026-09-09. Separate from Higgsfield licensing.',
+  },
   {
     key: 'fal:wan-2.5-i2v',
     capability: 'IMAGE_TO_VIDEO',

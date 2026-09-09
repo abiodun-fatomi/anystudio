@@ -1,26 +1,33 @@
 /**
  * Higgsfield — their own DoP image-to-video models through the platform API.
  *
- *   POST https://platform.higgsfield.ai/v1/image2video   (hf-api-key / hf-api-secret headers)
- *   GET  https://platform.higgsfield.ai/v1/requests/{id}  until status is completed
+ *   POST https://api.higgsfield.ai/higgsfield-ai/dop/turbo
+ *   GET  https://api.higgsfield.ai/requests/{request_id}/status
+ *   Authorization: Key KEY_ID:KEY_SECRET
  *
- * The endpoint path, model id and field names are on the ProviderModel row's
- * config so a change on their side is a row edit. This adapter serves the
- * `higgsfield:*` keys; Kling through Higgsfield is a separate row and stays
- * disabled until its resale terms are on file.
+ * Model selection is configured on the ProviderModel row; payloads and paths
+ * must match a verified schema. Kling stays disabled until its schema and
+ * resale terms are verified. The shared request lifecycle can still resume
+ * previously recorded jobs without submitting a new generation.
  */
 import { ProviderError, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
 import { http, pick, poll } from './http';
 
-interface Submit {
-  id: string;
-}
 interface Status {
-  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw';
-  results?: { raw?: { url?: string }; min?: { url?: string } };
+  request_id: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled';
+  video?: { url?: string };
   error?: string;
 }
+
+// Verified against https://docs.higgsfield.ai/docs/openapi.json (2026-09-09).
+// Do not guess a third-party model's endpoint or reuse DoP's payload for it.
+const DOP_ENDPOINTS: Record<string, string> = {
+  'dop-turbo': 'higgsfield-ai/dop/turbo',
+  'dop-lite': 'higgsfield-ai/dop/lite',
+  'dop-standard': 'higgsfield-ai/dop/standard',
+};
 
 const KNOWN: Record<string, { capability: Capability; model: string }> = {
   'higgsfield:dop-turbo': { capability: 'IMAGE_TO_VIDEO', model: 'dop-turbo' },
@@ -45,38 +52,50 @@ export class HiggsfieldProvider extends BaseProvider {
   async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
     if (input.capability !== 'IMAGE_TO_VIDEO') this.unsupported(input.capability);
     const p = this.params(input, 'IMAGE_TO_VIDEO');
-    const base = this.str(input.config, 'baseUrl', 'https://platform.higgsfield.ai/v1');
+    // Existing model rows may still contain the old /v1 base URL.
+    const configuredBase = this.str(input.config, 'baseUrl', 'https://api.higgsfield.ai').replace(/\/+$/, '');
+    const base = /^https:\/\/(platform|api)\.higgsfield\.ai(?:\/v1)?$/.test(configuredBase) ? 'https://api.higgsfield.ai' : configuredBase;
     const model = this.str(input.config, 'model', this.defaultModel);
-    const headers = { 'hf-api-key': this.apiKey, 'hf-api-secret': this.apiSecret };
+    const headers = { Authorization: `Key ${this.apiKey}:${this.apiSecret}` };
 
     let providerJobId: string;
     if (opts.resume) {
       providerJobId = opts.resume.providerJobId;
     } else {
-      const submitted = await http<Submit>(this.key, `${base}/${this.str(input.config, 'endpoint', 'image2video')}`, {
+      const endpoint = DOP_ENDPOINTS[model];
+      if (!endpoint) throw new ProviderError('PROVIDER_DOWN', `${this.key}: no verified request schema for model ${model}`, this.key);
+      const configuredEndpoint = this.str(input.config, 'endpoint', endpoint).replace(/^\/+/, '');
+      if (![endpoint, 'image2video', 'image2video/dop', 'v1/image2video/dop'].includes(configuredEndpoint)) {
+        throw new ProviderError('PROVIDER_DOWN', `${this.key}: unsupported endpoint configuration`, this.key);
+      }
+      const submitted = await http<Status>(this.key, `${base}/${endpoint}`, {
         headers,
         body: {
-          params: {
-            model,
-            prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
-            input_images: [{ type: 'image_url', image_url: this.file(input, 'sourceKey') }],
-            duration: p.durationSec,
-            aspect_ratio: p.aspect,
-            enhance_prompt: true,
-          },
+          prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
+          image_url: this.file(input, 'sourceKey'),
+          enhance_prompt: true,
         },
         timeoutMs: 30_000,
         signal: opts.signal,
       });
-      providerJobId = submitted.json.id;
-      if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: submission returned no request id`, this.key, { raw: submitted.json });
+      providerJobId = submitted.json?.request_id;
+      if (typeof providerJobId !== 'string' || !providerJobId.trim()) {
+        // A successful HTTP response may already represent a charged render.
+        // Never allow a missing id to trigger another paid submission.
+        throw new ProviderError('SUBMISSION_UNKNOWN', `${this.key}: submission returned no request id`, this.key);
+      }
       await opts.onSubmitted?.(providerJobId);
     }
     opts.onProgress?.('Rendering your video', 25);
     const final = await poll(
       async () => {
-        const s = await http<Status>(this.key, `${base}/requests/${providerJobId}`, { headers, timeoutMs: 20_000, signal: opts.signal });
-        return s.json.status === 'completed' || s.json.status === 'failed' || s.json.status === 'nsfw' ? s.json : null;
+        // Construct the URL ourselves; never send credentials to a response-supplied status_url.
+        const s = await http<Status>(this.key, `${base}/requests/${encodeURIComponent(providerJobId)}/status`, {
+          headers,
+          timeoutMs: 20_000,
+          signal: opts.signal,
+        });
+        return ['completed', 'failed', 'nsfw', 'canceled'].includes(s.json.status) ? s.json : null;
       },
       {
         intervalMs: 6_000,
@@ -91,11 +110,13 @@ export class HiggsfieldProvider extends BaseProvider {
         providerJobId,
       });
     }
-    const url = pick<string>(final, 'results.raw.url') ?? pick<string>(final, 'results.min.url');
+    const url = pick<string>(final, 'video.url');
     if (!url) {
       await opts.onSettled?.('FAILED');
       throw new ProviderError('RETRYABLE', `${this.key}: completed without a video url`, this.key, { providerJobId });
     }
-    return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'video/mp4', role: 'video', durationMs: p.durationSec * 1000 }], meta: { model } };
+    // DoP's schema has no duration/aspect controls. Let media inspection record
+    // the actual duration rather than claiming it matched the requested length.
+    return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'video/mp4', role: 'video' }], meta: { model } };
   }
 }

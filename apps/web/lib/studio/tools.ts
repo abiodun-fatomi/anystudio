@@ -188,7 +188,7 @@ const IMAGE_STAGES = {
 const countOf = (v: unknown): number => (Array.isArray(v) ? v.filter((k) => typeof k === 'string' && k).length : 0);
 
 /** A presenter needs the customer-filmed format and an ad long enough to hold a testimonial and the product. */
-const canPresent = (v: Record<string, unknown>): boolean => v.format === 'ugc' && Number(v.shots ?? 1) > 1;
+const canPresent = (v: Record<string, unknown>): boolean => v.format === 'ugc' && Number(v.shots ?? 1) > 1 && v.presentation === 'presenter';
 
 export const TOOLS: Tool[] = [
   {
@@ -330,7 +330,7 @@ export const TOOLS: Tool[] = [
           {
             id: 'enhance',
             label: 'Natural enhancement',
-            note: 'Gently improves brightness, colour and sharpness. Keeps the original dimensions, people and background. No enlargement or cropping.',
+            note: 'Adjusts exposure to your photo and gently refines detail. Keeps the original size, people and background. No cropping or AI redraw; severe blur and lost detail cannot be restored.',
           },
         ],
       },
@@ -961,17 +961,26 @@ export const TOOLS: Tool[] = [
         kind: 'select',
         label: 'Ad format',
         hintFor: (v) =>
-          canPresent(v)
-            ? 'UGC ads open with a HeyGen presenter, followed by product footage. Choose who appears below.'
-            : REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
+          canPresent(v) ? 'A presenter opens the ad, followed by product footage. Choose who appears below.' : REEL_BRIEF[(v.format as AdFormat) ?? 'reveal'],
         options: [
           { value: 'reveal', label: 'Product reveal' },
           { value: 'benefits', label: 'Three benefits' },
           { value: 'before_after', label: 'Before and after' },
           { value: 'unboxing', label: 'Unboxing' },
           { value: 'price_drop', label: 'Price drop' },
-          { value: 'ugc', label: 'Filmed by a customer' },
+          { value: 'ugc', label: 'UGC-style showcase' },
         ],
+      },
+      {
+        key: 'presentation',
+        kind: 'segment',
+        label: 'Who appears',
+        options: [
+          { id: 'product', label: 'Product only' },
+          { id: 'presenter', label: 'With presenter' },
+        ],
+        noteFor: () => 'Product only can include off-screen narration. A visible presenter needs a 15-second or longer ad and costs more.',
+        showIf: (v) => v.format === 'ugc',
       },
       {
         /**
@@ -1065,7 +1074,7 @@ export const TOOLS: Tool[] = [
         key: 'presenterKey',
         kind: 'presenter',
         label: 'Who',
-        hint: 'They open the ad with a short, honest testimonial, then the product shots follow. Costs more than a plain ad.',
+        hint: 'They introduce your product, then the product shots follow. Costs more than a product-only ad.',
         showIf: (v) => canPresent(v) && v.presenterKind === 'stock',
       },
       {
@@ -1096,17 +1105,27 @@ export const TOOLS: Tool[] = [
         key: 'presenterScript',
         kind: 'text',
         label: 'What they say',
-        placeholder: 'Leave blank and we write a short testimonial from your brief and the product.',
+        placeholder: 'Leave blank and we write a factual introduction from your brief and the product.',
         rows: 3,
         maxLength: 600,
         hint: 'About 25 words is 10 seconds.',
         showIf: (v) => canPresent(v) && v.presenterKind !== 'none',
       },
     ],
-    defaults: { shots: 1, format: 'reveal', brief: 'format', durationSec: 5, aspect: '9:16', audio: true, narrationEnabled: true, presenterKind: 'stock' },
+    defaults: {
+      shots: 1,
+      format: 'reveal',
+      brief: 'format',
+      durationSec: 5,
+      aspect: '9:16',
+      audio: true,
+      narrationEnabled: true,
+      presentation: 'product',
+      presenterKind: 'stock',
+    },
     // `brief` decides what the panel shows, not what is sent: a blank prompt
     // is filled from the format on the server either way.
-    localKeys: ['presenterKind', 'brief', 'narrationEnabled'],
+    localKeys: ['presentation', 'presenterKind', 'brief', 'narrationEnabled'],
     assemble: (p) => {
       const kind = p.presenterKind;
       const out = { ...p };
@@ -1450,6 +1469,7 @@ export function restoreToolValues(tool: Tool, params: Record<string, unknown>): 
   const presenter = params.presenter as { kind?: string; key?: string; photoKey?: string; consent?: boolean; voiceId?: string; script?: string } | undefined;
   return {
     ...params,
+    presentation: params.presentation ?? (presenter ? 'presenter' : 'product'),
     narrationEnabled: params.narrationEnabled ?? Boolean(narration),
     narrationScript: params.narrationScript ?? narration?.script,
     narrationVoiceId: params.narrationVoiceId ?? narration?.voiceId,
@@ -1482,6 +1502,8 @@ export function coerceParams(tool: Tool, values: Record<string, unknown>): Recor
 
 /** What stops the button: a required file, an empty required text, a catalogue with nothing picked, or a consent box left unticked. */
 export function missingFor(tool: Tool, values: Record<string, unknown>): string | null {
+  if (tool.id === 'video' && values.format === 'ugc' && values.presentation === 'presenter' && Number(values.shots ?? 1) <= 1)
+    return 'Choose 15 seconds or longer for a visible presenter.';
   if (tool.id === 'video' && canPresent(values) && values.presenterKind !== 'stock' && values.presenterKind !== 'photo')
     return 'Choose a presenter for your UGC ad.';
   for (const f of tool.fields) {

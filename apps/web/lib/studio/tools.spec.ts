@@ -103,13 +103,43 @@ describe('video presenter selection', () => {
     expect(params).not.toHaveProperty('presenter');
     expect(parseCapabilityParams('IMAGE_TO_VIDEO', { ...params, sourceKey: 'ws/photo.jpg' }).ok).toBe(true);
   });
-  it('requires a face for UGC and rejects legacy no-presenter selections', () => {
-    const values = { ...video.defaults, format: 'ugc', shots: 4 };
+  it('requires a face only when With presenter is selected', () => {
+    const values = { ...video.defaults, format: 'ugc', shots: 4, presentation: 'presenter' };
     expect(missingFor(video, values)).toBe('Pick who talks to camera.');
     expect(missingFor(video, { ...values, presenterKind: 'none' })).toBe('Choose a presenter for your UGC ad.');
     const params = coerceParams(video, { ...values, presenterKey: 'daphne', presenterVoiceId: 'voice-1' });
     expect(params.presenter).toMatchObject({ kind: 'stock', key: 'daphne' });
     expect(parseCapabilityParams('IMAGE_TO_VIDEO', { ...params, sourceKey: 'ws/bottle.jpg' }).ok).toBe(true);
+  });
+  it('allows product-only UGC with narration and clears stale presenter settings', () => {
+    const values = {
+      ...video.defaults,
+      format: 'ugc',
+      shots: 4,
+      presentation: 'product',
+      presenterKind: 'photo',
+      presenterPhotoKey: 'ws/me.jpg',
+      presenterConsent: true,
+      presenter: { kind: 'photo', photoKey: 'ws/me.jpg', consent: true },
+      narrationScript: 'Take a closer look.',
+    };
+    expect(missingFor(video, { ...values, narrationVoiceId: 'voice-1' })).toBeNull();
+    const params = coerceParams(video, { ...values, narrationVoiceId: 'voice-1' });
+    expect(params).not.toHaveProperty('presentation');
+    expect(params).not.toHaveProperty('presenter');
+    expect(params).not.toHaveProperty('presenterPhotoKey');
+    expect(params.narration).toMatchObject({ script: 'Take a closer look.' });
+    expect(parseCapabilityParams('IMAGE_TO_VIDEO', { ...params, sourceKey: 'ws/product.jpg' }).ok).toBe(true);
+  });
+  it('restores existing presenter requests and keeps consent mandatory', () => {
+    const restored = restoreToolValues(video, { shots: 4, format: 'ugc', presenter: { kind: 'photo', photoKey: 'ws/me.jpg', consent: true } });
+    expect(restored.presentation).toBe('presenter');
+    expect(coerceParams(video, restored).presenter).toMatchObject({ kind: 'photo', consent: true });
+    expect(missingFor(video, { ...restored, presenterConsent: false })).not.toBeNull();
+    expect(restoreToolValues(video, { format: 'ugc', shots: 4 }).presentation).toBe('product');
+  });
+  it('explains the minimum length for a visible presenter', () => {
+    expect(missingFor(video, { ...video.defaults, format: 'ugc', presentation: 'presenter' })).toBe('Choose 15 seconds or longer for a visible presenter.');
   });
   it.each([
     { shots: 1, format: 'ugc' },
