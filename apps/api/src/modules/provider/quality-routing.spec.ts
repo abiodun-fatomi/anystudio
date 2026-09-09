@@ -9,10 +9,10 @@ describe('research-informed image routing', () => {
   });
   it('distinguishes typography from reference-photo editing', () => {
     expect(imageQualityPreference('IMAGE_EDIT', { useCase: 'design' })?.[0]).toBe('vertex:gemini-3-pro-image');
-    expect(imageQualityPreference('IMAGE_EDIT', { useCase: 'photography' })?.[0]).toBe('fal:seedream-4.5-edit');
+    expect(imageQualityPreference('IMAGE_EDIT', { useCase: 'photography' })).toEqual(['fal:flux-2-pro-edit', 'vertex:gemini-3-pro-image']);
   });
   it('preserves database priorities for untagged inputs and never guesses from prompts', () => {
-    expect(imageQualityPreference('IMAGE_EDIT', { prompt: 'flyer photo' })).toBeUndefined();
+    expect(imageQualityPreference('IMAGE_EDIT', { prompt: 'flyer photo' })).toEqual(['fal:flux-2-pro-edit', 'vertex:gemini-3-pro-image']);
     expect(imageQualityPreference('IMAGE_GENERATE', null)).toBeUndefined();
     expect(imageQualityPreference('VOICEOVER', { useCase: 'design' })).toBeUndefined();
   });

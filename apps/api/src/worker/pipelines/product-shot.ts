@@ -48,6 +48,7 @@ import sharp from 'sharp';
 import { EXPORT_SIZES, ProviderError, judgesShape, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity, type FidelityReport } from './fidelity';
+import { preservationThresholds } from './preservation-policy';
 import { applyBrand, artifactBytes, pasteProductAt } from './image';
 import { focalCrop, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
@@ -85,6 +86,8 @@ export const productShotPipeline: Pipeline = async (ctx) => {
   }
 
   const strict = judgesShape(p.mode);
+  const thresholds =
+    strict && p.mode !== 'on_model' && p.mode !== 'ghost_mannequin' && p.mode !== 'flat_lay' ? await preservationThresholds(ctx, p.mode) : FIDELITY;
 
   // 1. The mask, and the original to measure against.
   //
@@ -113,7 +116,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
 
     await ctx.stage('composing', 62, 'Checking it is still your product');
     const report = await fidelity(source, cutout, bytes, { expandedCanvas: p.mode === 'expand' });
-    ctx.log.info({ mode: p.mode, pass: attempt, strict, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'product shot fidelity measured');
+    ctx.log.info({ mode: p.mode, pass: attempt, strict, ...report, thresholds, providerKey: result.providerKey }, 'product shot fidelity measured');
 
     // A mode that reshapes the product on purpose is measured for the record
     // and shipped regardless. Refusing here would refuse the good ones.
@@ -123,7 +126,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
     }
 
     const found = report.placed && report.structure >= FIDELITY.locate;
-    if (report.score >= FIDELITY.keep) {
+    if (report.score >= thresholds.keep) {
       picked = { bytes, result, report, repaired: false };
     } else if (found && (report.score >= FIDELITY.composite || attempt === attempts)) {
       // Close but drifting: the seller's own pixels go back where the model
@@ -136,7 +139,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
     } else {
       throw new ProviderError(
         'LOW_QUALITY',
-        `product quality check failed after ${attempts} attempts: fidelity ${report.score} (keep ${FIDELITY.keep}); structure ${report.structure} (locate ${FIDELITY.locate})`,
+        `product quality check failed after ${attempts} attempts: fidelity ${report.score} (keep ${thresholds.keep}); structure ${report.structure} (locate ${FIDELITY.locate})`,
         result.providerKey,
         {
           providerJobId: result.providerJobId,

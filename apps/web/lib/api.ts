@@ -1128,8 +1128,19 @@ export const api = {
     failGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/fail`, { reason }),
     refundGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/refund`, { reason }),
     providers: () => request<{ capabilities: string[]; providers: AdminProvider[] }>('GET', '/admin/providers'),
-    patchProvider: (capability: string, key: string, body: { enabled?: boolean; priority?: number; reason?: string }) =>
-      request<AdminProvider>('PATCH', `/admin/providers/${capability}/${encodeURIComponent(key)}`, body),
+    patchProvider: (
+      capability: string,
+      key: string,
+      body: {
+        enabled?: boolean;
+        priority?: number;
+        scenePriority?: number;
+        sceneAcceptance?: number;
+        preservationUseCase?: string;
+        preservationAcceptance?: number;
+        reason?: string;
+      },
+    ) => request<AdminProvider>('PATCH', `/admin/providers/${capability}/${encodeURIComponent(key)}`, body),
     resetBreaker: (capability: string, key: string) =>
       request<{ reset: boolean }>('POST', `/admin/providers/${capability}/${encodeURIComponent(key)}/reset-breaker`),
     prices: () => request<Array<{ code: string; credits: number; label: string }>>('GET', '/admin/prices'),

@@ -20,3 +20,5 @@ export * from './generation/presets';
 export * from './generation/product-shots';
 export * from './generation/voice';
 export * from './generation/languages';
+export * from './generation/scene-policy';
+export * from './generation/preservation-policy';

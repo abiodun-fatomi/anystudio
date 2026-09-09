@@ -1,7 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
-import { CAPABILITIES, STAFF_ROLES } from '@anystudio/shared';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
+import { CAPABILITIES, STAFF_ROLES, PRESERVATION_POLICIES, type PreservationUseCase } from '@anystudio/shared';
 
 export class SearchDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) q?: string;
@@ -44,6 +59,23 @@ export class CreditsDto extends ReasonDto {
 }
 
 export class ProviderPatchDto {
+  @ApiPropertyOptional()
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(PRESERVATION_POLICIES.map((p) => p.id))
+  preservationUseCase?: PreservationUseCase;
+  @ApiPropertyOptional({ minimum: 0.1, maximum: 1 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1)
+  preservationAcceptance?: number;
+  @ApiPropertyOptional({ minimum: 0.1, maximum: 1 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1)
+  sceneAcceptance?: number;
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000 }) @ValidateIf((_object, value) => value !== undefined) @IsInt() @Min(1) @Max(1000) scenePriority?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
   @ApiPropertyOptional({ minimum: 1, maximum: 1000 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) priority?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) reason?: string;
