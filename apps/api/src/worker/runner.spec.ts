@@ -383,6 +383,9 @@ suite('GenerationRunner', () => {
       capability: 'IMAGE_EDIT',
       clientKey: 'img-1',
       params: {
+        // This fixture tests branding/storage with a synthetic source URL,
+        // not product preservation. Fidelity has dedicated pipeline tests.
+        preserveProduct: false,
         sourceKey: `${workspaceId}/2026/09/uploads/src.png`,
         prompt: 'on a marble counter',
         price: '₦12,000',
