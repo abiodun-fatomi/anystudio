@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { EXPORT_SIZES, ProviderError, type CapabilityParams, type ProviderArtifact } from '@anystudio/shared';
 import type { Pipeline } from './index';
+import { enhancePhoto } from './enhance';
 
 /** Colour-only treatment: no segmentation, generative redraw, or subject crop. */
 export const restylePipeline: Pipeline = async (ctx) => {
@@ -10,7 +11,7 @@ export const restylePipeline: Pipeline = async (ctx) => {
   let photo = sharp(source, { limitInputPixels: 40_000_000 }).rotate().toColourspace('srgb');
   switch (p.restyle) {
     case 'enhance':
-      photo = photo.modulate({ brightness: 1.03, saturation: 1.04 }).sharpen({ sigma: 0.7, m1: 0.5, m2: 1.5 });
+      photo = await enhancePhoto(source);
       break;
     case 'natural':
       photo = photo.modulate({ brightness: 1.04, saturation: 1.03 });

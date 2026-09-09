@@ -188,7 +188,7 @@ export function useGenerations() {
             ? err.status === 402
               ? 'Not enough credits for that.'
               : err.fields?.length
-                ? err.fields.map((f) => f.message).join(' ')
+                ? err.fields.map((f) => `${f.path}: ${f.message}`).join(' ')
                 : err.message
             : 'Could not reach AnyStudio. Nothing was charged.';
         patch(clientKey, (c) => ({ ...c, status: 'FAILED', stage: 'failed', message }));
@@ -372,6 +372,9 @@ export function toolFor(capability: string): string {
         IMAGE_EDIT: 'scene',
         BACKGROUND_REPLACE: 'background',
         BACKGROUND_REMOVE: 'cutout',
+        PRODUCT_SHOT: 'shots',
+        COLLAGE: 'collage',
+        BATCH: 'batch',
         UPSCALE: 'upscale',
         TEXT_GENERATE: 'copy',
         IMAGE_TO_VIDEO: 'video',

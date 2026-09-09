@@ -72,6 +72,10 @@ describe('background and lighting controls', () => {
     const q = await sentFor('BACKGROUND_REPLACE', { sourceKey: 'ws/p.jpg', prompt: 'warm studio', shadow: true, relight: true, aspect });
     expect(q.get('outputSize')).toBe(outputSize);
     expect(q.get('background.prompt')).toBe('warm studio');
+    expect(q.get('background.expandPrompt.mode')).toBe('ai.never');
+    expect(q.get('removeBackground')).toBe('true');
+    expect(q.get('referenceBox')).toBe('originalImage');
+    expect(q.get('scaling')).toBe('fit');
   });
 
   it('relights automatically without deleting the original background', async () => {
@@ -79,6 +83,8 @@ describe('background and lighting controls', () => {
     expect(q.get('removeBackground')).toBe('false');
     expect(q.get('lighting.mode')).toBe('ai.preserve-hue-and-saturation');
     expect(q.get('editWithAI.prompt')).toBeNull();
+    expect(q.get('referenceBox')).toBe('originalImage');
+    expect(q.get('shadow.mode')).toBeNull();
   });
 
   it("uses Photoroom's supported free-form edit for a directed relight instead of ignoring the prompt", async () => {
@@ -88,6 +94,14 @@ describe('background and lighting controls', () => {
     expect(q.get('editWithAI.prompt')).toContain('warm sunset rim light');
     expect(q.get('editWithAI.prompt')).toContain('Keep the product');
     expect(q.get('lighting.mode'), 'automatic relighting must not overwrite the directed edit').toBeNull();
+    expect(q.get('referenceBox')).toBe('originalImage');
+    expect(q.get('shadow.mode')).toBeNull();
+  });
+  it.each(['ironing', 'text_removal', 'edit', 'on_model'])('preserves the full frame for %s', async (mode) => {
+    const q = await sent(shot({ mode, prompt: 'Remove the hanger' }));
+    expect(q.get('referenceBox')).toBe('originalImage');
+    expect(q.get('scaling')).toBe('fit');
+    expect(q.get('shadow.mode')).toBeNull();
   });
 });
 

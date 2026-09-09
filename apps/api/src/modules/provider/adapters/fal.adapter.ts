@@ -43,6 +43,7 @@ const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
   'fal:bria-rmbg-2': { capability: 'BACKGROUND_REMOVE', endpoint: 'fal-ai/bria/background/remove' },
   'fal:clarity-upscaler': { capability: 'UPSCALE', endpoint: 'fal-ai/clarity-upscaler' },
   'fal:wan-2.5-i2v': { capability: 'IMAGE_TO_VIDEO', endpoint: 'fal-ai/wan-25-preview/image-to-video' },
+  'fal:kling-3-pro-i2v': { capability: 'IMAGE_TO_VIDEO', endpoint: 'fal-ai/kling-video/v3/pro/image-to-video' },
   'fal:minimax-music-v2': { capability: 'MUSIC', endpoint: 'fal-ai/minimax-music/v2' },
   'fal:sync-lipsync': { capability: 'LIPSYNC', endpoint: 'fal-ai/sync-lipsync/v2' },
 };
@@ -60,6 +61,7 @@ const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
  * is an UPDATE and not a deploy.
  */
 const DURATIONS: Record<string, readonly number[]> = {
+  'fal-ai/kling-video/v3/pro/image-to-video': [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   'fal-ai/wan-25-preview/image-to-video': [5, 10],
 };
 
@@ -174,7 +176,11 @@ export class FalProvider extends BaseProvider {
       throw err;
     }
     let costMinor: number | undefined;
-    const perSecond = Number(input.config.costPerSecondMinor);
+    const perSecond = Number(
+      input.capability === 'IMAGE_TO_VIDEO' && endpoint === 'fal-ai/kling-video/v3/pro/image-to-video' && !this.params(input, 'IMAGE_TO_VIDEO').audio
+        ? (input.config.costPerSecondSilentMinor ?? 11.2)
+        : input.config.costPerSecondMinor,
+    );
     if (input.capability === 'IMAGE_TO_VIDEO' && Number.isFinite(perSecond) && perSecond > 0) {
       const p = this.params(input, 'IMAGE_TO_VIDEO');
       const seconds = snapDuration(p.durationSec, this.nums(input.config, 'durations', DURATIONS[endpoint]), p.shotIndex !== undefined);
@@ -219,6 +225,14 @@ export class FalProvider extends BaseProvider {
       case 'IMAGE_TO_VIDEO': {
         const p = this.params(input, 'IMAGE_TO_VIDEO');
         const endpoint = this.str(input.config, 'endpoint', this.defaultEndpoint);
+        if (endpoint === 'fal-ai/kling-video/v3/pro/image-to-video') {
+          return {
+            start_image_url: this.file(input, 'sourceKey'),
+            prompt: `${p.prompt}${p.motion ? `. Camera: ${p.motion}` : ''}. Preserve the exact product and its markings. Do not add people, captions, prices or overlay text.${p.shotIndex === undefined ? ' End with a gentle settled camera movement, avoiding an abrupt stop.' : ''}${p.audio ? ' Quiet background ambience or instrumental sound only; no speech (narration is added separately).' : ''}`,
+            duration: String(snapDuration(p.durationSec, DURATIONS[endpoint], p.shotIndex !== undefined)),
+            generate_audio: p.audio,
+          };
+        }
         return {
           image_url: this.file(input, 'sourceKey'),
           prompt: endpoint === WAN_ENDPOINT ? wanPrompt(p.prompt, p.motion) : p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,

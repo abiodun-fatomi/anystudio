@@ -524,7 +524,7 @@ export const capabilityParams = {
     })
     .superRefine((v, ctx) => {
       const ugcAd = v.format === 'ugc' && v.shots > 1;
-      if (v.narration && ugcAd)
+      if (v.narration && ugcAd && v.presenter)
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['narration'], message: 'UGC already uses the presenter voice. Use the presenter script instead.' });
       if (v.narration && v.narration.script.split(/\s+/).length > Math.floor((adPlan(v.shots)?.seconds ?? v.durationSec) * 2.5))
         ctx.addIssue({
@@ -532,7 +532,6 @@ export const capabilityParams = {
           path: ['narration', 'script'],
           message: 'Shorten the narration to fit the selected video length (about 2 words per second).',
         });
-      if (ugcAd && !v.presenter) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['presenter'], message: 'Choose a presenter for your UGC ad.' });
       if (v.presenter && !ugcAd)
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

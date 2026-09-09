@@ -14,6 +14,7 @@ describe('generation price selection', () => {
 
   it('derives the finite premium variants from capability params', () => {
     expect(generationCostCode('IMAGE_TO_VIDEO', { shots: 4, format: 'benefits' })).toBe('video.ad_30s');
+    expect(generationCostCode('IMAGE_TO_VIDEO', { shots: 4, format: 'ugc' })).toBe('video.ad_30s');
     expect(generationCostCode('IMAGE_TO_VIDEO', { shots: 4, format: 'ugc', presenter: { kind: 'stock' } })).toBe('video.ad_30s_presenter');
     expect(generationCostCode('PRODUCT_SHOT', { mode: 'on_model', shotSize: 'printing' })).toBe('image.on_model.4k');
     expect(generationCostCode('MUSIC', { singer: 'me' })).toBe('audio.music.preview.my_voice');

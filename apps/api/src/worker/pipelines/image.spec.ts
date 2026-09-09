@@ -88,7 +88,6 @@ async function patch(image: Uint8Array | Buffer, left: number, top: number, side
 }
 
 const reddish = (c: { r: number; g: number; b: number }) => c.r > c.b + 25;
-const bluish = (c: { r: number; g: number; b: number }) => c.b > c.r + 25;
 const plain = (c: { r: number; g: number; b: number }) => c.r > 200 && c.g > 200 && c.b > 200;
 
 let sourceBytes: Uint8Array = new Uint8Array();
@@ -271,7 +270,7 @@ describe('a match too weak to be a location', () => {
     expect(params.sourceKey).toBe('ws-1/p.png');
   });
 
-  it('refuses and refunds only when the background replace fails too', async () => {
+  it('refuses and refunds when the background replace fails too', async () => {
     sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
     const { ctx, warn } = ctxWith({
       output: await render(`<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>`),
@@ -281,6 +280,13 @@ describe('a match too weak to be a location', () => {
 
     await expect(brandedImagePipeline(ctx)).rejects.toThrow(/fidelity/i);
     expect(warn.mock.calls.map((c) => String(c[1])).join(' | ')).toContain('refusing and refunding');
+  });
+
+  it('also checks the fallback instead of trusting a successful background response', async () => {
+    sourceBytes = await render(`<rect width="100%" height="100%" fill="#F2EFEA"/>${stripes('#D6006E', 128, 128, 64)}`);
+    const unrelated = await render('<rect width="100%" height="100%" fill="#DCD8D2"/><rect x="60" y="50" width="120" height="120" fill="#3A7D44"/>');
+    const { ctx } = ctxWith({ output: unrelated, mask: await render(stripes('#D6006E', 128, 128, 64)), replaced: unrelated });
+    await expect(brandedImagePipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY' });
   });
 
   it('still repairs a product it really did find, moved and in a reshaped frame', async () => {
@@ -302,14 +308,12 @@ describe('a match too weak to be a location', () => {
 });
 
 describe('when the cutout cannot be made', () => {
-  it('ships the model output rather than failing the customer, and says why', async () => {
+  it('refuses an unchecked product edit before any generative call', async () => {
     sourceBytes = await photoAt(RED, 80, 80);
-    const { ctx, warn } = ctxWith({ output: await photoAt(BLUE, 130, 130), mask: null });
-
-    const image = full(await brandedImagePipeline(ctx));
-
-    expect(bluish(await patch(image, 160, 160))).toBe(true);
-    expect(warn.mock.calls.map((c) => String(c[1])).join(' | ')).toContain('skipping the fidelity check');
+    const { ctx, warn, callProvider } = ctxWith({ output: await photoAt(BLUE, 130, 130), mask: null });
+    await expect(brandedImagePipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY' });
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(warn.mock.calls.map((c) => String(c[1])).join(' | ')).toContain('refusing unchecked product edit');
   });
 
   it('does not treat a cancelled cutout as an optional fidelity failure', async () => {

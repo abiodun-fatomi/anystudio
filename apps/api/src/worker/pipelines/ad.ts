@@ -112,7 +112,6 @@ function fitDurations(rawMs: number[], targetMs: number): number[] {
 /** First run: write the plan, create the shots, step aside. */
 async function plan(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>): Promise<PipelineResult> {
   const withPresenter = wantsPresenter(p);
-  if (p.format === 'ugc' && p.shots > 1 && !withPresenter) throw new ProviderError('INVALID_INPUT', 'choose a presenter for your UGC ad', 'ad-pipeline');
   if (p.presenter && !withPresenter)
     throw new ProviderError('INVALID_INPUT', 'a presenter needs the "filmed by a customer" format and at least two shots', 'ad-pipeline');
   if (withPresenter && !ctx.presenterLab('heygen'))
@@ -338,12 +337,12 @@ function planRequest(ctx: PipelineContext, p: CapabilityParams<'IMAGE_TO_VIDEO'>
     `Format: ${FORMAT_BRIEF[p.format]}`,
     wantsPresenter(p)
       ? [
-          `A presenter speaks to camera FIRST, for about ${presenterSeconds(p)} seconds; that is not one of your shots. Write it as presenterScript: first person, as a happy customer would actually talk, ${presenterWords(presenterSeconds(p))} words or so, the product's name, one concrete thing they noticed, and how to order. Spoken language — no hashtags, no emoji, no brackets.`,
+          `A presenter speaks to camera FIRST, for about ${presenterSeconds(p)} seconds; that is not one of your shots. Write it as presenterScript: a factual product introduction, ${presenterWords(presenterSeconds(p))} words or so, the product's name, a visible or supplied detail, and how to order if supplied. Do not invent personal experience, testimonials or product claims. Spoken language — no hashtags, no emoji, no brackets.`,
           `Then exactly ${p.shots - 1} product shots. Durations: ${durationsPhrase((adPlan(p.shots)?.durations ?? [8, 5]).slice(1))} seconds, in that order.`,
         ].join('\n')
       : `Exactly ${p.shots} shots. Durations: ${durationsPhrase(adPlan(p.shots)?.durations ?? [8, 5])} seconds, in that order.`,
     `Voice: ${tone}.`,
-    "Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); no people unless the format is ugc; realistic lighting; keep every prompt under 60 words. Each shot's caption is under 8 words of on-screen text.",
+    "Rules for shots: each prompt describes what the camera sees with the product identical to the reference (same shape, colours, label); one clear camera move per shot; no text in the video frame (captions are added later); product-only footage, do not add people or a visible presenter (any requested presenter is filmed separately); realistic lighting; keep every prompt under 60 words. Each shot's caption is under 8 words of on-screen text.",
     'The first shot is the hook. The last shot settles on the product for the end card.',
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     'Return only the structure requested.',
