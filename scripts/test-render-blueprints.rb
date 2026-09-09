@@ -18,7 +18,7 @@ ENVIRONMENTS = {
   },
   'render.production.yaml' => {
     branch: 'production', suffix: '', app_env: 'production',
-    api_plan: '1c-2g', api_instances: 2, worker_plan: '1c-2g',
+    api_plan: '1c-2g', api_instances: 1, worker_plan: '1c-2g',
     worker_node_options: '--max-old-space-size=1536', worker_fast: '12', worker_heavy: '16'
   }
 }.freeze
@@ -69,6 +69,25 @@ ENVIRONMENTS.each do |file, expected|
   assert!(worker['type'] == 'worker' && media['type'] == 'worker', "#{file}: both queue consumers must be background workers")
   assert!(api['plan'] == expected[:api_plan], "#{file}: API compute plan drifted")
   assert!(api['numInstances'] == expected[:api_instances], "#{file}: API instance count drifted")
+
+  # More than one API instance means more than one Prisma connection pool
+  # against the same Postgres. Without a pooler in front of it the database
+  # runs out of connections under load, and the symptom is requests timing out
+  # at random rather than anything that names connections. So the instance
+  # count and the pooler are one decision, and this is where that is enforced.
+  #
+  # DIRECT_URL must stay on the direct string whatever happens: `migrate
+  # deploy` takes an advisory lock and runs DDL, and neither survives a
+  # transaction pooler.
+  if api['numInstances'].to_i > 1
+    assert!(database['connectionPool'], "#{file}: #{api['numInstances']} API instances need `connectionPool` on the database")
+    api_db = api.fetch('envVars').find { |item| item['key'] == 'DATABASE_URL' }
+    api_direct = api.fetch('envVars').find { |item| item['key'] == 'DIRECT_URL' }
+    assert!(api_db.dig('fromDatabase', 'property') == 'connectionPoolString',
+            "#{file}: with a pooler, DATABASE_URL must use connectionPoolString")
+    assert!(api_direct.dig('fromDatabase', 'property') == 'connectionString',
+            "#{file}: DIRECT_URL must stay on the direct connection — migrations cannot run through a pooler")
+  end
   assert!(api['preDeployCommand'] == 'npm run release', "#{file}: API must run migrations before every deploy")
   assert!(!worker.key?('preDeployCommand') && !media.key?('preDeployCommand'), "#{file}: only the API may run the pre-deploy migration command")
   assert!(worker['plan'] == expected[:worker_plan], "#{file}: main worker compute plan drifted")
