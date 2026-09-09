@@ -49,6 +49,13 @@ async function sentFor(capability: Capability, params: Record<string, unknown>, 
 
 const sent = (params: Record<string, unknown>, files: ProviderInput['files'] = {}) => sentFor('PRODUCT_SHOT', params, files);
 
+it('keeps cutout masks aligned with the original source pixels', async () => {
+  const q = await sentFor('BACKGROUND_REMOVE', { sourceKey: 'p', background: 'transparent' });
+  expect(q.get('referenceBox')).toBe('originalImage');
+  expect(q.get('scaling')).toBe('fit');
+  expect(q.get('outputSize')).toBe('originalImage');
+});
+
 const shot = (over: Record<string, unknown>) => ({
   sourceKey: 'ws/p.jpg',
   aspect: '1:1',

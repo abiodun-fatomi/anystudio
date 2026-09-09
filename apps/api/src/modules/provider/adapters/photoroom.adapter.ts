@@ -234,6 +234,10 @@ export class PhotoroomProvider extends BaseProvider {
       }
       case 'BACKGROUND_REMOVE': {
         const p = this.params(input, 'BACKGROUND_REMOVE');
+        // This alpha mask is also used to locate pixels in the ORIGINAL
+        // photo. The provider's subjectBox default enlarges/recentres it.
+        q.set('referenceBox', 'originalImage');
+        q.set('scaling', 'fit');
         if (p.background !== 'transparent') q.set('background.color', p.background.slice(1));
         break;
       }
