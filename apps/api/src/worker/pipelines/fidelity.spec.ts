@@ -46,6 +46,17 @@ const MARBLE =
   '<rect width="100%" height="100%" fill="#8A8A8A"/><circle cx="60" cy="60" r="40" fill="#BBBBBB"/><rect x="200" y="220" width="100" height="80" fill="#666666"/>';
 
 describe('fidelity', () => {
+  it('requires cutout coordinates to match the source, not a recentered subjectBox', async () => {
+    const original = productSvg('#D6006E', '#FFFFFF', 100, 225, 55);
+    const src = await scene(PLAIN, original);
+    const output = await scene(MARBLE, original);
+    const aligned = await fidelity(src, await cutout(original), output);
+    const recentered = await fidelity(src, await cutout(productSvg('#D6006E', '#FFFFFF', 160, 160, 150)), output);
+    expect(aligned.score).toBeGreaterThanOrEqual(FIDELITY.keep);
+    expect(aligned.colour).toBeGreaterThan(0.9);
+    expect(recentered.score).toBeLessThan(0.5);
+    expect(recentered.colour).toBeLessThan(aligned.colour);
+  });
   it('does not accept a replaced product when the expanded-canvas search is enabled', async () => {
     const src = await scene(PLAIN, PRODUCT);
     const mask = await cutout(PRODUCT);
