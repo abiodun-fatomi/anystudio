@@ -108,6 +108,7 @@ function ctxWith(opts: { params: Record<string, unknown>; output: Uint8Array; ma
   const ctx = {
     row: { id: 'g-1', workspaceId: 'ws-1', capability: 'PRODUCT_SHOT', input: opts.params },
     brandKit: opts.brandKit ?? null,
+    db: { providerModel: { findUnique: vi.fn(async () => null) } },
     files: { sourceKey: { key: 'ws-1/p.png', url: 'https://signed/p.png', mime: 'image/png' } },
     media: { getBytes: vi.fn(async () => Buffer.from(sourceBytes)) },
     callProvider,

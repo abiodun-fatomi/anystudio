@@ -40,6 +40,7 @@ const QUEUE = 'https://queue.fal.run';
 const KNOWN: Record<string, { capability: Capability; endpoint: string }> = {
   'fal:seedream-4.5-edit': { capability: 'IMAGE_EDIT', endpoint: 'fal-ai/bytedance/seedream/v4.5/edit' },
   'fal:flux-2-pro': { capability: 'IMAGE_GENERATE', endpoint: 'fal-ai/flux-2-pro' },
+  'fal:flux-2-pro-edit': { capability: 'IMAGE_EDIT', endpoint: 'fal-ai/flux-2-pro/edit' },
   'fal:bria-rmbg-2': { capability: 'BACKGROUND_REMOVE', endpoint: 'fal-ai/bria/background/remove' },
   'fal:clarity-upscaler': { capability: 'UPSCALE', endpoint: 'fal-ai/clarity-upscaler' },
   'fal:wan-2.5-i2v': { capability: 'IMAGE_TO_VIDEO', endpoint: 'fal-ai/wan-25-preview/image-to-video' },
@@ -203,7 +204,7 @@ export class FalProvider extends BaseProvider {
             : p.prompt,
           image_urls: [this.file(input, 'sourceKey')],
           image_size: aspectToFalSize(p.aspect),
-          num_images: 1,
+          ...(this.key === 'fal:flux-2-pro-edit' ? { output_format: 'png' } : { num_images: 1 }),
           enable_safety_checker: true,
         };
       }

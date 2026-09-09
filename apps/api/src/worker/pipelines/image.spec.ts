@@ -22,6 +22,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
+import { ProviderError } from '@anystudio/shared';
 import { brandedImagePipeline } from './image';
 import type { PipelineContext } from './index';
 import { fetchBytes } from '../../modules/provider/adapters/http';
@@ -127,12 +128,15 @@ function ctxWith(opts: {
         sourceKey: 'ws-1/p.png',
         prompt: 'on a marble kitchen counter in soft morning light',
         preserveProduct: true,
+        // Keep the original strict repair regressions for design edits.
+        useCase: 'design',
         aspect: '1:1',
         sizes: ['feed_square'],
         ...opts.params,
       },
     },
     brandKit: null,
+    db: { providerModel: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) } },
     files: { sourceKey: { key: 'ws-1/p.png', url: 'https://signed/p.png', mime: 'image/png' } },
     media: { getBytes: vi.fn(async () => Buffer.from('') as unknown as Uint8Array) },
     callProvider,
@@ -146,6 +150,60 @@ function ctxWith(opts: {
 }
 
 const full = (r: { artifacts: Array<{ role: string; bytes?: Uint8Array }> }) => r.artifacts.find((a) => a.role === 'image')!.bytes!;
+
+describe('New Scene provider order and relaxed preservation', () => {
+  it('uses the saved admin order instead of the built-in order', async () => {
+    sourceBytes = await photoAt(RED, 80, 80);
+    const { ctx, callProvider, callCapability } = ctxWith({ output: sourceBytes, replaced: sourceBytes, mask: await cutoutAt(RED, 80, 80) });
+    delete (ctx.row.input as Record<string, unknown>).useCase;
+    vi.mocked(ctx.db.providerModel.findMany).mockResolvedValue([
+      { key: 'photoroom:edit', capability: 'BACKGROUND_REPLACE', config: { scenePriority: 1 } },
+    ] as never);
+    await brandedImagePipeline(ctx);
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(callCapability).toHaveBeenLastCalledWith('BACKGROUND_REPLACE', expect.anything(), expect.objectContaining({ route: { only: 'photoroom:edit' } }));
+  });
+  it('applies the saved acceptance to every candidate in a job', async () => {
+    sourceBytes = await photoAt(RED, 40, 40);
+    const output = await photoAt(RED, 130, 130);
+    const { ctx, callProvider } = ctxWith({ output, replaced: output, mask: await cutoutAt(RED, 40, 40) });
+    delete (ctx.row.input as Record<string, unknown>).useCase;
+    vi.mocked(ctx.db.providerModel.findMany).mockResolvedValue([
+      { key: 'fal:flux-2-pro-edit', capability: 'IMAGE_EDIT', config: { sceneAcceptance: 0.99 } },
+    ] as never);
+    await expect(brandedImagePipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY' });
+    expect(callProvider).toHaveBeenCalledTimes(2);
+    expect(ctx.db.providerModel.findMany).toHaveBeenCalledTimes(1);
+  });
+  it('accepts a repositioned subject without strict pixel repair', async () => {
+    sourceBytes = await photoAt(RED, 40, 40);
+    const { ctx, callProvider, info } = ctxWith({ output: await photoAt(RED, 130, 130), mask: await cutoutAt(RED, 40, 40) });
+    delete (ctx.row.input as Record<string, unknown>).useCase;
+    await brandedImagePipeline(ctx);
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    expect(callProvider.mock.calls[0]?.[1]).toMatchObject({ route: { only: 'fal:flux-2-pro-edit' } });
+    expect(info.mock.calls.some((c) => String(c[1]).includes('composited back'))).toBe(false);
+  });
+  it('tries FLUX then Gemini then Photoroom when image providers are unavailable', async () => {
+    sourceBytes = await photoAt(RED, 80, 80);
+    const output = await photoAt(RED, 80, 80);
+    const { ctx, callProvider, callCapability } = ctxWith({ output, mask: await cutoutAt(RED, 80, 80), replaced: output });
+    delete (ctx.row.input as Record<string, unknown>).useCase;
+    callProvider.mockRejectedValue(new ProviderError('PROVIDER_DOWN', 'offline', 'test'));
+    await brandedImagePipeline(ctx);
+    expect(callProvider.mock.calls.map((c) => (c[1] as { route: { only: string } }).route.only)).toEqual(['fal:flux-2-pro-edit', 'vertex:gemini-3-pro-image']);
+    expect(callCapability).toHaveBeenLastCalledWith('BACKGROUND_REPLACE', expect.anything(), expect.objectContaining({ route: { only: 'photoroom:edit' } }));
+  });
+  it('does not fall through an uncertain paid submission', async () => {
+    sourceBytes = await photoAt(RED, 80, 80);
+    const { ctx, callProvider, callCapability } = ctxWith({ output: sourceBytes, mask: await cutoutAt(RED, 80, 80) });
+    delete (ctx.row.input as Record<string, unknown>).useCase;
+    callProvider.mockRejectedValue(new ProviderError('SUBMISSION_UNKNOWN', 'pending', 'test'));
+    await expect(brandedImagePipeline(ctx)).rejects.toMatchObject({ kind: 'SUBMISSION_UNKNOWN' });
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    expect(callCapability).toHaveBeenCalledTimes(1); // cutout only
+  });
+});
 
 describe('a model that kept the frame but moved the product', () => {
   it('puts the original back where the product ENDED UP, not where it started', async () => {

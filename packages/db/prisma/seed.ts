@@ -153,6 +153,16 @@ const PROVIDERS: Array<{
 }> = [
   // ---- image editing: put the product in a new scene, keep it identical ----
   {
+    key: 'fal:flux-2-pro-edit',
+    capability: 'IMAGE_EDIT',
+    priority: 5,
+    // Conservative reservation used by the live comparison, not an invoice.
+    costPerCall: 30,
+    enabled: true,
+    config: { endpoint: 'fal-ai/flux-2-pro/edit' },
+    licenceNote: 'FLUX.2 Pro Edit via fal; selected after development comparison.',
+  },
+  {
     key: 'vertex:gemini-3-pro-image',
     capability: 'IMAGE_EDIT',
     priority: 20,
@@ -528,13 +538,23 @@ async function reference() {
     await db.usageRate.upsert({ where: { currency: r.currency }, create: r, update: { per100Minor: r.per100Minor } });
   }
   for (const pr of PROVIDERS) {
+    const previous = await db.providerModel.findUnique({ where: { key_capability: { key: pr.key, capability: pr.capability } }, select: { config: true } });
+    const oldConfig = previous?.config as Prisma.JsonObject | null;
+    const config = {
+      ...((pr.config as Prisma.JsonObject) ?? {}),
+      ...(typeof oldConfig?.scenePriority === 'number' ? { scenePriority: oldConfig.scenePriority } : {}),
+      ...(typeof oldConfig?.sceneAcceptance === 'number' ? { sceneAcceptance: oldConfig.sceneAcceptance } : {}),
+      ...(oldConfig?.preservationAcceptance && typeof oldConfig.preservationAcceptance === 'object'
+        ? { preservationAcceptance: oldConfig.preservationAcceptance }
+        : {}),
+    };
     await db.providerModel.upsert({
       where: { key_capability: { key: pr.key, capability: pr.capability } },
       create: pr,
       // `enabled` and `priority` are operator-owned after first creation. A
       // release may refresh model config/cost/licensing metadata, but must not
       // undo an outage kill switch or a deliberate routing change.
-      update: { costPerCall: pr.costPerCall, workspaceType: pr.workspaceType, config: pr.config, licenceNote: pr.licenceNote },
+      update: { costPerCall: pr.costPerCall, workspaceType: pr.workspaceType, config, licenceNote: pr.licenceNote },
     });
   }
   for (const gsd of GENRES) {

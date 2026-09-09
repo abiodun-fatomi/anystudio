@@ -10,10 +10,10 @@
  * ledger function, refunds claw back through it, a suspended user is a
  * status the guard already honours.
  */
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type StaffRole } from '@prisma/client';
 import type { Request } from 'express';
-import { CAPABILITIES } from '@anystudio/shared';
+import { CAPABILITIES, SCENE_PROVIDERS, PRESERVATION_POLICIES } from '@anystudio/shared';
 import { ConflictError, NotFoundError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
@@ -436,14 +436,56 @@ export class AdminService {
     assertStaffMutation(actor, { min: 'OPERATOR', stepUpMinutes: STEP_UP_MIN });
     const row = await this.db.providerModel.findUnique({ where: { key_capability: { key, capability: capability as never } } });
     if (!row) throw new NotFoundError('provider row');
+    const sceneChange = dto.sceneAcceptance !== undefined || dto.scenePriority !== undefined;
+    const preservationChange = dto.preservationUseCase !== undefined || dto.preservationAcceptance !== undefined;
+    if (preservationChange) {
+      const policy = PRESERVATION_POLICIES.find((p) => p.id === dto.preservationUseCase);
+      if (!policy || policy.key !== key || policy.capability !== capability || dto.preservationAcceptance === undefined)
+        throw new BadRequestException('Choose a supported use case and acceptance value');
+      if (!dto.reason || dto.reason.trim().length < 4) throw new BadRequestException('A reason is required');
+    }
+    if (sceneChange) {
+      if (!SCENE_PROVIDERS.some((p) => p.key === key && p.capability === capability)) throw new BadRequestException('Not a New Scene provider');
+      if (dto.sceneAcceptance !== undefined && key !== SCENE_PROVIDERS[0].key)
+        throw new BadRequestException('The shared acceptance setting belongs to the FLUX edit row');
+      if (!dto.reason || dto.reason.trim().length < 4) throw new BadRequestException('A reason is required');
+    }
+    const config = {
+      ...((row.config as Prisma.JsonObject) ?? {}),
+      ...(dto.sceneAcceptance !== undefined ? { sceneAcceptance: dto.sceneAcceptance } : {}),
+      ...(dto.scenePriority !== undefined ? { scenePriority: dto.scenePriority } : {}),
+      ...(preservationChange
+        ? {
+            preservationAcceptance: {
+              ...(((row.config as Prisma.JsonObject | null)?.preservationAcceptance as Prisma.JsonObject) ?? {}),
+              [dto.preservationUseCase!]: dto.preservationAcceptance!,
+            },
+          }
+        : {}),
+    };
     const updated = await this.db.providerModel.update({
       where: { key_capability: { key, capability: capability as never } },
-      data: { ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}), ...(dto.priority !== undefined ? { priority: dto.priority } : {}) },
+      data: {
+        ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(sceneChange || preservationChange ? { config } : {}),
+      },
     });
     authLog(
       'admin.provider',
       'succeeded',
-      { userId: actor.userId, providerKey: key, capability, enabled: dto.enabled, priority: dto.priority, reason: dto.reason },
+      {
+        userId: actor.userId,
+        providerKey: key,
+        capability,
+        enabled: dto.enabled,
+        priority: dto.priority,
+        sceneAcceptance: dto.sceneAcceptance,
+        scenePriority: dto.scenePriority,
+        preservationUseCase: dto.preservationUseCase,
+        preservationAcceptance: dto.preservationAcceptance,
+        reason: dto.reason,
+      },
       req,
     );
     logger.warn(

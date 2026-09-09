@@ -49,6 +49,29 @@ describe('Kling reel input contract', () => {
 
 const WAN = [5, 10] as const;
 
+it('uses the benchmarked FLUX edit endpoint and reference image contract', async () => {
+  const fetchMock = vi.fn(async () => new Response('{}', { status: 503 }));
+  vi.stubGlobal('fetch', fetchMock);
+  const provider = FalProvider.all('key').find((p) => p.key === 'fal:flux-2-pro-edit')!;
+  await expect(
+    provider.generate(
+      {
+        generationId: 'g',
+        workspaceId: 'ws',
+        capability: 'IMAGE_EDIT',
+        params: { sourceKey: 'source', prompt: 'Festive table', aspect: '1:1', preserveProduct: true },
+        files: { sourceKey: { url: 'https://example.test/source.jpg', mime: 'image/jpeg' } },
+        config: {},
+      },
+      { timeoutMs: 1000, signal: new AbortController().signal },
+    ),
+  ).rejects.toBeDefined();
+  const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://queue.fal.run/fal-ai/flux-2-pro/edit');
+  expect(JSON.parse(String(init.body))).toMatchObject({ image_urls: ['https://example.test/source.jpg'], output_format: 'png', enable_safety_checker: true });
+  expect(JSON.parse(String(init.body))).not.toHaveProperty('num_images');
+});
+
 describe('choosing a clip length a vendor will accept', () => {
   it('sends what the plan asked for when the vendor accepts it', () => {
     expect(snapDuration(5, WAN)).toBe(5);

@@ -23,22 +23,76 @@
  */
 
 import sharp, { type OverlayOptions } from 'sharp';
-import { EXPORT_SIZES, ProviderError, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
+import {
+  EXPORT_SIZES,
+  ProviderError,
+  SCENE_PROVIDERS,
+  SCENE_ACCEPTANCE_DEFAULT,
+  sceneConfig,
+  type CapabilityParams,
+  type ProviderArtifact,
+  type ProviderResult,
+} from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity, shifted } from './fidelity';
 import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { rethrowIfAborted } from './abort';
 import { restylePipeline } from './restyle';
+import { preservationThresholds } from './preservation-policy';
 
 const STRICTER =
   '\n\nIMPORTANT: the product must be reproduced EXACTLY as in the reference photo — identical shape, size, colours, label, text and position in frame. Do not restyle, recolour, rotate or reinterpret it. Only the background and surroundings may change.';
+
+// Scene changes alter illumination and scale. Relax acceptance, not the
+// locator used when pasting original pixels (an unsafe match creates doubles).
+export const SCENE_FIDELITY = { keep: SCENE_ACCEPTANCE_DEFAULT };
+
+async function sceneCandidate(ctx: PipelineContext, p: CapabilityParams<'IMAGE_EDIT'>, source: Uint8Array | null, cutout: Uint8Array | null) {
+  const rows = await ctx.db.providerModel.findMany({ where: { OR: SCENE_PROVIDERS.map((p) => ({ key: p.key, capability: p.capability })) } });
+  const configs = SCENE_PROVIDERS.map((p) => ({ ...p, config: sceneConfig(rows.find((r) => r.key === p.key && r.capability === p.capability)?.config) }));
+  const keep = configs[0]?.config.sceneAcceptance ?? SCENE_ACCEPTANCE_DEFAULT;
+  const providers = configs
+    .sort((a, b) => (a.config.scenePriority ?? a.priority) - (b.config.scenePriority ?? b.priority) || a.priority - b.priority)
+    .map((p) => p.key);
+  let last: unknown;
+  for (const [i, provider] of providers.entries()) {
+    try {
+      await ctx.stage('generating', 30 + i * 10, i ? 'trying the next scene provider' : 'creating your scene');
+      const opts = { timeoutMs: ctx.budgetMs, signal: ctx.signal, route: { only: provider } };
+      const input = { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, files: ctx.files };
+      const result =
+        provider === 'photoroom:edit'
+          ? await ctx.callCapability(
+              'BACKGROUND_REPLACE',
+              { ...input, params: { sourceKey: p.sourceKey, prompt: p.prompt, shadow: true, relight: false, aspect: p.aspect } },
+              opts,
+            )
+          : await ctx.callProvider({ ...input, capability: 'IMAGE_EDIT', params: p }, opts);
+      const bytes = await artifactBytes(result, ctx.signal);
+      if (!source || !cutout) return { bytes, result, composited: false };
+      const report = await fidelity(source, cutout, bytes);
+      ctx.log.info({ ...report, thresholds: { keep }, providerKey: provider }, 'scene fidelity measured');
+      if (report.score >= keep) return { bytes, result, score: report.score, composited: false, placed: report.placed };
+      throw new ProviderError('LOW_QUALITY', 'Scene subject preservation was below the relaxed threshold.', provider, { raw: report });
+    } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
+      // Never duplicate an uncertain submission or route around moderation.
+      if (!(err instanceof ProviderError) || !['LOW_QUALITY', 'PROVIDER_DOWN', 'RETRYABLE', 'RATE_LIMITED', 'REQUEST_REJECTED'].includes(err.kind)) throw err;
+      last = err;
+      ctx.log.warn({ providerKey: provider, kind: err.kind }, 'scene candidate failed; moving to next configured provider');
+    }
+  }
+  throw last ?? new ProviderError('LOW_QUALITY', 'No scene provider passed preservation.', 'image-pipeline');
+}
 
 export const brandedImagePipeline: Pipeline = async (ctx) => {
   const p = ctx.row.input as CapabilityParams<'IMAGE_EDIT'>;
   const sourceUrl = ctx.files.sourceKey?.url;
   if (!sourceUrl) throw new ProviderError('INVALID_INPUT', 'no source', 'image-pipeline');
   if (p.restyle) return restylePipeline(ctx);
+  const scene = p.useCase !== 'design';
+  const thresholds = !scene && p.preserveProduct ? await preservationThresholds(ctx, 'design') : FIDELITY;
 
   // 1. Preservation is a requirement, not a best-effort hint. If its check
   // cannot run, do not silently publish an unchecked generative edit.
@@ -64,6 +118,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 
   // 2–3. Ask, measure, decide — at most twice.
   let picked: { bytes: Uint8Array; result: ProviderResult; score?: number; composited: boolean; placed?: { x: number; y: number } | null } | null = null;
+  if (scene) picked = await sceneCandidate(ctx, p, source, cutout);
   /** The vendor whose first answer changed the product; the retry avoids it. */
   let disappointed: string | null = null;
   for (let attempt = 1; attempt <= 2 && !picked; attempt++) {
@@ -91,15 +146,15 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
 
     await ctx.stage('composing', 62, 'checking the product stayed the same');
     const report = await fidelity(source, cutout, bytes);
-    ctx.log.info({ pass: attempt, ...report, thresholds: FIDELITY, providerKey: result.providerKey }, 'fidelity measured');
+    ctx.log.info({ pass: attempt, ...report, thresholds, providerKey: result.providerKey }, 'fidelity measured');
 
     // The check says where in the output it found the product; a drifted
     // product is pasted back THERE, at that size, whatever shape the frame
     // took. Only a product that cannot be found at all is a lost cause.
     const found = report.placed && report.structure >= FIDELITY.locate;
-    if (report.score >= FIDELITY.keep) {
+    if (report.score >= thresholds.keep) {
       picked = { bytes, result, score: report.score, composited: false, placed: report.placed };
-    } else if (report.score >= FIDELITY.composite || (attempt === 2 && found)) {
+    } else if (report.score >= thresholds.composite || (attempt === 2 && found)) {
       const same = await sameFrame(source, bytes);
       // A frame of the same SHAPE is not the same framing. Models very often
       // hand a square photo back square and have still slid the product
@@ -112,7 +167,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
       // a product that never moved, where laying the original over the top
       // preserves its edges exactly.
       const moved = !report.origin || !report.placed || shifted(report.origin, report.placed);
-      if (same && !moved && report.score >= FIDELITY.composite) {
+      if (same && !moved && report.score >= thresholds.composite) {
         picked = { bytes: await pasteProduct(bytes, cutout), result, score: report.score, composited: true, placed: null };
         ctx.log.info({ pass: attempt, score: report.score }, 'product drifted; original pixels composited back over the scene');
       } else if (found) {
@@ -149,7 +204,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
         const replacement = await artifactBytes(safe, ctx.signal);
         const checked = await fidelity(source, cutout, replacement);
         ctx.log.info({ ...checked, providerKey: safe.providerKey }, 'background replacement fidelity measured');
-        if (checked.score < FIDELITY.keep) {
+        if (checked.score < thresholds.keep) {
           throw new ProviderError('LOW_QUALITY', 'Background replacement changed the product.', safe.providerKey, {
             providerJobId: safe.providerJobId,
             raw: checked,
@@ -161,7 +216,7 @@ export const brandedImagePipeline: Pipeline = async (ctx) => {
         ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'the background replace failed too; refusing and refunding');
         throw new ProviderError(
           'LOW_QUALITY',
-          `product fidelity ${report.score} below ${FIDELITY.composite} on two attempts, and the background-replace fallback failed`,
+          `product fidelity ${report.score} below ${thresholds.composite} on two attempts, and the background-replace fallback failed`,
           result.providerKey,
           { providerJobId: result.providerJobId, raw: report },
         );
