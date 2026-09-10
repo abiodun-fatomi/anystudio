@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AudioModule } from '../audio/audio.module';
+import { TemplateModule } from '../template/template.module';
 import { GenerationModule } from '../generation/generation.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { ApiKeyGuard } from './api-key.guard';
@@ -10,7 +11,7 @@ import { PublicApiService } from './public-api.service';
 import { WebhookDispatcher } from './webhook.dispatcher';
 
 @Module({
-  imports: [LedgerModule, GenerationModule, AudioModule],
+  imports: [LedgerModule, GenerationModule, AudioModule, TemplateModule],
   controllers: [DeveloperController, PublicApiController],
   providers: [DeveloperService, PublicApiService, WebhookDispatcher, ApiKeyGuard],
   exports: [WebhookDispatcher],

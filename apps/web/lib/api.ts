@@ -7,6 +7,8 @@
  * screen can show "quote req_… to support" without knowing anything else.
  */
 
+import type { TemplateView } from '@anystudio/shared';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -1097,6 +1099,15 @@ export const api = {
         credits?: number;
         generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null };
       }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
+  templates: {
+    /**
+     * The template catalogue. Global and identical for everybody, so the
+     * studio memoises the promise rather than the rows — thumbnail URLs are
+     * signed and expire, and a memo that outlives them would hand the picker
+     * a grid of broken images.
+     */
+    list: () => request<TemplateView[]>('GET', '/templates'),
   },
   admin: {
     overview: () => request<AdminOverview>('GET', '/admin/overview'),

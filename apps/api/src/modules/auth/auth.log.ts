@@ -104,6 +104,8 @@ export type AuthEventName =
   // plan or pack costs per market, and the gateway ids it is sold under.
   | 'admin.plan'
   | 'admin.pack'
+  // What a customer's picture ends up looking like: the setting catalogue.
+  | 'admin.template'
   | 'admin.support';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
