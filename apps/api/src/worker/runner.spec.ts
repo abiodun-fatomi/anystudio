@@ -548,8 +548,28 @@ suite('GenerationRunner', () => {
     });
     const seen: string[] = [];
     const abort = new AbortController();
+    const note = (e: { type: string; stage?: string }) => seen.push(e.type === 'stage' ? e.stage! : e.type);
+
+    /**
+     * Take the opening snapshot BEFORE the runner starts.
+     *
+     * `watch` opens by reading the row, and the row reports `queued` only
+     * until the runner writes its first stage onto it — after that the
+     * snapshot says `generating`, which is what this assertion saw on CI.
+     * Kicking off the run and the watcher together is a race, and the test
+     * lost it on a slower box while passing everywhere else.
+     *
+     * Pulling the first value explicitly removes the race rather than
+     * widening a window: `next()` has resolved, so the snapshot is taken and
+     * the row is still untouched. The rest of the stream is drained as
+     * before.
+     */
+    const stream = events.watch(generation.id, abort.signal);
+    const first = await stream.next();
+    if (!first.done) note(first.value);
+
     const watching = (async () => {
-      for await (const e of events.watch(generation.id, abort.signal)) seen.push(e.type === 'stage' ? e.stage : e.type);
+      for await (const e of stream) note(e);
     })();
     await runner.run(generation.id);
     await watching;
