@@ -1403,7 +1403,7 @@ export const api = {
   },
   workspace: {
     get: (id: string) => request<Workspace>('GET', `/workspaces/${id}`),
-    create: (body: { name: string; type: 'BUSINESS' | 'ORGANIZATION'; billingCountry?: string }) =>
+    create: (body: { name: string; type: 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION'; billingCountry?: string }) =>
       request<{ id: string; type: string; name: string; currency: string; region: string }>('POST', '/workspaces', body),
     /** Merge-patch the welcome answers. */
     patchProfile: (id: string, patch: WorkspaceProfile) => request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),

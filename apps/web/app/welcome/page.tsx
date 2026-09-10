@@ -69,7 +69,11 @@ export default function WelcomePage() {
     try {
       let workspaceId = ws?.id ?? createdWorkspaceId;
       if (!workspaceId) {
-        const created = await api.workspace.create({ name: `${me?.user.name || 'My'} studio`.slice(0, 80), type: 'BUSINESS', billingCountry });
+        // Same shape registration gives an email signup and WhatsApp gives a
+        // phone signup: a PERSONAL studio named after their first name. The
+        // API grants the welcome credits because it is their first workspace.
+        const firstName = me?.user.name?.trim().split(/\s+/)[0] || 'My';
+        const created = await api.workspace.create({ name: `${firstName}'s studio`.slice(0, 80), type: 'PERSONAL', billingCountry });
         workspaceId = created.id;
         setCreatedWorkspaceId(created.id);
       }
