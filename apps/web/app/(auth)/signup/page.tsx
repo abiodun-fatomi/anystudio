@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { followHandoff } from '@/lib/handoff';
 import { api, ApiError } from '@/lib/api';
 import { GoogleButton } from '@/components/GoogleButton';
+import { CountryCurrencyField } from '@/components/CountryCurrencyField';
 import styles from '../auth.module.css';
 
 /** The exact sentence stored with the consent row. Change it here and the record changes with it. */
@@ -24,6 +25,7 @@ const MARKETING_WORDING = 'Send me tips and offers from AnyStudio on WhatsApp. A
 export default function SignupPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', whatsapp: true, marketing: false });
   const [phone, setPhone] = useState<PhoneValue>(emptyPhone());
+  const [billingCountry, setBillingCountry] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
@@ -34,6 +36,10 @@ export default function SignupPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!billingCountry) {
+      setError('Select your country of residence or business location.');
+      return;
+    }
     if (!phone.valid || !phone.e164) {
       setError('Check the phone number — pick the country and enter the local number.');
       return;
@@ -44,6 +50,7 @@ export default function SignupPage() {
         name: form.name,
         email: form.email,
         phone: phone.e164,
+        billingCountry,
         password: form.password,
         phoneIsWhatsApp: form.whatsapp,
         marketing: { granted: form.marketing, wording: MARKETING_WORDING },
@@ -94,6 +101,7 @@ export default function SignupPage() {
         <label htmlFor="email">Email</label>
         <input id="email" className="inp" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
       </div>
+      <CountryCurrencyField value={billingCountry} onChange={setBillingCountry} suggestedCountry={phone.valid ? phone.country : undefined} />
       <div className="field">
         <label htmlFor="pw">Password</label>
         <PasswordControl id="pw" className="inp" autoComplete="new-password" minLength={8} value={form.password} onChange={set('password')} required />

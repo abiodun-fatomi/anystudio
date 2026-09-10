@@ -139,11 +139,7 @@ export class AccountService {
         data.phone = phone;
         // A new number has not been proven yet; the WhatsApp link follows it.
         data.phoneVerifiedAt = null;
-        // Where the number says they are wins over a stale country.
-        if (dto.country === undefined) {
-          const fromPhone = RegistrationService.countryOfPhone(phone);
-          if (fromPhone) data.country = fromPhone;
-        }
+        // Contact-number changes must not replace a confirmed residence country.
       }
     }
     if (dto.avatarKey !== undefined) {

@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { Button, Dialog, EmptyState, Input, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
+import { CountryCurrencyField } from '@/components/CountryCurrencyField';
 
 export function OrganizationGate({ children }: { children: ReactNode }) {
   const { workspace, refreshMe, switchWorkspace } = useApp();
@@ -17,12 +18,13 @@ export function OrganizationGate({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [billingCountry, setBillingCountry] = useState('');
   if (workspace.type === 'ORGANIZATION') return <>{children}</>;
 
   const create = async () => {
     setBusy(true);
     try {
-      const ws = await api.workspace.create({ name: name.trim(), type: 'ORGANIZATION' });
+      const ws = await api.workspace.create({ name: name.trim(), type: 'ORGANIZATION', billingCountry });
       await refreshMe();
       setOpen(false);
       toast({ title: `${ws.name} created`, body: 'Opening it on the organization portal. Create a project and mint a key.', tone: 'ok' });
@@ -60,13 +62,14 @@ export function OrganizationGate({ children }: { children: ReactNode }) {
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={create} loading={busy} disabled={name.trim().length < 2}>
+            <Button onClick={create} loading={busy} disabled={name.trim().length < 2 || !billingCountry}>
               Create
             </Button>
           </>
         }
       >
         <Input label="Organization name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Commerce" maxLength={80} autoFocus />
+        <CountryCurrencyField value={billingCountry} onChange={setBillingCountry} />
       </Dialog>
     </>
   );

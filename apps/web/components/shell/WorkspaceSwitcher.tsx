@@ -11,6 +11,7 @@ import { useApp } from '@/lib/app-context';
 import { Avatar, Button, Dialog, Input, MenuHeading, MenuItem, MenuSeparator, Popover, SegmentedControl, useToast } from '@/components/ui';
 import { Icon } from './icons';
 import styles from './AppShell.module.css';
+import { CountryCurrencyField } from '@/components/CountryCurrencyField';
 
 const WS_TYPE: Record<string, string> = { PERSONAL: 'Personal', BUSINESS: 'Business', ORGANIZATION: 'Organization' };
 
@@ -23,11 +24,12 @@ export function WorkspaceSwitcher() {
   const [name, setName] = useState('');
   const [type, setType] = useState<NewType>('BUSINESS');
   const [busy, setBusy] = useState(false);
+  const [billingCountry, setBillingCountry] = useState('');
 
   const create = async () => {
     setBusy(true);
     try {
-      const ws = await api.workspace.create({ name: name.trim(), type });
+      const ws = await api.workspace.create({ name: name.trim(), type, billingCountry });
       await refreshMe();
       setOpen(false);
       setName('');
@@ -105,7 +107,7 @@ export function WorkspaceSwitcher() {
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={create} loading={busy} disabled={name.trim().length < 2}>
+            <Button onClick={create} loading={busy} disabled={name.trim().length < 2 || !billingCountry}>
               Create
             </Button>
           </>
@@ -134,6 +136,7 @@ export function WorkspaceSwitcher() {
             maxLength={80}
             autoFocus
           />
+          <CountryCurrencyField value={billingCountry} onChange={setBillingCountry} />
         </div>
       </Dialog>
     </>

@@ -87,7 +87,12 @@ export class HealthController {
       ]);
       const now = Date.now();
       const workers = { worker: workerProbe(workerRow, now), media: workerProbe(mediaRow, now) };
-      const publicBilling = { ready: billing.ready };
+      // `payments: "off"` appears only when a person declared PAYMENTS_DISABLED.
+      // It is the difference between "this release is broken" and "this release
+      // cannot take money yet, on purpose" — the one fact an operator reading a
+      // status page actually needs, and one the sign-up flow already tells any
+      // visitor who tries to buy credits.
+      const publicBilling = billing.paymentsDisabled ? { ready: billing.ready, payments: 'off' as const } : { ready: billing.ready };
       if (!workers.worker.alive || !workers.media.alive || !billing.ready) {
         res.status(HttpStatus.SERVICE_UNAVAILABLE);
         return { status: 'degraded', dbMs: Date.now() - started, workers, billing: publicBilling };

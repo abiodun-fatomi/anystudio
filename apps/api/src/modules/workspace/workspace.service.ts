@@ -4,26 +4,49 @@
  * they are built.
  */
 import { Injectable } from '@nestjs/common';
+import { SIGNUP_PROMO_CREDITS, currencyForCountry, regionForCountry, signupGrantKey } from '@anystudio/shared';
 import { PrismaClient } from '@prisma/client';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import type { Request } from 'express';
 import { authLog } from '../auth/auth.log';
 import { Helpers } from '../../utils/helpers';
 import { MediaService } from '../media/media.service';
+import { LedgerService } from '../ledger/ledger.service';
 import type { WorkspaceCreateDto, WorkspaceDeleteDto, WorkspaceProfileDto, WorkspaceUpdateDto } from './workspace.dto';
+import { RegistrationService } from '../auth/registration.service';
 
 @Injectable()
 export class WorkspaceService {
   constructor(
     private readonly db: PrismaClient,
     private readonly media: MediaService,
+    private readonly ledger: LedgerService,
   ) {}
 
   /**
-   * A second workspace for a signed-in person: they own it, it has its own
-   * wallet, and it starts empty — the welcome credits were for their first
-   * one. An ORGANIZATION is what unlocks the developer section. Five per
-   * person keeps the switcher a list and not a search.
+   * A workspace for a signed-in person: they own it and it has its own wallet.
+   * Five per person keeps the switcher a list and not a search.
+   *
+   * THE FIRST ONE IS DIFFERENT, AND THIS IS NOW THE ONLY PLACE THAT KNOWS IT
+   * ----------------------------------------------------------------------
+   * This used to be strictly the SECOND-workspace path — "the welcome credits
+   * were for their first one" — because every first workspace was born in
+   * `registration.service.ts` or the WhatsApp onboarding, each of which
+   * creates a PERSONAL studio, sets the region from the person's country, and
+   * grants SIGNUP_PROMO_CREDITS.
+   *
+   * Google sign-in never created one at all: it wrote a User and sent them to
+   * /welcome, which had no workspace to patch and bounced to /today, which
+   * bounced back to /welcome. Anyone who signed up with Google could not reach
+   * the product. The welcome screen now creates the workspace here, which
+   * makes this the third first-workspace door — and the only one that granted
+   * no credits, defaulted the region to `ng` whatever the person confirmed,
+   * and called the result a BUSINESS.
+   *
+   * So the rule moves into the code rather than being repeated at each door:
+   * if this is the person's first workspace it gets the first-workspace
+   * treatment, whoever asked. The grant is idempotent on the workspace id
+   * (`signupGrantKey`), so a retried request cannot mint a second 150.
    */
   async create(actorId: string, dto: WorkspaceCreateDto, req: Request) {
     const owned = await this.db.workspaceMember.count({ where: { userId: actorId, role: 'OWNER', workspace: { deletedAt: null } } });
@@ -33,19 +56,48 @@ export class WorkspaceService {
       include: { workspace: { select: { currency: true, region: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    const ws = await this.db.workspace.create({
-      data: {
-        type: dto.type,
-        name: dto.name.trim(),
-        currency: seed?.workspace.currency ?? 'NGN',
-        region: seed?.workspace.region ?? 'ng',
-        members: { create: { userId: actorId, role: 'OWNER' } },
-        wallet: { create: {} },
-      },
-      select: { id: true, type: true, name: true, currency: true, region: true },
+    const first = seed === null;
+    // PERSONAL is the shape of a first studio and nothing else; a second one
+    // is a BUSINESS or an ORGANIZATION. Asking for PERSONAL when you already
+    // have a workspace is a client bug, not a thing to silently honour.
+    if (dto.type === 'PERSONAL' && !first) {
+      throw new ValidationError(
+        { type: 'A personal studio is only the first workspace on an account.' },
+        'A personal studio is only the first workspace on an account.',
+      );
+    }
+
+    const ws = await this.db.$transaction(async (tx) => {
+      const created = await tx.workspace.create({
+        data: {
+          type: dto.type,
+          name: dto.name.trim(),
+          currency: dto.billingCountry
+            ? currencyForCountry(dto.billingCountry)
+            : (seed?.workspace.currency ?? currencyForCountry(RegistrationService.countryOfRequest(req))),
+          profile: dto.billingCountry ? { billingCountry: dto.billingCountry.toUpperCase() } : {},
+          // A first workspace takes its region from the country the person
+          // just confirmed. Falling back to `ng` for someone who told us
+          // otherwise is how a Kenyan seller ends up on Nigerian routing.
+          region: first ? regionForCountry(dto.billingCountry ?? RegistrationService.countryOfRequest(req)) : (seed?.workspace.region ?? 'ng'),
+          members: { create: { userId: actorId, role: 'OWNER' } },
+          wallet: { create: {} },
+        },
+        select: { id: true, type: true, name: true, currency: true, region: true, wallet: { select: { id: true } } },
+      });
+
+      if (first && created.wallet) {
+        await this.ledger.grant(
+          { walletId: created.wallet.id, amount: SIGNUP_PROMO_CREDITS, idempotencyKey: signupGrantKey(created.id), reason: 'Welcome credits' },
+          tx,
+        );
+      }
+      return created;
     });
-    authLog('workspace.create', 'succeeded', { userId: actorId, workspaceId: ws.id, type: ws.type }, req);
-    return Helpers.successResponse(201, 'Workspace created', ws);
+
+    const { wallet: _wallet, ...body } = ws;
+    authLog('workspace.create', 'succeeded', { userId: actorId, workspaceId: ws.id, type: ws.type, first }, req);
+    return Helpers.successResponse(201, 'Workspace created', body);
   }
 
   /** Name, type, currency, region, and the welcome answers. */

@@ -45,6 +45,41 @@ describe('BillingCatalogueReadinessService', () => {
     expect(result.missing).not.toContain('Plan creator needs a numeric Flutterwave month reference');
   });
 
+  // The launch state: live site, no gateway approvals yet. Before this, /ready
+  // answered "degraded" forever and every release went red on the smoke test.
+  it('is ready in production when payments are declared off and no gateway is configured', async () => {
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('PAYMENTS_DISABLED', 'true');
+    const result = await service({ plans: [plan({ flutterwave: { month: 123, year: '456' } })] }).check();
+    expect(result).toEqual({ ready: true, missing: [], paymentsDisabled: true });
+  });
+
+  // The declaration excuses an ABSENT gateway, never a broken one. Half a
+  // gateway is the state that takes someone's money and cannot deliver.
+  it('still fails production when a gateway IS configured but its catalogue is incomplete', async () => {
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('PAYMENTS_DISABLED', 'true');
+    const result = await service({ flutterwave: true, plans: [plan({ flutterwave: { month: 'nope', year: '456' } })] }).check();
+    expect(result.ready).toBe(false);
+    expect(result.paymentsDisabled).toBeUndefined();
+    expect(result.missing).toContain('Plan creator needs a numeric Flutterwave month reference');
+    expect(result.missing).toContain('Paddle is required for the production USD and GBP markets');
+  });
+
+  it('ignores the declaration outside production, where the stub already serves', async () => {
+    vi.stubEnv('APP_ENV', 'staging');
+    vi.stubEnv('PAYMENTS_DISABLED', 'true');
+    await expect(service().check()).resolves.toEqual({ ready: true, missing: [] });
+  });
+
+  it('treats anything but the exact word true as not declared', async () => {
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('PAYMENTS_DISABLED', '1');
+    const result = await service().check();
+    expect(result.ready).toBe(false);
+    expect(result.missing).toContain('Flutterwave is required for the production NGN market');
+  });
+
   it('accepts complete production catalogue identifiers without contacting vendors', async () => {
     vi.stubEnv('APP_ENV', 'production');
     vi.stubEnv('PADDLE_USAGE_PRODUCT_ID', 'pro_usage123');

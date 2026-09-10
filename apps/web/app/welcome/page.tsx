@@ -3,16 +3,18 @@
  * Welcome — three questions after sign-up, every one of them skippable.
  *
  * The answers shape the first generation (what they sell, where, how they
- * want to sound); nothing here gates anything. "Skip" is a first-class
+ * want to sound). New Google users also confirm their country before their
+ * first workspace is created. "Skip" skips only the creative questions and is a first-class
  * action, not a small grey link, and skipping saves whatever was answered so
  * far. Second visits never see this page: it is reached only from the
  * sign-up redirect, and the app tour handles the rest.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMe } from '@/lib/useMe';
 import { api, type WorkspaceProfile } from '@/lib/api';
 import styles from './welcome.module.css';
+import { CountryCurrencyField } from '@/components/CountryCurrencyField';
 
 type Channel = NonNullable<WorkspaceProfile['channels']>[number];
 type Tone = NonNullable<WorkspaceProfile['tone']>;
@@ -43,25 +45,46 @@ export default function WelcomePage() {
   const [tone, setTone] = useState<Tone | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [billingCountry, setBillingCountry] = useState('');
+  const [createdWorkspaceId, setCreatedWorkspaceId] = useState<string | null>(null);
+  const submitting = useRef(false);
 
   const ws = me?.workspaces[0];
 
   /** Persist what has been answered and go to the app. Called by both Finish and Skip. */
   async function finish() {
-    if (!ws) return router.replace('/today');
+    if (submitting.current) return;
+    if (!ws && !createdWorkspaceId && !billingCountry) {
+      setError('Confirm your country before opening your studio.');
+      return;
+    }
     const patch: WorkspaceProfile = {};
     if (sells.trim()) patch.sells = sells.trim();
     if (channels.length) patch.channels = channels;
     if (tone) patch.tone = tone;
-    if (Object.keys(patch).length === 0) return router.replace('/today');
+    if (ws && Object.keys(patch).length === 0) return router.replace('/today');
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
-      await api.workspace.patchProfile(ws.id, patch);
-      router.replace('/today');
+      let workspaceId = ws?.id ?? createdWorkspaceId;
+      if (!workspaceId) {
+        // Same shape registration gives an email signup and WhatsApp gives a
+        // phone signup: a PERSONAL studio named after their first name. The
+        // API grants the welcome credits because it is their first workspace.
+        const firstName = me?.user.name?.trim().split(/\s+/)[0] || 'My';
+        const created = await api.workspace.create({ name: `${firstName}'s studio`.slice(0, 80), type: 'PERSONAL', billingCountry });
+        workspaceId = created.id;
+        setCreatedWorkspaceId(created.id);
+      }
+      if (Object.keys(patch).length) await api.workspace.patchProfile(workspaceId, patch);
+      // Reload the session's workspace list after Google onboarding.
+      window.location.assign('/today');
     } catch {
-      setError('Could not save that — you can set it later in Brand kit.');
+      setError('Could not finish setting up your studio. Please try again.');
       setBusy(false);
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -149,6 +172,8 @@ export default function WelcomePage() {
             {error}
           </p>
         )}
+
+        {!ws && !createdWorkspaceId && <CountryCurrencyField value={billingCountry} onChange={setBillingCountry} />}
 
         <div className={styles.actions}>
           {step > 0 && (
