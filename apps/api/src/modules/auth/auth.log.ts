@@ -100,6 +100,10 @@ export type AuthEventName =
   | 'admin.staff'
   | 'admin.message'
   | 'admin.price'
+  // The money, as distinct from admin.price's credits-per-generation: what a
+  // plan or pack costs per market, and the gateway ids it is sold under.
+  | 'admin.plan'
+  | 'admin.pack'
   | 'admin.support';
 
 export type AuthOutcome = 'succeeded' | 'refused' | 'failed';
