@@ -41,6 +41,7 @@ import type {
   StaffGrantDto,
   TemplateCreateDto,
   TemplatePatchDto,
+  TemplateRenderDto,
   TemplateThumbnailDto,
 } from './admin.dto';
 
@@ -620,6 +621,56 @@ export class AdminService {
     this.templateCatalogue.invalidate();
     authLog('admin.template', 'succeeded', { userId: actor.userId, code, action: 'thumbnail', key, bytes: dto.bytes, reason: dto.reason }, req);
     return { ...signed, key };
+  }
+
+  /**
+   * Copy a finished generation's picture onto a template's example key.
+   *
+   * Server-side, and deliberately: the bytes never touch the browser, so
+   * there is no signed-URL fetch to be refused by CORS, and nothing can put
+   * an arbitrary picture on a template — the only thing the caller chooses is
+   * WHICH generation, and the key is still derived from the template's code.
+   *
+   * The generation must have succeeded and must carry an image. A song, a
+   * reel or a half-finished job named here is a mistake worth saying out loud
+   * rather than a blank tile discovered later.
+   */
+  async renderTemplateThumbnail(actor: Actor, code: string, dto: TemplateRenderDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const template = await this.db.template.findUnique({ where: { code }, select: { code: true } });
+    if (!template) throw new NotFoundError('template');
+
+    const generation = await this.db.generation.findUnique({
+      where: { id: dto.generationId },
+      select: { id: true, status: true, outputs: true, workspaceId: true, capability: true },
+    });
+    if (!generation) throw new NotFoundError('generation');
+    if (generation.status !== 'SUCCEEDED') throw new BadRequestException(`that generation is ${generation.status.toLowerCase()}, not finished`);
+
+    const outputs = Array.isArray(generation.outputs) ? (generation.outputs as Array<Record<string, unknown>>) : [];
+    // The full-size picture, not a crop variant: a tile is judged on the
+    // scene, and an export crop may have cut half of it away.
+    const picture = outputs.find((o) => o.role === 'image') ?? outputs.find((o) => o.role === 'variant');
+    const sourceKey = typeof picture?.key === 'string' ? picture.key : null;
+    if (!sourceKey) throw new BadRequestException('that generation produced no picture');
+    if (MediaService.isVault(sourceKey)) throw new BadRequestException('that output is locked');
+
+    const bytes = await this.media.getBytes(sourceKey);
+    // Stored as what it is. The picker sizes it with object-fit, so the tile
+    // never depends on the render's own dimensions.
+    const mime = typeof picture?.mime === 'string' ? picture.mime : 'image/png';
+    const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    const key = templateThumbnailKey(code, ext);
+    await this.media.put(key, bytes, mime);
+    await this.db.template.update({ where: { code }, data: { thumbnailKey: key, operatorEdited: true } });
+    this.templateCatalogue.invalidate();
+    authLog(
+      'admin.template',
+      'succeeded',
+      { userId: actor.userId, code, action: 'render', generationId: generation.id, from: sourceKey, key, reason: dto.reason },
+      req,
+    );
+    return { code, thumbnailKey: key, bytes: bytes.length };
   }
 
   async prices() {

@@ -25,6 +25,7 @@ import {
   StaffGrantDto,
   TemplateCreateDto,
   TemplatePatchDto,
+  TemplateRenderDto,
   TemplateThumbnailDto,
 } from './admin.dto';
 
@@ -160,6 +161,12 @@ export class AdminController {
   @ApiOperation({ summary: "A signed PUT for this template's example render" })
   templateThumbnail(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: TemplateThumbnailDto, @Req() req: Request) {
     return this.admin.templateThumbnailUpload(a, code, b, req);
+  }
+
+  @Post('/templates/:code/render')
+  @ApiOperation({ summary: "Use a finished generation's picture as this template's example" })
+  renderTemplate(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: TemplateRenderDto, @Req() req: Request) {
+    return this.admin.renderTemplateThumbnail(a, code, b, req);
   }
 
   @Get('/prices') prices() {

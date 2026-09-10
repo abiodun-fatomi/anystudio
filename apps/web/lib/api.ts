@@ -1197,6 +1197,9 @@ export const api = {
      */
     templateThumbnailUpload: (code: string, body: { mime: string; bytes: number; reason: string }) =>
       request<{ url: string; expiresInSec: number; key: string }>('POST', `/admin/templates/${encodeURIComponent(code)}/thumbnail`, body),
+    /** Promote a finished generation's picture into a template's example tile. */
+    renderTemplate: (code: string, generationId: string, reason: string) =>
+      request<{ code: string; thumbnailKey: string; bytes: number }>('POST', `/admin/templates/${encodeURIComponent(code)}/render`, { generationId, reason }),
     prices: () => request<Array<{ code: string; credits: number; label: string }>>('GET', '/admin/prices'),
     patchPrice: (code: string, credits: number, reason: string) =>
       request<{ code: string; credits: number }>('PATCH', `/admin/prices/${code}`, { credits, reason }),
