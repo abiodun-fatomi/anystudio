@@ -112,4 +112,39 @@ end
 duplicates = resource_names.group_by(&:itself).select { |_name, occurrences| occurrences.length > 1 }.keys
 assert!(duplicates.empty?, "Render resources are owned by more than one Blueprint: #{duplicates.join(', ')}")
 
+# THE TWO FILES THAT MUST AGREE
+#
+# render-preflight.sh checks the LIVE Render services on every deploy, and it
+# carries its own copy of the expected plan, instance count and concurrencies.
+# That copy is what makes dashboard drift a failed deploy instead of a silent
+# divergence — and it is also a second place to forget when the size changes.
+# Scaling up should be one decision, so this asserts the blueprint and the
+# live-preflight expectations are the same numbers.
+preflight = File.read(File.join(__dir__, 'render-preflight.sh'), encoding: 'UTF-8')
+
+ENVIRONMENTS.each do |file, expected|
+  branch = expected[:branch]
+  block = preflight[/^  #{Regexp.escape(branch)}\)\n(.*?)^    ;;/m]
+  assert!(block, "render-preflight.sh has no case block for '#{branch}'")
+
+  shell = block.scan(/^\s*(EXPECTED_\w+)=(.+)$/).to_h { |k, v| [k, v.strip.delete_prefix("'").delete_suffix("'")] }
+
+  blueprint = YAML.safe_load(File.read(file), aliases: false)
+  by_name = blueprint.fetch('services').to_h { |service| [service.fetch('name'), service] }
+  api = by_name.fetch("anystudio-api#{expected[:suffix]}")
+  worker = by_name.fetch("anystudio-worker#{expected[:suffix]}")
+
+  {
+    'EXPECTED_API_PLAN' => api['plan'],
+    'EXPECTED_API_INSTANCES' => api['numInstances'].to_s,
+    'EXPECTED_WORKER_PLAN' => worker['plan'],
+    'EXPECTED_WORKER_NODE_OPTIONS' => env(worker)['NODE_OPTIONS'],
+    'EXPECTED_WORKER_FAST_CONCURRENCY' => env(worker)['WORKER_FAST_CONCURRENCY'],
+    'EXPECTED_WORKER_HEAVY_CONCURRENCY' => env(worker)['WORKER_HEAVY_CONCURRENCY']
+  }.each do |key, from_blueprint|
+    assert!(shell[key] == from_blueprint,
+            "#{file} says #{key.sub('EXPECTED_', '')}=#{from_blueprint}, render-preflight.sh says #{shell[key]} — change both or the next deploy fails on the live check")
+  end
+end
+
 puts '✔ Render Blueprints preserve production identity, queue, memory, secret-group and PostgreSQL contracts'
