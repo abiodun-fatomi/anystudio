@@ -18,7 +18,7 @@ ENVIRONMENTS = {
   },
   'render.production.yaml' => {
     branch: 'production', suffix: '', app_env: 'production',
-    api_plan: '1c-2g', api_instances: 2, worker_plan: '1c-2g',
+    api_plan: '1c-2g', api_instances: 1, worker_plan: '1c-2g',
     worker_node_options: '--max-old-space-size=1536', worker_fast: '12', worker_heavy: '16'
   }
 }.freeze
@@ -69,6 +69,25 @@ ENVIRONMENTS.each do |file, expected|
   assert!(worker['type'] == 'worker' && media['type'] == 'worker', "#{file}: both queue consumers must be background workers")
   assert!(api['plan'] == expected[:api_plan], "#{file}: API compute plan drifted")
   assert!(api['numInstances'] == expected[:api_instances], "#{file}: API instance count drifted")
+
+  # More than one API instance means more than one Prisma connection pool
+  # against the same Postgres. Without a pooler in front of it the database
+  # runs out of connections under load, and the symptom is requests timing out
+  # at random rather than anything that names connections. So the instance
+  # count and the pooler are one decision, and this is where that is enforced.
+  #
+  # DIRECT_URL must stay on the direct string whatever happens: `migrate
+  # deploy` takes an advisory lock and runs DDL, and neither survives a
+  # transaction pooler.
+  if api['numInstances'].to_i > 1
+    assert!(database['connectionPool'], "#{file}: #{api['numInstances']} API instances need `connectionPool` on the database")
+    api_db = api.fetch('envVars').find { |item| item['key'] == 'DATABASE_URL' }
+    api_direct = api.fetch('envVars').find { |item| item['key'] == 'DIRECT_URL' }
+    assert!(api_db.dig('fromDatabase', 'property') == 'connectionPoolString',
+            "#{file}: with a pooler, DATABASE_URL must use connectionPoolString")
+    assert!(api_direct.dig('fromDatabase', 'property') == 'connectionString',
+            "#{file}: DIRECT_URL must stay on the direct connection — migrations cannot run through a pooler")
+  end
   assert!(api['preDeployCommand'] == 'npm run release', "#{file}: API must run migrations before every deploy")
   assert!(!worker.key?('preDeployCommand') && !media.key?('preDeployCommand'), "#{file}: only the API may run the pre-deploy migration command")
   assert!(worker['plan'] == expected[:worker_plan], "#{file}: main worker compute plan drifted")
@@ -92,5 +111,40 @@ end
 
 duplicates = resource_names.group_by(&:itself).select { |_name, occurrences| occurrences.length > 1 }.keys
 assert!(duplicates.empty?, "Render resources are owned by more than one Blueprint: #{duplicates.join(', ')}")
+
+# THE TWO FILES THAT MUST AGREE
+#
+# render-preflight.sh checks the LIVE Render services on every deploy, and it
+# carries its own copy of the expected plan, instance count and concurrencies.
+# That copy is what makes dashboard drift a failed deploy instead of a silent
+# divergence — and it is also a second place to forget when the size changes.
+# Scaling up should be one decision, so this asserts the blueprint and the
+# live-preflight expectations are the same numbers.
+preflight = File.read(File.join(__dir__, 'render-preflight.sh'), encoding: 'UTF-8')
+
+ENVIRONMENTS.each do |file, expected|
+  branch = expected[:branch]
+  block = preflight[/^  #{Regexp.escape(branch)}\)\n(.*?)^    ;;/m]
+  assert!(block, "render-preflight.sh has no case block for '#{branch}'")
+
+  shell = block.scan(/^\s*(EXPECTED_\w+)=(.+)$/).to_h { |k, v| [k, v.strip.delete_prefix("'").delete_suffix("'")] }
+
+  blueprint = YAML.safe_load(File.read(file), aliases: false)
+  by_name = blueprint.fetch('services').to_h { |service| [service.fetch('name'), service] }
+  api = by_name.fetch("anystudio-api#{expected[:suffix]}")
+  worker = by_name.fetch("anystudio-worker#{expected[:suffix]}")
+
+  {
+    'EXPECTED_API_PLAN' => api['plan'],
+    'EXPECTED_API_INSTANCES' => api['numInstances'].to_s,
+    'EXPECTED_WORKER_PLAN' => worker['plan'],
+    'EXPECTED_WORKER_NODE_OPTIONS' => env(worker)['NODE_OPTIONS'],
+    'EXPECTED_WORKER_FAST_CONCURRENCY' => env(worker)['WORKER_FAST_CONCURRENCY'],
+    'EXPECTED_WORKER_HEAVY_CONCURRENCY' => env(worker)['WORKER_HEAVY_CONCURRENCY']
+  }.each do |key, from_blueprint|
+    assert!(shell[key] == from_blueprint,
+            "#{file} says #{key.sub('EXPECTED_', '')}=#{from_blueprint}, render-preflight.sh says #{shell[key]} — change both or the next deploy fails on the live check")
+  end
+end
 
 puts '✔ Render Blueprints preserve production identity, queue, memory, secret-group and PostgreSQL contracts'
