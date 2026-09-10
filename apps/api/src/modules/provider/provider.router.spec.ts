@@ -1,0 +1,222 @@
+/**
+ * The router and its breaker, against an in-memory table of rows.
+ *
+ * These are unit tests on purpose: the routing decision is pure logic over
+ * rows, and the breaker is a state machine. The only database behaviour —
+ * persisting breakerOpenedAt — is asserted through a fake that records the
+ * write.
+ */
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { PrismaClient, ProviderModel } from '@prisma/client';
+import type { Capability, ProviderInput, ProviderResult } from '@anystudio/shared';
+import { ProviderRegistry } from './provider.registry';
+import { ProviderRouter } from './provider.router';
+import { BaseProvider } from './adapters/base';
+import { imageQualityPreference } from './quality-routing';
+
+class Fake extends BaseProvider {
+  constructor(key: string, caps: Capability[]) {
+    super(key, caps);
+  }
+  async generate(input: ProviderInput): Promise<ProviderResult> {
+    return { providerKey: this.key, artifacts: [{ mime: 'text/plain', role: 'text', text: input.capability }] };
+  }
+}
+
+function row(key: string, capability: Capability, extra: Partial<ProviderModel> = {}): ProviderModel {
+  return {
+    key,
+    capability,
+    priority: 10,
+    costPerCall: 1,
+    enabled: true,
+    breakerOpenedAt: null,
+    workspaceType: null,
+    config: null,
+    licenceNote: null,
+    updatedAt: new Date(),
+    ...extra,
+  };
+}
+
+function fakeDb(rows: ProviderModel[]) {
+  const writes: Array<{ key: string; openedAt: Date | null }> = [];
+  const db = {
+    providerModel: {
+      findMany: async ({ where }: { where: { capability: Capability; OR: Array<{ workspaceType: string | null }>; key?: string | { notIn: string[] } } }) =>
+        rows.filter(
+          (r) =>
+            r.capability === where.capability &&
+            r.enabled &&
+            where.OR.some((o) => o.workspaceType === r.workspaceType) &&
+            (where.key === undefined || (typeof where.key === 'string' ? r.key === where.key : !where.key.notIn.includes(r.key))),
+        ),
+      updateMany: async ({ where, data }: { where: { key: string }; data: { breakerOpenedAt: Date | null } }) => {
+        writes.push({ key: where.key, openedAt: data.breakerOpenedAt });
+        for (const r of rows) if (r.key === where.key) r.breakerOpenedAt = data.breakerOpenedAt;
+        return { count: 1 };
+      },
+    },
+  } as unknown as PrismaClient;
+  return { db, writes };
+}
+
+describe('ProviderRouter', () => {
+  let registry: ProviderRegistry;
+  beforeEach(() => {
+    process.env.APP_ENV = 'production'; // no stub adapter, so only what we register is routable
+    registry = new ProviderRegistry();
+    registry.register(new Fake('a:cheap', ['IMAGE_EDIT']));
+    registry.register(new Fake('b:good', ['IMAGE_EDIT']));
+    registry.register(new Fake('c:bria', ['BACKGROUND_REMOVE']));
+    registry.register(new Fake('d:birefnet', ['BACKGROUND_REMOVE']));
+  });
+
+  it('narrows to one vendor with `only`, drops `exclude`d ones, and lets `prefer` outrank priority', async () => {
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT', { priority: 10 }), row('b:good', 'IMAGE_EDIT', { priority: 20 })]);
+    const router = new ProviderRouter(db, registry);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { only: 'b:good' })).candidates.map((c) => c.row.key)).toEqual(['b:good']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { exclude: ['a:cheap'] })).candidates.map((c) => c.row.key)).toEqual(['b:good']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { prefer: ['b:good'] })).candidates.map((c) => c.row.key)).toEqual(['b:good', 'a:cheap']);
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL', { prefer: ['z:none'] })).candidates.map((c) => c.row.key)).toEqual(['a:cheap', 'b:good']);
+  });
+
+  it('routes video through fal first and preserves Veo when fal is disabled or unavailable', async () => {
+    const wan = row('fal:wan-2.5-i2v', 'IMAGE_TO_VIDEO', { priority: 10 });
+    const veo = row('vertex:veo-3.1-fast', 'IMAGE_TO_VIDEO', { priority: 20 });
+    const { db } = fakeDb([veo, wan]);
+    registry.register(new Fake(veo.key, ['IMAGE_TO_VIDEO']));
+    const router = new ProviderRouter(db, registry);
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([veo.key]);
+    registry.register(new Fake(wan.key, ['IMAGE_TO_VIDEO']));
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([wan.key, veo.key]);
+    wan.enabled = false;
+    expect((await router.route('IMAGE_TO_VIDEO', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual([veo.key]);
+  });
+
+  it('orders candidates by priority and excludes rows with no adapter, with a reason', async () => {
+    const { db } = fakeDb([
+      row('b:good', 'IMAGE_EDIT', { priority: 20 }),
+      row('a:cheap', 'IMAGE_EDIT', { priority: 10 }),
+      row('z:nokey', 'IMAGE_EDIT', { priority: 1 }),
+    ]);
+    const router = new ProviderRouter(db, registry);
+    const d = await router.route('IMAGE_EDIT', 'PERSONAL');
+
+    expect(d.candidates.map((c) => c.row.key)).toEqual(['a:cheap', 'b:good']);
+    expect(d.excluded).toEqual([{ key: 'z:nokey', reason: 'no adapter or credential in this process' }]);
+  });
+
+  it('does not revive a disabled design leader or route an unavailable fallback', async () => {
+    registry.register(new Fake('fal:seedream-4.5-edit', ['IMAGE_EDIT']));
+    const { db } = fakeDb([
+      row('vertex:gemini-3-pro-image', 'IMAGE_EDIT', { enabled: false }),
+      row('fal:seedream-4.5-edit', 'IMAGE_EDIT', { priority: 20 }),
+      row('bfl:flux-kontext-pro', 'IMAGE_EDIT', { priority: 30 }),
+    ]);
+    const decision = await new ProviderRouter(db, registry).route('IMAGE_EDIT', 'PERSONAL', {
+      prefer: imageQualityPreference('IMAGE_EDIT', { useCase: 'design' }),
+    });
+    expect(decision.candidates.map((candidate) => candidate.row.key)).toEqual(['fal:seedream-4.5-edit']);
+    expect(decision.excluded).toContainEqual({ key: 'bfl:flux-kontext-pro', reason: 'no adapter or credential in this process' });
+  });
+
+  it('outside production, a capability with no vendor falls to the stub — but a real vendor always comes first', async () => {
+    process.env.APP_ENV = 'development';
+    const reg = new ProviderRegistry(); // registers the stub itself
+    reg.register(new Fake('a:cheap', ['IMAGE_EDIT']));
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT', { priority: 10 })]);
+    const router = new ProviderRouter(db, reg);
+
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates.map((c) => c.row.key)).toEqual(['a:cheap']);
+    const d = await router.route('UPSCALE', 'PERSONAL');
+    expect(d.candidates.map((c) => c.row.key)).toEqual(['stub:any']);
+    expect(d.candidates[0]!.row.costPerCall).toBe(0);
+    // `only` names one vendor; the stub must not stand in for it.
+    expect((await router.route('UPSCALE', 'PERSONAL', { only: 'z:none' })).candidates).toEqual([]);
+
+    process.env.APP_ENV = 'production';
+    expect((await new ProviderRouter(db, new ProviderRegistry()).route('UPSCALE', 'PERSONAL')).candidates).toEqual([]);
+  });
+
+  it('routes an ORGANIZATION workspace to its tier row and everyone else to the general one', async () => {
+    const { db } = fakeDb([
+      row('d:birefnet', 'BACKGROUND_REMOVE', { priority: 10 }),
+      row('c:bria', 'BACKGROUND_REMOVE', { priority: 5, workspaceType: 'ORGANIZATION' }),
+    ]);
+    const router = new ProviderRouter(db, registry);
+
+    expect((await router.route('BACKGROUND_REMOVE', 'ORGANIZATION')).candidates.map((c) => c.row.key)).toEqual(['c:bria', 'd:birefnet']);
+    expect((await router.route('BACKGROUND_REMOVE', 'BUSINESS')).candidates.map((c) => c.row.key)).toEqual(['d:birefnet']);
+  });
+
+  it('opens the breaker at once on PROVIDER_DOWN, persists it, and falls through to the next candidate', async () => {
+    const { db, writes } = fakeDb([row('a:cheap', 'IMAGE_EDIT', { priority: 10 }), row('b:good', 'IMAGE_EDIT', { priority: 20 })]);
+    const router = new ProviderRouter(db, registry);
+
+    await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'PROVIDER_DOWN', latencyMs: 10 });
+    expect(writes).toEqual([{ key: 'a:cheap', openedAt: expect.any(Date) }]);
+
+    const d = await router.route('IMAGE_EDIT', 'PERSONAL');
+    expect(d.candidates.map((c) => c.row.key)).toEqual(['b:good']);
+    expect(d.excluded[0]).toMatchObject({ key: 'a:cheap', reason: expect.stringContaining('breaker open') });
+  });
+
+  it('trips on a sustained error rate, not on one bad call', async () => {
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT')]);
+    const router = new ProviderRouter(db, registry);
+
+    await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'RETRYABLE', latencyMs: 1 });
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+
+    for (let i = 0; i < 4; i++) await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'RETRYABLE', latencyMs: 1 });
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(0);
+  });
+
+  it('ignores the customer-input failures when judging a provider', async () => {
+    const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT')]);
+    const router = new ProviderRouter(db, registry);
+    for (let i = 0; i < 10; i++) await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'CONTENT_REJECTED', latencyMs: 1 });
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+  });
+
+  it('half-opens after the cooldown: one probe, and a success closes it', async () => {
+    const { db, writes } = fakeDb([row('a:cheap', 'IMAGE_EDIT')]);
+    const router = new ProviderRouter(db, registry);
+    await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'PROVIDER_DOWN', latencyMs: 1 });
+
+    // Pretend a minute passed.
+    const h = (router as unknown as { health: Map<string, { openedAt: number }> }).health.get('a:cheap|IMAGE_EDIT')!;
+    h.openedAt = Date.now() - 61_000;
+
+    const probe = await router.route('IMAGE_EDIT', 'PERSONAL');
+    expect(probe.candidates).toHaveLength(1); // the probe goes through
+    const second = await router.route('IMAGE_EDIT', 'PERSONAL');
+    expect(second.candidates).toHaveLength(0); // nobody else while the probe is in flight
+
+    await router.report('a:cheap', 'IMAGE_EDIT', { ok: true, latencyMs: 1 });
+    expect(writes.at(-1)).toEqual({ key: 'a:cheap', openedAt: null });
+    expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+  });
+
+  it.each(['CONTENT_REJECTED', 'REQUEST_REJECTED', 'SUBMISSION_UNKNOWN', 'INVALID_INPUT', 'LOW_QUALITY'] as const)(
+    'releases an inconclusive half-open probe after %s so the provider is not excluded forever',
+    async (kind) => {
+      const { db } = fakeDb([row('a:cheap', 'IMAGE_EDIT')]);
+      const router = new ProviderRouter(db, registry);
+      await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind: 'PROVIDER_DOWN', latencyMs: 1 });
+
+      const h = (router as unknown as { health: Map<string, { openedAt: number }> }).health.get('a:cheap|IMAGE_EDIT')!;
+      h.openedAt = Date.now() - 61_000;
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+
+      await router.report('a:cheap', 'IMAGE_EDIT', { ok: false, kind, latencyMs: 1 });
+      // The verdict was about this request, not provider health. It releases
+      // the lease so the next request can be the next probe immediately.
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(1);
+      // Still only one probe at a time.
+      expect((await router.route('IMAGE_EDIT', 'PERSONAL')).candidates).toHaveLength(0);
+    },
+  );
+});

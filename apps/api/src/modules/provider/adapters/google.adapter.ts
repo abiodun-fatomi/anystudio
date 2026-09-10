@@ -1,0 +1,508 @@
+/**
+ * Google — Gemini image models, Gemini text, and Veo.
+ *
+ * TWO DOORS, ONE ADAPTER
+ * ----------------------
+ * The same models are reachable through the Gemini Developer API (an API
+ * key, quick to start) and through Vertex AI (a service account, and the
+ * only door with Google's generative-AI indemnification on GA models). The
+ * adapter takes whichever credential is configured and prefers Vertex when
+ * both are. Veo parameters, operation polling and output formats differ
+ * between the two APIs. Start on the key; move to Vertex before selling to an
+ * ORGANIZATION customer whose procurement asks about indemnity.
+ *
+ * Model names live on the ProviderModel row's config, not here.
+ */
+
+import { createSign } from 'node:crypto';
+import { ProviderError, type Capability, type ProviderArtifact, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
+import { BaseProvider } from './base';
+import { fetchBytes, http, MAX_PROVIDER_OUTPUT_BYTES, pick, poll, readLimitedResponseBytes } from './http';
+
+export interface GoogleCredentials {
+  apiKey?: string;
+  /** The service-account JSON, as a string, for Vertex. */
+  saJson?: string;
+  project?: string;
+  location?: string;
+}
+
+// Inline JSON has simultaneous encoded, parsed and decoded copies. Keep its
+// limit below the streamed-download limit on the 512 MiB orchestration worker.
+const MAX_INLINE_VIDEO_BYTES = 32 * 1024 * 1024;
+const MAX_INLINE_IMAGE_BYTES = 16 * 1024 * 1024;
+
+const KNOWN: Record<string, { capabilities: Capability[]; model: string; vertexModel?: string }> = {
+  'vertex:gemini-3-pro-image': { capabilities: ['IMAGE_EDIT', 'IMAGE_GENERATE', 'BACKGROUND_REPLACE', 'RELIGHT'], model: 'gemini-3-pro-image' },
+  // Vertex retired the preview endpoint in favour of -001. The Gemini
+  // Developer API still names its endpoint preview, so the credential door
+  // determines the correct model id.
+  'vertex:veo-3.1-fast': { capabilities: ['IMAGE_TO_VIDEO'], model: 'veo-3.1-fast-generate-preview', vertexModel: 'veo-3.1-fast-generate-001' },
+  // 2.5-flash-lite was retired for new callers mid-2026 — it answers 404 with
+  // "no longer available to new users ... use models/gemini-3.5-flash-lite",
+  // which is where this name comes from.
+  'google:gemini-3.5-flash-lite': { capabilities: ['TEXT_GENERATE'], model: 'gemini-3.5-flash-lite' },
+  /** Cloud Text-to-Speech. Needs the service account (an API key for Generative Language does not open this door). */
+  'google:tts': { capabilities: ['VOICEOVER'], model: 'en-GB-Standard-A' },
+};
+
+export function googleDefaultModel(key: string, vertex: boolean): string | undefined {
+  const known = KNOWN[key];
+  return known ? (vertex ? (known.vertexModel ?? known.model) : known.model) : undefined;
+}
+
+/**
+ * Veo 3/3.1 accepts only 4, 6 or 8 seconds. Snap upward so the 5-second
+ * product slot is trimmed from six seconds instead of freezing its last frame
+ * for a full second. This keeps the quality-first Veo route without lowering
+ * the quality of the assembled timeline.
+ */
+export function veoDuration(wanted: number): 4 | 6 | 8 {
+  if (wanted >= 8) return 8;
+  if (wanted > 4) return 6;
+  return 4;
+}
+
+export class GoogleProvider extends BaseProvider {
+  static all(creds: GoogleCredentials): GoogleProvider[] {
+    const auth = new GoogleAuth(creds);
+    const canGenerate = Boolean(creds.apiKey || (creds.saJson && creds.project));
+    return Object.entries(KNOWN)
+      .filter(([key]) => (key === 'google:tts' ? Boolean(creds.saJson) : canGenerate))
+      .map(([key, k]) => new GoogleProvider(auth, key, k.capabilities, googleDefaultModel(key, auth.vertex)!));
+  }
+
+  constructor(
+    private readonly auth: GoogleAuth,
+    key: string,
+    capabilities: Capability[],
+    private readonly defaultModel: string,
+  ) {
+    super(key, capabilities);
+  }
+
+  async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const model = this.str(input.config, 'model', this.defaultModel);
+    switch (input.capability) {
+      case 'IMAGE_TO_VIDEO':
+        return this.veo(model, input, opts);
+      case 'TEXT_GENERATE':
+        return this.text(model, input, opts);
+      case 'VOICEOVER':
+        return this.speak(model, input, opts);
+      default:
+        return this.image(model, input, opts);
+    }
+  }
+
+  // ---- Gemini image: generateContent with an image response ---------------
+  private async image(model: string, input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const parts: unknown[] = [];
+    let prompt: string;
+    let aspect = '1:1';
+    let count = 1;
+
+    switch (input.capability) {
+      case 'IMAGE_EDIT': {
+        const p = this.params(input, 'IMAGE_EDIT');
+        aspect = p.aspect;
+        prompt = p.preserveProduct
+          ? `${p.prompt}\n\nThe subject in the reference image must remain exactly as it is: identical shape, colours, label, text and proportions. ${p.useCase === 'design' ? 'Build the requested layout and typography around the preserved subject; follow the requested design style.' : 'Change only the background, surface, lighting and surroundings. Photorealistic, commercial product photography.'}`
+          : p.prompt;
+        parts.push(await inline(this.key, this.file(input, 'sourceKey'), opts.timeoutMs, opts.signal));
+        break;
+      }
+      case 'BACKGROUND_REPLACE': {
+        const p = this.params(input, 'BACKGROUND_REPLACE');
+        aspect = p.aspect;
+        prompt = `Replace the background of this product photo with: ${p.prompt}. Keep the product pixel-identical.${p.shadow ? ' Add a natural contact shadow.' : ''}${p.relight ? ' Match the product lighting to the new scene.' : ''}`;
+        parts.push(await inline(this.key, this.file(input, 'sourceKey'), opts.timeoutMs, opts.signal));
+        break;
+      }
+      case 'RELIGHT': {
+        const p = this.params(input, 'RELIGHT');
+        prompt = `Relight this product photo${p.prompt ? `: ${p.prompt}` : ' with soft, even studio lighting and a natural contact shadow'}. Keep the product and background otherwise identical.`;
+        parts.push(await inline(this.key, this.file(input, 'sourceKey'), opts.timeoutMs, opts.signal));
+        break;
+      }
+      case 'IMAGE_GENERATE': {
+        const p = this.params(input, 'IMAGE_GENERATE');
+        aspect = p.aspect;
+        count = p.count;
+        prompt = p.style ? `${p.prompt}\n\nStyle: ${p.style}` : p.prompt;
+        break;
+      }
+      default:
+        return this.unsupported(input.capability);
+    }
+    parts.push({ text: prompt });
+
+    opts.onProgress?.('Writing', 20);
+    // Gemini emits one image per generateContent call. Honour the same public
+    // `count` contract as fal, but consume/decode one response at a time:
+    // retaining several large base64 JSON bodies at once can exhaust a worker.
+    const [url, headers] = await Promise.all([this.auth.url(`models/${model}:generateContent`), this.auth.headers()]);
+    const artifacts: ProviderArtifact[] = [];
+    const usage: unknown[] = [];
+    const deadline = Date.now() + opts.timeoutMs;
+    for (let i = 0; i < count; i++) {
+      if (opts.signal?.aborted || Date.now() >= deadline) throw new ProviderError('RETRYABLE', `${this.key}: image generation budget exhausted`, this.key);
+      const res = await http<unknown>(this.key, url, {
+        headers,
+        body: { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: aspect } } },
+        timeoutMs: Math.max(1, deadline - Date.now()),
+        signal: opts.signal,
+        // generateContent returns the image itself inside JSON, not a URL.
+        maxResponseBytes: Math.ceil(MAX_INLINE_IMAGE_BYTES / 3) * 4 + 64 * 1024,
+      });
+      const finish = pick<string>(res.json, 'candidates.0.finishReason');
+      const blocked = pick<string>(res.json, 'promptFeedback.blockReason');
+      if (blocked || finish === 'SAFETY' || finish === 'PROHIBITED_CONTENT' || finish === 'IMAGE_SAFETY') {
+        throw new ProviderError('CONTENT_REJECTED', `${this.key}: refused (${blocked ?? finish})`, this.key, { raw: res.json });
+      }
+      const candParts = pick<Array<{ inlineData?: { mimeType: string; data: string } }>>(res.json, 'candidates.0.content.parts') ?? [];
+      const images = candParts
+        .filter((part) => part.inlineData?.mimeType?.startsWith('image/'))
+        .map((part) => {
+          const { data, mimeType } = part.inlineData!;
+          if (
+            typeof data !== 'string' ||
+            !data.length ||
+            data.length > Math.ceil(MAX_INLINE_IMAGE_BYTES / 3) * 4 ||
+            data.length % 4 !== 0 ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(data)
+          ) {
+            throw new ProviderError('RETRYABLE', `${this.key}: invalid or oversized inline image`, this.key);
+          }
+          return { bytes: Buffer.from(data, 'base64'), mime: mimeType, role: 'image' as const };
+        });
+      if (images.length === 0) throw new ProviderError('RETRYABLE', `${this.key}: no image in response (finish=${finish})`, this.key, { raw: res.json });
+      artifacts.push(...images);
+      usage.push(pick(res.json, 'usageMetadata'));
+    }
+    return {
+      providerKey: this.key,
+      artifacts,
+      // Gemini needs one paid HTTP call per requested image. The model row's
+      // unit cost is injected into config by the runner.
+      costMinor: repeatedCallCostMinor(count, input.config.costMinor),
+      meta: { model, count, usage },
+    };
+  }
+
+  // ---- Veo: predictLongRunning, then poll the operation ---------------------
+  private async veo(model: string, input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const p = this.params(input, 'IMAGE_TO_VIDEO');
+    const durationSec = veoDuration(p.durationSec);
+    const headers = await this.auth.headers();
+    let providerJobId: string;
+    if (opts.resume) {
+      providerJobId = opts.resume.providerJobId;
+    } else {
+      const image = await inline(this.key, this.file(input, 'sourceKey'), opts.timeoutMs, opts.signal);
+      const started = await http<{ name: string }>(this.key, await this.auth.url(`models/${model}:predictLongRunning`), {
+        headers,
+        body: {
+          instances: [
+            {
+              prompt: p.motion ? `${p.prompt}. Camera: ${p.motion}` : p.prompt,
+              image: { bytesBase64Encoded: image.inlineData.data, mimeType: image.inlineData.mimeType },
+            },
+          ],
+          parameters: {
+            aspectRatio: p.aspect === '1:1' ? '9:16' : p.aspect,
+            durationSeconds: durationSec,
+            resolution: this.str(input.config, 'resolution', '720p'),
+            personGeneration: 'allow_adult',
+            // Gemini generates native audio and rejects this Vertex-only
+            // switch. The assembly pipeline controls the delivered soundtrack.
+            ...(this.auth.vertex ? { generateAudio: p.audio } : {}),
+          },
+        },
+        timeoutMs: 60_000,
+        signal: opts.signal,
+      });
+      providerJobId = started.json.name;
+      if (!providerJobId) throw new ProviderError('RETRYABLE', `${this.key}: long-running response had no operation name`, this.key, { raw: started.json });
+      await opts.onSubmitted?.(providerJobId);
+    }
+    opts.onProgress?.('Rendering your video', 25);
+
+    const done = await poll(
+      async () => {
+        const pollPath = this.auth.vertex ? `${providerJobId.split('/operations/')[0]}:fetchPredictOperation` : providerJobId;
+        const op = await http<{ done?: boolean; error?: { message: string; code: number }; response?: unknown }>(this.key, await this.auth.url(pollPath), {
+          headers: await this.auth.headers(),
+          ...(this.auth.vertex ? { body: { operationName: providerJobId }, maxResponseBytes: Math.ceil(MAX_INLINE_VIDEO_BYTES / 3) * 4 + 64 * 1024 } : {}),
+          timeoutMs: 20_000,
+          signal: opts.signal,
+        });
+        if (op.json.error) {
+          const code = op.json.error.code;
+          const kind = /safety|policy|prohibited|moderation/i.test(op.json.error.message)
+            ? 'CONTENT_REJECTED'
+            : code === 3 || code === 400
+              ? 'REQUEST_REJECTED'
+              : [5, 7, 16, 401, 403, 404].includes(code)
+                ? 'PROVIDER_DOWN'
+                : code === 8 || code === 429
+                  ? 'RATE_LIMITED'
+                  : 'RETRYABLE';
+          await opts.onSettled?.('FAILED');
+          throw new ProviderError(kind, `${this.key}: ${op.json.error.message}`, this.key, {
+            providerJobId,
+          });
+        }
+        return op.json.done ? op.json : null;
+      },
+      {
+        intervalMs: 8_000,
+        timeoutMs: opts.timeoutMs,
+        signal: opts.signal,
+        onTick: (ms) => opts.onProgress?.(`Rendering your video (${Math.round(ms / 1000)}s)`, Math.min(80, 25 + ms / 4000)),
+      },
+    );
+
+    const uri = pick<string>(done, 'response.generateVideoResponse.generatedSamples.0.video.uri') ?? pick<string>(done, 'response.videos.0.uri');
+    const encoded = this.auth.vertex ? pick<string>(done, 'response.videos.0.bytesBase64Encoded') : undefined;
+    const filtered = pick<number>(done, 'response.generateVideoResponse.raiMediaFilteredCount') ?? pick<number>(done, 'response.raiMediaFilteredCount');
+    if (!uri && !encoded) {
+      await opts.onSettled?.('FAILED');
+      throw new ProviderError(filtered ? 'CONTENT_REJECTED' : 'RETRYABLE', `${this.key}: no video in finished operation`, this.key, {
+        providerJobId,
+        raw: done,
+      });
+    }
+    // The file URL needs the same credential as the API.
+    if (encoded && (encoded.length > Math.ceil(MAX_INLINE_VIDEO_BYTES / 3) * 4 || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))) {
+      throw new ProviderError('RETRYABLE', `${this.key}: invalid or oversized inline video`, this.key, { providerJobId });
+    }
+    const { bytes, mime } = encoded
+      ? { bytes: Buffer.from(encoded, 'base64'), mime: pick<string>(done, 'response.videos.0.mimeType') ?? 'video/mp4' }
+      : await fetchBytesWith(this.key, uri!, await this.auth.headers(), 120_000, opts.signal);
+    return {
+      providerKey: this.key,
+      providerJobId,
+      artifacts: [{ bytes, mime: mime.startsWith('video/') ? mime : 'video/mp4', role: 'video', durationMs: durationSec * 1000 }],
+      costMinor: veoCostMinor(durationSec, input.config.costPerSecondMinor),
+      meta: { model },
+    };
+  }
+
+  // ---- Gemini text: structured output ---------------------------------------
+  private async text(model: string, input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const req = input.prompt;
+    if (!req) throw new ProviderError('INVALID_INPUT', `${this.key}: TEXT_GENERATE without a prepared prompt`, this.key);
+    const parts: unknown[] = [];
+    for (const part of req.parts) {
+      if ('text' in part) parts.push({ text: part.text });
+      else parts.push(await inline(this.key, part.imageUrl, opts.timeoutMs, opts.signal));
+    }
+    const res = await http<unknown>(this.key, await this.auth.url(`models/${model}:generateContent`), {
+      headers: await this.auth.headers(),
+      body: {
+        systemInstruction: { parts: [{ text: req.system }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          temperature: req.temperature ?? 0.7,
+          maxOutputTokens: req.maxTokens ?? 2048,
+          ...(req.jsonSchema ? { responseMimeType: 'application/json', responseSchema: stripUnsupported(req.jsonSchema) } : {}),
+        },
+      },
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
+    });
+    const blocked = pick<string>(res.json, 'promptFeedback.blockReason');
+    if (blocked) throw new ProviderError('CONTENT_REJECTED', `${this.key}: refused (${blocked})`, this.key);
+    const textOut = (pick<Array<{ text?: string }>>(res.json, 'candidates.0.content.parts') ?? []).map((p) => p.text ?? '').join('');
+    if (!textOut) throw new ProviderError('RETRYABLE', `${this.key}: empty completion`, this.key, { raw: res.json });
+    return {
+      providerKey: this.key,
+      artifacts: [{ mime: 'application/json', role: 'text', text: req.jsonSchema ? parseJson(this.key, textOut) : textOut }],
+      meta: { model, usage: pick(res.json, 'usageMetadata') },
+    };
+  }
+
+  /**
+   * POST https://texttospeech.googleapis.com/v1/text:synthesize with the
+   * service-account token. The voice name carries its language
+   * ("en-NG-Standard-A"), so the language code is derived from it.
+   */
+  private async speak(defaultVoice: string, input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const p = this.params(input, 'VOICEOVER');
+    const name = p.providerVoiceId ?? defaultVoice;
+    const languageCode = name.split('-').slice(0, 2).join('-');
+    const headers = await this.auth.serviceHeaders();
+    const res = await http<{ audioContent?: string }>(this.key, 'https://texttospeech.googleapis.com/v1/text:synthesize', {
+      headers,
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
+      body: { input: { text: p.script }, voice: { languageCode, name }, audioConfig: { audioEncoding: 'MP3', speakingRate: p.speed, pitch: 0 } },
+    });
+    const b64 = res.json?.audioContent;
+    if (!b64) throw new ProviderError('RETRYABLE', `${this.key}: no audioContent in response`, this.key);
+    return {
+      providerKey: this.key,
+      artifacts: [{ bytes: new Uint8Array(Buffer.from(b64, 'base64')), mime: 'audio/mpeg', role: 'audio' }],
+      meta: { voice: name },
+    };
+  }
+}
+
+/**
+ * Gemini's schema dialect rejects a few JSON-Schema keywords; drop them
+ * rather than fail.
+ *
+ * The catch, and it cost us the whole ideas feature: a keyword name and a
+ * PROPERTY name live in different namespaces, and this used to walk every
+ * object treating both the same. `title` is a JSON-Schema annotation — and
+ * it is also what an idea's title field is called. So `properties.title`
+ * was deleted from the schema while `required: ['title', …]` went on
+ * naming it, and Gemini answered, correctly:
+ *
+ *   response_schema.properties[ideas].items.required[0]: property is not defined
+ *
+ * Every ideas request 400'd, and the caller quietly served stock ideas, so
+ * the feature looked bland rather than broken. `default` and `examples`
+ * are the same trap waiting for the next schema that needs those words.
+ *
+ * So the walk now knows where it is: inside a map of property names, a key
+ * is a NAME and is never dropped; anywhere else it is a keyword.
+ *
+ * `enum` needs translating rather than dropping. In Gemini's Schema proto
+ * the field is a repeated STRING whatever the node's type is, so the shot
+ * plan's honest `{ type: 'integer', enum: [5, 8] }` came back as
+ *
+ *   Invalid value at '…items.properties[2].value.enum[0]' (TYPE_STRING), 5
+ *
+ * and every ad's shot plan fell through to the text fallback. The values are
+ * quoted here rather than corrected in the schema itself, because the schema
+ * is right — it is Gemini's dialect that wants them as strings, and OpenAI
+ * and Anthropic are both given the same schema and want them as numbers.
+ */
+const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions']);
+const DROP = new Set(['$schema', 'additionalProperties', 'default', 'examples', 'title']);
+
+export function stripUnsupported(schema: Record<string, unknown>): Record<string, unknown> {
+  /** A schema node: its keys are keywords. */
+  const node = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(node);
+    if (!v || typeof v !== 'object') return v;
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (DROP.has(k)) continue;
+      if (k === 'enum' && Array.isArray(val)) {
+        out[k] = val.map((m) => (m === null || typeof m === 'object' ? m : String(m)));
+        continue;
+      }
+      out[k] = SCHEMA_MAPS.has(k) ? names(val) : node(val);
+    }
+    return out;
+  };
+  /** A map of property names to schemas: its keys are names, and names are untouchable. */
+  const names = (v: unknown): unknown => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return node(v);
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([name, sub]) => [name, node(sub)]));
+  };
+  return node(schema) as Record<string, unknown>;
+}
+
+export function parseJson(providerKey: string, text: string): unknown {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    throw new ProviderError('RETRYABLE', `${providerKey}: completion was not valid JSON`, providerKey, { raw: text.slice(0, 500) });
+  }
+}
+
+export function veoCostMinor(durationSec: number, costPerSecondMinor: unknown): number {
+  return Math.ceil(durationSec * positiveNumber(costPerSecondMinor, 10));
+}
+
+export function repeatedCallCostMinor(count: number, configured: unknown): number | undefined {
+  const unit = Number(configured);
+  return Number.isFinite(unit) && unit >= 0 ? Math.ceil(count * unit) : undefined;
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+async function inline(providerKey: string, url: string, timeoutMs: number, signal?: AbortSignal): Promise<{ inlineData: { mimeType: string; data: string } }> {
+  const { bytes, mime } = await fetchBytes(providerKey, url, timeoutMs, signal);
+  return { inlineData: { mimeType: mime, data: Buffer.from(bytes).toString('base64') } };
+}
+
+async function fetchBytesWith(providerKey: string, url: string, headers: Record<string, string>, timeoutMs: number, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const res = await fetch(url, { headers, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  if (!res.ok) throw new ProviderError('RETRYABLE', `${providerKey}: could not download video (${res.status})`, providerKey);
+  return {
+    bytes: await readLimitedResponseBytes(providerKey, res, MAX_PROVIDER_OUTPUT_BYTES, 'video download'),
+    mime: res.headers.get('content-type')?.split(';')[0] ?? 'video/mp4',
+  };
+}
+
+/**
+ * Credentials for either door. A service account is exchanged for a
+ * short-lived access token with a self-signed JWT — forty lines of crypto
+ * instead of the Google auth library and its dependency tree.
+ */
+export class GoogleAuth {
+  private token: { value: string; exp: number } | null = null;
+  private readonly sa: { client_email: string; private_key: string } | null;
+
+  constructor(private readonly creds: GoogleCredentials) {
+    this.sa = creds.saJson ? (JSON.parse(creds.saJson) as { client_email: string; private_key: string }) : null;
+  }
+
+  get vertex(): boolean {
+    return Boolean(this.sa && this.creds.project);
+  }
+
+  async url(path: string): Promise<string> {
+    if (this.vertex) {
+      const loc = this.creds.location ?? 'us-central1';
+      const host = loc === 'global' ? 'aiplatform.googleapis.com' : `${loc}-aiplatform.googleapis.com`;
+      // Operation names from Vertex already carry the full resource path.
+      return path.startsWith('projects/')
+        ? `https://${host}/v1/${path}`
+        : `https://${host}/v1/projects/${this.creds.project}/locations/${loc}/publishers/google/${path}`;
+    }
+    return `https://generativelanguage.googleapis.com/v1beta/${path}`;
+  }
+
+  /** Bearer token for Google Cloud services other than Vertex (Text-to-Speech). Service account only. */
+  async serviceHeaders(): Promise<Record<string, string>> {
+    if (!this.sa) throw new ProviderError('PROVIDER_DOWN', 'google: this service needs GOOGLE_VERTEX_SA_JSON (a service account), not an API key', 'google');
+    return { authorization: `Bearer ${await this.accessToken()}` };
+  }
+
+  async headers(): Promise<Record<string, string>> {
+    if (this.vertex) return { authorization: `Bearer ${await this.accessToken()}` };
+    if (!this.creds.apiKey) throw new ProviderError('PROVIDER_DOWN', 'google: no credential configured', 'google');
+    return { 'x-goog-api-key': this.creds.apiKey };
+  }
+
+  private async accessToken(): Promise<string> {
+    if (this.token && this.token.exp - 60 > Date.now() / 1000) return this.token.value;
+    const now = Math.floor(Date.now() / 1000);
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ iss: this.sa!.client_email, scope: 'https://www.googleapis.com/auth/cloud-platform', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 })}`;
+    const sig = createSign('RSA-SHA256').update(unsigned).sign(this.sa!.private_key, 'base64url');
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${sig}` }),
+    });
+    if (!res.ok) throw new ProviderError('PROVIDER_DOWN', `google: token exchange failed (${res.status})`, 'google');
+    const json = (await res.json()) as { access_token: string; expires_in: number };
+    this.token = { value: json.access_token, exp: now + json.expires_in };
+    return json.access_token;
+  }
+}

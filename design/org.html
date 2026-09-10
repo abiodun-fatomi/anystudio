@@ -1,0 +1,990 @@
+<meta charset="utf-8">
+<title>Set up an organization · AnyStudio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- Account-creation flow: kept out of the index for the same reason as the
+     sign-in screens, and no-referrer so an invite token in the URL never leaks. -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="description" content="Create an AnyStudio organization: a test key in minutes, projects, seats with roles, and one invoice.">
+<link rel="canonical" href="https://anystudio.ai/organizations/new">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AnyStudio">
+<meta property="og:title" content="Set up an AnyStudio organization">
+<meta property="og:description" content="A test key before you talk to anyone. Projects, seats with roles, and one invoice.">
+<meta property="og:image" content="https://anystudio.ai/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#EFECF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131016" media="(prefers-color-scheme: dark)">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=(), payment=(), usb=()">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ============ TOKENS (same system as the landing page) ============ */
+:root{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --danger:#B3261E; --ok:#0F7B4F;
+  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
+  --frame-shadow-lg:0 2px 4px rgba(23,19,26,.06),0 24px 60px rgba(23,19,26,.12);
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Hanken Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:4px;
+  --pad-b:38px;   /* both columns close on this line */
+  --foot-lh:22px; /* and their last row shares this line box */
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not([data-app-theme="light"]){
+    --paper:#131016; --surface:#1B1621; --surface-2:#241E2B;
+    --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+    --line:#352C3E; --line-soft:#2A2332;
+    --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+    --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+    --danger:#FF8A80; --ok:#5BD6A0;
+    --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+    --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"], :root[data-app-theme="dark"]{
+  --paper:#131016; --surface:#1B1621; --surface-2:#241E2B;
+  --ink:#F4F0F7; --ink-soft:#D6CEDD; --muted:#A79FAE;
+  --line:#352C3E; --line-soft:#2A2332;
+  --accent:#FF3D93; --accent-ink:#1A0210; --accent-wash:#330A1E;
+  --cyan:#3FD0E0; --cyan-wash:#0B2A2E;
+  --danger:#FF8A80; --ok:#5BD6A0;
+  --frame-shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+  --frame-shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+:root[data-app-theme="light"]{
+  --paper:#EFECF1; --surface:#F9F7FB; --surface-2:#FFFFFF;
+  --ink:#17131A; --ink-soft:#3B3341; --muted:#6E6575;
+  --line:#D9D3DE; --line-soft:#E7E2EB;
+  --accent:#D6006E; --accent-ink:#FFFFFF; --accent-wash:#FDE7F1;
+  --cyan:#00808F; --cyan-wash:#DFF3F5;
+  --danger:#B3261E; --ok:#0F7B4F;
+  --frame-shadow:0 1px 2px rgba(23,19,26,.06),0 8px 24px rgba(23,19,26,.07);
+  --frame-shadow-lg:0 2px 4px rgba(23,19,26,.06),0 24px 60px rgba(23,19,26,.12);
+  color-scheme:light;
+}
+
+/* ============ BASE ============ */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.025em;line-height:1.08;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;color:inherit;cursor:pointer}
+img{max-width:100%;display:block}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:2px}
+.mono{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* ============ SHELL ============
+   Same mechanics as the sign-in screens: on desktop the shell is exactly one
+   viewport tall, each column scrolls inside itself, and the footer is a grid
+   row rather than the last thing in a column — so the two sides always close
+   on the same line and the document itself never moves. */
+.shell{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);min-height:100vh}
+@supports(height:100dvh){.shell{min-height:100dvh}}
+@media(max-width:940px){.shell{grid-template-columns:1fr;min-height:0}}
+@media(min-width:941px){
+  .shell{height:100vh;overflow:hidden;grid-template-rows:minmax(0,1fr) auto}
+  .shell>.aside{grid-column:1;grid-row:1/3;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+  .shell>.main{grid-column:2;grid-row:1;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;padding-bottom:0}
+  .shell>.main .step-wrap{overflow-y:auto;overscroll-behavior:contain;display:grid;align-content:safe center}
+  .shell>.main .step-wrap[data-more="true"]{
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+    mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+  }
+  .shell>.main-foot{grid-column:2;grid-row:2;justify-content:flex-end;
+    padding:0 clamp(18px,4vw,48px) calc(var(--pad-b) - 9px + env(safe-area-inset-bottom))}
+}
+@supports(height:100dvh){@media(min-width:941px){.shell{height:100dvh}}}
+
+/* ---------- left: the organization taking shape ---------- */
+.aside{
+  /* the glow behind this column is inset -20% on each side; without clipping it
+     pushed 78px of horizontal scroll onto every phone. `clip` rather than
+     `hidden` so the other axis is not turned into a scroll container. */
+  overflow-x:clip;
+  position:relative;padding:38px clamp(24px,4vw,52px) calc(var(--pad-b) + env(safe-area-inset-bottom));
+  background:var(--surface);border-right:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:26px;
+}
+.aside::before{
+  content:"";position:absolute;inset:auto -20% 0 -20%;height:400px;
+  background:radial-gradient(closest-side,var(--accent-wash),transparent 72%);pointer-events:none;
+}
+.aside>*{position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--f-display);font-weight:800;font-size:18px;
+  letter-spacing:-.03em;color:var(--ink);text-decoration:none;padding:10px 0;min-height:44px}
+.brand:hover{text-decoration:none}
+.brand svg{width:22px;height:22px;flex:none}
+
+/* the progress rail: four numbered steps, the fork is not one of them */
+.rail{display:grid;gap:0}
+.rail .r{display:grid;grid-template-columns:26px 1fr;gap:13px;align-items:start;padding-bottom:17px;position:relative}
+.rail .r:last-child{padding-bottom:0}
+.rail .r:not(:last-child)::before{content:"";position:absolute;left:12.5px;top:26px;bottom:1px;width:1px;background:var(--line)}
+.rail .r:not(:last-child).done::before{background:var(--accent)}
+.rail .dot{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);
+  display:grid;place-items:center;font-family:var(--f-mono);font-size:10px;font-weight:700;color:var(--muted);
+  position:relative;z-index:1;transition:.2s}
+.rail .dot svg{width:12px;height:12px;stroke:var(--accent-ink);fill:none;stroke-width:3.2;display:none}
+.rail .r.on .dot{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.rail .r.done .dot{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.rail .r.done .dot span{display:none}
+.rail .r.done .dot svg{display:block}
+.rail .t{font-size:14.5px;font-weight:600;line-height:1.35;color:var(--muted);transition:color .2s}
+.rail .r.on .t,.rail .r.done .t{color:var(--ink)}
+.rail .d{display:block;font-size:13px;font-weight:400;color:var(--muted);margin-top:2px;line-height:1.45}
+
+/* the org card fills in as they answer — the value is visible before signup ends */
+.orgcard{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:18px 19px;
+  box-shadow:var(--frame-shadow)}
+.orgcard .top{display:flex;align-items:center;gap:11px;padding-bottom:13px;border-bottom:1px solid var(--line-soft)}
+.orgcard .mark{width:38px;height:38px;border-radius:5px;flex:none;display:grid;place-items:center;
+  background:var(--accent-wash);color:var(--accent);font-family:var(--f-display);font-weight:800;font-size:16px}
+.orgcard .nm{font-family:var(--f-display);font-weight:700;font-size:16.5px;letter-spacing:-.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orgcard .nm.empty{color:var(--muted);font-weight:500;font-family:var(--f-body);font-size:15px}
+.orgcard .kind{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.orgcard dl{margin:13px 0 0;display:grid;gap:9px}
+.orgcard .row{display:flex;justify-content:space-between;gap:14px;align-items:baseline;font-size:13.5px}
+.orgcard dt{color:var(--muted)}
+.orgcard dd{margin:0;color:var(--ink);font-weight:500;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.orgcard dd.pending{color:var(--muted);font-weight:400}
+.aside-foot{margin-top:auto;display:grid;gap:9px;font-size:13.5px;color:var(--muted);line-height:var(--foot-lh)}
+.aside-foot a{font-weight:500;display:inline-block;padding:9px 2px;margin:-9px -2px}
+
+/* ---------- right: the step ---------- */
+.main{display:flex;flex-direction:column;
+  padding:calc(20px + env(safe-area-inset-top)) clamp(18px,4vw,48px) calc(var(--pad-b) + env(safe-area-inset-bottom))}
+@media(max-width:380px){.main{padding-inline:16px}}
+.main-top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:clamp(22px,4vw,40px)}
+@media(min-width:941px){.main-top{justify-content:flex-end}.main-top .brand{display:none}}
+.theme{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:transparent;
+  border-radius:var(--r);padding:7px 11px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);transition:.18s}
+.theme:hover{border-color:var(--ink);color:var(--ink)}
+.theme svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none}
+.theme .lbl{min-width:34px;text-align:left}
+
+.step-wrap{width:100%;max-width:520px;margin-inline:auto;flex:1;display:flex;flex-direction:column;justify-content:center;padding-block:8px}
+.step{display:none}
+.step[data-active="true"]{display:block;animation:in .34s cubic-bezier(.2,.8,.3,1)}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.step[data-active="true"]{animation:none}}
+.step h1{font-size:clamp(26px,3.4vw,33px);font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.step .sub{color:var(--muted);margin-top:11px;font-size:15.5px;max-width:46ch}
+.eyebrow{font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);display:block;margin-bottom:12px}
+
+/* ---------- the fork ---------- */
+.picks{display:grid;gap:12px;margin-top:26px}
+.pick{
+  display:grid;grid-template-columns:44px 1fr;gap:15px;text-align:left;width:100%;
+  border:1px solid var(--line);background:var(--surface-2);border-radius:6px;padding:18px 19px;
+  transition:border-color .16s,transform .16s,box-shadow .16s;
+}
+.pick:hover{border-color:var(--ink);transform:translateY(-1px);box-shadow:var(--frame-shadow)}
+.pick[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.pick .ico{width:44px;height:44px;border-radius:6px;display:grid;place-items:center;
+  background:var(--accent-wash);color:var(--accent)}
+.pick .ico svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7}
+.pick .t{font-family:var(--f-display);font-weight:700;font-size:17px;letter-spacing:-.02em;display:block}
+.pick .d{display:block;color:var(--muted);font-size:14px;line-height:1.5;margin-top:5px}
+.pick .next{display:block;margin-top:9px;font-size:13px;color:var(--accent);font-weight:600}
+
+/* ---------- fields ---------- */
+form{margin-top:24px}
+.field{margin-bottom:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.two{grid-template-columns:1fr}}
+.field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px}
+input[type=text],input[type=email],input[type=url],select{
+  width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface-2);color:var(--ink);font:inherit;font-size:16px;
+  transition:border-color .16s,box-shadow .16s;
+}
+select{appearance:none;-webkit-appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E6575' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}
+input::placeholder{color:var(--muted);opacity:.75}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+input[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--danger)}
+.hint{font-size:12.5px;color:var(--muted);margin-top:7px;line-height:1.5}
+.err{font-size:13px;color:var(--danger);margin-top:8px;display:none;align-items:flex-start;gap:7px;line-height:1.4}
+.err[data-show="true"]{display:flex;animation:errIn .2s ease-out}
+@keyframes errIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.err::before{content:"";width:14px;height:14px;flex:none;margin-top:2px;border-radius:50%;background:var(--danger);
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm0-4h-2V7h2z'/></svg>") center/contain no-repeat;
+  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-2h2zm0-4h-2V7h2z'/></svg>") center/contain no-repeat}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;
+  padding:14px 18px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);
+  border-radius:var(--r);font-weight:700;font-size:15.5px;transition:.18s;min-height:48px}
+.btn:hover{filter:brightness(1.07);transform:translateY(-1px);text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink);filter:none}
+.btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
+.actions{display:flex;gap:10px;margin-top:22px;align-items:center}
+.actions .btn{width:auto;flex:1}
+.back{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:14px;font-weight:500;
+  padding:10px 2px;margin:-10px -2px 12px}
+.back:hover{color:var(--ink);text-decoration:none}
+.back svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
+.skip{display:block;text-align:center;margin-top:16px;font-size:14px;color:var(--muted)}
+.skip a{display:inline-block;padding:9px 3px;margin:-9px -3px}
+
+/* ---------- the credential ---------- */
+.keybox{margin-top:24px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.keybox .hd{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;
+  border-bottom:1px solid var(--line-soft)}
+.keybox .lbl{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.pill{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  background:var(--cyan-wash);color:var(--cyan);padding:3px 8px;border-radius:3px;font-weight:700}
+.keyrow{display:flex;align-items:center;gap:10px;padding:14px 15px}
+.keyrow code{font-family:var(--f-mono);font-size:13px;color:var(--ink);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;flex:1}
+.copy{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:var(--r);
+  padding:8px 12px;font-size:12.5px;font-weight:600;min-height:36px;flex:none;transition:.16s}
+.copy:hover{border-color:var(--ink);color:var(--ink)}
+.copy[data-done="true"]{border-color:var(--ok);color:var(--ok)}
+pre.code{margin:0;background:#17131A;color:#F1ECF5;padding:16px;font-family:var(--f-mono);
+  font-size:12.5px;line-height:1.7;overflow-x:auto;border-top:1px solid var(--line-soft)}
+pre.code .k{color:#FF9CC8}
+pre.code .s{color:#9DEDF6}
+pre.code .c{color:#ADA3B7}
+
+/* ---------- proof strip ---------- */
+.proof{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:22px}
+.sh{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:1px solid var(--line-soft);
+  background:var(--surface);display:flex;flex-direction:column;justify-content:flex-end;padding:8px}
+.sh .art{position:absolute;inset:0;z-index:0}
+.sh img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.sh .scrim{position:absolute;inset:0;z-index:2;background:linear-gradient(to top,rgba(0,0,0,.6),transparent 55%)}
+.sh .n{position:absolute;top:5px;left:6px;z-index:4;font-family:var(--f-mono);font-size:8.5px;
+  letter-spacing:.1em;color:rgba(255,255,255,.92);text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.sh .cap{position:relative;z-index:3;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.5)}
+.sh.before img{filter:saturate(.32) contrast(.86)}
+
+/* ---------- invites ---------- */
+.inv{display:grid;grid-template-columns:1fr 150px;gap:10px;margin-bottom:11px}
+@media(max-width:560px){.inv{grid-template-columns:1fr}}
+.roles{margin-top:26px;border-top:1px solid var(--line-soft);padding-top:22px}
+.roles .cap{font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:14px}
+.role{display:grid;grid-template-columns:104px 1fr;gap:14px;padding:9px 0;font-size:13.5px;align-items:baseline}
+@media(max-width:560px){.role{grid-template-columns:1fr;gap:2px;padding:8px 0}}
+.role b{font-weight:600}
+.role span{color:var(--muted);line-height:1.5}
+.switch{display:flex;gap:12px;align-items:flex-start;margin-top:20px;padding:15px 16px;
+  border:1px solid var(--line-soft);border-radius:var(--r);background:var(--surface-2)}
+.switch input{width:19px;height:19px;accent-color:var(--accent);flex:none;margin:2px 0 0}
+.switch .t{font-size:14px;font-weight:600;display:block}
+.switch .d{font-size:13px;color:var(--muted);line-height:1.5;display:block;margin-top:3px}
+
+/* ---------- summary ---------- */
+.note{display:grid;grid-template-columns:20px 1fr;gap:12px;align-items:start;margin-top:20px;
+  border:1px solid var(--line-soft);border-radius:var(--r);background:var(--surface-2);
+  padding:15px 16px;font-size:13.5px;line-height:1.55;color:var(--ink-soft)}
+.note svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.9;margin-top:1px}
+.note b{font-weight:600;color:var(--ink)}
+.checks{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:11px}
+.checks li{display:flex;gap:11px;align-items:flex-start;font-size:14.5px;color:var(--ink-soft);line-height:1.5}
+.checks svg{width:15px;height:15px;flex:none;margin-top:4px;stroke:var(--accent);fill:none;stroke-width:2.6}
+
+/* branch-specific copy: one flow, two audiences */
+[data-branch="agency"] .only-platform{display:none}
+[data-branch="platform"] .only-agency{display:none}
+
+.main-foot{display:flex;justify-content:center;gap:6px 18px;flex-wrap:wrap;font-size:13px;
+  line-height:var(--foot-lh);color:var(--muted);align-items:center;
+  padding:0 clamp(18px,5vw,32px) calc(26px + env(safe-area-inset-bottom))}
+.main-foot a{color:var(--muted);padding:9px 2px}
+.main-foot a:hover{color:var(--ink)}
+@media(max-width:940px){
+  .shell>.main{order:1}
+  .shell>.main-foot{order:3;padding-top:24px}
+  .shell>.aside{order:2;border-right:0;border-top:1px solid var(--line-soft);
+    padding:30px clamp(18px,5vw,32px) 34px}
+  .aside .brand{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
+</style>
+
+<div class="shell" data-branch="platform">
+
+  <!-- ================= LEFT: the organization taking shape ================= -->
+  <aside class="aside">
+    <a class="brand" href="landing.html">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/>
+      </svg>
+      AnyStudio
+    </a>
+
+    <div class="orgcard" id="orgCard">
+      <div class="top">
+        <span class="mark" id="ocMark">—</span>
+        <div style="min-width:0">
+          <div class="nm empty" id="ocName">Your organization</div>
+          <span class="kind" id="ocKind">Platform · not created yet</span>
+        </div>
+      </div>
+      <dl>
+        <div class="row"><dt>Region</dt><dd class="pending" id="ocRegion">Not set</dd></div>
+        <div class="row"><dt>Billing</dt><dd class="pending" id="ocBilling">Not set</dd></div>
+        <div class="row only-platform"><dt>Merchants</dt><dd class="pending" id="ocScale">Not set</dd></div>
+        <div class="row only-agency"><dt>Brands</dt><dd class="pending" id="ocScaleA">Not set</dd></div>
+        <div class="row"><dt>Test key</dt><dd class="pending" id="ocKey">Not issued</dd></div>
+        <div class="row"><dt>Seats</dt><dd class="pending" id="ocSeats">1 owner</dd></div>
+      </dl>
+    </div>
+
+    <nav class="rail" id="rail" aria-label="Progress">
+      <div class="r" data-rail="details">
+        <span class="dot"><span>1</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
+        <span class="t">The organization<span class="d">Name, region and scale. Five fields.</span></span>
+      </div>
+      <div class="r" data-rail="verify">
+        <span class="dot"><span>2</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
+        <span class="t">Verify and get a key<span class="d only-platform">A test key and a working call. No card.</span><span class="d only-agency">Your workspace and first project.</span></span>
+      </div>
+      <div class="r" data-rail="prove">
+        <span class="dot"><span>3</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
+        <span class="t only-platform">Run it on your catalogue<span class="d">One of your own listings, on test credits.</span></span>
+        <span class="t only-agency">Set up a brand kit<span class="d">Your first client's colours and voice.</span></span>
+      </div>
+      <div class="r" data-rail="team">
+        <span class="dot"><span>4</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
+        <span class="t">Invite your team<span class="d">Roles, domain joining, and going live.</span></span>
+      </div>
+    </nav>
+
+    <div class="aside-foot">
+      <span>Nothing here charges you. Live keys and invoicing come later, after business verification.</span>
+      <span>Buying for more than 50,000 merchants? <a href="#contact">Talk to us instead</a></span>
+    </div>
+  </aside>
+
+  <!-- ================= RIGHT: the current step ================= -->
+  <main class="main">
+    <div class="main-top">
+      <a class="brand" href="landing.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="21" height="21" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <rect x="6" y="6" width="12" height="12" rx="1" fill="var(--accent)"/>
+        </svg>
+        AnyStudio
+      </a>
+      <button class="theme" id="themeBtn" type="button">
+        <span id="themeIcon" aria-hidden="true"></span><span class="lbl" id="themeLbl">Auto</span>
+      </button>
+    </div>
+
+    <div class="step-wrap">
+
+      <!-- ---------------- 0 · THE FORK ---------------- -->
+      <section class="step" data-step="start" data-active="true">
+        <span class="eyebrow">Organizations</span>
+        <h1>Who are you setting AnyStudio up for?</h1>
+        <p class="sub">The two answers need different things first, so this decides what you see next — not what you are allowed to do.</p>
+
+        <div class="picks">
+          <button class="pick" type="button" data-choose="platform" aria-pressed="true">
+            <span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 13h3M8 21h8"/></svg></span>
+            <span>
+              <span class="t">A platform with merchants on it</span>
+              <span class="d">A marketplace, a storefront builder, a WhatsApp commerce product. You subscribe once and your merchants get the studio.</span>
+              <span class="next">Next: a test key and a call that returns an image →</span>
+            </span>
+          </button>
+
+          <button class="pick" type="button" data-choose="agency" aria-pressed="false">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/></svg></span>
+            <span>
+              <span class="t">An agency or a company with several brands</span>
+              <span class="d">You make content for clients or for brands you own. Separate projects, shared brand kits, seats with roles, one invoice.</span>
+              <span class="next">Next: your workspace and your first project →</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="actions">
+          <a class="btn" href="#details">Continue<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+        </div>
+        <span class="skip">Already have an organization? <a href="auth.html#login">Sign in</a></span>
+      </section>
+
+      <!-- ---------------- 1 · THE ORGANIZATION ---------------- -->
+      <section class="step" data-step="details">
+        <a class="back" href="#start"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
+        <span class="eyebrow">Step 1 of 4</span>
+        <h1>Create the organization.</h1>
+        <p class="sub">We create the organization first and invite people into it — so nobody's personal account ends up owning your company's work.</p>
+
+        <form novalidate id="fDetails">
+          <div class="field">
+            <label for="oName">Organization name</label>
+            <input id="oName" type="text" placeholder="Bimbo Marketplace Ltd" required aria-describedby="e-oName">
+            <p class="err" id="e-oName" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <label for="oSite">Website</label>
+            <input id="oSite" type="url" placeholder="https://bimbomarket.ng" required aria-describedby="e-oSite">
+            <p class="err" id="e-oSite" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <label for="oEmail">Your work email</label>
+            <input id="oEmail" type="email" placeholder="you@bimbomarket.ng" required aria-describedby="h-oEmail e-oEmail">
+            <p class="hint" id="h-oEmail">This domain becomes the organization's. Colleagues on the same domain can be let in without an invite — you choose that at step 4.</p>
+            <p class="err" id="e-oEmail" role="alert"></p>
+          </div>
+
+          <div class="two">
+            <div class="field">
+              <label for="oRegion">Region</label>
+              <select id="oRegion" required aria-describedby="h-oRegion e-oRegion">
+                <option value="">Choose a region</option>
+                <option value="ng">Nigeria and West Africa</option>
+                <option value="ea">East Africa</option>
+                <option value="za">Southern Africa</option>
+                <option value="uk">United Kingdom and Europe</option>
+                <option value="us">North America</option>
+                <option value="row">Rest of world</option>
+              </select>
+              <p class="err" id="e-oRegion" role="alert"></p>
+            </div>
+
+            <div class="field only-platform">
+              <label for="oScale">Merchants on your platform</label>
+              <select id="oScale" aria-describedby="e-oScale">
+                <option value="">Choose a range</option>
+                <option>Under 500</option>
+                <option>500 to 5,000</option>
+                <option>5,000 to 50,000</option>
+                <option>More than 50,000</option>
+              </select>
+              <p class="err" id="e-oScale" role="alert"></p>
+            </div>
+
+            <div class="field only-agency">
+              <label for="oScaleA">Brands you look after</label>
+              <select id="oScaleA" aria-describedby="e-oScaleA">
+                <option value="">Choose a range</option>
+                <option>1 to 5</option>
+                <option>6 to 25</option>
+                <option>26 to 100</option>
+                <option>More than 100</option>
+              </select>
+              <p class="err" id="e-oScaleA" role="alert"></p>
+            </div>
+          </div>
+
+          <p class="hint" id="h-oRegion">Region sets two things: the currency you are billed in, and which region stores your images. Both can be changed later only by talking to us, so it is worth getting right.</p>
+
+          <div class="actions">
+            <button class="btn" type="submit">Create organization<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ---------------- 2 · VERIFY AND CREDENTIAL ---------------- -->
+      <section class="step" data-step="verify">
+        <a class="back" href="#details"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
+        <span class="eyebrow">Step 2 of 4</span>
+        <h1>Confirm it's you, then start calling.</h1>
+        <p class="sub">We sent a link to <strong id="vEmail">you@yourcompany.com</strong>. It works once and expires in an hour.</p>
+
+        <div class="only-platform">
+          <div class="keybox">
+            <div class="hd">
+              <span class="lbl">Test key · 500 credits</span>
+              <span class="pill">Sandbox</span>
+            </div>
+            <div class="keyrow">
+              <code id="testKey">sk_test_a4f0c1b9e2d7_REPLACE_ON_VERIFY</code>
+              <button class="copy" type="button" data-copy="testKey">Copy</button>
+            </div>
+            <pre class="code"><span class="c"># one call per listing — the image comes back in about 20 seconds</span>
+curl <span class="k">-X</span> POST https://api.anystudio.ai/v1/listings <span class="k">\</span>
+  <span class="k">-H</span> <span class="s">"Authorization: Bearer $ANYSTUDIO_KEY"</span> <span class="k">\</span>
+  <span class="k">-d</span> <span class="s">'{"merchant_id":"m_8821","image_url":"…","price":"4500","currency":"NGN"}'</span></pre>
+          </div>
+          <ul class="checks">
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Test keys never touch live merchants and never charge you</li>
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Usage is reported per merchant from the first call, so your billing model works before you sign anything</li>
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Live keys need business verification — that is the only step that asks for documents</li>
+          </ul>
+        </div>
+
+        <div class="only-agency">
+          <div class="keybox">
+            <div class="hd">
+              <span class="lbl">First project</span>
+              <span class="pill">Ready</span>
+            </div>
+            <div class="keyrow">
+              <code>Untitled project · 500 test credits</code>
+              <button class="copy" type="button" data-copy="none">Rename</button>
+            </div>
+          </div>
+          <ul class="checks">
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Every client gets a project: its own brand kit, its own library, its own usage line on the invoice</li>
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Nobody sees a project they were not added to</li>
+            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Every generation is written to an audit log with who, when and which project</li>
+          </ul>
+        </div>
+
+        <div class="actions">
+          <a class="btn" href="#prove">I've verified — continue<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+        </div>
+        <span class="skip">Nothing arrived? <a href="#verify">Send it again</a> · <a href="https://wa.me/17753032588?text=I%20need%20help%20verifying%20our%20AnyStudio%20organization" target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a></span>
+      </section>
+
+      <!-- ---------------- 3 · PROVE IT ---------------- -->
+      <section class="step" data-step="prove">
+        <a class="back" href="#verify"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
+        <span class="eyebrow">Step 3 of 4</span>
+        <h1 class="only-platform">Run it on one of your own listings.</h1>
+        <h1 class="only-agency">Set up your first brand kit.</h1>
+        <p class="sub only-platform">A demo on our product proves nothing about yours. Paste a listing from your catalogue and see what your merchant would get back.</p>
+        <p class="sub only-agency">Colours, logo and tone. Everything generated for this client comes back inside these rules.</p>
+
+        <form novalidate id="fProve">
+          <div class="field only-platform">
+            <label for="pUrl">A product URL from your storefront</label>
+            <input id="pUrl" type="url" placeholder="https://bimbomarket.ng/p/ravi-hair-oil" aria-describedby="h-pUrl e-pUrl">
+            <p class="hint" id="h-pUrl">We read the listing image and title. Or <a href="#prove">upload a photo instead</a>.</p>
+            <p class="err" id="e-pUrl" role="alert"></p>
+          </div>
+
+          <div class="field only-agency">
+            <label for="pBrand">Client or brand name</label>
+            <input id="pBrand" type="text" placeholder="Bimbo Fabrics" aria-describedby="e-pBrand">
+            <p class="err" id="e-pBrand" role="alert"></p>
+          </div>
+
+          <div class="actions">
+            <button class="btn ghost" type="submit">Generate a sample<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+          </div>
+        </form>
+
+        <p class="hint" style="margin-top:22px">Example output — one listing photo in, three posts and a description out:</p>
+        <div class="proof">
+          <div class="sh before">
+            <div class="art" style="background:linear-gradient(150deg,#b9a998,#6f6257)"></div>
+            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp">
+            <span class="scrim"></span><span class="n">01</span><span class="cap">Their photo</span>
+          </div>
+          <div class="sh">
+            <div class="art" style="background:linear-gradient(150deg,#FF9E7A,#D6006E 115%)"></div>
+            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
+            <span class="scrim"></span><span class="n">02</span><span class="cap">Storefront</span>
+          </div>
+          <div class="sh">
+            <div class="art" style="background:linear-gradient(150deg,#0E3C4A,#00808F)"></div>
+            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp">
+            <span class="scrim"></span><span class="n">03</span><span class="cap">Social</span>
+          </div>
+        </div>
+
+        <div class="note">
+          <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 8.1-7 9-4-.9-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span><b>The product is never redrawn.</b> We relight it and replace what is around it. If a generation alters the product itself, that is a bug and the credit goes back.</span>
+        </div>
+
+        <div class="actions">
+          <a class="btn" href="#team">Continue<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+        </div>
+        <span class="skip"><a href="#team">Skip for now</a></span>
+      </section>
+
+      <!-- ---------------- 4 · TEAM AND GOING LIVE ---------------- -->
+      <section class="step" data-step="team">
+        <a class="back" href="#prove"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
+        <span class="eyebrow">Step 4 of 4</span>
+        <h1>Bring your team in.</h1>
+        <p class="sub">You can do this later, but the organization is more useful with more than one person in it — and the audit log only means something when it has names.</p>
+
+        <form novalidate id="fTeam">
+          <div class="inv">
+            <input type="email" placeholder="colleague@yourcompany.com" aria-label="Email to invite">
+            <select aria-label="Role"><option>Admin</option><option selected>Member</option><option>Billing</option><option>Auditor</option></select>
+          </div>
+          <div class="inv">
+            <input type="email" placeholder="Add another" aria-label="Email to invite">
+            <select aria-label="Role"><option>Admin</option><option selected>Member</option><option>Billing</option><option>Auditor</option></select>
+          </div>
+
+          <label class="switch">
+            <input type="checkbox" id="domJoin">
+            <span>
+              <span class="t">Let anyone with a <strong id="domName">@yourcompany.com</strong> address join</span>
+              <span class="d">They arrive as Members and can be promoted. Turn this off if your domain is shared with people outside the team.</span>
+            </span>
+          </label>
+
+          <div class="roles">
+            <span class="cap">What the roles can do</span>
+            <div class="role"><b>Owner</b><span>Billing, contracts and deleting the organization. Exactly one, and it can be handed over.</span></div>
+            <div class="role"><b>Admin</b><span>Projects, API keys, members and brand kits. Everything except billing and deletion.</span></div>
+            <div class="role"><b>Member</b><span>Generates work in the projects they are added to. Cannot see the others.</span></div>
+            <div class="role"><b>Billing</b><span>Invoices, credit history and usage. Cannot generate anything.</span></div>
+            <div class="role"><b>Auditor</b><span>Reads usage and the audit log. Changes nothing. For finance and security reviews.</span></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn" type="submit">Send invites and finish<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+          </div>
+        </form>
+
+        <div class="note">
+          <svg viewBox="0 0 24 24"><path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+          <span><b>What happens when you want to go live.</b> Live keys need business verification — a registration number and the billing entity. Invoicing and net terms need a contract. Security review, DPA and sub-processors are answered on our <a href="#contact">trust page</a> without a call, if that is faster for you.</span>
+        </div>
+      </section>
+
+      <!-- ---------------- THE OTHER DOOR ---------------- -->
+      <section class="step" data-step="contact">
+        <a class="back" href="#start"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back to setting it up yourself</a>
+        <span class="eyebrow">Volume and contracts</span>
+        <h1>Tell us the shape of it.</h1>
+        <p class="sub">Six questions, because they are the six that decide what we can offer you. You do not have to wait for us to start building — the test key is free either way.</p>
+
+        <form novalidate id="fContact">
+          <div class="field">
+            <label for="cOrg">Organization</label>
+            <input id="cOrg" type="text" placeholder="Bimbo Marketplace Ltd" required aria-describedby="e-cOrg">
+            <p class="err" id="e-cOrg" role="alert"></p>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="cEmail">Work email</label>
+              <input id="cEmail" type="email" placeholder="you@bimbomarket.ng" required aria-describedby="e-cEmail">
+              <p class="err" id="e-cEmail" role="alert"></p>
+            </div>
+            <div class="field">
+              <label for="cRole">Your role</label>
+              <select id="cRole" required aria-describedby="e-cRole">
+                <option value="">Choose</option>
+                <option>Engineering</option><option>Product</option><option>Marketing or brand</option>
+                <option>Operations</option><option>Finance or procurement</option><option>Founder</option>
+              </select>
+              <p class="err" id="e-cRole" role="alert"></p>
+            </div>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="cVol">Images and reels per month</label>
+              <select id="cVol" required aria-describedby="e-cVol">
+                <option value="">Choose a range</option>
+                <option>Under 5,000</option><option>5,000 to 50,000</option>
+                <option>50,000 to 500,000</option><option>More than 500,000</option>
+              </select>
+              <p class="err" id="e-cVol" role="alert"></p>
+            </div>
+            <div class="field">
+              <label for="cWhen">When you want to be live</label>
+              <select id="cWhen" required aria-describedby="e-cWhen">
+                <option value="">Choose</option>
+                <option>This month</option><option>This quarter</option>
+                <option>Later this year</option><option>Still comparing</option>
+              </select>
+              <p class="err" id="e-cWhen" role="alert"></p>
+            </div>
+          </div>
+          <div class="field">
+            <label for="cNeed">Anything that would stop this working</label>
+            <input id="cNeed" type="text" placeholder="SSO, data residency, a security review, invoicing in naira…">
+            <p class="hint">Say it now and the first reply answers it, rather than the third.</p>
+          </div>
+
+          <div class="actions">
+            <button class="btn" type="submit">Send<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+            <a class="btn ghost" href="https://wa.me/17753032588?text=We%27re%20looking%20at%20AnyStudio%20for%20our%20platform" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          </div>
+        </form>
+        <span class="skip">We answer within one working day, in your timezone.</span>
+      </section>
+
+    </div>
+  </main>
+
+  <div class="main-foot">
+    <a href="landing.html">Home</a>
+    <a href="auth.html#login">Sign in</a>
+    <a href="#contact">Talk to us</a>
+    <a href="https://wa.me/17753032588?text=I%20need%20help%20with%20AnyStudio" target="_blank" rel="noopener noreferrer">Help on WhatsApp</a>
+    <span>© <span class="yr">2026</span> AnyStudio</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- theme: auto by device preference AND local time ---------- */
+  var SUN='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>';
+  var MOON='<svg viewBox="0 0 24 24"><path d="M20 14.2A8.2 8.2 0 019.8 4 8.4 8.4 0 1020 14.2z"/></svg>';
+  var AUTO='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 3.4a8.6 8.6 0 010 17.2z" fill="currentColor" stroke="none"/></svg>';
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  var btn=document.getElementById("themeBtn"), ic=document.getElementById("themeIcon"), lb=document.getElementById("themeLbl");
+  var mode="auto";
+  function store(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function night(){var h=new Date().getHours();return h>=19||h<6;}
+  function resolved(){return (mode==="light"||mode==="dark")?mode:((mq.matches||night())?"dark":"light");}
+  function applyTheme(){
+    var t=resolved();
+    document.documentElement.setAttribute("data-app-theme",t);
+    ic.innerHTML = mode==="auto"?AUTO:(t==="dark"?MOON:SUN);
+    lb.textContent = mode==="auto"?"Auto":(mode==="dark"?"Dark":"Light");
+    btn.setAttribute("aria-label", mode==="auto"
+      ? "Theme follows your device — currently "+t+". Click for light."
+      : "Theme set to "+mode+". Click to change.");
+  }
+  var saved=load("as-theme");
+  if(saved==="light"||saved==="dark"||saved==="auto") mode=saved;
+  applyTheme();
+  btn.addEventListener("click",function(){
+    mode = mode==="auto"?"light":(mode==="light"?"dark":"auto");
+    store("as-theme",mode); applyTheme();
+  });
+  if(mq.addEventListener) mq.addEventListener("change",applyTheme);
+  setInterval(applyTheme,300000);
+
+  document.documentElement.lang = document.documentElement.lang || "en";
+  document.querySelectorAll(".yr").forEach(function(el){ el.textContent = String(new Date().getFullYear()); });
+
+  /* ---------- photo fallback: a missing image leaves the gradient, not a gap ---------- */
+  document.querySelectorAll("img.ph").forEach(function(im){
+    function drop(){ var s=im.parentNode&&im.parentNode.querySelector(".scrim"); if(s) s.remove(); im.remove(); }
+    im.addEventListener("error", drop);
+    if(im.complete && im.naturalWidth===0) drop();
+  });
+
+  /* ---------- the branch ---------- */
+  var shell = document.querySelector(".shell");
+  var branch = "platform";
+  function setBranch(b){
+    branch = b;
+    shell.setAttribute("data-branch", b);
+    document.querySelectorAll(".pick").forEach(function(p){
+      p.setAttribute("aria-pressed", String(p.dataset.choose===b));
+    });
+    document.getElementById("ocKind").textContent =
+      (b==="platform" ? "Platform" : "Agency") + (created ? " · live" : " · not created yet");
+  }
+  document.querySelectorAll(".pick").forEach(function(p){
+    p.addEventListener("click", function(){ setBranch(p.dataset.choose); });
+  });
+
+  /* ---------- the organization card, filled in as they answer ----------
+     The left panel is not decoration: it is the thing being built, so the value
+     of an organization is visible before the flow ends. */
+  var created = false;
+  var REGIONS = {
+    ng:["Nigeria and West Africa","NGN ₦"], ea:["East Africa","USD $"], za:["Southern Africa","USD $"],
+    uk:["United Kingdom and Europe","GBP £"], us:["North America","USD $"], row:["Rest of world","USD $"]
+  };
+  function set(id, text, pending){
+    var el=document.getElementById(id); if(!el) return;
+    el.textContent = text;
+    el.classList.toggle("pending", !!pending);
+  }
+  function syncCard(){
+    var name=(document.getElementById("oName").value||"").trim();
+    var nm=document.getElementById("ocName"), mk=document.getElementById("ocMark");
+    if(name){ nm.textContent=name; nm.classList.remove("empty"); mk.textContent=name.trim()[0].toUpperCase(); }
+    else { nm.textContent="Your organization"; nm.classList.add("empty"); mk.textContent="—"; }
+
+    var r=document.getElementById("oRegion").value;
+    if(r && REGIONS[r]){ set("ocRegion", REGIONS[r][0]); set("ocBilling", REGIONS[r][1]); }
+    else { set("ocRegion","Not set",true); set("ocBilling","Not set",true); }
+
+    var sc=document.getElementById("oScale").value, sa=document.getElementById("oScaleA").value;
+    set("ocScale", sc||"Not set", !sc);
+    set("ocScaleA", sa||"Not set", !sa);
+
+    var em=(document.getElementById("oEmail").value||"").trim();
+    var at=em.indexOf("@");
+    var dom = at>0 ? em.slice(at) : "@yourcompany.com";
+    document.getElementById("domName").textContent = dom;
+    document.getElementById("vEmail").textContent = em || "you@yourcompany.com";
+  }
+  ["oName","oRegion","oScale","oScaleA","oEmail"].forEach(function(id){
+    var el=document.getElementById(id); if(el){ el.addEventListener("input", syncCard); el.addEventListener("change", syncCard); }
+  });
+
+  /* ---------- validation: the same engine as the sign-in screens ---------- */
+  function emailRule(why){
+    return function(v){
+      v=(v||"").trim();
+      if(!v) return "We need your work email "+why+".";
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return "That does not look like an email address yet.";
+      if(/@(gmail|yahoo|hotmail|outlook|icloud)\./i.test(v)) return "Use your work address — the domain is what your colleagues join on.";
+      return "";
+    };
+  }
+  function required(msg){ return function(v){ return (v||"").trim() ? "" : msg; }; }
+  function urlRule(v){
+    v=(v||"").trim();
+    if(!v) return "We need your website — it is how we recognise you.";
+    if(!/^https?:\/\/[^\s.]+\.[^\s]{2,}$/.test(v)) return "Include the full address, starting with https://";
+    return "";
+  }
+  var RULES = {
+    oName:   required("Give the organization a name — the legal one if you have it."),
+    oSite:   urlRule,
+    oEmail:  emailRule("so we can verify the domain"),
+    oRegion: required("Choose a region — it sets your currency and where images are stored."),
+    cOrg:    required("Which organization is this for?"),
+    cEmail:  emailRule("so we can reply"),
+    cRole:   required("Your role tells us who to put on the call."),
+    cVol:    required("A rough range is enough."),
+    cWhen:   required("Even 'still comparing' helps.")
+  };
+  function show(id,msg){
+    var f=document.getElementById(id), e=document.getElementById("e-"+id);
+    if(!f||!e) return !msg;
+    f.setAttribute("aria-invalid", String(!!msg));
+    e.textContent = msg||"";
+    e.setAttribute("data-show", String(!!msg));
+    return !msg;
+  }
+  function check(id){
+    var f=document.getElementById(id); if(!f||!RULES[id]) return true;
+    return show(id, RULES[id](f.value));
+  }
+  Object.keys(RULES).forEach(function(id){
+    var f=document.getElementById(id); if(!f) return;
+    var ev = f.tagName==="SELECT" ? "change" : "input";
+    f.addEventListener(ev, function(){ if(f.getAttribute("aria-invalid")==="true") check(id); });
+  });
+  function validate(ids){
+    var ok=true, first=null;
+    ids.forEach(function(id){ var good=check(id); if(!good && !first) first=id; ok = ok && good; });
+    if(first){ var el=document.getElementById(first); el.focus(); }
+    return ok;
+  }
+
+  /* ---------- steps ---------- */
+  var STEPS=["start","details","verify","prove","team","contact"];
+  var ORDER=["details","verify","prove","team"];
+  var reached={};
+  function go(h){ location.hash = "#"+h; }
+
+  function route(){
+    var h=(location.hash||"#start").replace(/^#\/?/,"");
+    if(STEPS.indexOf(h)===-1) h="start";
+    document.querySelectorAll(".step").forEach(function(s){
+      s.setAttribute("data-active", String(s.dataset.step===h));
+    });
+    // the rail marks everything before the current step as done
+    var i = ORDER.indexOf(h);
+    document.querySelectorAll(".rail .r").forEach(function(r){
+      var j = ORDER.indexOf(r.dataset.rail);
+      /* classList.toggle with an undefined second argument TOGGLES instead of
+         forcing, and `a && undefined` is undefined — so this must be coerced or
+         every step renders as already completed. */
+      r.classList.toggle("on", j===i);
+      r.classList.toggle("done", !!((j>-1 && i>-1 && j<i) || (j>-1 && reached[r.dataset.rail] && j!==i)));
+    });
+    var first=document.querySelector('.step[data-active="true"] input, .step[data-active="true"] select');
+    if(first && window.innerWidth>940 && h!=="start") first.focus({preventScroll:true});
+    var w=document.querySelector(".step-wrap"); if(w) w.scrollTop=0;
+    syncMore();
+  }
+  window.addEventListener("hashchange", route);
+
+  document.getElementById("fDetails").addEventListener("submit", function(e){
+    e.preventDefault();
+    var ids=["oName","oSite","oEmail","oRegion"];
+    if(!validate(ids)) return;
+    created = true;
+    reached.details = true;
+    syncCard();
+    document.getElementById("ocKind").textContent = (branch==="platform"?"Platform":"Agency")+" · live";
+    set("ocKey", branch==="platform" ? "sk_test_a4f0…" : "Issued");
+    document.getElementById("testKey").textContent =
+      "sk_test_" + Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,8);
+    go("verify");
+  });
+
+  document.getElementById("fProve").addEventListener("submit", function(e){
+    e.preventDefault(); reached.prove = true; go("team");
+  });
+
+  document.getElementById("fTeam").addEventListener("submit", function(e){
+    e.preventDefault();
+    reached.team = true;
+    var n = 1 + [].slice.call(document.querySelectorAll("#fTeam .inv input"))
+      .filter(function(i){ return i.value.trim(); }).length;
+    set("ocSeats", n===1 ? "1 owner" : (n + " people"));
+    var b=e.target.querySelector('button[type="submit"]');
+    b.textContent = "Invites sent";
+    b.disabled = true;
+    b.style.opacity = ".65";
+  });
+
+  document.getElementById("fContact").addEventListener("submit", function(e){
+    e.preventDefault();
+    if(!validate(["cOrg","cEmail","cRole","cVol","cWhen"])) return;
+    var b=e.target.querySelector('button[type="submit"]');
+    b.textContent = "Sent — we'll reply within a working day";
+    b.disabled = true;
+    b.style.opacity = ".65";
+  });
+
+  document.querySelectorAll(".copy").forEach(function(c){
+    c.addEventListener("click", function(){
+      var t=document.getElementById(c.dataset.copy);
+      if(!t) return;
+      var done=function(){ c.textContent="Copied"; c.setAttribute("data-done","true");
+        setTimeout(function(){ c.textContent="Copy"; c.removeAttribute("data-done"); },1800); };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(t.textContent).then(done, function(){});
+      }
+    });
+  });
+
+  /* the fade only belongs there while something is actually below the fold */
+  var wrap=document.querySelector(".step-wrap");
+  function syncMore(){
+    if(!wrap) return;
+    wrap.setAttribute("data-more", String(wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop > 6));
+  }
+  if(wrap){
+    wrap.addEventListener("scroll", syncMore, {passive:true});
+    window.addEventListener("resize", syncMore);
+    if(window.ResizeObserver) new ResizeObserver(syncMore).observe(wrap);
+  }
+
+  setBranch("platform");
+  syncCard();
+  route();
+})();
+</script>

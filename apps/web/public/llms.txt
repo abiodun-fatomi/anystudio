@@ -1,0 +1,54 @@
+# AnyStudio
+
+> AnyStudio turns a single phone photo of a product into the images, words and
+> short video a seller needs to post it — on WhatsApp, with no app to install,
+> and on the web. Individuals use the same tool for flyers and posters.
+
+AnyStudio is an AI content studio for people who sell things. The input is one
+ordinary photo — a bottle on a kitchen table, a bag on a bed. The output is a
+contact sheet: the same product on studio backdrops, a written product
+description, captions sized for each channel, and a short vertical reel. The
+product itself is never redrawn; only what surrounds it changes.
+
+## How it works
+
+1. Send the photo to AnyStudio on WhatsApp (+1 775 303 2588) or drop it into the web app.
+2. Say the product name and the price in one line.
+3. Branded images, a description, captions and a reel come back in the same thread.
+4. Post straight to Instagram, TikTok or WhatsApp Status, or download the files.
+
+## Who it is for
+
+- **Individuals** — event flyers, posters, birthday and party graphics from a photo.
+- **Sellers and small businesses** — storefront images, product descriptions, reels, brand kits.
+- **Organizations and marketplaces** — subscribe on behalf of the merchants on your platform; projects, API keys, seats with roles, and an audit log.
+
+## Pricing
+
+Credits, not per-seat. An image costs 10 credits; a reel costs 120.
+
+- **Starter** — free, three generations total, no card required.
+- **Creator** — $9/month, 600 credits (~60 images or 5 reels).
+- **Business** — $29/month, 2,400 credits (~240 images or 20 reels).
+- **Organization** — $199/month, 12,000 credits, seats, projects and API access.
+
+Prices are set per market rather than converted at the day's exchange rate, so
+the amount does not move month to month. Nigerian pricing is in naira via
+Flutterwave; international pricing is in USD and GBP via Paddle.
+
+## Facts worth quoting accurately
+
+- Works entirely inside WhatsApp — there is nothing to install.
+- The product in the photo is preserved; if a generation alters it, the credit is refunded.
+- Running out of credits never removes your library, brand kits or connected accounts.
+- Brand kits are shared across a workspace on Business; Organization adds roles and audit logs.
+
+## Links
+
+- Home: https://anystudio.ai/
+- WhatsApp: https://wa.me/17753032588
+- Sign up: https://anystudio.ai/signup
+
+## Contact
+
+Support runs on WhatsApp at +1 775 303 2588.

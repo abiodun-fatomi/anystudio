@@ -1,0 +1,1994 @@
+/* Three panes on desktop, three steps on a phone. */
+.studio {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 380px;
+  gap: var(--s-4);
+  align-items: start;
+  min-height: calc(100dvh - var(--bar-h) - var(--s-5) * 2);
+  /* Whatever a pane does, the page itself never scrolls sideways. */
+  overflow-x: clip;
+}
+@media (max-width: 1280px) {
+  .studio {
+    grid-template-columns: 240px minmax(0, 1fr) 340px;
+  }
+}
+@media (max-width: 1024px) {
+  .studio {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .source {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  .studio {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    min-height: 0;
+  }
+}
+
+.pane {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+.paneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+.paneTitle {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.paneBody {
+  padding: var(--s-4);
+}
+
+/* ---- source ---- */
+.source {
+  position: sticky;
+  top: calc(var(--bar-h) + var(--s-4));
+}
+@media (max-width: 1024px) {
+  .source {
+    position: static;
+  }
+}
+.drop {
+  display: grid;
+  place-items: center;
+  gap: var(--s-2);
+  text-align: center;
+  padding: var(--s-5) var(--s-4);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: var(--t-2);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.drop:hover,
+.drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+.drop:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 3px;
+}
+.drop strong {
+  color: var(--ink);
+  font-size: var(--t-3);
+}
+.dropIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+}
+.uploads {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.upload {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: center;
+  font-size: var(--t-2);
+}
+/* A grid cell will not shrink below its content unless told to; a long
+   filename ("Screenshot 2026-08-18 at 2.58.27 AM.png") otherwise pushes
+   the row out of the pane. */
+.upload > div {
+  min-width: 0;
+}
+.uploadName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uploadErr {
+  color: var(--danger);
+  font-size: var(--t-1);
+}
+.uploadRetry {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: 4px;
+}
+.recent {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  animation: fade var(--dur) var(--ease) both;
+}
+@media (max-width: 1024px) {
+  .recent {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .recent {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--sunk);
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumb[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.thumb:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.thumbWrap {
+  position: relative;
+}
+/* The × sits in the corner and shows itself on hover or focus; on a touch
+   screen there is no hover, so it is always there. */
+.thumbRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(15, 15, 20, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.thumbWrap:hover .thumbRemove,
+.thumbWrap:focus-within .thumbRemove {
+  opacity: 1;
+  transform: scale(1);
+}
+.thumbRemove:hover {
+  background: var(--danger);
+}
+.thumbRemove:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (hover: none) {
+  .thumbRemove {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ---- canvas ---- */
+/* THE PHOTO STAYS PUT.
+   The panel is the tall column — merchant shots alone has the mode tiles, who
+   wears it, where, the pose, the size, the price, the name, the badge switch,
+   the shadow and the exports — and while it scrolled, the picture scrolled
+   away with it. A seller choosing a pose was choosing it blind, for the one
+   photo the whole decision is about.
+   So the canvas is pinned and only the panel moves. Below the two-column
+   breakpoint the page is a sequence of steps rather than two columns, and
+   pinning there would waste most of a small screen. */
+.canvas {
+  display: grid;
+  gap: 0;
+  position: sticky;
+  top: calc(var(--bar-h) + var(--s-4));
+}
+@media (max-width: 767px) {
+  .canvas {
+    position: static;
+  }
+}
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  /* A fixed stage: the photo fits inside it, whatever its shape. A tall
+     portrait shot and a wide banner take the same room, so the page never
+     reflows around the picture and the tool strip stays where the hand
+     expects it. */
+  height: clamp(320px, 54dvh, 640px);
+  /* Definite tracks, so the photo's 100% height has something to resolve
+     against; with auto tracks it silently becomes "auto" and the picture
+     overflows the box at its natural aspect. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background:
+    linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%),
+    linear-gradient(45deg, var(--sunk) 25%, transparent 25%, transparent 75%, var(--sunk) 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    10px 10px;
+  background-color: var(--surface);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  overflow: hidden;
+}
+@media (max-width: 767px) {
+  .stage {
+    height: clamp(240px, 44dvh, 440px);
+  }
+}
+.stageImg {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  display: block;
+}
+.stageImg:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -3px;
+}
+.stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.stage img[data-fit='fill'] {
+  object-fit: cover;
+}
+/* Fit/Fill and the full-size button, bottom right, over the picture. */
+.stageTools {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--elev-1);
+}
+.stageTools button {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.stageTools button:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.stageTools button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.stageTools button:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.stageEmpty {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  padding: var(--s-7) var(--s-5);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--t-3);
+  max-width: 40ch;
+}
+.stageEmpty strong {
+  color: var(--ink);
+  font-size: var(--t-5);
+  font-family: var(--f-display);
+  letter-spacing: -0.02em;
+}
+.stageMeta {
+  position: absolute;
+  left: var(--s-3);
+  bottom: var(--s-3);
+  display: flex;
+  gap: var(--s-2);
+}
+/* Every tool visible at once, in as many rows as the pane needs: a strip that
+   scrolls sideways hides half the studio behind an edge nobody notices. */
+/* A grid, not a wrapping row: every tool sits in a column of the same width,
+   so the second row lines up under the first instead of drifting. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-top: 1px solid var(--line-soft);
+}
+@media (max-width: 480px) {
+  .strip {
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  }
+}
+.toolBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: var(--touch);
+  padding: var(--s-2) var(--s-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.toolBtn:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.toolBtn[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.toolBtn:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -2px;
+}
+.toolBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- tool panel ---- */
+/* The panel is no longer sticky: the canvas is, and two sticky columns that
+   both outgrow the viewport just stall against each other. This one is the
+   tall one, so it is the one that scrolls — but it scrolls INSIDE itself, so
+   the results below it stay reachable without walking back up past a form. */
+.panel {
+  display: grid;
+  gap: var(--s-4);
+  /* A grid track will not shrink below its content unless told to, and one
+     control a few pixels too wide is all it takes to make the panel wider
+     than its column. */
+  grid-template-columns: minmax(0, 1fr);
+  position: sticky;
+  top: calc(var(--bar-h) + var(--s-4));
+  max-height: calc(100dvh - var(--bar-h) - var(--s-5) * 2);
+  overflow-y: auto;
+  /* AND THE X AXIS, EXPLICITLY.
+     Setting overflow-y alone does not leave the other axis alone: CSS turns
+     `visible` into `auto` the moment one axis is scrollable, so asking for a
+     vertical scrollbar quietly granted a horizontal one too — and the panel
+     became something you could drag sideways, which is exactly the drift this
+     was meant to fix. `clip` refuses that outright. */
+  overflow-x: clip;
+  /* Room for the scrollbar so the controls do not sit under it, and enough
+     of it that the track is not wedged against them. */
+  padding-right: var(--s-3);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.panel::-webkit-scrollbar {
+  width: 10px;
+}
+.panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--line);
+}
+.panel::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+}
+@media (max-width: 767px) {
+  .panel {
+    max-height: none;
+    overflow-y: visible;
+    overflow-x: clip;
+    padding-right: 0;
+  }
+}
+@media (max-width: 767px) {
+  .panel {
+    position: static;
+  }
+}
+.panelTitle {
+  font-size: var(--t-5);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  font-family: var(--f-display);
+}
+.panelLede {
+  font-size: var(--t-2);
+  color: var(--muted);
+  margin-top: 2px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+/* A grid item's minimum is its content unless told otherwise; a long control must shrink, not widen the page. */
+.fields > * {
+  min-width: 0;
+}
+.fieldLabel {
+  font-size: var(--t-2);
+  font-weight: 600;
+  margin-bottom: var(--s-2);
+  display: block;
+}
+/* ---- a file field in the panel (a video to translate, an audio to sync) ---- */
+.fileDrop {
+  composes: drop;
+  width: 100%;
+  font: inherit;
+  background: transparent;
+  padding: var(--s-4);
+}
+.fileDrop:disabled {
+  cursor: progress;
+}
+.fileIn {
+  display: grid;
+  gap: var(--s-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+}
+.fileIn video {
+  width: 100%;
+  max-height: 260px;
+  display: block;
+  background: #000;
+}
+.fileIn audio {
+  width: 100%;
+  display: block;
+  padding: var(--s-3) var(--s-3) 0;
+}
+.fileRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 0 var(--s-3) var(--s-2);
+  font-size: var(--t-2);
+}
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+.consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--t-2);
+  cursor: pointer;
+}
+.consent input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.consent span {
+  display: grid;
+  gap: 2px;
+}
+.consent span span {
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.consent:has(input:focus-visible) {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.videoNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  align-items: center;
+  font-size: var(--t-2);
+  color: var(--muted);
+  padding: var(--s-2) 0;
+}
+.videoNote strong {
+  color: var(--ink);
+}
+.videoNote[data-tone='warn'] {
+  color: var(--warn-ink, var(--ink));
+  background: var(--warn-wash);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-md);
+  padding: var(--s-2) var(--s-3);
+}
+.videoNote[data-tone='ok'] {
+  color: var(--ink);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: var(--t-2);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.chip:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.quote {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  font-size: var(--t-2);
+}
+.quoteRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.quoteRow strong {
+  font-variant-numeric: tabular-nums;
+}
+.quote[data-short='true'] {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+.quoteNote {
+  color: var(--muted);
+}
+.generate {
+  position: sticky;
+  bottom: 0;
+  /* It rides over the form while the panel scrolls, so it needs its own
+     ground — a solid card that fades in from above — or the field it is
+     passing shows through around the button. */
+  margin: 0 calc(var(--s-4) * -1) calc(var(--s-4) * -1);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  background: linear-gradient(to bottom, transparent, var(--surface-2) 28%);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+@media (max-width: 767px) {
+  /* Sits on the tab bar's shoulder: solid, so the page never shows through
+     it, with its own shadow so it reads as a shelf rather than a smear. */
+  .generateBar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    z-index: var(--z-bar);
+    padding: var(--s-3) var(--s-4);
+    background: var(--surface-2);
+    border-top: 1px solid var(--line-soft);
+    box-shadow: 0 -8px 24px -16px rgba(15, 15, 20, 0.35);
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .generateBar .quoteInline {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    font-size: var(--t-1);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .generateBar .quoteInline strong {
+    font-size: var(--t-2);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .generateBar > :last-child {
+    flex: 0 0 auto;
+    min-width: 44%;
+    min-height: 46px;
+    font-size: var(--t-2);
+  }
+  .generate {
+    display: none;
+  }
+  /* The page ends under the bar; leave room so the last result clears it. */
+  .mobileSpacer {
+    height: calc(76px + env(safe-area-inset-bottom));
+  }
+}
+@media (min-width: 768px) {
+  .generateBar {
+    display: none;
+  }
+  .mobileSpacer {
+    display: none;
+  }
+}
+
+/* ---- outputs ---- */
+.outputs {
+  display: grid;
+  gap: var(--s-4);
+  margin-top: var(--s-5);
+}
+.outputsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.outputsHead h2 {
+  font-size: var(--t-4);
+  font-weight: 700;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+@media (max-width: 767px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  animation: rise var(--dur) var(--ease) both;
+  min-width: 0;
+}
+.card[data-status='FAILED'],
+.card[data-status='CANCELLED'] {
+  border-color: var(--danger-wash);
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 700;
+  font-size: var(--t-3);
+}
+.cardMeta {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.narrate {
+  display: grid;
+  gap: var(--s-2);
+}
+.narrateText {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.narrateText span:last-child {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.preview {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+.preview img,
+.preview video {
+  width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  display: block;
+  background: var(--sunk);
+}
+.previewSkel {
+  width: 100%;
+  height: 220px;
+}
+.variants {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+/* Two acts, not one: the name shows the crop, the arrow saves it. Checking
+   whether a Story crop cut the label off should not leave a file behind. */
+.variant {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: var(--control-h-sm);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  background: var(--surface);
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: none;
+  overflow: hidden;
+}
+.variant:hover {
+  border-color: var(--line);
+  text-decoration: none;
+  color: var(--ink);
+}
+.variant > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: zoom-in;
+}
+.variant > a {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  border-left: 1px solid var(--line-soft);
+  color: var(--muted);
+}
+.variant > a:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.variant > button:focus-visible,
+.variant > a:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -2px;
+}
+.variant[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.copyBlock {
+  display: grid;
+  gap: var(--s-3);
+}
+.copyField {
+  display: grid;
+  gap: var(--s-1);
+}
+.copyFieldHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.copyFieldHead span {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.copyText {
+  font-size: var(--t-2);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  padding: var(--s-3);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  max-height: 220px;
+  overflow: auto;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding-top: var(--s-1);
+  border-top: 1px solid var(--line-soft);
+}
+.fail {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--danger-wash);
+  color: var(--ink);
+  font-size: var(--t-2);
+}
+.fail strong {
+  color: var(--danger);
+}
+.failActions {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+.refunded {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* ---- audio ---- */
+.audio {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+.audio[data-locked='true'] {
+  background: linear-gradient(135deg, var(--accent-wash), var(--surface));
+}
+.audioHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.audioIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.audioMeta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.audioMeta strong {
+  font-size: var(--t-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audioMeta span {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.player {
+  width: 100%;
+  height: 40px;
+}
+.unlockRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+
+/* ---- catalogue picker ---- */
+.fromCatalogue {
+  all: unset;
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: var(--t-2);
+  color: var(--ink);
+  box-sizing: border-box;
+  width: 100%;
+}
+.fromCatalogue:hover {
+  border-color: var(--accent);
+}
+.fromCatalogue:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.fromCatalogue > span {
+  display: grid;
+  gap: 2px;
+}
+.fromCatalogue > span > span {
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.picker {
+  display: grid;
+  gap: var(--s-3);
+}
+.pickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--s-2);
+  max-height: 60vh;
+  overflow: auto;
+}
+.pickerTile {
+  all: unset;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: var(--r-md);
+  padding: 4px;
+}
+.pickerTile:hover:not(:disabled) {
+  background: var(--sunk);
+}
+.pickerTile:focus-visible {
+  outline: 2.5px solid var(--accent);
+}
+.pickerTile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pickerThumb {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+}
+.pickerThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pickerTitle {
+  font-size: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pickerEmpty {
+  color: var(--muted);
+  font-size: var(--t-2);
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+}
+.pickerEmpty p {
+  margin: 0;
+}
+
+/* ---- ideas: three directions for this product, under the prompt ---- */
+.ideas {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: calc(-1 * var(--s-1));
+}
+.ideasHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.ideasNote {
+  font-weight: 400;
+  color: var(--muted);
+}
+.ideasMore {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.ideasMore:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.ideasMore:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.ideaList {
+  display: grid;
+  gap: var(--s-2);
+}
+.idea {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.idea:hover {
+  border-color: var(--accent);
+}
+.idea[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.idea:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.idea strong {
+  font-size: var(--t-2);
+}
+.idea span {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+.idea em {
+  font-style: normal;
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+
+/* ---- presenters: faces to front a customer-filmed ad ---- */
+.presenters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--s-2);
+}
+.presenter {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-md);
+  border: 2px solid transparent;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: center;
+}
+.presenter img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: calc(var(--r-md) - 3px);
+  background: var(--sunk);
+}
+.presenter:hover {
+  border-color: var(--line);
+}
+.presenter[aria-checked='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.presenter:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.fieldHint {
+  display: block;
+  margin-top: var(--s-2);
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.fileImg {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: var(--r-md);
+  background: var(--sunk);
+}
+
+/* ---- the collage's photo picker ----
+   The thumbnails are the control: a tap is "use this", and the number that
+   appears is where it lands, so choosing and ordering are one gesture. */
+.photoCount {
+  float: right;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: var(--s-2);
+}
+.photoTile,
+.photoAdd {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: var(--r-md);
+  border: 2px solid transparent;
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+}
+.photoTile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photoTile:hover:not(:disabled) {
+  border-color: var(--line);
+}
+.photoTile[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+/* A chosen photo steps forward; the rest stay quiet, so the order reads at a glance. */
+.photoTile:not([aria-pressed='true']) img {
+  opacity: 0.72;
+}
+.photoTile:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.photoNum {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--t-1);
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.photoAdd {
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+}
+.photoAdd:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.photoAdd:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.photoBlank {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sunk);
+}
+.photoLabels {
+  display: grid;
+  gap: var(--s-2);
+}
+.photoLabelRow {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  align-items: center;
+  gap: var(--s-2);
+}
+.photoLabelRow img,
+.photoLabelRow .photoBlank {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+}
+.photoLabelRow input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-2);
+}
+.photoLabelRow input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- looks you pick by looking ----
+   A tile is a small photograph, not a colour chip: the ground the preset
+   makes, with a stand-in product sitting on it, so the eye can compare a
+   row of them the way it would compare photos. */
+.presetGroups {
+  display: grid;
+  gap: var(--s-3);
+}
+.presetGroupHead {
+  display: grid;
+  gap: 1px;
+  margin-bottom: var(--s-2);
+}
+.presetGroupHead strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+.presetGroupHead span {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.presetRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--s-2);
+}
+.preset {
+  display: grid;
+  gap: 4px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  min-width: 0;
+}
+.preset:hover {
+  border-color: var(--line);
+}
+.preset[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.presetSwatch {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border-radius: calc(var(--r-md) - 3px);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+/* The cut-out tile shows the checkerboard everyone reads as "no background". */
+.presetSwatch[data-transparent] {
+  background:
+    linear-gradient(45deg, #d8d5dc 25%, transparent 25%, transparent 75%, #d8d5dc 75%) 0 0 / 12px 12px,
+    linear-gradient(45deg, #d8d5dc 25%, transparent 25%, transparent 75%, #d8d5dc 75%) 6px 6px / 12px 12px,
+    #fff;
+}
+/* The stand-in product: a soft rounded shape with a contact shadow, so the
+   tile reads as something sitting on a surface rather than a flat square. */
+.presetProduct {
+  position: absolute;
+  left: 26%;
+  right: 26%;
+  top: 30%;
+  bottom: 26%;
+  border-radius: 40% 40% 34% 34%;
+  background: linear-gradient(160deg, #b9a894, #8d7a64);
+  box-shadow: 0 6% 10% rgba(0, 0, 0, 0.28);
+}
+.presetProduct[data-ink='light'] {
+  background: linear-gradient(160deg, #e6ddd0, #b6a894);
+}
+.presetName {
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset[aria-checked='true'] .presetName {
+  color: var(--ink);
+}
+
+/* ---- the merchant shots ----
+   Wider than a preset tile because each one carries the sentence that says
+   when to reach for it — "Your clothing worn by a person, without hiring one." */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--s-2);
+}
+.mode {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.mode strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+  color: var(--ink);
+}
+.mode span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.35;
+}
+.mode:hover {
+  border-color: var(--line);
+}
+.mode[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Said before the button, not discovered in the result: this tool will not
+   use the photo you are looking at. */
+.ignoredNote {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+}
+
+/* ---- a whole folder at once ----
+   The gesture a merchant already knows from their desktop: drag the shoot in. */
+.folderDrop {
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  padding: var(--s-3);
+  margin-bottom: var(--s-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  text-align: center;
+  background: var(--surface-2);
+}
+.folderDrop[data-over] {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--surface);
+}
+.folderDrop strong {
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+.folderDrop span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}
+.folderDrop button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- all tools ----
+   The door out of the strip. Fifteen tools in a flat row was a wall; six in
+   the strip and the rest one tap away is a menu. This sheet is what opens.
+
+   It is a sheet on a phone (rises from the bottom, thumb-reachable, the
+   search box under the thumb rather than at the top of a tall screen) and a
+   centred dialog on a desktop. Same markup, two shapes. */
+.toolBtn[data-more] {
+  color: var(--accent);
+}
+.toolBtn[data-more]:hover {
+  background: var(--accent-wash);
+}
+
+.sheetWrap {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: grid;
+  align-items: end;
+  justify-items: center;
+}
+@media (min-width: 640px) {
+  .sheetWrap {
+    align-items: center;
+    padding: var(--s-5);
+  }
+}
+
+/* A button, not a div: closing by tapping away has to work for a keyboard
+   and a screen reader too, and it is the last stop in the tab order. */
+.sheetScrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(12, 10, 16, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  cursor: pointer;
+  animation: sheetFade var(--dur-fast) var(--ease);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  max-width: 720px;
+  /* Never taller than the screen, and never so short that two groups cannot
+     be seen at once — the point is to show the shape of the studio. */
+  max-height: min(78vh, 640px);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  animation: sheetRise var(--dur) var(--ease);
+}
+@media (min-width: 640px) {
+  .sheet {
+    border-radius: var(--r-xl);
+    animation: sheetPop var(--dur-fast) var(--ease);
+  }
+}
+
+.sheetHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+/* Focused on open: the fastest route through fifteen tools is typing. */
+.sheetSearch {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: var(--t-3);
+  color: var(--ink);
+}
+.sheetSearch::placeholder {
+  color: var(--muted);
+}
+.sheetSearch:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.sheetClose {
+  display: grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.sheetClose:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.sheetClose:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sheetBody {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+  padding: var(--s-4);
+  /* The scrollbar sits inside this box, so a plain 16px padding put the track
+     hard against the last tile in every row — Concrete and Bathroom were
+     touching it. The gutter is reserved whether or not it is needed, so the
+     grid does not reflow when the list gets long enough to scroll, and the
+     right side gets enough padding that the track has air on both sides of
+     it rather than being wedged against the tiles. */
+  padding-right: calc(var(--s-4) + var(--s-3));
+  scrollbar-gutter: stable;
+  padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  /* Same trap as the panel: asking for a vertical scrollbar grants a
+     horizontal one unless the other axis is named. */
+  overflow-x: clip;
+  -webkit-overflow-scrolling: touch;
+}
+/* A slimmer, quieter track. The default one is a system chrome bar sitting
+   on top of a considered sheet; this reads as part of it. */
+.sheetBody {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.sheetBody::-webkit-scrollbar {
+  width: 10px;
+}
+.sheetBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sheetBody::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  /* Transparent border is what insets the thumb from the edge: the thumb is
+     painted in the content box, so a 3px border leaves 3px of air each side. */
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--line);
+}
+.sheetBody::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+}
+.sheetEmpty {
+  margin: 0;
+  padding: var(--s-5) var(--s-3);
+  text-align: center;
+  font-size: var(--t-2);
+  color: var(--muted);
+  line-height: var(--lh-body);
+}
+
+/* The group heading carries a sentence, not just a word: "Photo" tells a
+   merchant nothing they did not already guess. */
+.sheetGroup {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.sheetGroup strong {
+  font-size: var(--t-1);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.sheetGroup span {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+
+.sheetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s-2);
+}
+@media (max-width: 480px) {
+  .sheetGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A card, not a menu row: the blurb is the point. Someone who does not know
+   what "Merchant shots" means reads the line under it and does. */
+.sheetCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1.5px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.sheetCard:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.sheetCard:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.sheetCard[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+/* Shown, not hidden. Someone hunting for a tool should find it and learn why
+   it is waiting on a photo, not conclude the studio cannot do it. */
+.sheetCard:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sheetIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  color: var(--accent);
+}
+.sheetCard:disabled .sheetIcon {
+  color: var(--muted);
+}
+.sheetText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.sheetText strong {
+  font-size: var(--t-3);
+  font-weight: 600;
+  color: var(--ink);
+}
+.sheetText span {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+@keyframes sheetFade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheetRise {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+@keyframes sheetPop {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+}
+
+/* The sentence under a segmented control. The word on the button is a label;
+   this is what the choice actually means, and it is worth the two lines. */
+.fieldNote {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ---- whose shop is on the picture ----
+   The switch is ordinary; the sentence under it is the point. It names what
+   will be stamped, so nobody spends a credit to find out. */
+.brandField {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.brandLine {
+  margin: 0;
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.brandLine a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- a result you can actually look at ----
+   The picture was a plain <img>: the only way to see a generation properly
+   was to download it, which is exactly the wrong order. It is a button now. */
+.previewOpen {
+  display: block;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.previewOpen:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Shown on hover, and always on touch, where there is no hover to reveal it. */
+.previewZoom {
+  position: absolute;
+  right: var(--s-2);
+  bottom: var(--s-2);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: rgba(12, 10, 16, 0.62);
+  backdrop-filter: blur(3px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.previewOpen:hover .previewZoom,
+.previewOpen:focus-visible .previewZoom {
+  opacity: 1;
+}
+@media (hover: none) {
+  .previewZoom {
+    opacity: 1;
+  }
+}
+
+/* ---- sifting the results ----
+   Chips, not columns. A kanban's columns mean status and nothing here changes
+   status, so type-columns would be a filter permanently switched on — with a
+   row of one-card columns to scroll sideways through. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.filter span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--muted);
+}
+.filter:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+.filter[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.filter[aria-pressed='true'] span {
+  color: inherit;
+}
+.filter:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The extra-photos field, when a failed shot has just pointed at it. A ring
+   that fades: enough to find, not enough to still be shouting a minute later. */
+.anglesAnchor {
+  border-radius: var(--r-md);
+  scroll-margin-top: calc(var(--bar-h) + var(--s-5));
+}
+.anglesAnchor[data-asking] {
+  animation: askAngles 2.4s var(--ease);
+}
+@keyframes askAngles {
+  0%,
+  70% {
+    box-shadow: 0 0 0 3px var(--accent-wash);
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+  }
+}
+
+/* The door to the rest of the looks. A link, not a button: it opens a list,
+   it does not do anything to the picture. */
+.seeMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--s-3);
+  padding: var(--s-1) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-2);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.seeMore:hover {
+  text-decoration: underline;
+}
+.seeMore:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.seeMore svg {
+  transform: rotate(-90deg);
+}
+
+/* ---- the shape, drawn ----
+   Five aspect ratios is arithmetic. A rectangle at the right proportions is
+   not, and it fits inside the button, so nobody has to open anything. */
+.ratioItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ratioBox {
+  display: block;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+[aria-checked='true'] .ratioBox {
+  opacity: 1;
+}
+/* The tallest glyph is 19px, so the row needs the height whichever is chosen. */
+@media (max-width: 420px) {
+  .ratioItem {
+    gap: 4px;
+  }
+}

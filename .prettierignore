@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.next
+.open-next
+.turbo
+coverage
+pnpm-lock.yaml
+apps/web/content/
+apps/web/design/
+design/
+packages/db/prisma/migrations/
+*.min.*
+*.bundle

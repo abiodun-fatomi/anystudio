@@ -1,0 +1,105 @@
+# AnyStudio API and workers — one image, two commands.
+#
+#   node dist/src/main.js          the API (default)
+#   node dist/src/worker/main.js   the queue worker
+#
+# One image because the worker runs the same generation, ledger and provider
+# code as the API; two builds would be two places for a money rule to drift.
+# Render's worker services point at this Dockerfile with a dockerCommand.
+#
+# The one ordering rule that matters: `prisma generate` MUST run before tsc.
+# Without the generated client, typecheck fails on every import of @prisma/client
+# and the error points at your code rather than at the missing step.
+
+# ---- deps: cached against the lockfile alone --------------------------------
+FROM node:22-slim AS deps
+RUN corepack enable
+# openssl in the BUILD stage, not just the runtime one: `prisma generate`
+# chooses which query-engine binary to embed by detecting the libssl version,
+# and node:22-slim ships none. Without this it silently picks the
+# openssl-1.1.x engine and bakes it into an image whose runtime has openssl 3,
+# where it then fails to load.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/db/package.json     packages/db/
+COPY packages/shared/package.json packages/shared/
+COPY apps/api/package.json        apps/api/
+# fetch, not install: editing a source file must not invalidate this layer
+RUN pnpm fetch --frozen-lockfile
+
+# ---- build ------------------------------------------------------------------
+FROM deps AS build
+COPY . .
+RUN pnpm install --frozen-lockfile --offline
+RUN pnpm db:generate
+# `...` = the package and everything it depends on, in topological order,
+# so @anystudio/shared is compiled to dist before this app is.
+RUN pnpm --filter @anystudio/api... build
+RUN pnpm --filter @anystudio/api --prod deploy /out
+
+# The schema and migrations ride along so that `npm run db:deploy` — Render's
+# pre-deploy command, run in THIS image once per deploy before any new
+# instance starts — can apply them.
+RUN cp -r packages/db/prisma /out/prisma
+
+# The seed, compiled to plain JavaScript so `npm run db:seed` can run it in
+# the runtime image, which has no tsx. It carries the reference data the app
+# reads at runtime — plans, packs, credit costs, provider routing, genres,
+# voices — and is an upsert throughout, so it runs after every migration.
+# Without it a fresh database has a working schema and nothing to sell.
+RUN cd apps/api && ./node_modules/.bin/tsc ../../packages/db/prisma/seed.ts \
+      --outDir /out/prisma/seed-dist --module commonjs --target es2022 \
+      --moduleResolution node --esModuleInterop --skipLibCheck --types node
+
+# Generate the Prisma client AGAIN, here, into the tree that actually ships.
+#
+# `prisma generate` writes the client into node_modules (as `.prisma/client`),
+# and `pnpm deploy` does not copy node_modules — it rebuilds it from the
+# content-addressable store. So the client generated above, in /repo, is not
+# in /out, and the image starts and then dies on the first import with
+# `Cannot find module '.prisma/client/default'`. Nothing catches that at
+# build time, which is why it reached a deploy.
+RUN cd /out && ./node_modules/.bin/prisma generate --schema prisma/schema.prisma
+
+# Prove it, rather than trusting the line above: construct the client exactly
+# as the app does. A missing or half-generated client fails the BUILD here
+# instead of the deploy twenty minutes later. The URL is a throwaway — the
+# constructor only parses it, it opens no connection.
+ENV PRISMA_SMOKE_URL=postgresql://u:p@127.0.0.1:5432/d
+RUN cd /out \
+ && DATABASE_URL=$PRISMA_SMOKE_URL DIRECT_URL=$PRISMA_SMOKE_URL \
+    node -e "const{PrismaClient}=require('@prisma/client');new PrismaClient();console.log('prisma client OK')"
+
+# ---- runtime ----------------------------------------------------------------
+FROM node:22-slim AS runtime
+ENV NODE_ENV=production
+# tini reaps zombies and forwards SIGTERM, so an in-flight request finishes
+# instead of being cut off mid-deploy.
+# openssl: the Prisma engines link against libssl, which the slim image
+# does not ship. Without it the first query fails with a load error.
+# ffmpeg: workers stitch ads, cut previews and grab video thumbnails; the API
+# uses ffprobe to verify uploaded audio/video duration before duration billing.
+# ~90 MB, paid once per image.
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates openssl ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+# glibc gives each thread its own allocation arena — up to eight times the
+# core count — and never returns a freed arena to the operating system. In a
+# process that decodes images on a thread pool that reads as a ratcheting RSS
+# with a flat heap: the shape of a leak, with nothing leaking. Two arenas.
+ENV MALLOC_ARENA_MAX=2
+WORKDIR /app
+# /out already carries dist, node_modules with a generated Prisma client, and
+# prisma/ with the schema and migrations.
+COPY --from=build --chown=node:node /out ./
+USER node
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD if [ "${SERVICE_NAME:-api}" = "api" ]; then \
+        node -e "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; \
+      else \
+        node dist/src/worker/healthcheck.js; \
+      fi
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/src/main.js"]

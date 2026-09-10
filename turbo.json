@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["NODE_ENV", "DATABASE_URL", "REDIS_URL", "APP_KEY"],
+  "tasks": {
+    "//#db:generate": { "cache": false },
+    "build": {
+      "dependsOn": ["^build", "db:generate"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "db:generate": { "cache": false, "outputs": ["node_modules/.prisma/**"] },
+    "typecheck": { "dependsOn": ["^build", "db:generate"] },
+    "lint": {},
+    "test": { "dependsOn": ["db:generate"] },
+    "dev": { "cache": false, "persistent": true }
+  }
+}

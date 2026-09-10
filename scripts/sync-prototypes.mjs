@@ -1,0 +1,398 @@
+/**
+ * Publish the static prototypes through the web app.
+ *
+ * design/landing.html and design/org.html are finished pages; rebuilding them
+ * as React would be weeks of work for no user-visible gain. Instead each is
+ * emitted as a string module under apps/web/content/ — with prototype links
+ * rewritten to app routes and CDN media to /shots/ — and a Route Handler
+ * returns it. The SEO files are copied into public/.
+ *
+ * The landing prototype is also SPLIT here. It was authored as one long page,
+ * but pricing and the platform/API story are destinations people arrive at
+ * directly and link to, so they get their own URLs. The three pages share one
+ * source of chrome — head, nav, footer, script — which is the whole reason
+ * this is a build step rather than three hand-maintained files that drift.
+ *
+ * Run after editing anything in design/:   node scripts/sync-prototypes.mjs
+ */
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const pub = resolve(root, 'apps/web/public');
+const content = resolve(root, 'apps/web/content');
+mkdirSync(pub, { recursive: true });
+mkdirSync(content, { recursive: true });
+
+const shots = JSON.parse(readFileSync(resolve(root, 'scripts/shots.json'), 'utf8'));
+
+/** Prototype href → route the app actually serves. */
+const LINKS = [
+  ['why.html#mobile', '/why#mobile'],
+  ['why.html#roi', '/why#roi'],
+  ['why.html', '/why'],
+  ['careers.html', '/careers'],
+  ['terms.html', '/terms'],
+  ['privacy.html', '/privacy'],
+  ['refunds.html', '/refunds'],
+  ['auth.html#signup', '/signup'],
+  ['auth.html#login', '/login'],
+  ['auth.html#forgot', '/forgot'],
+  ['auth.html', '/login'],
+  ['org.html#contact', '/org#contact'],
+  ['org.html', '/org'],
+  ['landing.html', '/'],
+];
+
+/** Sections that left the landing page, and where they went. */
+const PROMOTED = [
+  { id: 'pricing', path: '/pricing' },
+  { id: 'api', path: '/developers' },
+];
+
+// --------------------------------------------------------------- helpers
+
+function rewriteAssets(html) {
+  for (const [local, cdn] of Object.entries(shots.files)) {
+    html = html.split(`${shots.base}/${cdn}`).join(`/shots/${local}`);
+  }
+  const leftover = html.match(/https:\/\/d8j0ntlcm91z4\.cloudfront\.net[^"']+/g);
+  if (leftover) throw new Error(`CDN links not in scripts/shots.json:\n${[...new Set(leftover)].join('\n')}`);
+  checkShotsExist(html);
+  return html;
+}
+
+/**
+ * Every /shots/ file the pages ask for has to actually be in public/ — and
+ * in GIT.
+ *
+ * "On disk" was the only thing this checked, and on disk is not what gets
+ * deployed. A commit repointed the hero sheet, the scroll-scrub, the
+ * before/after slider, the six-up and the sign-in layout at /shots/hat-*
+ * while the nine hat files sat staged but uncommitted. Every check here
+ * passed, every page rendered locally, and the deployed site came back with
+ * gradient placeholders where almost all of its photography should be.
+ *
+ * So the untracked case is now its own warning, in its own words: the file
+ * is right there, which is exactly why nobody looks for it.
+ *
+ * Both warn rather than throw. A picture that has not been dropped in yet
+ * should not stop someone editing copy — but neither should go unsaid.
+ */
+const missingShots = new Set();
+const untrackedShots = new Set();
+/** What git has under apps/web/public/shots, or null outside a work tree. */
+const trackedShots = (() => {
+  try {
+    return new Set(
+      execFileSync('git', ['ls-files', '--', 'apps/web/public/shots'], { cwd: root, encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .map((p) => p.slice(p.lastIndexOf('/') + 1)),
+    );
+  } catch {
+    return null; // not a checkout, or no git — the on-disk check still runs
+  }
+})();
+
+function checkShotsExist(html) {
+  for (const m of html.matchAll(/\/shots\/([A-Za-z0-9._-]+)/g)) {
+    const name = m[1];
+    if (!existsSync(resolve(pub, 'shots', name))) missingShots.add(name);
+    else if (trackedShots && !trackedShots.has(name)) untrackedShots.add(name);
+  }
+}
+
+function rewriteLinks(html) {
+  for (const [from, to] of LINKS) html = html.split(`href="${from}"`).join(`href="${to}"`);
+  return html;
+}
+
+/**
+ * The prototypes were authored for a host that wraps them in a document
+ * skeleton, so they start at <meta charset>. Served raw they would render in
+ * quirks mode; wrap them.
+ */
+const wrap = (html) => `<!DOCTYPE html>\n<html lang="en">\n<head>\n${html}\n</html>\n`;
+
+/** Split the landing prototype into the parts every page shares, and the rest. */
+function dissect(html) {
+  const headEnd = html.indexOf('</style>') + '</style>'.length;
+  const navStart = html.indexOf('<header class="nav">');
+  const navEnd = html.indexOf('</header>') + '</header>'.length;
+  const footStart = html.indexOf('\n<footer>');
+  const scriptStart = html.indexOf('\n<script>', footStart);
+  if ([headEnd, navStart, navEnd, footStart, scriptStart].some((i) => i < 1)) {
+    throw new Error('design/landing.html no longer has the expected head/nav/footer/script shape');
+  }
+  return {
+    head: html.slice(0, headEnd),
+    nav: html.slice(navStart, navEnd),
+    body: html.slice(navEnd, footStart),
+    footer: html.slice(footStart, scriptStart),
+    script: html.slice(scriptStart),
+  };
+}
+
+/** The body as top-level blocks: each <section>, with its banner comment. */
+function blocks(body) {
+  return body.split(/\n(?=(?:<!-- =+[^\n]*-->\n)?<section\b)/);
+}
+
+/**
+ * Per-page metadata. Everything else in <head> — icons, theme colour, security
+ * headers, the stylesheet — is identical on all three by design.
+ */
+function headFor(head, page) {
+  const swap = (re, to) => {
+    head = head.replace(re, to);
+  };
+  swap(/<title>[^<]*<\/title>/, `<title>${page.title}</title>`);
+  swap(/(<meta name="description" content=")[^"]*(">)/, `$1${page.description}$2`);
+  swap(/(<meta property="og:title" content=")[^"]*(">)/, `$1${page.ogTitle}$2`);
+  swap(/(<meta property="og:description" content=")[^"]*(">)/, `$1${page.description}$2`);
+  swap(/(<meta name="twitter:title" content=")[^"]*(">)/, `$1${page.ogTitle}$2`);
+  swap(/(<meta name="twitter:description" content=")[^"]*(">)/, `$1${page.description}$2`);
+  for (const attr of ['canonical', 'alternate']) {
+    head = head.replace(new RegExp(`(<link rel="${attr}"[^>]*href="https://anystudio\\.ai)/("[^>]*>)`, 'g'), `$1${page.path === '/' ? '/' : page.path}$2`);
+  }
+  swap(/(<meta property="og:url" content="https:\/\/anystudio\.ai)\/(">)/, `$1${page.path === '/' ? '/' : page.path}$2`);
+  // The organization/product structured data describes the whole product and
+  // belongs on one page only; repeating it on subpages asserts three homepages.
+  if (page.path !== '/') {
+    head = head.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>\n?/, '');
+  }
+  return head;
+}
+
+/**
+ * Turn a section that used to sit mid-page into the opening of its own.
+ *
+ * Three things change. It gets `lead`, which trades the divider and the full
+ * section padding for the hero's spacing — a section under a sticky nav with
+ * 120px above it reads as a mistake. Its heading becomes the document's <h1>,
+ * since a page whose only heading is an <h2> has no title as far as a screen
+ * reader or a crawler is concerned. And any inline font-size on that heading
+ * goes, so the shared rule sizes it like every other page's title.
+ */
+function promote(html) {
+  return html
+    .replace(/<section class="sec"/, '<section class="sec lead"')
+    .replace(/<h2([^>]*)>/, (_m, attrs) => `<h1${attrs.replace(/font-size:[^;"]*;?/, '')}>`)
+    .replace(/<\/h2>/, '</h1>');
+}
+
+/** Mark the nav link for the page being rendered. */
+function markCurrent(html, path) {
+  return html.replace(`<a href="${path}">`, `<a href="${path}" aria-current="page">`);
+}
+
+/** Anchors that only exist on the landing page must be absolute elsewhere. */
+function resolveAnchors(html, onLanding) {
+  for (const { id, path } of PROMOTED) html = html.split(`href="#${id}"`).join(`href="${path}"`);
+  if (onLanding) return html;
+  return html.replace(/href="#([a-z-]+)"/g, (_m, id) => (id === 'top' ? 'href="/"' : `href="/#${id}"`));
+}
+
+// ------------------------------------------------------------ the landing
+
+const landingSrc = readFileSync(resolve(root, 'design/landing.html'), 'utf8');
+const { head, nav, body, footer, script } = dissect(landingSrc);
+
+const all = blocks(body);
+const promoted = new Map();
+const kept = [];
+for (const block of all) {
+  const hit = PROMOTED.find(({ id }) => block.includes(`<section class="sec" id="${id}">`));
+  if (hit) promoted.set(hit.id, block);
+  else kept.push(block);
+}
+for (const { id } of PROMOTED) {
+  if (!promoted.has(id)) throw new Error(`design/landing.html has no <section id="${id}">`);
+}
+
+const landingBody = kept.join('\n');
+
+const PAGES = [
+  {
+    path: '/',
+    name: 'landing',
+    symbol: 'LANDING',
+    body: landingBody,
+    keepAnchors: true,
+    title: 'AnyStudio — Turn one product photo into posts, captions and reels',
+    ogTitle: 'One product photo. Everything you post.',
+    description:
+      'Send one phone photo on WhatsApp and get back branded product images, a written description and a short reel — ready to post. Three generations free, no card.',
+  },
+  {
+    path: '/pricing',
+    name: 'pricing',
+    symbol: 'PRICING',
+    body: promote(promoted.get('pricing')),
+    keepAnchors: false,
+    title: 'Pricing — AnyStudio',
+    ogTitle: 'Pay for what you make. Nothing else.',
+    description: 'Three generations free, no card. After that a plan or a one-off top-up, priced per market. Credits from top-ups never expire.',
+  },
+  {
+    path: '/developers',
+    name: 'developers',
+    symbol: 'DEVELOPERS',
+    body: promote(promoted.get('api')),
+    keepAnchors: false,
+    title: 'For platforms — AnyStudio',
+    ogTitle: 'Content for every merchant, from one integration.',
+    description:
+      'One API call turns a merchant’s phone photo into storefront-ready images and a description no other listing is using. Test keys work immediately, on 500 free credits.',
+  },
+];
+
+// The why page is authored as a body fragment and wears the landing chrome.
+const whyBody = readFileSync(resolve(root, 'design/why.html'), 'utf8');
+PAGES.push({
+  path: '/why',
+  name: 'why',
+  symbol: 'WHY',
+  body: whyBody,
+  keepAnchors: false,
+  title: 'Why AnyStudio — for people, businesses and platforms',
+  ogTitle: 'One photo in. Everything you post, out.',
+  description:
+    'What AnyStudio does for a person, a seller and a platform; how it compares with the tools you use today; what it costs against what it returns — and the mobile app that is on its way.',
+});
+
+// The legal pages: body fragments plus one shared stylesheet, in the landing
+// chrome. Terms, privacy and refunds are what Paddle, Google's OAuth consent
+// screen and the Meta/TikTok app reviews all ask for by URL.
+const legalStyle = `<style>\n${readFileSync(resolve(root, 'design/legal/style.css'), 'utf8')}</style>\n`;
+const LEGAL = [
+  {
+    path: '/terms',
+    name: 'terms',
+    symbol: 'TERMS',
+    title: 'Terms of Service — AnyStudio',
+    ogTitle: 'AnyStudio Terms of Service',
+    description: 'The agreement between you and AnyStudio: credits and payment, what you own, AI-generated output, acceptable use, and the API.',
+  },
+  {
+    path: '/privacy',
+    name: 'privacy',
+    symbol: 'PRIVACY',
+    title: 'Privacy Policy — AnyStudio',
+    ogTitle: 'AnyStudio Privacy Policy',
+    description:
+      'What AnyStudio collects, what it is used for, which providers see it, how long it is kept, and how to export or delete it. No trackers, nothing sold, nothing trains a model.',
+  },
+  {
+    path: '/refunds',
+    name: 'refunds',
+    symbol: 'REFUNDS',
+    title: 'Refund Policy — AnyStudio',
+    ogTitle: 'AnyStudio Refund Policy',
+    description:
+      'A credit pack you have not touched is refundable for 14 days from inside the app. Failed generations are never charged. How to ask and how long it takes.',
+  },
+];
+for (const page of LEGAL) {
+  PAGES.push({ ...page, body: legalStyle + readFileSync(resolve(root, `design/legal/${page.name}.html`), 'utf8'), keepAnchors: false });
+}
+
+for (const page of PAGES) {
+  const doc = [
+    headFor(head, page),
+    markCurrent(resolveAnchors(nav, page.keepAnchors), page.path),
+    page.body,
+    resolveAnchors(footer, page.keepAnchors),
+    script,
+  ].join('\n');
+  const html = rewriteLinks(rewriteAssets(wrap(doc)));
+  writeFileSync(
+    resolve(content, `${page.name}.ts`),
+    `// GENERATED by scripts/sync-prototypes.mjs from design/landing.html — edit the prototype, not this file.\n` +
+      `export const ${page.symbol}: string = ${JSON.stringify(html)};\n`,
+  );
+  console.log(`✓ ${page.path.padEnd(12)} → apps/web/content/${page.name}.ts`);
+}
+
+// ---------------------------------------------------------------- chrome
+//
+// The head, nav, footer and script as a module, for pages the server builds
+// at request time (careers: the openings come from the database). The head
+// carries tokens the route handler fills in.
+const chromeHead = headFor(head, { path: '__PATH__', title: '__TITLE__', ogTitle: '__OG_TITLE__', description: '__DESCRIPTION__' });
+writeFileSync(
+  resolve(content, 'chrome.ts'),
+  `// GENERATED by scripts/sync-prototypes.mjs from design/landing.html — edit the prototype, not this file.\n` +
+    `/** The marketing site's shared chrome. head() carries __TITLE__, __OG_TITLE__, __DESCRIPTION__ and __PATH__ tokens. */\n` +
+    `export const CHROME = {\n` +
+    `  head: ${JSON.stringify(rewriteLinks(rewriteAssets(chromeHead)))},\n` +
+    `  nav: ${JSON.stringify(rewriteLinks(rewriteAssets(resolveAnchors(nav, false))))},\n` +
+    `  footer: ${JSON.stringify(rewriteLinks(rewriteAssets(resolveAnchors(footer, false))))},\n` +
+    `  script: ${JSON.stringify(script)},\n` +
+    `};\n`,
+);
+console.log('✓ chrome       → apps/web/content/chrome.ts');
+
+// ------------------------------------------------------------------- org
+
+const orgHtml = rewriteLinks(rewriteAssets(wrap(readFileSync(resolve(root, 'design/org.html'), 'utf8'))));
+writeFileSync(
+  resolve(content, 'org.ts'),
+  `// GENERATED by scripts/sync-prototypes.mjs from design/org.html — edit the prototype, not this file.\n` +
+    `export const ORG: string = ${JSON.stringify(orgHtml)};\n`,
+);
+console.log('✓ /org         → apps/web/content/org.ts');
+
+// ------------------------------------------------------------------- seo
+
+for (const f of ['favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'og-image.png', 'site.webmanifest', 'llms.txt']) {
+  copyFileSync(resolve(root, 'design/seo', f), resolve(pub, f));
+}
+writeFileSync(resolve(pub, 'robots.txt'), readFileSync(resolve(root, 'design/seo/robots.txt'), 'utf8').replace('Disallow: /signin', 'Disallow: /login'));
+
+/** Only list what is live: a sitemap that 404s costs crawl budget and trust. */
+const today = new Date().toISOString().slice(0, 10);
+const urls = [
+  ['/', '1.0', 'weekly'],
+  ['/pricing', '0.9', 'monthly'],
+  ['/developers', '0.8', 'monthly'],
+  ['/org', '0.7', 'monthly'],
+  ['/why', '0.9', 'monthly'],
+  ['/careers', '0.6', 'weekly'],
+  ['/terms', '0.3', 'yearly'],
+  ['/privacy', '0.3', 'yearly'],
+  ['/refunds', '0.3', 'yearly'],
+];
+writeFileSync(
+  resolve(pub, 'sitemap.xml'),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    urls
+      .map(
+        ([loc, pri, freq]) =>
+          `  <url>\n    <loc>https://anystudio.ai${loc}</loc>\n    <lastmod>${today}</lastmod>\n` +
+          `    <changefreq>${freq}</changefreq>\n    <priority>${pri}</priority>\n  </url>`,
+      )
+      .join('\n') +
+    `\n</urlset>\n`,
+);
+console.log('✓ design/seo/* → apps/web/public/');
+
+if (missingShots.size > 0) {
+  console.warn(
+    `\n⚠  ${missingShots.size} picture(s) referenced by the pages are not in apps/web/public/shots/:\n` +
+      [...missingShots].map((n) => `     ${n}`).join('\n') +
+      `\n   The pages will render with empty image boxes until those files are there.\n`,
+  );
+}
+
+if (untrackedShots.size > 0) {
+  console.warn(
+    `\n⚠  ${untrackedShots.size} picture(s) are in apps/web/public/shots/ but NOT in git:\n` +
+      [...untrackedShots].map((n) => `     ${n}`).join('\n') +
+      `\n   They will look right on this machine and be missing everywhere else.\n` +
+      `   git add apps/web/public/shots\n`,
+  );
+}

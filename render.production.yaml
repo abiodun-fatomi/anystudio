@@ -1,0 +1,174 @@
+# Render Blueprint for production only. Import this path exactly once and keep
+# Blueprint Auto Sync off; GitHub Actions plus the protected production
+# environment own deploy timing. Create and preflight `anystudio-production`
+# before importing.
+#
+# SIZED FOR LAUNCH, NOT FOR SCALE
+# -------------------------------
+# The shape here is the production architecture — three services, isolated
+# media worker, private database — at the smallest size that runs it honestly.
+# Every line below is a dashboard change later, not a rewrite. What was
+# trimmed, and what to do when the traffic arrives:
+#
+#   highAvailability   off. A standby is billed as a second copy of the
+#                      primary (same plan, same storage) and, per Render's
+#                      pricing page, is gated behind the Scale workspace.
+#                      Without it a primary failure is a restore from backup:
+#                      minutes to hours, once, rarely. Turn it on when an hour
+#                      of downtime costs more than the standby does.
+#   diskSizeGB 20      storageAutoscalingEnabled grows it on demand, so this
+#                      is a floor, not a ceiling. Media lives in R2; what is
+#                      here is rows.
+#   keyvalue 256mb     a queued job is an id and a heartbeat. 1g was room for
+#                      a cache this workload does not keep.
+#   numInstances 1     see the note on the API service below — the second
+#                      instance is not safe until the database has a pooler.
+previewsEnabled: false
+
+databases:
+  - name: anystudio-db
+    region: frankfurt
+    postgresMajorVersion: '18'
+    plan: 1c-2g
+    diskSizeGB: 20
+    storageAutoscalingEnabled: true
+    highAvailability:
+      enabled: false
+    ipAllowList: []
+
+services:
+  - type: keyvalue
+    name: anystudio-kv
+    region: frankfurt
+    plan: 256mb
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+
+  - type: web
+    name: anystudio-api
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: 1c-2g
+    # ONE INSTANCE, AND WHY THE SECOND ONE IS NOT FREE
+    #
+    # A second instance buys gapless deploys and survives one instance dying.
+    # It also doubles the Prisma connection pools pointed at a database that
+    # has no pooler in front of it, and Postgres runs out of connections long
+    # before it runs out of CPU. The failure does not look like connections:
+    # it looks like requests timing out at random under load.
+    #
+    # So the two changes are one change. To scale past one instance:
+    #   1. add `connectionPool: pgbouncer` to the database above
+    #   2. point DATABASE_URL (only) at `connectionPoolString`
+    #   3. leave DIRECT_URL on `connectionString` — `migrate deploy` takes an
+    #      advisory lock and runs DDL, and neither survives a transaction
+    #      pooler. That split is why schema.prisma declares `directUrl`.
+    #   4. then raise numInstances
+    # scripts/test-render-blueprints.rb enforces that ordering.
+    numInstances: 1
+    region: frankfurt
+    healthCheckPath: /health
+    preDeployCommand: npm run release
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: api
+      - key: PORT
+        value: '3001'
+      - key: LOG_LEVEL
+        value: info
+
+  - type: worker
+    name: anystudio-worker
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 1c-2g
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: worker
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1536
+      - key: WORKER_FAST_CONCURRENCY
+        value: '12'
+      - key: WORKER_HEAVY_CONCURRENCY
+        value: '16'
+      - key: WORKER_QUEUES
+        value: media.fast,media.heavy
+      - key: FFMPEG_CONCURRENCY
+        value: '1'
+
+  - type: worker
+    name: anystudio-media
+    runtime: docker
+    branch: production
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker/main.js
+    plan: 1c-2g
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: anystudio-db, property: connectionString }
+      - key: REDIS_URL
+        fromService:
+          { type: keyvalue, name: anystudio-kv, property: connectionString }
+      - fromGroup: anystudio-production
+      - key: APP_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_NAME
+        value: media
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1024
+      - key: WORKER_QUEUES
+        value: media.local
+      - key: WORKER_LOCAL_CONCURRENCY
+        value: '1'
+      - key: WORKER_DIRECT_CONCURRENCY
+        value: '1'
+      - key: FFMPEG_CONCURRENCY
+        value: '1'

@@ -1,0 +1,1504 @@
+/**
+ * The typed API client — the only place the web app talks HTTP.
+ *
+ * Every call goes to the same origin (/api/*), which Next rewrites to the
+ * NestJS service, so cookies are first-party and there is no CORS dance.
+ * Errors arrive as ApiError with the server's code and the request id, so a
+ * screen can show "quote req_… to support" without knowing anything else.
+ */
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly requestId?: string,
+    readonly fields?: Array<{ path: string; message: string }>,
+  ) {
+    super(message);
+  }
+}
+
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/**
+ * Every response is an envelope: `{ status, message, data }` on success,
+ * `{ status, message, error, data: null, fields?, requestId }` on failure.
+ * Callers get `data` back; the envelope is unwrapped here and nowhere else.
+ */
+interface Envelope<T> {
+  status: number;
+  message: string;
+  data: T;
+  error?: string;
+  fields?: Array<{ path: string; message: string }>;
+  requestId?: string;
+}
+
+const BASE = '/api/v1';
+export const SESSION_EXPIRED_EVENT = 'anystudio:session-expired';
+
+/** One request. Throws ApiError on any non-2xx. */
+async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    credentials: 'include',
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return undefined as T;
+  const env = (await res.json().catch(() => ({}))) as Partial<Envelope<T>>;
+  if (!res.ok) {
+    // The signed-in shell handles expiry without re-fetching /auth/me on every navigation.
+    // Auth form failures (e.g. a wrong password) remain local to the form.
+    if (res.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+    throw new ApiError(res.status, env.error ?? 'http', env.message ?? 'Something went wrong.', env.requestId, env.fields);
+  }
+  return env.data as T;
+}
+
+// ---------------------------------------------------------------- shapes
+
+export interface Me {
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    avatarKey?: string | null;
+    /** Signed, an hour; refreshed with the rest of /auth/me. */
+    avatarUrl?: string | null;
+    locale?: string | null;
+    timezone?: string | null;
+    deleteRequestedAt?: string | null;
+  };
+  surface: 'APP' | 'ORG' | 'ADMIN';
+  workspaces: Array<{ id: string; type: string; name: string; currency: string; role: string; logoKey?: string | null; logoUrl?: string | null }>;
+  canSwitchToStaff: boolean;
+  /** Only on the ADMIN surface. */
+  staffRole?: 'SUPPORT' | 'OPERATOR' | 'ADMIN' | 'SUPERADMIN' | null;
+  mfaLevel: number;
+}
+
+export interface RegisterInput {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  phoneIsWhatsApp: boolean;
+  marketing: { granted: boolean; wording: string };
+  sourceUrl?: string;
+}
+
+/**
+ * A proven sign-in. `signed_in`: the session cookie came with this response.
+ * `handoff`: the form was on the marketing host, so the browser must visit
+ * `url` (on the app host, where the __Host- cookie can be set) to finish.
+ */
+export type SignedIn = { status: 'signed_in'; next: string } | { status: 'handoff'; url: string };
+
+/** A duplicate email/phone arrives as ApiError(409, 'conflict'), not as a status. */
+export type RegisterResult = SignedIn | { status: 'not_available' };
+
+export type LoginResult =
+  | SignedIn
+  | { status: 'mfa_required'; challengeId: string; factors: string[] }
+  | { status: 'invalid_credentials' }
+  /** Console only, after a proven password: the account is not on staff. */
+  | { status: 'not_staff' }
+  /** Console only, after a proven password: no authenticator on the account yet. */
+  | { status: 'factor_required' };
+
+// Help & support
+export interface SupportMessage {
+  id: string;
+  role: 'USER' | 'ASSISTANT' | 'STAFF' | 'SYSTEM';
+  text: string;
+  who: string | null;
+  createdAt: string;
+}
+export interface SupportConversation {
+  id: string;
+  status: 'OPEN' | 'CLOSED';
+  topic: string | null;
+  needsHuman: boolean;
+  staffJoined: boolean;
+  createdAt: string;
+  closedAt: string | null;
+  transcriptSentAt: string | null;
+  messages: SupportMessage[];
+}
+export interface SupportHistoryRow {
+  id: string;
+  topic: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  messageCount: number;
+}
+export interface AdminSupportRow {
+  id: string;
+  status: 'OPEN' | 'CLOSED';
+  topic: string | null;
+  needsHuman: boolean;
+  staffJoined: boolean;
+  page: string | null;
+  user: { id: string; name: string | null; email: string | null };
+  workspaceId: string | null;
+  messageCount: number;
+  lastMessageAt: string;
+  createdAt: string;
+  last: { role: SupportMessage['role']; text: string } | null;
+}
+export interface AdminSupportDetail extends SupportConversation {
+  page: string | null;
+  user: { id: string; name: string | null; email: string | null; phone: string | null; status: string; createdAt: string };
+  workspace: { id: string; name: string; type: string } | null;
+  messagesMeta: Array<{ id: string; meta: unknown }>;
+}
+
+export interface WorkspaceProfile {
+  sells?: string;
+  channels?: Array<'whatsapp' | 'instagram' | 'tiktok' | 'facebook' | 'jiji' | 'shop' | 'market'>;
+  tone?: 'warm' | 'direct' | 'playful' | 'premium';
+}
+
+export interface Workspace {
+  id: string;
+  type: string;
+  name: string;
+  currency: string;
+  region: string;
+  profile: WorkspaceProfile | null;
+  createdAt: string;
+}
+
+export interface WalletSummary {
+  walletId: string;
+  currency: string;
+  balance: number;
+  overdraftLimit: number;
+  /** balance + overdraft, floored at zero — what may still be spent. */
+  available: number;
+  /** An organization invoiced monthly for what it uses. */
+  postpaid: boolean;
+  /** Postpaid and paused for an overdue invoice. */
+  paused: boolean;
+}
+
+export type BillingAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface BillTo {
+  company?: string;
+  address?: string;
+  taxId?: string;
+  contact?: string;
+}
+
+export interface UsageLine {
+  costCode: string;
+  label: string;
+  requests: number;
+  credits: number;
+  amountMinor: number;
+}
+
+export interface BillingAccountView {
+  id: string;
+  workspaceId: string;
+  status: BillingAccountStatus;
+  currency: string;
+  per100Minor: number;
+  per1000Minor: number;
+  negotiated: boolean;
+  minimumMinor: number;
+  creditLimit: number;
+  netDays: number;
+  graceDays: number;
+  billingEmail: string | null;
+  billTo: BillTo | null;
+  startedAt: string;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  closedAt: string | null;
+}
+
+export interface InvoiceView {
+  id: string;
+  number: string;
+  workspaceId: string;
+  periodStart: string;
+  periodEnd: string;
+  period: string;
+  currency: string;
+  credits: number;
+  per100Minor: number;
+  usageMinor: number;
+  minimumMinor: number;
+  totalMinor: number;
+  status: InvoiceStatus;
+  lines: UsageLine[];
+  billTo: BillTo | null;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  paidVia: string | null;
+  paidReference: string | null;
+  paymentId: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  payable: boolean;
+  bankDetails?: string | null;
+}
+
+export interface AccountOverview {
+  account: BillingAccountView | null;
+  period: {
+    start: string;
+    end: string;
+    credits: number;
+    lines: UsageLine[];
+    estimateMinor: number;
+    balance: number;
+    creditLimit: number;
+    available: number;
+  } | null;
+  open: { count: number; totalMinor: number } | null;
+  bankDetails: string | null;
+  canRequest: boolean;
+}
+
+export type StoreKind = 'SHOPIFY' | 'WOOCOMMERCE';
+export interface StoreView {
+  id: string;
+  kind: StoreKind;
+  label: string;
+  domain: string;
+  status: 'CONNECTED' | 'NEEDS_ATTENTION' | 'DISCONNECTED';
+  lastError: string | null;
+  lastSyncAt: string | null;
+  nextSyncAt: string | null;
+  syncing: boolean;
+  productCount: number;
+  connectedAt: string;
+}
+export interface CatalogueProductView {
+  id: string;
+  storeId: string;
+  store: { id: string; kind: StoreKind; label: string };
+  externalId: string;
+  handle: string | null;
+  title: string;
+  description: string | null;
+  priceMinor: number | null;
+  currency: string | null;
+  url: string | null;
+  productKey: string;
+  images: Array<{ key: string; url: string | null }>;
+  thumbUrl: string | null;
+  syncedAt: string;
+}
+
+export type JobStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+export type JobType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERNSHIP';
+export interface AdminJob {
+  id: string;
+  slug: string;
+  title: string;
+  team: string;
+  location: string;
+  remote: boolean;
+  type: JobType;
+  summary: string;
+  description: string;
+  salary: string | null;
+  status: JobStatus;
+  publishedAt: string | null;
+  closedAt: string | null;
+  updatedAt: string;
+  applications: number;
+  newApplications: number;
+}
+export type ApplicationStatus = 'NEW' | 'REVIEWING' | 'INTERVIEW' | 'OFFER' | 'HIRED' | 'REJECTED';
+export interface AdminApplication {
+  id: string;
+  job: { id: string; title: string; slug: string; team: string };
+  name: string;
+  email: string;
+  phone: string | null;
+  links: string | null;
+  coverNote: string | null;
+  cvName: string | null;
+  hasCv: boolean;
+  cvUrl?: string | null;
+  status: ApplicationStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminBillingAccount extends BillingAccountView {
+  workspace: { id: string; name: string };
+  balance: number;
+  overdraftLimit: number;
+  open: { count: number; totalMinor: number };
+  notes: string | null;
+}
+
+export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+
+export interface GenerationRow {
+  id: string;
+  workspaceId: string;
+  capability: string;
+  kind: 'STANDALONE' | 'PARENT' | 'CHILD';
+  parentId: string | null;
+  costCode: string;
+  credits: number;
+  status: GenerationStatus;
+  providerKey: string | null;
+  input: Record<string, unknown>;
+  outputs: GenerationOutputRow[] | null;
+  stage: string | null;
+  progress: number;
+  failureKind: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  children?: GenerationRow[];
+}
+
+export interface GenerationOutputRow {
+  key: string;
+  role: 'image' | 'variant' | 'video' | 'audio' | 'preview' | 'text' | 'thumb' | 'mask';
+  mime: string;
+  locked?: boolean;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  size?: string;
+  text?: unknown;
+}
+
+export interface GenerationView {
+  generation: GenerationRow;
+  message?: string;
+}
+export interface GenerationResult {
+  generation: GenerationRow;
+  balance: number;
+}
+export interface Quote {
+  costCode: string;
+  credits: number;
+  label: string;
+  balance: number;
+  balanceAfter: number;
+  expectedMs: number;
+}
+
+export interface MediaAssetRow {
+  id: string;
+  workspaceId: string;
+  kind: 'SOURCE' | 'OUTPUT' | 'DERIVED';
+  status: 'PENDING' | 'READY' | 'REJECTED' | 'PURGED';
+  key: string;
+  mime: string | null;
+  bytes: number | null;
+  width: number | null;
+  height: number | null;
+  filename: string | null;
+  createdAt: string;
+}
+
+export interface PresignedUpload {
+  assetId: string;
+  key: string;
+  url: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  expiresInSec: number;
+}
+
+export interface BrandKitRow {
+  workspaceId: string;
+  businessName?: string | null;
+  logoKey?: string | null;
+  palette?: string[] | null;
+  fontDisplay?: string | null;
+  fontBody?: string | null;
+  tone?: string | null;
+  watermark?: { enabled?: boolean; position?: 'tr' | 'tl' | 'br' | 'bl'; opacity?: number } | null;
+  showPrice?: boolean;
+  defaultSizes?: string[] | null;
+  empty?: true;
+}
+
+export interface LedgerRow {
+  id: string;
+  kind: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------- calls
+
+// ---------------------------------------------------------------- account
+
+export interface Profile {
+  id: string;
+  name: string | null;
+  email: string | null;
+  emailVerifiedAt: string | null;
+  phone: string | null;
+  phoneVerifiedAt: string | null;
+  phoneIsWhatsApp: boolean;
+  country: string | null;
+  avatarKey: string | null;
+  avatarUrl: string | null;
+  locale: string | null;
+  timezone: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+  hasPassword: boolean;
+  mfa: {
+    enabled: boolean;
+    factors: Array<{ id: string; type: string; label: string | null; confirmedAt: string | null; lastUsedAt: string | null }>;
+    recoveryCodesLeft: number;
+  };
+  identities: Array<{
+    id: string;
+    provider: 'PASSWORD' | 'GOOGLE' | 'WHATSAPP' | 'PASSKEY';
+    label: string | null;
+    lastUsedAt: string | null;
+    createdAt: string;
+  }>;
+  pendingEmail: { email: string | null; expiresAt: string } | null;
+  deletion: { requestedAt: string; deleteOn: string } | null;
+}
+export interface SessionRow {
+  id: string;
+  surface: string;
+  userAgent: string | null;
+  geoLabel: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  current: boolean;
+  device: string | null;
+}
+export interface ActivityRow {
+  id: string;
+  type: string;
+  surface: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+  device: string | null;
+}
+export interface NotificationSwitches {
+  generationDoneEmail: boolean;
+  generationDoneWhatsApp: boolean;
+  lowCreditsEmail: boolean;
+  weeklyDigest: boolean;
+}
+export interface ConsentState {
+  granted: boolean;
+  wording: string | null;
+  at: string | null;
+}
+export interface Notifications {
+  switches: NotificationSwitches;
+  emailMarketing: ConsentState;
+  whatsappMarketing: ConsentState;
+}
+export interface Reauth {
+  currentPassword?: string;
+  code?: string;
+}
+export interface MemberRow {
+  userId: string;
+  role: string;
+  joinedAt: string;
+  name: string | null;
+  email: string | null;
+  lastLoginAt: string | null;
+}
+export interface InviteRow {
+  id: string;
+  email: string | null;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+}
+export type GrantableRole = 'ADMIN' | 'MEMBER' | 'BILLING' | 'AUDITOR';
+
+// ---------------------------------------------------------------- billing
+
+export type PaymentProvider = 'FLUTTERWAVE' | 'PADDLE' | 'STUB';
+export interface PriceOffer {
+  price: number | null;
+  canBuy: boolean;
+}
+export interface Catalogue {
+  currency: string;
+  provider: PaymentProvider | null;
+  available: boolean;
+  packs: Array<{ code: string; credits: number; price: number | null; canBuy: boolean }>;
+  plans: Array<{ code: string; credits: number; month: PriceOffer; year: PriceOffer | null; current: boolean }>;
+  subscription: SubscriptionView | null;
+}
+export interface SubscriptionView {
+  id: string;
+  planCode: string;
+  interval: string;
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'PAUSED';
+  provider: PaymentProvider;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancelledAt: string | null;
+  cancellationPending: boolean;
+}
+export interface RefundRequestView {
+  id: string;
+  paymentId: string;
+  status: 'REQUESTED' | 'PROCESSING' | 'NEEDS_REVIEW' | 'APPROVED' | 'REFUSED' | 'CANCELLED';
+  reason: string;
+  createdAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
+}
+export interface AdminRefundRequest extends RefundRequestView {
+  balanceAtRequest: number;
+  balanceNow: number;
+  stillRefundable: boolean;
+  gatewayConfigured: boolean;
+  requester: { name: string | null; email: string | null } | null;
+  workspace: { id: string; name: string };
+  payment: PaymentView;
+}
+export interface PaymentView {
+  id: string;
+  reference: string;
+  provider: PaymentProvider;
+  kind: 'PACK' | 'SUBSCRIPTION' | 'RENEWAL' | 'INVOICE';
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'NEEDS_REVIEW' | 'REFUNDED';
+  itemCode: string;
+  interval: string | null;
+  credits: number;
+  amountMinor: number;
+  currency: string;
+  checkoutUrl: string | null;
+  failureReason: string | null;
+  refundedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Present on the workspace payments list. */
+  refund?: RefundRequestView | null;
+  canRequestRefund?: boolean;
+  refundWhy?: string | null;
+}
+export interface CheckoutOut {
+  paymentId: string;
+  reference: string;
+  provider: PaymentProvider;
+  url: string;
+  credits: number;
+  amountMinor: number;
+  currency: string;
+}
+
+// ---------------------------------------------------------------- library
+
+export type LibraryType = 'all' | 'image' | 'video' | 'copy' | 'audio';
+export interface LibraryOutput {
+  key: string;
+  role: string;
+  mime: string;
+  size?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  bytes?: number;
+  locked?: boolean;
+  url: string | null;
+}
+// Publishing
+export type SocialPlatform = 'INSTAGRAM' | 'TIKTOK';
+export type PublishFormat = 'IMAGE' | 'VIDEO' | 'REEL' | 'STORY';
+export type PublishStatus = 'SCHEDULED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED' | 'CANCELLED';
+export interface PublishPlatform {
+  platform: SocialPlatform;
+  available: boolean;
+  formats: PublishFormat[];
+}
+export interface SocialAccount {
+  id: string;
+  platform: SocialPlatform;
+  handle: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  status: 'CONNECTED' | 'NEEDS_REAUTH' | 'DISCONNECTED';
+  tokenExpiresAt: string | null;
+  connectedAt: string;
+  formats: PublishFormat[];
+}
+export interface PublishJob {
+  id: string;
+  accountId: string;
+  generationId: string | null;
+  platform: SocialPlatform;
+  format: PublishFormat;
+  mediaKey: string;
+  mediaMime: string | null;
+  mediaUrl: string | null;
+  caption: string;
+  scheduledFor: string;
+  status: PublishStatus;
+  attempts: number;
+  failureReason: string | null;
+  externalPostId: string | null;
+  externalUrl: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  account: SocialAccount;
+}
+
+export interface LibraryItem {
+  id: string;
+  type: Exclude<LibraryType, 'all'>;
+  capability: string;
+  kind: string;
+  title: string | null;
+  productKey: string | null;
+  favourite: boolean;
+  credits: number;
+  createdAt: string;
+  finishedAt: string | null;
+  thumbUrl: string | null;
+  previewUrl: string | null;
+  previewMime: string | null;
+  sourceKey: string | null;
+  sourceUrl: string | null;
+  text: unknown;
+  outputs: LibraryOutput[];
+  params?: Record<string, unknown>;
+}
+export interface LibraryProduct {
+  productKey: string;
+  title: string | null;
+  count: number;
+  lastAt: string;
+  thumbUrl: string | null;
+}
+/** Newest first is what a merchant wants nine times in ten; oldest is for working forward through a catalogue. */
+export type LibrarySort = 'newest' | 'oldest';
+
+export interface LibraryQuery {
+  q?: string;
+  type?: LibraryType;
+  product?: string;
+  favourite?: boolean;
+  from?: string;
+  to?: string;
+  sort?: LibrarySort;
+  cursor?: string;
+  take?: number;
+}
+
+export interface Insights {
+  range: { days: number; from: string; to: string };
+  totals: {
+    made: number;
+    failed: number;
+    credits: number;
+    successRate: number | null;
+    refunded: number;
+    bought: number;
+    previous: { made: number; credits: number };
+  };
+  balance: { credits: number; dailySpend: number; runwayDays: number | null };
+  series: Array<{ date: string; made: number; failed: number; credits: number }>;
+  byType: Record<string, { count: number; credits: number; failed: number }>;
+  byCapability: Array<{ capability: string; type: string; count: number; credits: number; failed: number }>;
+  timing: Array<{ capability: string; p50Sec: number | null; p90Sec: number | null }>;
+  library: { total: number; added: number; images: number; videos: number; copy: number; sources: number };
+  topProducts: Array<{ productKey: string; title: string | null; count: number; credits: number }>;
+  posts: {
+    published: number;
+    scheduled: number;
+    failed: number;
+    byPlatform: Record<string, number>;
+    totals: PostMetrics;
+    /** How many published posts carry numbers from their platform. */
+    measured: number;
+    recent: PostView[];
+    best: PostView | null;
+    accountsConnected: number;
+  };
+  /** What to do next, best first; rules over the numbers, not a model. */
+  nextSteps: Array<{ key: string; title: string; body: string; href: string; cta: string }>;
+}
+export interface PostMetrics {
+  views: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saved: number | null;
+}
+export interface PostView {
+  id: string;
+  platform: string;
+  format: string;
+  status: string;
+  caption: string;
+  publishedAt: string | null;
+  scheduledFor: string;
+  externalUrl: string | null;
+  generationId: string | null;
+  handle: string | null;
+  metrics: PostMetrics | null;
+  metricsAt: string | null;
+}
+
+export interface Genre {
+  key: string;
+  name: string;
+  region: string;
+  family: string;
+  description: string;
+  languages: string[];
+  bpm: [number, number] | null;
+}
+export interface Voice {
+  key: string;
+  name: string;
+  language: string;
+  accent: string | null;
+  gender: string | null;
+  tags: string[];
+  sampleUrl: string | null;
+  provider: string;
+  kind: 'PRESET' | 'CLONE';
+  /** This workspace's own voice. */
+  mine: boolean;
+  createdAt: string | null;
+}
+export interface WorkspaceVoices {
+  voices: Voice[];
+  cloning: { available: boolean; limit: number; sample: { minSec: number; idealSec: number; maxSec: number } };
+}
+export interface AdminOverview {
+  users: { total: number; newThisWeek: number };
+  workspaces: Record<string, number>;
+  generations: { today: number; failedToday: number; runningNow: number; queuedStale: number; whatsappToday: number; apiToday: number };
+  credits: { soldLast30d: number; paymentsLast30d: number };
+  providers: { enabled: number; breakersOpen: string[]; noAdapter: string[] };
+  recentFailures: Array<{
+    id: string;
+    capability: string;
+    failureKind: string | null;
+    failureReason: string | null;
+    providerKey: string | null;
+    workspaceId: string;
+    createdAt: string;
+  }>;
+  worker: WorkerStatus | null;
+}
+/** The last worker that reported in. `alive` is "seen in the last 90 seconds". */
+export interface WorkerStatus {
+  seenAt: string;
+  host: string;
+  version: string | null;
+  alive: boolean;
+}
+export interface AdminCustomer {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  workspaces: Array<{ id: string; name: string; type: string; role: string }>;
+}
+export interface AdminCustomerDetail {
+  user: AdminCustomer & {
+    phoneIsWhatsApp: boolean;
+    emailVerifiedAt: string | null;
+    phoneVerifiedAt: string | null;
+    deleteRequestedAt: string | null;
+    locale: string | null;
+    timezone: string | null;
+    identities: Array<{ provider: string; createdAt: string }>;
+    mfaFactors: Array<{ type: string; confirmedAt: string | null }>;
+    staffGrants: Array<{ role: string; expiresAt: string | null }>;
+  };
+  workspaces: Array<{ id: string; name: string; type: string; currency: string; role: string; deletedAt: string | null; balance: number }>;
+  generations: AdminGeneration[];
+  payments: AdminPayment[];
+  events: AdminEvent[];
+}
+export interface AdminWorkspace {
+  workspace: { id: string; name: string; type: string; currency: string; region: string; profile: unknown; createdAt: string; deletedAt: string | null };
+  balance: number;
+  members: Array<{ role: string; id: string; name: string | null; email: string | null }>;
+  subscriptions: Array<{ id: string; planCode: string; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean }>;
+  ledger: Array<{ id: string; kind: string; delta: number; balanceAfter: number; reason: string | null; createdAt: string }>;
+  generations: AdminGeneration[];
+  billingAccount: {
+    id: string;
+    status: BillingAccountStatus;
+    currency: string;
+    per100Minor: number | null;
+    minimumMinor: number;
+    creditLimit: number;
+    netDays: number;
+    graceDays: number;
+    billingEmail: string | null;
+    notes: string | null;
+    suspendedReason: string | null;
+    startedAt: string;
+  } | null;
+}
+export interface BillingTerms {
+  reason: string;
+  creditLimit?: number;
+  per100Minor?: number | null;
+  minimumMinor?: number;
+  netDays?: number;
+  graceDays?: number;
+  billingEmail?: string | null;
+  notes?: string | null;
+}
+export interface AdminGeneration {
+  id: string;
+  workspaceId: string;
+  capability: string;
+  status: string;
+  credits: number;
+  channel: string;
+  providerKey: string | null;
+  providerJobId?: string | null;
+  failureKind: string | null;
+  failureReason?: string | null;
+  stage?: string | null;
+  attempts?: number;
+  providerCostMinor?: number | null;
+  createdAt: string;
+  finishedAt?: string | null;
+  title: string | null;
+}
+export interface AdminProvider {
+  key: string;
+  capability: string;
+  priority: number;
+  costPerCall: number;
+  enabled: boolean;
+  breakerOpenedAt: string | null;
+  workspaceType: string | null;
+  config: unknown;
+  licenceNote: string | null;
+  registered: boolean;
+  breakerOpen: boolean;
+  callsLast24h: number;
+}
+export interface AdminPayment {
+  id: string;
+  workspaceId: string;
+  userId: string | null;
+  provider: string;
+  kind: string;
+  status: string;
+  reference: string;
+  providerRef: string | null;
+  itemCode: string;
+  credits: number;
+  amountMinor: number;
+  currency: string;
+  failureReason: string | null;
+  createdAt: string;
+}
+export interface AdminEvent {
+  id: string;
+  userId: string | null;
+  type: string;
+  surface: string | null;
+  ip: string | null;
+  createdAt: string;
+  detail: unknown;
+  user?: { email: string | null; phone: string | null; name: string | null } | null;
+}
+export interface AdminStaffGrant {
+  id: string;
+  role: string;
+  reason: string;
+  expiresAt: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string | null };
+  grantedBy: string | null;
+}
+export interface AdminMessage {
+  id: string;
+  title: string;
+  body: string;
+  href: string | null;
+  audience: string;
+  publishedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  _count?: { reads: number };
+}
+export interface NotificationItem {
+  id: string;
+  kind: 'GENERATION_DONE' | 'GENERATION_FAILED' | 'CREDITS' | 'MEMBER' | 'PUBLISH' | 'SYSTEM' | 'PLATFORM';
+  title: string;
+  body: string | null;
+  href: string | null;
+  refId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+export interface DevProject {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+  activeKeys?: number;
+}
+export interface DevKey {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  project: { id: string; name: string; slug: string };
+  createdBy: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  key?: string;
+}
+export interface DevWebhook {
+  id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  failures: number;
+  lastDeliveryAt: string | null;
+  project: { id: string; name: string; slug: string } | null;
+  createdAt: string;
+  secret?: string;
+}
+export interface DevDelivery {
+  id: string;
+  event: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+  attempts: number;
+  responseStatus: number | null;
+  lastError: string | null;
+  createdAt: string;
+  deliveredAt: string | null;
+  nextAttemptAt: string | null;
+  payload: unknown;
+}
+export interface DevUsage {
+  days: number;
+  since: string;
+  balance: number;
+  totals: { requests: number; succeeded: number; failed: number; credits: number; merchants: number; p50Sec: number | null };
+  byDay: Array<{ day: string; capability: string; requests: number; succeeded: number; failed: number; credits: number }>;
+  byProject: Array<{ projectId: string; name: string; requests: number; succeeded: number; credits: number; merchants: number }>;
+  byKey: Array<{ apiKeyId: string; name: string; prefix: string; requests: number; credits: number; lastUsedAt: string | null }>;
+  byMerchant: Array<{ merchantRef: string; requests: number; credits: number }>;
+}
+export interface DubLanguages {
+  languages: Array<{ code: string; name: string; region: string; lipsync: boolean }>;
+  sources: Array<{ code: string; name: string }>;
+  missing: string;
+}
+
+export interface Idea {
+  title: string;
+  prompt: string;
+  motion?: string;
+  why: string;
+}
+export interface IdeasOut {
+  product: string | null;
+  ideas: Idea[];
+  source: 'model' | 'stock';
+  /** Why the generic set came back. Sent outside production only. */
+  reason?: string;
+}
+
+export interface CaptionIdea {
+  angle: string;
+  text: string;
+  hashtags: string[];
+  why: string;
+}
+export interface CaptionsOut {
+  product: string | null;
+  captions: CaptionIdea[];
+  source: 'model' | 'stock';
+  /** Why the generic set came back. Sent outside production only. */
+  reason?: string;
+}
+export type CaptionGoal = 'sell' | 'message' | 'launch' | 'restock' | 'promo' | 'brand';
+
+export const api = {
+  studio: {
+    /** Three captions with hashtags for a post, aimed at a platform and a goal. */
+    captions: (
+      workspaceId: string,
+      body: {
+        sourceKey?: string;
+        platform?: 'instagram' | 'tiktok' | 'whatsapp' | 'facebook';
+        kind?: 'feed' | 'story' | 'reel';
+        goal?: CaptionGoal;
+        productName?: string;
+        price?: string;
+        notes?: string;
+        language?: string;
+        round?: number;
+      },
+    ) => request<CaptionsOut>('POST', `/workspaces/${workspaceId}/studio/captions`, body),
+    /** Three creative directions for this product and tool, from the copy model. */
+    ideas: (
+      workspaceId: string,
+      body: { tool: string; sourceKey?: string; format?: string; shots?: number; productName?: string; price?: string; round?: number },
+    ) => request<IdeasOut>('POST', `/workspaces/${workspaceId}/studio/ideas`, body),
+  },
+  audio: {
+    genres: () => request<Genre[]>('GET', '/audio/genres'),
+    voices: () => request<Voice[]>('GET', '/audio/voices'),
+    /** The catalogue plus the workspace's own cloned voices. */
+    workspaceVoices: (workspaceId: string) => request<WorkspaceVoices>('GET', `/workspaces/${workspaceId}/voices`),
+    cloneVoice: (workspaceId: string, body: { sampleKey: string; name?: string; language?: string; consent: true }) =>
+      request<Voice>('POST', `/workspaces/${workspaceId}/voices`, body),
+    deleteVoice: (workspaceId: string, key: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/voices/${encodeURIComponent(key)}`),
+    dubLanguages: () => request<DubLanguages>('GET', '/audio/dub-languages'),
+    unlockPrice: () => request<{ costCode: string; credits: number; label: string }>('GET', '/audio/unlock-price'),
+    unlock: (workspaceId: string, generationId: string) =>
+      request<{
+        status: 'unlocked' | 'already_unlocked';
+        credits?: number;
+        generation: { id: string; outputs: Array<GenerationOutputRow & { url: string | null }>; unlockedAt: string | null };
+      }>('POST', `/workspaces/${workspaceId}/generations/${generationId}/unlock`),
+  },
+  admin: {
+    overview: () => request<AdminOverview>('GET', '/admin/overview'),
+    worker: () => request<WorkerStatus | null>('GET', '/admin/worker'),
+    customers: (q: string, cursor?: string, take?: number) =>
+      request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/customers?${new URLSearchParams({ ...(q ? { q } : {}), ...(cursor ? { cursor } : {}), ...(take ? { take: String(take) } : {}) })}`,
+      ),
+    customer: (id: string) => request<AdminCustomerDetail>('GET', `/admin/customers/${id}`),
+    suspend: (id: string, reason: string, on: boolean) =>
+      request<{ id: string; status: string }>('POST', `/admin/customers/${id}/${on ? 'suspend' : 'unsuspend'}`, { reason }),
+    workspace: (id: string) => request<AdminWorkspace>('GET', `/admin/workspaces/${id}`),
+    credits: (id: string, delta: number, reason: string) => request<{ balance: number }>('POST', `/admin/workspaces/${id}/credits`, { delta, reason }),
+    generations: (q: Record<string, string | undefined>) =>
+      request<{ generations: AdminGeneration[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/generations?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
+      ),
+    generation: (id: string) =>
+      request<
+        AdminGeneration & {
+          input: unknown;
+          outputs: unknown;
+          children: unknown[];
+          workspace: { name: string; type: string };
+          requestedBy: { id: string; name: string | null; email: string | null; phone: string | null };
+        }
+      >('GET', `/admin/generations/${id}`),
+    failGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/fail`, { reason }),
+    refundGeneration: (id: string, reason: string) => request<unknown>('POST', `/admin/generations/${id}/refund`, { reason }),
+    providers: () => request<{ capabilities: string[]; providers: AdminProvider[] }>('GET', '/admin/providers'),
+    patchProvider: (
+      capability: string,
+      key: string,
+      body: {
+        enabled?: boolean;
+        priority?: number;
+        scenePriority?: number;
+        sceneAcceptance?: number;
+        preservationUseCase?: string;
+        preservationAcceptance?: number;
+        reason?: string;
+      },
+    ) => request<AdminProvider>('PATCH', `/admin/providers/${capability}/${encodeURIComponent(key)}`, body),
+    resetBreaker: (capability: string, key: string) =>
+      request<{ reset: boolean }>('POST', `/admin/providers/${capability}/${encodeURIComponent(key)}/reset-breaker`),
+    prices: () => request<Array<{ code: string; credits: number; label: string }>>('GET', '/admin/prices'),
+    patchPrice: (code: string, credits: number, reason: string) =>
+      request<{ code: string; credits: number }>('PATCH', `/admin/prices/${code}`, { credits, reason }),
+    payments: (q: Record<string, string | undefined>) =>
+      request<{ payments: AdminPayment[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/payments?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
+      ),
+    refunds: (q: { status?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: AdminRefundRequest[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/refunds?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    approveRefund: (id: string, note?: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/approve`, { note }),
+    refuseRefund: (id: string, note: string) => request<RefundRequestView>('POST', `/admin/refunds/${id}/refuse`, { note }),
+    jobs: () => request<AdminJob[]>('GET', '/admin/careers/jobs'),
+    createJob: (body: Partial<AdminJob> & { title: string; team: string; location: string; summary: string; description: string }) =>
+      request<AdminJob>('POST', '/admin/careers/jobs', body),
+    updateJob: (id: string, body: Partial<AdminJob>) => request<AdminJob>('PATCH', `/admin/careers/jobs/${id}`, body),
+    deleteJob: (id: string) => request<{ id: string }>('DELETE', `/admin/careers/jobs/${id}`),
+    applications: (q: { jobId?: string; status?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminApplication[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/careers/applications?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    application: (id: string) => request<AdminApplication>('GET', `/admin/careers/applications/${id}`),
+    updateApplication: (id: string, body: { status?: ApplicationStatus; notes?: string | null }) =>
+      request<AdminApplication>('PATCH', `/admin/careers/applications/${id}`, body),
+    waitlist: () =>
+      request<{ bySource: Array<{ source: string; count: number }>; latest: Array<{ email: string; source: string; createdAt: string }> }>(
+        'GET',
+        '/admin/waitlist',
+      ),
+    billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
+    billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
+    billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: Array<InvoiceView & { workspace: { id: string; name: string } }>; nextCursor: string | null }>(
+        'GET',
+        `/admin/billing/invoices?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setBillingTerms: (workspaceId: string, body: BillingTerms) => request<BillingAccountView>('PUT', `/admin/billing/accounts/${workspaceId}`, body),
+    closeBillingAccount: (workspaceId: string, reason: string) =>
+      request<{ closed: boolean; finalInvoice: InvoiceView | null }>('POST', `/admin/billing/accounts/${workspaceId}/close`, { reason }),
+    reactivateBillingAccount: (workspaceId: string, reason: string) =>
+      request<BillingAccountView>('POST', `/admin/billing/accounts/${workspaceId}/reactivate`, { reason }),
+    closeBillingPeriod: (workspaceId: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/accounts/${workspaceId}/close-period`, { reason }),
+    markInvoicePaid: (invoiceId: string, reference: string, reason: string) =>
+      request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/mark-paid`, { reference, reason }),
+    voidInvoice: (invoiceId: string, reason: string) => request<InvoiceView>('POST', `/admin/billing/invoices/${invoiceId}/void`, { reason }),
+    audit: (q: Record<string, string | undefined>) =>
+      request<{ events: AdminEvent[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/audit?${new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v)) as Record<string, string>)}`,
+      ),
+    staff: () => request<AdminStaffGrant[]>('GET', '/admin/staff'),
+    grantStaff: (body: { email: string; role: string; reason: string; expiresAt?: string }) => request<unknown>('POST', '/admin/staff', body),
+    revokeStaff: (id: string) => request<{ revoked: boolean }>('DELETE', `/admin/staff/${id}`),
+    messages: () => request<AdminMessage[]>('GET', '/admin/messages'),
+    support: (opts: { filter?: string; q?: string; cursor?: string; take?: number } = {}) =>
+      request<{ counts: { open: number; needsHuman: number }; rows: AdminSupportRow[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/support?${new URLSearchParams({ ...(opts.filter ? { filter: opts.filter } : {}), ...(opts.q ? { q: opts.q } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.take ? { take: String(opts.take) } : {}) })}`,
+      ),
+    supportOne: (id: string) => request<AdminSupportDetail>('GET', `/admin/support/${id}`),
+    supportReply: (id: string, text: string) => request<SupportMessage>('POST', `/admin/support/${id}/reply`, { text }),
+    supportResolve: (id: string) => request<SupportConversation>('POST', `/admin/support/${id}/resolve`, {}),
+    supportClose: (id: string) => request<SupportConversation>('POST', `/admin/support/${id}/close`, {}),
+    createMessage: (body: { title: string; body: string; href?: string; audience?: string; publish?: boolean; expiresAt?: string }) =>
+      request<AdminMessage>('POST', '/admin/messages', body),
+    updateMessage: (id: string, body: { title?: string; body?: string; href?: string; audience?: string; published?: boolean; expiresAt?: string }) =>
+      request<AdminMessage>('PATCH', `/admin/messages/${id}`, body),
+    deleteMessage: (id: string) => request<{ deleted: boolean }>('DELETE', `/admin/messages/${id}`),
+  },
+  notifications: {
+    list: (opts: { take?: number; cursor?: string; unread?: boolean } = {}) =>
+      request<{ items: NotificationItem[]; nextCursor: string | null; unread: number }>(
+        'GET',
+        `/me/notifications?${new URLSearchParams({ ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}), ...(opts.unread ? { unread: 'true' } : {}) })}`,
+      ),
+    unread: () => request<{ unread: number }>('GET', '/me/notifications/unread'),
+    read: (body: { ids?: string[]; all?: boolean }) => request<{ unread: number }>('POST', '/me/notifications/read', body),
+  },
+  support: {
+    current: () => request<SupportConversation | null>('GET', '/support/conversations/current'),
+    history: () => request<SupportHistoryRow[]>('GET', '/support/conversations/history'),
+    open: (body: { workspaceId?: string; page?: string }) => request<SupportConversation>('POST', '/support/conversations', body),
+    one: (id: string) => request<SupportConversation>('GET', `/support/conversations/${id}`),
+    send: (id: string, text: string, page?: string) =>
+      request<{ messages: SupportMessage[]; needsHuman: boolean }>('POST', `/support/conversations/${id}/messages`, { text, page }),
+    close: (id: string, email = true) => request<SupportConversation>('POST', `/support/conversations/${id}/close`, { email }),
+  },
+  developer: {
+    usage: (workspaceId: string, days = 30, projectId?: string) =>
+      request<DevUsage>('GET', `/workspaces/${workspaceId}/developer/usage?days=${days}${projectId ? `&projectId=${projectId}` : ''}`),
+    projects: (workspaceId: string) => request<DevProject[]>('GET', `/workspaces/${workspaceId}/developer/projects`),
+    createProject: (workspaceId: string, body: { name: string; description?: string }) =>
+      request<DevProject>('POST', `/workspaces/${workspaceId}/developer/projects`, body),
+    updateProject: (workspaceId: string, id: string, body: { name?: string; description?: string; archived?: boolean }) =>
+      request<DevProject>('PATCH', `/workspaces/${workspaceId}/developer/projects/${id}`, body),
+    keys: (workspaceId: string) => request<DevKey[]>('GET', `/workspaces/${workspaceId}/developer/keys`),
+    createKey: (workspaceId: string, body: { projectId: string; name: string; scopes?: string[]; expiresInDays?: number }) =>
+      request<DevKey & { key: string }>('POST', `/workspaces/${workspaceId}/developer/keys`, body),
+    revokeKey: (workspaceId: string, id: string) => request<DevKey>('DELETE', `/workspaces/${workspaceId}/developer/keys/${id}`),
+    webhooks: (workspaceId: string) => request<DevWebhook[]>('GET', `/workspaces/${workspaceId}/developer/webhooks`),
+    createWebhook: (workspaceId: string, body: { url: string; projectId?: string; events?: string[] }) =>
+      request<DevWebhook & { secret: string }>('POST', `/workspaces/${workspaceId}/developer/webhooks`, body),
+    updateWebhook: (workspaceId: string, id: string, body: { url?: string; events?: string[]; active?: boolean }) =>
+      request<DevWebhook>('PATCH', `/workspaces/${workspaceId}/developer/webhooks/${id}`, body),
+    deleteWebhook: (workspaceId: string, id: string) => request<{ deleted: boolean }>('DELETE', `/workspaces/${workspaceId}/developer/webhooks/${id}`),
+    testWebhook: (workspaceId: string, id: string) => request<{ delivery: DevDelivery }>('POST', `/workspaces/${workspaceId}/developer/webhooks/${id}/test`),
+    deliveries: (workspaceId: string, id: string) => request<DevDelivery[]>('GET', `/workspaces/${workspaceId}/developer/webhooks/${id}/deliveries`),
+    redeliver: (workspaceId: string, id: string, deliveryId: string) =>
+      request<{ delivery: DevDelivery }>('POST', `/workspaces/${workspaceId}/developer/webhooks/${id}/deliveries/${deliveryId}/redeliver`),
+  },
+  library: {
+    list: (workspaceId: string, q: LibraryQuery = {}) => {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '' && v !== false) p.set(k, String(v));
+      return request<{ items: LibraryItem[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/library${p.size ? `?${p}` : ''}`);
+    },
+    products: (workspaceId: string) => request<LibraryProduct[]>('GET', `/workspaces/${workspaceId}/library/products`),
+    get: (workspaceId: string, id: string) => request<LibraryItem>('GET', `/workspaces/${workspaceId}/library/${id}`),
+    patch: (workspaceId: string, id: string, patch: { title?: string | null; favourite?: boolean; productKey?: string | null }) =>
+      request<LibraryItem>('PATCH', `/workspaces/${workspaceId}/library/${id}`, patch),
+    remove: (workspaceId: string, id: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/library/${id}`),
+    /** Same-origin, cookie rides along; open it in a new tab or an <a download>. */
+    downloadUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/library/${id}/download`,
+  },
+  insights: {
+    overview: (workspaceId: string, days = 30) => request<Insights>('GET', `/workspaces/${workspaceId}/insights?days=${days}`),
+  },
+  billing: {
+    config: () =>
+      request<{ paddle: { clientToken: string; environment: 'sandbox' | 'production' } | null; gateways: PaymentProvider[] }>('GET', '/billing/config'),
+    catalogue: (workspaceId: string) => request<Catalogue>('GET', `/workspaces/${workspaceId}/billing/catalogue`),
+    checkout: (workspaceId: string, body: { kind: 'pack' | 'plan'; code: string; interval?: 'month' | 'year' }) =>
+      request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/checkout`, body),
+    verify: (workspaceId: string, paymentId: string, providerRef?: string) =>
+      request<PaymentView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/verify`, providerRef ? { providerRef } : {}),
+    payment: (workspaceId: string, paymentId: string) => request<PaymentView>('GET', `/workspaces/${workspaceId}/billing/payments/${paymentId}`),
+    payments: (workspaceId: string, cursor?: string) =>
+      request<{ rows: PaymentView[]; nextCursor: string | null; refundWindowDays?: number }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/payments${cursor ? `?cursor=${cursor}` : ''}`,
+      ),
+    requestRefund: (workspaceId: string, paymentId: string, reason: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request`, { reason }),
+    cancelRefund: (workspaceId: string, paymentId: string) =>
+      request<RefundRequestView>('POST', `/workspaces/${workspaceId}/billing/payments/${paymentId}/refund-request/cancel`, {}),
+    subscription: (workspaceId: string) => request<SubscriptionView | null>('GET', `/workspaces/${workspaceId}/billing/subscription`),
+    cancel: (workspaceId: string) => request<SubscriptionView>('POST', `/workspaces/${workspaceId}/billing/subscription/cancel`),
+    /** Usage-based billing: the credit line, this period, invoices. */
+    account: (workspaceId: string) => request<AccountOverview>('GET', `/workspaces/${workspaceId}/billing/account`),
+    patchAccount: (workspaceId: string, body: { billingEmail?: string | null; billTo?: BillTo }) =>
+      request<BillingAccountView>('PATCH', `/workspaces/${workspaceId}/billing/account`, body),
+    invoices: (workspaceId: string, cursor?: string | null, take = 25) =>
+      request<{ rows: InvoiceView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/billing/invoices?take=${take}${cursor ? `&cursor=${cursor}` : ''}`,
+      ),
+    invoice: (workspaceId: string, invoiceId: string) => request<InvoiceView>('GET', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}`),
+    payInvoice: (workspaceId: string, invoiceId: string) => request<CheckoutOut>('POST', `/workspaces/${workspaceId}/billing/invoices/${invoiceId}/pay`, {}),
+  },
+  account: {
+    profile: () => request<Profile>('GET', '/me/profile'),
+    updateProfile: (patch: {
+      name?: string;
+      avatarKey?: string | null;
+      locale?: string | null;
+      timezone?: string | null;
+      phone?: string;
+      country?: string;
+      phoneIsWhatsApp?: boolean;
+    }) => request<{ id: string; name: string | null; avatarKey: string | null; locale: string | null; timezone: string | null }>('PATCH', '/me/profile', patch),
+    requestEmailChange: (email: string, reauth: Reauth) => request<{ status: 'sent' }>('POST', '/me/email', { email, ...reauth }),
+    confirmEmailChange: (token: string) => request<{ status: 'changed'; email: string } | { status: 'invalid_token' }>('POST', '/me/email/confirm', { token }),
+    changePassword: (newPassword: string, reauth: Reauth) =>
+      request<{ status: 'changed'; otherSessionsEnded: number }>('POST', '/me/password', { newPassword, ...reauth }),
+    mfaEnrol: () => request<{ factorId: string; secret: string; uri: string }>('POST', '/me/mfa/enrol'),
+    mfaConfirm: (code: string) => request<{ status: 'enabled'; recoveryCodes: string[] }>('POST', '/me/mfa/confirm', { code }),
+    mfaDisable: (reauth: Reauth) => request<{ status: 'disabled' }>('DELETE', '/me/mfa', reauth),
+    recoveryCodes: (code: string) => request<{ recoveryCodes: string[] }>('POST', '/me/mfa/recovery-codes', { code }),
+    sessions: () => request<SessionRow[]>('GET', '/me/sessions'),
+    revokeSession: (id: string) => request<{ status: 'revoked' }>('DELETE', `/me/sessions/${id}`),
+    revokeOtherSessions: () => request<{ status: 'revoked'; count: number }>('POST', '/me/sessions/revoke-others'),
+    unlinkIdentity: (id: string) => request<{ status: 'unlinked' }>('DELETE', `/me/identities/${id}`),
+    activity: (opts: { take?: number; cursor?: string } = {}) =>
+      request<{ rows: ActivityRow[]; nextCursor: string | null }>(
+        'GET',
+        `/me/security/activity?take=${opts.take ?? 20}${opts.cursor ? `&cursor=${opts.cursor}` : ''}`,
+      ),
+    notifications: () => request<Notifications>('GET', '/me/notification-settings'),
+    updateNotifications: (body: {
+      switches?: Partial<NotificationSwitches>;
+      emailMarketing?: { granted: boolean; wording: string };
+      whatsappMarketing?: { granted: boolean; wording: string };
+      sourceUrl?: string;
+    }) => request<Notifications>('PUT', '/me/notification-settings', body),
+    export: () => request<Record<string, unknown>>('GET', '/me/export'),
+    requestDeletion: (reauth: Reauth) => request<{ status: 'scheduled'; deleteOn: string }>('POST', '/me/delete', { ...reauth, confirm: 'DELETE' }),
+    cancelDeletion: () => request<{ status: 'kept' }>('POST', '/me/delete/cancel'),
+  },
+  members: {
+    list: (workspaceId: string) => request<{ members: MemberRow[]; invites: InviteRow[] }>('GET', `/workspaces/${workspaceId}/members`),
+    invite: (workspaceId: string, email: string, role: GrantableRole) =>
+      request<InviteRow>('POST', `/workspaces/${workspaceId}/members/invites`, { email, role }),
+    cancelInvite: (workspaceId: string, inviteId: string) =>
+      request<{ status: 'cancelled' }>('DELETE', `/workspaces/${workspaceId}/members/invites/${inviteId}`),
+    accept: (token: string) =>
+      request<
+        | { status: 'joined'; workspace: { id: string; name: string; type: string }; role: string }
+        | { status: 'invalid_token' }
+        | { status: 'wrong_account'; invitedEmail: string | null }
+      >('POST', '/workspaces/invites/accept', { token }),
+    setRole: (workspaceId: string, userId: string, role: GrantableRole) =>
+      request<{ userId: string; role: string }>('PATCH', `/workspaces/${workspaceId}/members/${userId}`, { role }),
+    remove: (workspaceId: string, userId: string) => request<{ status: 'removed' }>('DELETE', `/workspaces/${workspaceId}/members/${userId}`),
+    transfer: (workspaceId: string, userId: string) =>
+      request<{ status: 'transferred'; ownerId: string }>('POST', `/workspaces/${workspaceId}/members/transfer`, { userId }),
+  },
+  auth: {
+    /** Password step. May return mfa_required. */
+    login: (identifier: string, password: string) => request<LoginResult>('POST', '/auth/login', { identifier, password }),
+    /** Second factor. */
+    mfa: (challengeId: string, code: string) => request<LoginResult>('POST', '/auth/login/mfa', { challengeId, code }),
+    /** Create an account. 409 arrives as ApiError(409) — the caller shows the message. */
+    register: (input: RegisterInput) => request<RegisterResult>('POST', '/auth/register', input),
+    me: () => request<Me>('GET', '/auth/me'),
+    logout: () => request<void>('POST', '/auth/logout'),
+    /** Always resolves 'sent', whether or not the address exists. */
+    forgot: (email: string) => request<{ status: 'sent' }>('POST', '/auth/forgot', { email }),
+    verify: (token: string) => request<{ status: 'verified' | 'invalid_token' }>('POST', '/auth/verify', { token }),
+    resendVerification: () => request<{ status: 'sent' }>('POST', '/auth/verify/resend'),
+    reset: (token: string, password: string) => request<{ status: 'reset' | 'invalid_token' }>('POST', '/auth/reset', { token, password }),
+    /** The app host's half of a sign-in that happened on the marketing host. */
+    hop: (workspaceId: string, next?: string) => request<{ url: string }>('POST', '/auth/hop', { workspaceId, next }),
+    handoff: (token: string) => request<{ status: 'signed_in'; next: string } | { status: 'invalid_token' }>('POST', '/auth/handoff', { token }),
+  },
+  workspace: {
+    get: (id: string) => request<Workspace>('GET', `/workspaces/${id}`),
+    create: (body: { name: string; type: 'BUSINESS' | 'ORGANIZATION' }) =>
+      request<{ id: string; type: string; name: string; currency: string; region: string }>('POST', '/workspaces', body),
+    /** Merge-patch the welcome answers. */
+    patchProfile: (id: string, patch: WorkspaceProfile) => request<{ id: string; profile: WorkspaceProfile }>('PATCH', `/workspaces/${id}/profile`, patch),
+    rename: (id: string, name: string) => request<{ id: string; name: string }>('PATCH', `/workspaces/${id}`, { name }),
+    /** The currency prices are shown and charged in. Credits already held are unaffected. */
+    setCurrency: (id: string, currency: string) => request<{ id: string; currency: string }>('PATCH', `/workspaces/${id}`, { currency }),
+    /** An uploaded image (media asset key) as the organization's logo; null removes it. */
+    setLogo: (id: string, logoKey: string | null) => request<{ id: string; logoKey: string | null }>('PATCH', `/workspaces/${id}`, { logoKey }),
+    remove: (id: string, confirmName: string) => request<{ id: string; deleted: true }>('DELETE', `/workspaces/${id}`, { confirmName }),
+  },
+  catalogue: {
+    stores: (workspaceId: string) => request<StoreView[]>('GET', `/workspaces/${workspaceId}/catalogue/stores`),
+    connect: (workspaceId: string, body: { kind: StoreKind; domain: string; accessToken?: string; consumerKey?: string; consumerSecret?: string }) =>
+      request<StoreView>('POST', `/workspaces/${workspaceId}/catalogue/stores`, body),
+    sync: (workspaceId: string, storeId: string) =>
+      request<{ started: boolean; reason?: string }>('POST', `/workspaces/${workspaceId}/catalogue/stores/${storeId}/sync`, {}),
+    disconnect: (workspaceId: string, storeId: string) => request<{ id: string }>('DELETE', `/workspaces/${workspaceId}/catalogue/stores/${storeId}`),
+    products: (workspaceId: string, q: { q?: string; storeId?: string; cursor?: string | null; take?: number } = {}) =>
+      request<{ rows: CatalogueProductView[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/catalogue/products?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    product: (workspaceId: string, id: string) => request<CatalogueProductView>('GET', `/workspaces/${workspaceId}/catalogue/products/${id}`),
+  },
+  publishing: {
+    platforms: (workspaceId: string) => request<PublishPlatform[]>('GET', `/workspaces/${workspaceId}/publishing/platforms`),
+    accounts: (workspaceId: string) => request<SocialAccount[]>('GET', `/workspaces/${workspaceId}/publishing/accounts`),
+    /** A navigation, not a fetch: the API answers with a redirect to the platform. */
+    connectUrl: (workspaceId: string, platform: SocialPlatform, next = '/publishing') =>
+      `/api/v1/workspaces/${workspaceId}/publishing/connect/${platform.toLowerCase()}/start?next=${encodeURIComponent(next)}`,
+    disconnect: (workspaceId: string, accountId: string) =>
+      request<{ status: 'disconnected' }>('DELETE', `/workspaces/${workspaceId}/publishing/accounts/${accountId}`),
+    create: (
+      workspaceId: string,
+      body: { accountIds: string[]; generationId?: string; mediaKey: string; format: PublishFormat; caption: string; scheduledFor?: string },
+    ) => request<PublishJob[]>('POST', `/workspaces/${workspaceId}/publishing/jobs`, body),
+    list: (workspaceId: string, opts: { view?: 'upcoming' | 'history'; take?: number; cursor?: string } = {}) =>
+      request<{ rows: PublishJob[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ view: opts.view ?? 'upcoming', ...(opts.take ? { take: String(opts.take) } : {}), ...(opts.cursor ? { cursor: opts.cursor } : {}) })}`,
+      ),
+    /** Everything scheduled in [from, to), whatever its status — the calendar. */
+    window: (workspaceId: string, from: Date, to: Date) =>
+      request<{ rows: PublishJob[]; nextCursor: string | null }>(
+        'GET',
+        `/workspaces/${workspaceId}/publishing/jobs?${new URLSearchParams({ from: from.toISOString(), to: to.toISOString() })}`,
+      ),
+    patch: (workspaceId: string, id: string, body: { caption?: string; scheduledFor?: string }) =>
+      request<PublishJob>('PATCH', `/workspaces/${workspaceId}/publishing/jobs/${id}`, body),
+    cancel: (workspaceId: string, id: string) => request<PublishJob>('POST', `/workspaces/${workspaceId}/publishing/jobs/${id}/cancel`),
+    retry: (workspaceId: string, id: string) => request<PublishJob>('POST', `/workspaces/${workspaceId}/publishing/jobs/${id}/retry`),
+    share: (workspaceId: string, mediaKey: string) =>
+      request<{ url: string; mime: string | null; expiresInSec: number }>('POST', `/workspaces/${workspaceId}/publishing/share`, { mediaKey }),
+  },
+  media: {
+    presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
+      request<PresignedUpload>('POST', `/workspaces/${workspaceId}/media/uploads`, file),
+    complete: (workspaceId: string, assetId: string) => request<MediaAssetRow>('POST', `/workspaces/${workspaceId}/media/uploads/complete`, { assetId }),
+    list: (workspaceId: string, opts: { kind?: 'SOURCE' | 'OUTPUT'; cursor?: string; take?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.kind) q.set('kind', opts.kind);
+      if (opts.cursor) q.set('cursor', opts.cursor);
+      if (opts.take) q.set('take', String(opts.take));
+      return request<MediaAssetRow[]>('GET', `/workspaces/${workspaceId}/media${q.size ? `?${q}` : ''}`);
+    },
+    urls: (workspaceId: string, keys: string[]) =>
+      request<{ urls: Record<string, string>; expiresInSec: number }>('POST', `/workspaces/${workspaceId}/media/urls`, { keys }),
+    remove: (workspaceId: string, assetId: string) => request<{ deleted: true }>('DELETE', `/workspaces/${workspaceId}/media/${assetId}`),
+  },
+  generations: {
+    quote: (workspaceId: string, capability: string, params: Record<string, unknown>) =>
+      request<Quote>('POST', `/workspaces/${workspaceId}/generations/quote`, { capability, params }),
+    create: (workspaceId: string, body: { capability: string; params: Record<string, unknown>; clientKey: string }) =>
+      request<GenerationResult>('POST', `/workspaces/${workspaceId}/generations`, body),
+    get: (workspaceId: string, id: string) => request<GenerationView>('GET', `/workspaces/${workspaceId}/generations/${id}`),
+    history: (workspaceId: string, cursor?: string) =>
+      request<GenerationRow[]>('GET', `/workspaces/${workspaceId}/generations${cursor ? `?cursor=${cursor}` : ''}`),
+    cancel: (workspaceId: string, id: string) => request<GenerationRow>('POST', `/workspaces/${workspaceId}/generations/${id}/cancel`),
+    editText: (workspaceId: string, id: string, field: string, value: string) =>
+      request<GenerationRow>('PATCH', `/workspaces/${workspaceId}/generations/${id}/text`, { field, value }),
+    /** Same-origin, so the session cookie rides along with EventSource. */
+    streamUrl: (workspaceId: string, id: string) => `${BASE}/workspaces/${workspaceId}/generations/${id}/stream`,
+  },
+  brand: {
+    get: (workspaceId: string) => request<BrandKitRow>('GET', `/workspaces/${workspaceId}/brand`),
+    patch: (workspaceId: string, patch: Partial<BrandKitRow>) => request<BrandKitRow>('PATCH', `/workspaces/${workspaceId}/brand`, patch),
+  },
+  wallet: {
+    summary: (workspaceId: string) => request<WalletSummary>('GET', `/workspaces/${workspaceId}/wallet`),
+    history: (workspaceId: string, cursor?: string) =>
+      request<{ rows: LedgerRow[]; nextCursor: string | null }>('GET', `/workspaces/${workspaceId}/wallet/history${cursor ? `?cursor=${cursor}` : ''}`),
+  },
+};

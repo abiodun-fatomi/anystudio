@@ -1,0 +1,757 @@
+# Deploying AnyStudio
+
+`anystudio.ai` is registered and its nameservers already point at Cloudflare
+(`heather.ns.cloudflare.com`, `josh.ns.cloudflare.com`). No records exist yet.
+
+---
+
+## 1. Where things run
+
+| What                                      | Where                                            | Why                                                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web surfaces (app, org, admin, marketing) | **Cloudflare Workers**, via the OpenNext adapter | Domain, DNS, R2 and the API proxy are already on Cloudflare; the free tier allows commercial use; a custom domain on a Worker creates its own DNS record and certificate |
+| API + queue worker                        | **Render** (Frankfurt)                           | NestJS is a long-running Node process with a Prisma connection pool — not a fit for Workers                                                                              |
+| Postgres                                  | **Render** (same region as the API)              | Private network, so the database has no public endpoint                                                                                                                  |
+| Media                                     | **Cloudflare R2**                                | One bucket per environment                                                                                                                                               |
+
+Three environments, three branches, three of every Worker:
+
+| Branch        | Environment | Hosts                                            | Deploys                       |
+| ------------- | ----------- | ------------------------------------------------ | ----------------------------- |
+| `development` | development | `*.dev.anystudio.ai`                             | on every push                 |
+| `staging`     | staging     | `*.staging.anystudio.ai`                         | on every push                 |
+| `production`  | production  | `anystudio.ai`, `app.`, `org.`, `admin.`, `api.` | on push, after a human merges |
+
+### Why staging and development nest under their own subdomain
+
+Name staging `app-staging.anystudio.ai` and every host is a sibling under
+`anystudio.ai` — so any cookie ever set on the parent domain is readable by
+every environment. One careless `domain=.anystudio.ai` and a staging bug can
+read production sessions. Under `*.dev.anystudio.ai` and
+`*.staging.anystudio.ai` the trees cannot see each other's cookies.
+
+---
+
+## 2. Web surfaces on Cloudflare Workers
+
+Each surface has a `wrangler.jsonc` with three named environments
+(`development`, `staging`, `production`). Each environment is its own Worker,
+owning four hostnames — the marketing site, `app.` (businesses and personal
+studios), `org.` (organizations) and `admin.` (staff) — with `middleware.ts`
+routing by host. `app.` and `org.` serve the same pages; what differs is the
+session: each is a `__Host-` cookie that cannot cross hostnames, so an
+organization is opened by a one-time hand-off (`POST /auth/hop`) and the
+sign-in page sends someone whose only workspaces are organizations straight
+to `org.`. The API must list every origin in `ORIGIN_APP` / `ORIGIN_ORG` /
+`ORIGIN_ADMIN` or CORS refuses the host. **GitHub Actions builds and deploys them**
+(`.github/workflows/web-deploy.yml`): a push to a branch deploys the matching
+environment, and the first deploy creates the Worker, its custom domains and
+their certificates. Nothing is configured in the Cloudflare dashboard.
+
+### 2.1 One-time setup
+
+1. Cloudflare → My Profile → API Tokens → Create → template **Edit Cloudflare
+   Workers** → scope the zone policy to `anystudio.ai` and add **DNS · Edit**
+   and **SSL and Certificates · Edit**. No expiration.
+2. GitHub → repo → Settings → Secrets and variables → Actions:
+   `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (the 32-hex
+   id in every dashboard URL).
+3. GitHub → Settings → Environments → create **`production`** and add yourself
+   under **Required reviewers**. That is the release gate. The other two
+   environments are created by the first deploy.
+4. If a Worker was ever connected to the repo from the Cloudflare side
+   (Worker → Settings → Build), **disconnect** it — otherwise every merge
+   deploys twice.
+
+There are no per-environment variables anywhere: the app derives its API and
+admin hostnames from the request host (`apps/web/lib/hosts.ts`), and the
+Worker's runtime values live in `wrangler.jsonc` under each environment.
+
+### 2.2 What a deploy does
+
+`Web` workflow → _Build_ (typecheck, `opennextjs-cloudflare build`) → _Deploy_
+(`wrangler deploy --env <branch>`). The run shows on the commit, the PR and
+the **Deployments** tab. A two-level hostname such as `app.dev.anystudio.ai`
+gets its own certificate on first creation; the browser shows an SSL error
+for the 5–15 minutes that takes.
+
+### 2.3 Check
+
+- `https://dev.anystudio.ai` — the landing page, `/pricing`, `/developers`, `/org`
+- `https://dev.anystudio.ai/login` — the sign-in page (`/signup`, `/forgot`,
+  `/reset` live here too; `app.` is for people who are signed in and sends
+  those paths back across)
+- `curl -I https://app.dev.anystudio.ai` → `server: cloudflare`
+
+Sign-in fails with a network error until the dev API exists (section 3).
+
+How a sign-in crosses hosts: the session cookie is `__Host-` scoped, so only
+`app.dev.anystudio.ai` can set it. A sign-in on `dev.anystudio.ai` therefore
+returns `{ status: "handoff", url }` — a one-time, one-minute token on
+`app.dev.anystudio.ai/auth/handoff` — and the page there redeems it
+(`POST /auth/handoff`) and mints the session. The API decides from the
+request's origin and `APP_ENV`, so nothing is configured; Google sign-in
+starts on the app host directly (the button links across).
+
+### 2.4 Promoting code between environments
+
+Nobody pushes to `development`, `staging` or `production` directly — not
+even the owner. A GitHub ruleset (Settings → Rules → Rulesets) requires a
+pull request for all three, blocks force-pushes and deletions, and has an
+empty bypass list. Every deploy is therefore the result of a merge.
+
+| Change                | Branch to open the PR from | Into          | Merge method     |
+| --------------------- | -------------------------- | ------------- | ---------------- |
+| A feature or fix      | `feat/…` or `fix/…`        | `development` | Squash           |
+| Promote to staging    | `development`              | `staging`     | **Merge commit** |
+| Promote to production | `staging`                  | `production`  | **Merge commit** |
+
+Promotion PRs must be _merge commits_, never squashes: squashing rewrites the
+commits, the environment branches diverge, and the next promotion PR shows
+every old change again and conflicts on all of them.
+
+---
+
+## 3. The API and worker on Render
+
+The API is deployed the same way the web portal is: **from GitHub Actions**
+(`.github/workflows/api.yml`), never by Render watching the branch. A push to
+`development`, `staging` or `production` that touches the backend runs
+_Check_ (Prisma drift, migrations apply, typecheck, tests, build, and the
+Docker image builds) and then _Deploy_, which asks Render to deploy **that
+exact commit**, waits until Render reports it live, and finally reads
+`release` from `/health` through Cloudflare to prove the process serving
+traffic is the commit that was just tested. Production waits for the
+required reviewer on the `production` environment, exactly like the web.
+
+```
+push → Check ──ok──▶ Deploy: API (migrations, then the seed, run in Render's pre-deploy step)
+                            ▶ fast/heavy worker (required)
+                            ▶ local-media worker (required)
+                            ▶ smoke: API + both worker heartbeats == sha, /ready == ready
+```
+
+### 3.1 One-time setup on Render
+
+Each environment has one file, one manually managed secret group, and one
+Blueprint. The resource names do not overlap:
+
+| Environment | Blueprint file           | Secret group           |
+| ----------- | ------------------------ | ---------------------- |
+| development | `render.yaml`            | `anystudio-dev`        |
+| staging     | `render.staging.yaml`    | `anystudio-staging`    |
+| production  | `render.production.yaml` | `anystudio-production` |
+
+1. In Render, open **Environment Groups** and manually create the group from
+   the table. Populate it from section 5 before creating the Blueprint. At
+   minimum, preflight a valid `APP_KEY`, all three `ORIGIN_*` values, all four
+   `R2_*` values, and the credentials for every enabled provider. Set
+   `PADDLE_ENV=sandbox` outside production. Use `live` and set
+   `PADDLE_PRODUCT_APPROVED=true` only after Paddle has approved in writing the
+   exact AnyStudio face, voice, video, ad-generation and publishing feature
+   set—not merely the seller account. The API fails closed otherwise. Render
+   does **not** support `sync: false` inside
+   a Blueprint-managed environment group; those entries are ignored, which is
+   why these groups are deliberately managed in the Dashboard.
+2. Render → **New** → **Blueprint** → this repo → choose the exact custom file
+   path from the table. It creates only that environment's API, fast/heavy
+   worker, local-media worker, Postgres, and Key Value, then links the existing
+   group to all three services. Import each path **once**. If a Blueprint for
+   the environment already exists, update that Blueprint's path; never create
+   a second Blueprint over its resources. On **Settings**, set
+   **Auto Sync: No**: Blueprint auto-sync is separate from service auto-deploy
+   and otherwise a Blueprint change can redeploy infrastructure before CI
+   passes. Every service also declares `autoDeployTrigger: off`.
+3. Before continuing, open **Environment** on the API and both workers. Under
+   **Linked Environment Groups**, confirm the environment's group is present
+   on all three. Check the effective variables on each service for `APP_KEY`,
+   `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and
+   `R2_SECRET_ACCESS_KEY`; on the API also confirm the three `ORIGIN_*`
+   values. Do not deploy while any is absent. Both worker processes refuse an
+   invalid `APP_KEY`, and the release smoke check refuses missing workers.
+4. Render → Account Settings → **API Keys** → create one. In GitHub → repo →
+   Settings → Secrets and variables → Actions → **Secrets**: `RENDER_API_KEY`.
+5. For each service, copy its id (`srv-…`, in the URL of its dashboard page).
+   In GitHub → Settings → **Environments** → `development` → **Environment
+   variables** (not secrets — they are not sensitive):
+
+   | Variable                   | Value                                                                                                         |
+   | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+   | `RENDER_API_SERVICE_ID`    | `srv-…` of `anystudio-api-dev`                                                                                |
+   | `RENDER_WORKER_SERVICE_ID` | `srv-…` of `anystudio-worker-dev` — required; consumes only `media.fast,media.heavy`                          |
+   | `RENDER_MEDIA_SERVICE_ID`  | `srv-…` of `anystudio-media-dev` — required; 2 GB worker that consumes only `media.local`                     |
+   | `API_URL`                  | `https://anystudio-api-dev.onrender.com` — **only until** `api.dev.anystudio.ai` exists (3.3); then delete it |
+
+   The worker is the API image started with `node dist/src/worker/main.js`
+   (one Dockerfile, two commands — see `apps/api/Dockerfile`). The environment
+   Blueprint declares both workers alongside a Key Value instance for the queue. Verify
+   the boot logs before traffic: `worker` must report two queues (fast/heavy),
+   and `media` must report one (`media.local`). FFmpeg stitching belongs in
+   logs tagged `service: "media"`; seeing a stitch under `service: "worker"`
+   means the isolation is not active. The deploy workflow refuses to release
+   when either worker service id is missing; generation is not an API-only
+   deployment mode. Its final `/ready` smoke check also waits for fresh
+   `worker` and `media` heartbeats from the exact commit being deployed.
+
+   Repeat with the matching names for `staging` and `production`. Before any
+   deploy, CI sends that environment's Blueprint to Render's read-only
+   validator and checks that the three IDs are distinct services from this
+   repo, branch, and queue role.
+
+6. Merge something into `development` that touches `apps/api/**`, or run the
+   **API** workflow by hand (Actions → API → Run workflow). The first deploy
+   builds the image cold (~8 minutes); later ones reuse the layer cache.
+
+### 3.2 Production migration and drain contract
+
+The API, worker, and media worker are three Render deployments, not one atomic
+platform transaction. The workflow stops on the first failure and the final
+SHA/heartbeat smoke gate stays red; it deliberately does not automate a
+rollback across a database migration that may be irreversible.
+
+Every schema change must therefore use expand/contract ordering: add nullable
+or backward-compatible structures first, deploy all consumers, backfill, and
+only remove old structures in a later release. For a migration that builds
+indexes or backfills a live write-heavy table, measure it on a production-sized
+copy and schedule a maintenance window rather than assuming pre-deploy makes
+DDL non-blocking. For the first release containing the serialized song-unlock
+flow, enable Render maintenance mode, stop new unlock/generation requests, let
+in-flight work drain, deploy all three services, pass the smoke gate, then
+disable maintenance mode. That one-time drain prevents an old API replica,
+which predates the database lock, from overlapping a new replica.
+
+Render's 300-second shutdown grace is the platform maximum. A longer vendor
+job can still be interrupted during deploy; the generation sweeper retries or
+refunds it, so deploy outside peak generation traffic.
+
+### 3.3 DNS: `api.dev.anystudio.ai`
+
+The API is the one hostname added to DNS by hand, and the one that is
+proxied (orange cloud): DDoS absorption and the WAF sit in front of the
+origin that holds credentials.
+
+1. Confirm `https://anystudio-api-dev.onrender.com/health` returns
+   `"status":"ok"` on the plain Render hostname **before** touching DNS.
+2. Render service → **Settings** → **Custom Domains** → add `api.dev.anystudio.ai`.
+3. Cloudflare → **DNS** → **Records** → Add: `CNAME`, name `api.dev`, target
+   `anystudio-api-dev.onrender.com`, **grey cloud** for now. Save.
+4. Wait until Render shows the certificate as **Issued**.
+5. Edit the record → **orange cloud** → Save.
+6. Cloudflare → **SSL/TLS** → Overview → **Full (strict)**. Edge Certificates →
+   _Always Use HTTPS_ on, _Minimum TLS_ 1.2. Leave Cloudflare's HSTS off —
+   the API sends its own.
+7. Cloudflare → **Security** → **WAF** → **Rate limiting rules** → one rule:
+   `(ends_with(http.host, "anystudio.ai") and starts_with(http.request.uri.path, "/api/v1/auth/"))`,
+   10 requests / 10 s per IP, Block 60 s.
+8. `curl https://api.dev.anystudio.ai/ready` → `"status":"ready"`, header
+   `server: cloudflare`. Then delete `API_URL` from the GitHub environment so
+   the smoke test goes through Cloudflare like real traffic.
+
+Same again for `api.staging` and `api` when those environments exist.
+
+### 3.3 What is where, on a running API
+
+| Path                | What                                                          |
+| ------------------- | ------------------------------------------------------------- |
+| `/health`, `/ready` | probes — outside `/api`, unversioned, never move              |
+| `/api/v1/…`         | every endpoint; every response is `{ status, message, data }` |
+| `/api/v1/docs`      | Swagger UI — dev and staging only, off in production          |
+
+### Email, once there is any
+
+| Type  | Name                      | Value                                                   |
+| ----- | ------------------------- | ------------------------------------------------------- |
+| TXT   | `@`                       | `v=spf1 include:<provider> -all`                        |
+| TXT   | `_dmarc`                  | `v=DMARC1; p=quarantine; rua=mailto:dmarc@anystudio.ai` |
+| CNAME | _(provider DKIM records)_ |                                                         |
+
+`-all` not `~all`. A soft fail invites spoofing of a domain that sends password
+resets.
+
+---
+
+## 4. Accounts to create
+
+Only the account owner can do these; none can be automated from here.
+
+| Service                  | For                                  | Notes                                                                             |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
+| **Cloudflare**           | DNS, Workers (web), R2 (media), WAF  | One account; the zone is already here                                             |
+| **Render**               | API, two workers, Postgres and Redis | Import the one environment-specific Blueprint path; local encoding stays isolated |
+| **Google Cloud**         | Sign in with Google                  | One OAuth client, all redirect URIs on it (section 9.1)                           |
+| **Resend**               | transactional mail                   | Verify `anystudio.ai`, one API key (section 9.2)                                  |
+| **Cloudflare R2**        | media                                | One bucket per environment, with a `dev/` prefix on the staging one               |
+| **Flutterwave / Paddle** | payments                             | Section 5                                                                         |
+| **Meta for Developers**  | the WhatsApp bot                     | Business verification, a WhatsApp Business app, a System User token (section 10)  |
+
+---
+
+## 5. Secrets, per environment
+
+Set in the Render **Env Group** for the environment (`anystudio-dev` today),
+which every service in that environment reads. Never in the repo, never in a
+GitHub secret, never in a chat.
+
+`DATABASE_URL` and `DIRECT_URL` are **not** in this list: Render injects them
+from the database itself (`fromDatabase` in the environment Blueprint), so nobody ever
+copies a connection string by hand.
+
+| Secret                                                                                                      | Notes                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `APP_KEY`                                                                                                   | `openssl rand -base64 32`. Encrypts TOTP seeds and the Google handshake cookie — **rotating it locks every staff account out of MFA** unless you re-encrypt first. A different one per environment                                                                                               |
+| `ORIGIN_APP` / `ORIGIN_ORG` / `ORIGIN_ADMIN`                                                                | Exact origins, e.g. `https://app.dev.anystudio.ai`. The API refuses to start with none set                                                                                                                                                                                                       |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`                                                                 | Section 9.1. With either missing the button degrades to a message, never to a half-working flow                                                                                                                                                                                                  |
+| `RESEND_API_KEY` / `MAIL_FROM`                                                                              | Section 9.2. `MAIL_FROM` like `AnyStudio <hello@anystudio.ai>`, on the verified domain                                                                                                                                                                                                           |
+| `R2_*`                                                                                                      | Separate keys per environment. The bucket needs a CORS policy (below) or browser uploads fail as "interrupted"                                                                                                                                                                                   |
+| `MAIL_ASSET_BASE`                                                                                           | Optional. `https://<marketing host>/email` — where the email images live (apps/web/public/email). Unset, emails send without pictures                                                                                                                                                            |
+| `HIGGSFIELD_API_KEY`, `HEYGEN_API_KEY`                                                                      | **Never** in a web Worker — a provider key in a web app's environment is one careless import from the browser bundle                                                                                                                                                                             |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET`                                                      | Flutterwave v3 secret key and the dashboard webhook hash. Webhook URL `https://<api>/api/v1/billing/webhooks/flutterwave`. Without the key, non-production falls back to the stub gateway; production refuses NGN payments                                                                       |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ENV`, `PADDLE_PRODUCT_APPROVED`   | Paddle Billing API key, notification-endpoint secret, public client-side token, `sandbox`/`live`, and the production-only written-product-approval acknowledgement. Webhook URL `https://<api>/api/v1/billing/webhooks/paddle`. Production refuses sandbox credentials or an unapproved product. |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Section 10. The bot logs instead of sending until the first two are set; the webhook accepts nothing until the app secret is set                                                                                                                                                                 |
+
+GitHub, for the deploy workflows: one repository secret, `RENDER_API_KEY`,
+plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for the web; and the
+three non-secret environment variables from section 3.1 on each environment.
+
+---
+
+### 5.1 The R2 bucket's CORS policy
+
+The browser PUTs uploads straight to R2 with a signed URL, so the bucket
+must allow the app's origin. R2 → bucket → **Settings → CORS Policy**:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://app.dev.anystudio.ai", "http://localhost:3000"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["content-type", "content-length"],
+    "ExposeHeaders": ["etag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Production's bucket gets the same with `https://app.anystudio.ai`. Without
+it every upload fails in the browser as "The upload was interrupted".
+
+---
+
+## 6. Branches, CI and the approval gate
+
+| Branch        | Environment              | Deploys                                  |
+| ------------- | ------------------------ | ---------------------------------------- |
+| `development` | `*.dev.anystudio.ai`     | automatically, after CI passes           |
+| `staging`     | `*.staging.anystudio.ai` | automatically, after CI passes           |
+| `production`  | `anystudio.ai`           | after CI passes **and** a human approves |
+
+The approval gate is a **required reviewer on the `production` GitHub
+environment**. Set it in Settings → Environments, or production deploys are
+automatic and the branch protection is decorative.
+
+---
+
+## 7. Order of operations
+
+1. Section 2.1–2.3: the development web Worker, on `app.dev.anystudio.ai`
+2. Section 3: create and preflight the manual env group, then import the
+   blueprint — it creates the dev API, both workers, Postgres, and Key Value —
+   set the GitHub variables, deploy, and add `api.dev.anystudio.ai`
+3. Sign up on `dev.anystudio.ai/signup` — landing on `app.dev.anystudio.ai/welcome` proves the whole chain, hand-off included
+4. Repeat for staging
+5. Only then production
+
+**Do not skip step 3.** A failing health check behind a proxy and a fresh
+certificate is three problems at once; behind a plain hostname it is one.
+
+---
+
+## 8. What is not ready
+
+- **Staging and production** have reviewed Blueprint files but are not
+  provisioned automatically. Creating their one Blueprint and secret group is
+  an account-owner action and starts billing immediately; never copy dev blocks
+  in the Dashboard or let two Blueprints manage the same resource.
+- **Approvals that only the account owner can start**, each taking days to
+  weeks: Flutterwave business verification, Paddle live-account website
+  review, Meta business verification, Meta and TikTok app review. Until
+  they pass, payments run in sandbox/test mode and Instagram/TikTok post
+  only for accounts with a role on the app.
+- **The mobile app** is a waitlist (`/why#mobile`), not an app.
+- The complete variable checklist, with the steps to obtain each value, is
+  `docs/ENV.md`.
+
+---
+
+## 9. Sign in with Google, mail, and the database
+
+### 9.1 Google OAuth client
+
+Google Cloud Console → APIs & Services → Credentials → **Create OAuth client
+ID** → _Web application_.
+
+**Authorised redirect URIs** — the callback is on the _app's_ hostname, not the
+API's, so the handshake cookie stays first-party. Add one per surface you have:
+
+```
+http://localhost:3000/api/v1/auth/google/callback
+https://app.dev.anystudio.ai/api/v1/auth/google/callback
+https://app.staging.anystudio.ai/api/v1/auth/google/callback
+https://app.anystudio.ai/api/v1/auth/google/callback
+```
+
+The path is exact: Google compares the whole URI, and the API builds it from
+`GOOGLE_CALLBACK_PATH` in `apps/api/src/utils/constant.ts`.
+
+Put the client id and secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in
+the environment's Render env group. With either missing, the button returns people to `/login`
+with a message instead of failing — a half-configured client never half-works.
+
+**The admin surface does not accept Google.** Google proves an email; it does
+not prove a second factor, and `SessionService` refuses an ADMIN session below
+`mfaLevel` 2. Staff sign in with a password and a factor.
+
+### 9.2 Resend
+
+resend.com → add `anystudio.ai` → it gives you DKIM, SPF and a return-path
+record for Cloudflare DNS. Verify, create an API key, set `RESEND_API_KEY` and
+`MAIL_FROM` in the environment's Render env group.
+
+The mailer picks a transport in this order: Resend if `RESEND_API_KEY` is set,
+otherwise `SMTP_URL` (Mailpit locally), otherwise it logs what it would have
+sent. So a fresh checkout boots and signs people up without any mail config.
+
+### 9.3 The database
+
+Render creates it from the environment's Blueprint and injects `DATABASE_URL` and
+`DIRECT_URL` into the API. There is nothing to copy and no connection string
+to keep anywhere.
+
+Three things worth knowing about how it is configured:
+
+**It has no public endpoint.** `ipAllowList: []` means only Render services
+in `frankfurt` can reach it. That is deliberate for a database holding
+password hashes and the credit ledger. To point a GUI at it from your
+laptop, add your own IP to that list temporarily and take it out again —
+do not leave it open.
+
+**The API and the database must stay in the same region.** They talk over
+Render's private network; put them in different regions and the traffic goes
+out over the public internet instead, which is both slower and no longer
+private.
+
+**Pooling is off until you need it.** Both `DATABASE_URL` and `DIRECT_URL`
+point at the direct connection while one instance serves dev. When you scale
+past one instance, set `connectionPool: pgbouncer` on the database and change
+`DATABASE_URL` alone to `connectionPoolString`. Migrations must keep the
+direct string — DDL and advisory locks do not survive a transaction pooler,
+which is the whole reason `schema.prisma` declares `directUrl`. Point both at
+a pooler and `db:deploy` will hang or half-apply.
+
+Locally, `docker-compose` has no pooler and the two are the same string.
+
+---
+
+## 10. The WhatsApp bot
+
+The bot is the API process: `POST /api/v1/whatsapp/webhook` receives, the
+worker's `GenerationHooks` sends results back. Nothing else to deploy.
+
+**At Meta (once, by the account owner):**
+
+1. Meta Business Suite → verify the business (days to weeks; start now).
+2. developers.facebook.com → create an app of type _Business_ → add the
+   **WhatsApp** product. The test number it gives you works immediately for
+   up to five recipients; a real number needs the business verified and the
+   number registered under the WhatsApp Business Account.
+3. **App settings → Basic → App secret** → `WHATSAPP_APP_SECRET`. Every
+   webhook is signed with it; the API refuses everything when it is unset.
+4. **WhatsApp → API setup → Phone number ID** → `WHATSAPP_PHONE_NUMBER_ID`.
+5. **Business settings → System users** → add a system user (admin), assign
+   the app and the WhatsApp account, generate a token with
+   `whatsapp_business_messaging` and `whatsapp_business_management`, no
+   expiry → `WHATSAPP_ACCESS_TOKEN`. (The token on the API-setup page
+   expires in 24 hours; do not deploy that one.)
+6. **WhatsApp → Configuration → Webhook**: callback URL
+   `https://<api host>/api/v1/whatsapp/webhook`, verify token = whatever you
+   put in `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, then **Manage** → subscribe to
+   `messages`. Meta calls the GET once with the token; the API echoes the
+   challenge when it matches.
+7. Deploy with the four variables in the environment's Env Group. Send
+   "hi" to the number.
+
+**What the bot sends is media by link**: the signed R2 URLs the studio
+uses, fetched by Meta within the hour they last. R2 must be reachable from
+Meta's fetchers (it is, on the public bucket endpoint the API signs for).
+
+**Costs to know**: Meta charges per conversation window (24 hours) opened
+by the business; a customer who writes first opens a free service window.
+Everything the bot sends is a reply inside such a window, so the bot costs
+nothing on Meta's side unless it messages first — which it never does.
+
+**Opt-out** is a word, "stop", honoured immediately and recorded on the
+contact; the next message from them opens things up again.
+
+---
+
+## 11. The staff console
+
+`admin.<base>` — its own hostname so its session cookie is its own; the
+same web build (`app/admin/*`, served only on that host by the middleware)
+and the same API (`/api/v1/admin/*`, ADMIN surface + staff rank on every
+route). The Worker's routes in `wrangler.jsonc` include the admin hostname
+per environment; add the DNS record beside `app.` and `api.`.
+
+**Signing in.** The API mints an ADMIN session only past a second factor:
+the person signs in at `https://admin.<base>/login` with their password
+and then their authenticator code. An account without a confirmed factor,
+or without a staff grant, is refused in words. Staff mutations (turning a
+provider off, adjusting credits, refunding, suspending, granting) also
+require the factor to have been confirmed within the last thirty minutes
+and refuse anything touching a workspace the staff member belongs to.
+
+**The first staff member.** Nobody can grant themselves. Set
+`BOOTSTRAP_SUPERADMIN_EMAIL` to an existing account, run the seed once
+(`pnpm db:seed`, which is also part of the deploy's pre-deploy step), then
+remove the variable. Everyone after that is granted from **Staff** in the
+console, with a reason, and revoked there.
+
+**What it does.** Overview (failures, breakers, rows with no key, queue
+health); customers (search, detail, suspend/reinstate); workspaces (ledger,
+credit adjustments with a reason, owner notified); generations (inputs,
+outputs, provider job id, the operator-facing failure reason; end a stuck
+row; goodwill refund); payments (mark refunded after refunding at the
+gateway; credits clawed back); providers (on/off, priority, close a
+breaker) and prices; platform messages (into every bell, by audience);
+staff; the audit log.
+
+**Locally**: `next dev -p 3003` beside the app on 3000 — the API maps
+`localhost:3003` to the ADMIN surface.
+
+## 12. Help & support (the chat floater)
+
+Every signed-in page has a help floater. It opens a chat with an assistant
+(Claude, through `ANTHROPIC_API_KEY`; `SUPPORT_MODEL` overrides the model)
+that knows the product and its prices, points people at the right screen,
+and sets a **needs-a-person** flag when money, a locked account, a repeated
+failure or anything it cannot answer comes up. Staff see every chat — the
+person's words and the assistant's answers — under **Help chats** in the
+console, can reply into it (the reply lands in the floater and rings the
+person's bell) and can close it. Closing a chat, by the person or by staff,
+emails them the transcript; chats quiet for a day are closed by the worker
+and mailed the same way.
+
+Fail-safes: with no `ANTHROPIC_API_KEY`, or when the vendor is down or slow
+(20 s), the person gets an honest holding line and the chat is flagged for
+staff — the chat never errors. Each message costs one model call and is
+rate-limited per account (20/min, 200/day). Logs tell the story as
+`support.opened` → `support.message` (needsHuman, fallback) →
+`support.staff_reply` → `support.closed` (by whom; transcript sent, skipped,
+failed, or no email on file).
+
+Nothing else to configure. The migration `20260914000000_support_chat`
+adds the tables.
+
+## 13. Publishing (Instagram and TikTok)
+
+Finished pictures and reels leave through **Post…** on a library item or a
+studio result. Two roads: a connected account (Instagram, TikTok), now or at
+a chosen time; or the share sheet, which needs no account — a one-hour link
+to the file, the caption on the clipboard, and on a phone the native share
+sheet with the file attached, which is how a WhatsApp Status is posted
+(WhatsApp offers no API for Status).
+
+**How it runs.** A post is a row in `publish_jobs` with a time. The worker
+polls the database every fifteen seconds, claims what is due with a
+conditional update, posts it and records the outcome — no Redis in the
+path, so a Redis outage cannot lose a scheduled post. A platform that says
+"not now" is retried in two minutes, then ten; one that says "never" (bad
+file, dead token) is not retried, and a dead token marks the account as
+needing re-authorisation. Tokens are encrypted under `APP_KEY` at rest and
+refreshed a week before expiry. Posted and failed both reach the bell.
+
+**Variables.** Without them a platform reports itself "not switched on"
+and the connect button does not appear.
+
+| Variable                                    | Where it comes from                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `META_APP_ID`, `META_APP_SECRET`            | developers.facebook.com → your app → App settings → Basic. Add the product **Facebook Login for Business** and, under its Settings, the Valid OAuth Redirect URI `https://app.<base>/api/v1/publishing/callback/instagram` (and the `org.` one). Permissions used: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`. |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | developers.tiktok.com → your app → Credentials. Add **Login Kit** and **Content Posting API**; scopes `user.info.basic`, `video.publish`, `video.upload`; redirect URI `https://app.<base>/api/v1/publishing/callback/tiktok` (and `org.`).                                                                                                                                           |
+
+**Before app review.** Meta only grants `instagram_content_publish` to
+accounts with a role on the app (developers and testers) until the app
+passes review — enough for dev and staging. TikTok, until its review, lets
+an app post only as private to the account (`SELF_ONLY`); the connector
+reads what the account allows and uses the most open level, so the same
+code posts publicly once the review is through. Instagram can only be
+posted to as a **Professional** account (Business or Creator) linked to a
+Facebook Page; personal accounts are refused by Meta, and the page says so.
+TikTok photo posts need the pull domain verified in the TikTok app
+settings, which a signed R2 host cannot be; videos are pushed and need no
+such thing, so TikTok takes videos only for now.
+
+**Migration.** `20260916000000_publishing` adds `social_accounts` and
+`publish_jobs`.
+
+## 14. Usage-based billing (organizations on a credit line)
+
+An organization can be invoiced monthly for what it uses instead of buying
+credits up front. Nothing about metering changes — every generation still
+debits credits through the ledger the moment it is asked for. What changes
+is the floor: the organization's wallet may go below zero as far as its
+**credit limit**, so its balance reads as "credits used and not yet paid
+for". On the 1st of each month the worker prices the previous month's net
+debits with the rate card and writes an invoice; paying the invoice puts
+those credits back through the ledger, and the balance climbs toward zero.
+
+**Opening a line.** Staff console → the organization's workspace →
+**Credit line → Open a credit line** (staff `ADMIN`, recent second factor,
+a reason). Set the limit in credits, optionally a negotiated rate per 100
+credits, a monthly minimum, net days (default 14) and grace days (default
+7). The list rate comes from `usage_rates` (seeded per currency; edit the
+seed to change it). Closing the line invoices the partial period at once
+and the organization is prepaid again.
+
+**What the organization sees.** Its Credits page becomes **Billing**: this
+period's usage and estimate, how much of the line is left, open invoices,
+and the invoice list. An invoice opens as a printable page with a **Pay**
+button (Flutterwave for African currencies, Paddle elsewhere) and the bank
+transfer details from `BANK_TRANSFER_DETAILS`. Owners, admins and the
+billing contact can pay and edit the billing address; the top-bar pill
+shows what is left on the line rather than a negative balance.
+
+**Dunning.** Past due → `OVERDUE`, one reminder email. Past due plus grace
+→ the account is **paused**: the wallet's overdraft goes to 0, so the next
+generation is refused by the database with a 402 that says "overdue
+invoice", and the owners get a "paused" email. Any payment that clears the
+overdue invoices reopens the line automatically; staff can also lift the
+pause by hand. At 80% of the limit the owners get one heads-up per period.
+
+**Bank transfers.** Staff console → **Invoicing** → _Mark paid_ with the
+bank reference. Same effect as an online payment: credits back, receipt
+emailed, line reopened. _Void_ cancels an unpaid invoice and returns its
+credits so a corrected one can be issued with _Invoice now_ on the
+workspace.
+
+**Variables.** `PADDLE_USAGE_PRODUCT_ID` — one Paddle product ("AnyStudio
+usage") that invoice payments are priced under at checkout; without it,
+Paddle-currency organizations can only pay by bank transfer.
+`BANK_TRANSFER_DETAILS` — printed on invoices; leave empty to offer online
+payment only. Both on the API service (the `anystudio-dev` group).
+
+**Migration.** `20260917000000_usage_billing` adds `usage_rates`,
+`billing_accounts`, `invoices`, `wallets.overdraftLimit`, the `INVOICE`
+payment kind, and replaces `ledger_apply` with a version that honours the
+overdraft. Seed adds the rate card.
+
+## 15. Refunds
+
+A customer can ask for a credit-pack purchase back from Credits →
+Payments → **Request refund**, within 14 days of paying and only while
+none of its credits have been used (the button only shows when that
+holds; plans are cancelled instead and run to the end of the paid
+period). The
+request lands in the staff console → **Payments → Refund requests**, and
+in `REFUNDS_EMAIL` if set. **Approve** sends the money back at the gateway
+(Flutterwave transaction refund, Paddle adjustment) and then claws the
+credits back through the ledger; if the credits were spent in between, the
+request is refused automatically. **Refuse** needs a sentence, which the
+customer reads in the email. Both decisions are audit-logged
+(`billing.refund`). The older "mark refunded" on a payment stays for money
+sent back outside a request.
+
+**Migration.** `20260918000001_refund_requests`.
+
+## 16. Marketing pages, careers and the waitlist
+
+`/why` is a static page like the landing (edit `design/why.html`, run
+`node scripts/sync-prototypes.mjs`); its pictures and hero film are in
+`apps/web/public/why/`. `/careers` and `/careers/<slug>` are built at
+request time from the API, wearing the same chrome (`content/chrome.ts`,
+also generated). Staff write openings in the console → **Careers**; an
+opening set to _Open_ is on the site the same minute. Applications come
+back with a CV (PDF or Word, up to 8 MB, presigned straight to storage
+under `careers/`), a confirmation email to the applicant, and an alert to
+`CAREERS_EMAIL` if set. The mobile-app waitlist on `/why#mobile` posts to
+`POST /api/v1/waitlist`; counts and the latest signups are at
+`GET /api/v1/admin/waitlist`.
+
+**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.
+
+## 17. Error tracking (Sentry, optional)
+
+Everything already logs one JSON line per failure with a request id. Sentry
+adds the part logs cannot do: tell you a new kind of failure started at
+14:02 without anyone reading the logs.
+
+**API and worker.** Set `SENTRY_DSN` in the Render environment group. On
+start the process logs `error tracking on`; from then on every
+`logger.error` / `logger.fatal` line that carries an `err` is also a Sentry
+event, tagged with the same `requestId`, `userId`, `workspaceId`, `jobId`
+and so on that the log line has, so an issue in Sentry and a search in
+Render logs land on the same request. Traces are off (`tracesSampleRate: 0`)
+and PII is not attached; the redaction list in `config/logger/redact.ts`
+applies to what is forwarded. Unset, nothing is started.
+
+**Web.** The browser has no SDK — a 60 KB dependency for a page that must
+stay small on Workers. `lib/report-error.ts` writes the Sentry envelope by
+hand and posts it with a keepalive fetch from the two error boundaries
+(`app/error.tsx`, `app/(app)/error.tsx`) and from window `error` /
+`unhandledrejection`. It sends the exception, the path (never the query
+string), the release and the environment derived from the hostname. The
+DSN is public by design and is baked in at build time: add
+`NEXT_PUBLIC_SENTRY_DSN` as a **GitHub Actions variable** (not a secret)
+and pass it into the build step of `.github/workflows/web-deploy.yml`:
+
+```yaml
+- name: Build for Cloudflare
+  run: pnpm --filter @anystudio/web cf:build
+  env:
+    NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+    NEXT_PUBLIC_RELEASE: ${{ github.sha }}
+```
+
+One Sentry project per surface (api, worker, web) keeps the alert rules
+sane; the `service` tag tells them apart if you prefer one.
+
+## 18. Before the first real customer: the payment rehearsal
+
+Nothing in the billing code has met a real gateway yet — the tests run
+against a stub. Do this once on staging, with sandbox keys, before
+production keys go in. Ten minutes.
+
+1. **Paddle sandbox.** `PADDLE_ENV=sandbox`, sandbox `PADDLE_API_KEY`,
+   `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`; a sandbox product for
+   `PADDLE_USAGE_PRODUCT_ID`. Point a Paddle notification destination at
+   `https://api.staging.anystudio.ai/api/v1/billing/webhooks/paddle` with
+   `transaction.completed`, `transaction.payment_failed`,
+   `subscription.activated`, `subscription.updated`, `subscription.canceled`,
+   `adjustment.updated`.
+2. **Buy a pack** on the staging app with Paddle's test card
+   (`4242 4242 4242 4242`). Expect: the checkout closes, the wallet shows
+   the credits within a few seconds, a receipt email arrives, and
+   `GET /api/v1/admin/payments` shows the row with `provider: PADDLE`,
+   `status: SUCCEEDED`. If credits do not land, the webhook did not: check
+   Paddle's notification log for the delivery and the API log for
+   `webhook signature rejected` (a wrong secret) or `webhook processed`
+   with `outcome: ignore` (an event type the gateway does not act on).
+3. **Refund it.** Request the refund from Billing, approve it in the
+   console. Expect: an adjustment appears in Paddle within a minute, the
+   credits leave the wallet, both emails arrive. If Paddle refuses the
+   adjustment, the sandbox transaction is usually too fresh — wait a minute
+   and approve again.
+4. **Renew a plan.** Subscribe to a plan, then in Paddle's sandbox
+   dashboard advance the subscription's billing date. Expect a RENEWAL
+   payment row and a second grant of credits.
+5. **Flutterwave** (NG/GH/KE/ZA): test keys, then the same three steps with
+   a test card from their docs. The webhook is
+   `/api/v1/billing/webhooks/flutterwave` with `FLUTTERWAVE_WEBHOOK_SECRET`
+   as the `verif-hash`.
+6. **Usage billing.** Put a staging workspace on a credit line, spend a
+   few credits, then `POST /api/v1/admin/billing/accounts/<ws>/close-period`
+   to issue an invoice now. Pay it by card from the invoice page; expect
+   `paidVia: PADDLE`, the ledger row, and the paid email.
+
+Only after all six: production keys, production webhook destinations, written
+Paddle approval for the exact product, `PADDLE_ENV=live`, and
+`PADDLE_PRODUCT_APPROVED=true`.

@@ -1,0 +1,260 @@
+name: API
+
+# Builds, tests and deploys the API and the queue worker to Render from
+# GitHub, the same way `Web` deploys the portal to Cloudflare: the run shows
+# on the commit, the PR and the Deployments tab, and a production deploy waits
+# for a human on the `production` environment.
+#
+#   development → anystudio-api-dev      api.dev.anystudio.ai
+#   staging     → anystudio-api-staging  api.staging.anystudio.ai
+#   production  → anystudio-api          api.anystudio.ai
+#
+# Both queue workers use the SAME image as the API, started with a different
+# command (node dist/src/worker/main.js). The fast/heavy and local-media pair
+# deploy alongside the API when both worker service ids are set — see `deploy`.
+#
+# Render's own auto-deploy is off (`autoDeployTrigger: off` in each Blueprint), so a
+# commit reaches an environment only through this file, and only after the
+# `Check` job is green. The deploy pins the exact commit that was tested
+# (`commitId`), waits for Render to report it live, then proves the running
+# process is that commit by reading `release` from /health.
+#
+# Migrations run inside Render's pre-deploy step, once per deploy, before any
+# new instance starts — never here, and never in a start command.
+
+on:
+  push:
+    branches: [development, staging, production]
+    paths:
+      - apps/api/**
+      - packages/db/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - tsconfig.base.json
+      - turbo.json
+      - render.yaml
+      - render.staging.yaml
+      - render.production.yaml
+      - scripts/render-preflight.sh
+      - scripts/test-render-preflight.sh
+      - scripts/test-render-blueprints.rb
+      - scripts/render-deploy.sh
+      - scripts/smoke-api.sh
+      - scripts/test-billing-migration-upgrade.sh
+      - .github/workflows/api.yml
+  pull_request:
+    paths:
+      - apps/api/**
+      - packages/db/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - tsconfig.base.json
+      - turbo.json
+      - render.yaml
+      - render.staging.yaml
+      - render.production.yaml
+      - scripts/render-preflight.sh
+      - scripts/test-render-preflight.sh
+      - scripts/test-render-blueprints.rb
+      - scripts/render-deploy.sh
+      - scripts/smoke-api.sh
+      - scripts/test-billing-migration-upgrade.sh
+  workflow_dispatch: # redeploy the head of the current branch by hand
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: false # never cancel a deploy half way
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: anystudio
+          POSTGRES_PASSWORD: anystudio
+          POSTGRES_DB: anystudio_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U anystudio" --health-interval 5s
+          --health-timeout 5s --health-retries 12
+    # Fixtures, not secrets. The Postgres is a service container on the
+    # runner's loopback interface, destroyed with the job. Nothing that unlocks
+    # anything may be written here — GitHub prints a step's env verbatim.
+    env:
+      DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      # A SEPARATE database for the drift check.
+      #
+      # `migrate diff --from-migrations` replays every migration into the
+      # shadow database to work out what the schema should look like, and
+      # leaves it there. Point it at DATABASE_URL and the next step —
+      # `db:deploy` — finds a database that already has tables but no
+      # _prisma_migrations rows, and refuses with P3005 "the database schema
+      # is not empty". The check and the thing it checks need separate ground.
+      SHADOW_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_shadow?schema=public
+      BILLING_UPGRADE_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_upgrade
+      BILLING_REJECT_DATABASE_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_migration_reject
+      DIRECT_URL: postgresql://anystudio:anystudio@localhost:5432/anystudio_test?schema=public
+      ORIGIN_APP: http://localhost:3000
+      ORIGIN_ORG: http://localhost:3002
+      ORIGIN_ADMIN: http://localhost:3003
+    steps:
+      - uses: actions/checkout@v4
+      # No version here on purpose: it is read from package.json's
+      # packageManager field. Giving both is ERR_PNPM_BAD_PM_VERSION.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Production dependency audit
+        run: pnpm audit --prod --audit-level=moderate
+
+      # The stub provider renders its test audio and video with ffmpeg; the
+      # runner image lacks it and every worker spec would fail as "provider down".
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+
+      # Generated per run rather than written above, so no key-shaped literal
+      # ever exists in this file or in a build log.
+      - name: Generate a throwaway APP_KEY
+        run: echo "APP_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Create the shadow database
+        run: |
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_shadow'
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_upgrade'
+          PGPASSWORD=anystudio psql -h localhost -U anystudio -d anystudio_test -c 'CREATE DATABASE anystudio_migration_reject'
+
+      # A schema edited without a matching migration works locally and fails
+      # on deploy. Catch it here, where it is a red check and not an outage.
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @anystudio/db exec prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
+
+      - name: Migrations apply cleanly
+        run: pnpm db:deploy
+
+      - name: Billing migration upgrades and rolls back cleanly
+        run: bash scripts/test-billing-migration-upgrade.sh
+
+      - name: Render Blueprints preserve the deployment contract
+        run: ruby scripts/test-render-blueprints.rb
+
+      - name: Render live-preflight parser matches the API schema
+        run: bash scripts/test-render-preflight.sh
+
+      - name: Typecheck
+        run: pnpm --filter @anystudio/shared build && pnpm --filter "@anystudio/api" typecheck
+
+      - name: Lint
+        run: pnpm --filter "@anystudio/api" lint && pnpm --filter "@anystudio/db" lint
+
+      - name: Test
+        run: pnpm --filter "@anystudio/api" test
+
+      - name: Build
+        run: pnpm --filter "@anystudio/api" build
+
+      # The image Render builds is this Dockerfile; build it here too so a
+      # broken Dockerfile fails the PR rather than the deploy.
+      - name: Docker image builds
+        run: |
+          docker build -f apps/api/Dockerfile -t anystudio-api:ci .
+
+  deploy:
+    name: Deploy
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Required reviewers on the `production` environment are the release
+    # gate; development and staging deploy as soon as the check is green.
+    #
+    # Each environment carries these variables (Settings → Environments →
+    # <name> → Environment variables), none of them secret:
+    #   RENDER_API_SERVICE_ID     srv-… of the API service on Render — required
+    #   RENDER_WORKER_SERVICE_ID  srv-… of the fast/heavy worker — required
+    #   RENDER_MEDIA_SERVICE_ID   srv-… of the local-media worker — required
+    #   API_URL                   optional; only until api.<env>.anystudio.ai exists
+    # and one repository secret: RENDER_API_KEY.
+    #
+    # Both workers are mandatory. The main worker explicitly excludes
+    # media.local and the media worker owns that queue, so a release with either
+    # id missing would be green while part (or all) of generation stays queued.
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      API_URL: ${{ vars.API_URL || (github.ref_name == 'production' && 'https://api.anystudio.ai' || format('https://api.{0}.anystudio.ai', github.ref_name == 'development' && 'dev' || github.ref_name)) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            render.yaml
+            render.staging.yaml
+            render.production.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Environment is configured
+        run: |
+          missing=()
+          [ -n "$RENDER_API_KEY" ]                        || missing+=(RENDER_API_KEY)
+          [ -n "${{ vars.RENDER_API_SERVICE_ID }}" ]      || missing+=(RENDER_API_SERVICE_ID)
+          [ -n "${{ vars.RENDER_WORKER_SERVICE_ID }}" ]   || missing+=(RENDER_WORKER_SERVICE_ID)
+          [ -n "${{ vars.RENDER_MEDIA_SERVICE_ID }}" ]    || missing+=(RENDER_MEDIA_SERVICE_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing for the '${{ github.ref_name }}' environment: ${missing[*]}. Configure the API, fast/heavy worker, and local-media worker ids together; see docs/DEPLOY.md §3."
+            exit 1
+          fi
+
+      # Read-only and before the first deploy: a mistyped id must not deploy
+      # the API and only then reveal that one worker points at another app.
+      - name: Render services match this environment
+        run: |
+          bash scripts/render-preflight.sh \
+            "${{ github.ref_name }}" "$GITHUB_REPOSITORY" \
+            "${{ vars.RENDER_API_SERVICE_ID }}" \
+            "${{ vars.RENDER_WORKER_SERVICE_ID }}" \
+            "${{ vars.RENDER_MEDIA_SERVICE_ID }}"
+
+      # The API first: its pre-deploy step runs the migrations, so by the time
+      # the worker starts on the new code the schema it expects is there.
+      - name: Deploy API
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_API_SERVICE_ID }}" "${{ github.sha }}"
+
+      - name: Deploy worker
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_WORKER_SERVICE_ID }}" "${{ github.sha }}"
+
+      # The media worker: the same image again, serving only media.local.
+      # Deployed with the worker above. An undeployed API is obvious within minutes;
+      # an undeployed media worker keeps answering, on whatever code it was
+      # created with, and the only symptom is ads that behave like a release
+      # nobody remembers shipping. The validation above therefore refuses a
+      # release unless this service id is configured.
+      - name: Deploy media worker
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_MEDIA_SERVICE_ID }}" "${{ github.sha }}"
+
+      # Render HTTP health checks do not apply to background workers. This
+      # final external probe therefore requires fresh main/media heartbeats
+      # carrying the same commit as the API before the release can pass.
+      - name: Smoke test
+        run: bash scripts/smoke-api.sh "$API_URL" "${{ github.sha }}"

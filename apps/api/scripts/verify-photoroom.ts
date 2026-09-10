@@ -1,0 +1,266 @@
+/**
+ * Does a merchant shot actually come back as a picture?
+ *
+ * Everything under PRODUCT_SHOT typechecks and its tests pass, and none of
+ * that is evidence. Every assertion in the suite is against a mock; the one
+ * thing nobody has seen is a response from the vendor. A parameter the vendor
+ * does not recognise is not an error — it is ignored, billed, and the picture
+ * comes back quietly not doing what was asked. That has already happened once
+ * in this adapter, to five parameter names at the same time.
+ *
+ * So this runs the REAL adapter — the class that ships, not a hand-rolled
+ * request beside it — once per mode, against a live key, and prints what went
+ * out and what came back. If a name is wrong the vendor says so, or the
+ * picture is visibly unchanged, and either way it is knowable in a minute
+ * instead of after a customer's credits are gone.
+ *
+ * The key is read from the environment and never printed. Nothing here writes
+ * to the database, charges a customer, or touches storage.
+ *
+ *   PHOTOROOM_API_KEY=… pnpm --filter @anystudio/api exec tsx scripts/verify-photoroom.ts
+ *   … --url https://example.com/my-dress.jpg   a product of your own (any public URL)
+ *   … --modes ghost_mannequin,on_model         just these
+ *   … --out ./shots                            where the pictures land
+ *   … --model-photo https://…/me.jpg           put it on a person of your own
+ *   … --angles https://…/back.jpg,https://…/side.jpg   more views of the same item
+ *   … --batch 12                               what a folder of twelve does at once
+ *
+ * One vendor call per mode. Five modes is five of the month's images.
+ */
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import sharp from 'sharp';
+import { OFFERED_PRODUCT_MODES, PRODUCT_MODES, parseCapabilityParams, type ProductMode, type ProviderInput } from '@anystudio/shared';
+import { PhotoroomProvider } from '../src/modules/provider/adapters/photoroom.adapter';
+
+/** How many times to give the vendor the benefit of the doubt on a 5xx, as the runner does. */
+const RETRIES = 3;
+
+/** A public product photo, so the script does something useful with no arguments. */
+const SAMPLE = 'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=1200&q=80';
+
+const arg = (name: string, fallback = ''): string => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i >= 0 ? (process.argv[i + 1] ?? fallback) : fallback;
+};
+
+/**
+ * What a folder does to the vendor.
+ *
+ * A batch is one parent and one child per photo, and the children are
+ * ordinary jobs on the ordinary queue — six of them in flight at once by
+ * default. Every test behind that machinery is a mock, so the one thing
+ * nobody has ever seen is what happens when six real requests for the same
+ * key arrive together, twelve times over.
+ *
+ * That is the question only a live run answers: whether the vendor rate
+ * limits, how it says so, and whether the runner's handling of it is right.
+ * A 429 on child nine of forty is a merchant's afternoon.
+ *
+ * This does not test the parent/child machinery — that needs the worker and
+ * a database. It tests the half a mock cannot: the vendor under the load a
+ * real folder puts on it.
+ */
+async function batch(provider: PhotoroomProvider, url: string, mode: ProductMode, count: number, inFlight: number, out: string): Promise<void> {
+  console.log(`\nA folder of ${count}, ${inFlight} at a time — what the worker actually does.\n`);
+  const parsed = parseCapabilityParams('PRODUCT_SHOT', { sourceKey: 'verify/source.jpg', mode, aspect: '1:1' });
+  if (!parsed.ok) {
+    console.error(`the schema refused it: ${JSON.stringify(parsed.issues)}`);
+    process.exit(2);
+  }
+  const results: Array<{ i: number; ms: number; ok: boolean; note: string }> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= count) return;
+      const started = Date.now();
+      try {
+        const r = await provider.generate(
+          {
+            generationId: `verify-batch-${i}`,
+            workspaceId: 'verify',
+            capability: 'PRODUCT_SHOT',
+            params: parsed.params,
+            files: { sourceKey: { url, mime: 'image/jpeg' } },
+            config: {},
+          },
+          { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) },
+        );
+        const bytes = r.artifacts[0]?.bytes;
+        if (!bytes) throw new Error('no bytes came back');
+        results.push({ i, ms: Date.now() - started, ok: true, note: `${(bytes.length / 1024).toFixed(0)} KB` });
+        process.stdout.write('.');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ i, ms: Date.now() - started, ok: false, note: message });
+        // A rate limit is the finding. Say so loudly rather than as one dot.
+        process.stdout.write(/429|rate/i.test(message) ? 'R' : 'x');
+      }
+    }
+  };
+  const began = Date.now();
+  await Promise.all(Array.from({ length: Math.min(inFlight, count) }, worker));
+  const good = results.filter((r) => r.ok);
+  const limited = results.filter((r) => !r.ok && /429|rate/i.test(r.note));
+  const times = good.map((r) => r.ms).sort((a, b) => a - b);
+  console.log(`\n\n${good.length}/${count} came back.  wall clock ${((Date.now() - began) / 1000).toFixed(1)}s`);
+  if (times.length) console.log(`per photo: fastest ${times[0]}ms, middle ${times[Math.floor(times.length / 2)]}ms, slowest ${times[times.length - 1]}ms`);
+  if (limited.length) {
+    console.log(`\n${limited.length} were RATE LIMITED. A folder of forty would lose that share on the first pass.`);
+    console.log(`  ${limited[0]!.note}\n`);
+  }
+  for (const r of results.filter((x) => !x.ok && !/429|rate/i.test(x.note)).slice(0, 3)) console.log(`\nphoto ${r.i}: ${r.note}`);
+  console.log(`\nNothing was written to ${out} — this run is about the vendor, not the pictures.\n`);
+  process.exit(good.length === count ? 0 : 1);
+}
+
+async function main(): Promise<void> {
+  const apiKey = process.env.PHOTOROOM_API_KEY;
+  if (!apiKey) {
+    console.error('PHOTOROOM_API_KEY is not set. Put it in your shell, not in this file.\n  export PHOTOROOM_API_KEY=…');
+    process.exit(2);
+  }
+  // A placeholder copied out of an instruction is not a key, and finding that
+  // out from six identical 401s is a worse minute than finding it out here.
+  if (/^(paste|your|xxx|<|\.\.\.)/i.test(apiKey) || apiKey.length < 16) {
+    console.error(`PHOTOROOM_API_KEY does not look like a key (${apiKey.length} characters).`);
+    console.error('Copy the real one from the Photoroom API dashboard → API keys. It is not your app login.');
+    process.exit(2);
+  }
+
+  const url = arg('url') || SAMPLE;
+  const out = arg('out') || './photoroom-check';
+  const asked = arg('modes');
+  // Two paths a mock can never exercise: a seller's own model, and the extra
+  // angles that stop a model inventing the back of the bag. Both need public
+  // URLs, because the vendor fetches them itself.
+  const modelPhoto = arg('model-photo');
+  const angles = (
+    arg('angles')
+      ? arg('angles')
+          .split(',')
+          .map((a) => a.trim())
+      : []
+  ).filter(Boolean);
+  const modes = (asked ? asked.split(',').map((m) => m.trim()) : OFFERED_PRODUCT_MODES) as ProductMode[];
+
+  await mkdir(out, { recursive: true });
+  /**
+   * The output folder ignores itself.
+   *
+   * These are sandbox pictures with another company's watermark across them —
+   * evidence for one afternoon, regenerated whenever anyone re-runs the check,
+   * and megabytes of it. They kept turning up in Source Control asking to be
+   * committed, and no repo-level pattern can guess what someone will pass to
+   * --out. A folder that carries its own `.gitignore` does not need guessing.
+   */
+  await writeFile(join(out, '.gitignore'), '# Verification output — pictures, not source.\n*\n').catch(() => undefined);
+
+  const [provider] = PhotoroomProvider.all(apiKey);
+  if (!provider) throw new Error('no provider');
+
+  const howMany = Number(arg('batch') || 0);
+  if (howMany > 0) {
+    // The worker's own default, so the load matches production rather than
+    // whatever this script felt like.
+    const inFlight = Number(process.env.WORKER_FAST_CONCURRENCY ?? 6);
+    return batch(provider, url, (modes[0] ?? 'ghost_mannequin') as ProductMode, howMany, inFlight, out);
+  }
+
+  console.log(`\nProduct photo: ${url}`);
+  console.log(`Modes:         ${modes.join(', ')}`);
+  if (modelPhoto) console.log(`Model photo:   ${modelPhoto}`);
+  if (angles.length) console.log(`Extra angles:  ${angles.length}`);
+  console.log(`This will use ${modes.length} of the month's images.\n`);
+
+  let good = 0;
+  for (const mode of modes) {
+    const label = PRODUCT_MODES[mode]?.label ?? mode;
+
+    // Through the real schema, so the script cannot ask for something the
+    // studio could not: a mode that needs a colour or a prompt is refused
+    // here exactly as a customer's request would be.
+    const parsed = parseCapabilityParams('PRODUCT_SHOT', {
+      sourceKey: 'verify/source.jpg',
+      mode,
+      aspect: '1:1',
+      ...(mode === 'on_model'
+        ? {
+            model: modelPhoto ? 'custom' : 'avery',
+            ...(modelPhoto ? { modelPhotoKey: 'verify/model.jpg' } : {}),
+            scene: 'studio',
+            pose: 'standing',
+            shotSize: 'posting',
+            angleKeys: angles.map((_, i) => `verify/angle-${i}.jpg`),
+          }
+        : {}),
+      ...(mode === 'text_removal' ? { textKind: 'artificial' } : {}),
+      ...(mode === 'edit' ? { prompt: 'remove the hanger' } : {}),
+    });
+    if (!parsed.ok) {
+      console.log(`✗ ${label.padEnd(18)} the schema refused it: ${JSON.stringify(parsed.issues)}`);
+      continue;
+    }
+
+    const input: ProviderInput = {
+      generationId: `verify-${mode}`,
+      workspaceId: 'verify',
+      capability: 'PRODUCT_SHOT',
+      params: parsed.params,
+      files: {
+        sourceKey: { url, mime: 'image/jpeg' },
+        ...(modelPhoto ? { modelPhotoKey: { url: modelPhoto, mime: 'image/jpeg' } } : {}),
+        ...Object.fromEntries(angles.map((a, i) => [`angleKeys[${i}]`, { url: a, mime: 'image/jpeg' }])),
+      },
+      config: {},
+    };
+
+    const started = Date.now();
+    // The runner retries a 5xx in production, so a script that does not will
+    // report a vendor having a bad minute as a broken adapter. It says how
+    // many attempts it took, because "worked on the third try" is the useful
+    // answer and "worked" would hide it.
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      try {
+        const result = await provider.generate(input, { timeoutMs: 180_000, signal: AbortSignal.timeout(180_000) });
+        const bytes = result.artifacts[0]?.bytes;
+        if (!bytes) throw new Error('no bytes came back');
+        const meta = await sharp(bytes).metadata();
+        const file = join(out, `${mode}.png`);
+        await writeFile(file, bytes);
+        good++;
+        const tries = attempt > 1 ? `  (${attempt} tries)` : '';
+        console.log(`✓ ${label.padEnd(18)} ${meta.width}×${meta.height}  ${(bytes.length / 1024).toFixed(0)} KB  ${Date.now() - started}ms${tries}  → ${file}`);
+        break;
+      } catch (err) {
+        // The vendor's own words, in full: this is the whole point of the run.
+        const message = err instanceof Error ? err.message : String(err);
+        // A 5xx is the vendor's failure, not a rejected parameter. Give it the
+        // same benefit of the doubt the runner does before calling it broken.
+        if (/HTTP 5\d\d/.test(message) && attempt < RETRIES) {
+          console.log(`… ${label.padEnd(18)} attempt ${attempt} hit a vendor error; trying again`);
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        console.log(`✗ ${label.padEnd(18)} ${Date.now() - started}ms  (${attempt} ${attempt === 1 ? 'try' : 'tries'})\n    ${message}\n`);
+        // Every mode will fail the same way and none of them will be about the
+        // adapter, so say what it is once and stop burning the wall clock.
+        if (/HTTP 401|could not be authenticated/i.test(message)) {
+          console.log('    The key was rejected, so every mode below would fail the same way.');
+          console.log('    Photoroom API dashboard → API keys → Create API key. Nothing was charged.\n');
+          process.exit(2);
+        }
+        break;
+      }
+    }
+  }
+
+  console.log(`\n${good}/${modes.length} came back as a picture. Open them — a mode can succeed and still have ignored what it was asked.\n`);
+  process.exit(good === modes.length ? 0 : 1);
+}
+
+void main();

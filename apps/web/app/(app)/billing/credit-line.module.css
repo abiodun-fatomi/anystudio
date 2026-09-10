@@ -1,0 +1,68 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s-4);
+}
+.lineBar {
+  margin-top: var(--s-3);
+}
+.paused {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-4);
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, var(--line-soft));
+  background: color-mix(in oklab, var(--danger) 8%, var(--surface-2));
+  border-radius: var(--r-lg);
+  font-size: var(--t-2);
+}
+.bang {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 800;
+  display: inline-grid;
+  place-items: center;
+  font-size: 13px;
+}
+.lede {
+  color: var(--muted);
+  font-size: var(--t-2);
+  margin: 0 0 var(--s-3);
+  max-width: 64ch;
+}
+.aside {
+  margin-left: auto;
+  font-weight: 500;
+}
+.quiet {
+  color: var(--muted);
+  font-size: var(--t-2);
+}
+.number {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  font-weight: 600;
+}
+.totalRow td {
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+}
+.form {
+  display: grid;
+  gap: var(--s-4);
+}
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+@media (max-width: 560px) {
+  .two {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,293 @@
+/**
+ * Photoroom — the e-commerce specialist: background replacement with a
+ * generated scene, AI shadows and relighting in one synchronous call.
+ *
+ *   GET https://image-api.photoroom.com/v2/edit?imageUrl=…&background.prompt=…&shadow.mode=…&lighting.mode=…
+ * Returns the image bytes directly; errors come back as JSON.
+ */
+
+import {
+  PRODUCT_SIZE_BY_ASPECT,
+  ProviderError,
+  SHADOW_STYLES,
+  SHOT_SIZES,
+  TEXT_KINDS,
+  type Capability,
+  type CapabilityParams,
+  type ProviderInput,
+  type ProviderOpts,
+  type ProviderResult,
+} from '@anystudio/shared';
+import { BaseProvider } from './base';
+import { kindForStatus, linkedTimeoutSignal, MAX_PROVIDER_JSON_BYTES, MAX_PROVIDER_OUTPUT_BYTES, readLimitedResponseBytes } from './http';
+
+const KNOWN: Record<string, Capability[]> = {
+  'photoroom:edit': ['BACKGROUND_REPLACE', 'RELIGHT', 'BACKGROUND_REMOVE', 'PRODUCT_SHOT'],
+};
+
+/**
+ * One mode, one set of query fields — the names taken from the vendor's own
+ * OpenAPI document, not from the shape of its app.
+ *
+ * That distinction cost a rewrite. The first version of this table guessed
+ * `recolor.*`, `retouch.*`, `beautify.prompt`, `expand.prompt`, a top-level
+ * `size` and `referenceImages[]`, because the app has all of those. None of
+ * them are in the specification. A parameter a vendor does not know is not an
+ * error — it is ignored, billed, and the customer gets back a picture that
+ * quietly did not do what they asked. Only fields the spec lists appear here.
+ *
+ * `p` is already validated; the schema refuses anything a mode cannot work
+ * without, so nothing below re-checks.
+ */
+type ShotParams = CapabilityParams<'PRODUCT_SHOT'>;
+
+/** The per-feature frame name, for the modes whose size is set on themselves. */
+const sizeOf = (p: ShotParams): string => PRODUCT_SIZE_BY_ASPECT[p.aspect] ?? 'SQUARE_HD';
+
+/** Exact social frames supported through Photoroom's custom `outputSize`. */
+const OUTPUT_SIZE_BY_ASPECT: Record<CapabilityParams<'BACKGROUND_REPLACE'>['aspect'], string> = {
+  '1:1': '1080x1080',
+  '4:5': '1080x1350',
+  '3:4': '1080x1440',
+  '9:16': '1080x1920',
+  '16:9': '1920x1080',
+};
+
+/**
+ * WHO ASKED FOR A CUTOUT.
+ *
+ * This endpoint's original job is background removal, so `removeBackground`
+ * defaults to TRUE and every mode is a cutout unless it says otherwise. A live
+ * run made that visible: "Press it" came back as pressed trousers floating on
+ * nothing, and "Make it studio" the same. Neither mode promises that. Press it
+ * says creases taken out of fabric; Make it studio says lighting, colour and
+ * sharpness "without changing the product". Deleting the room a merchant
+ * photographed their goods in is a bigger change than either advertised, and
+ * it is not recoverable — the background is gone.
+ *
+ * The rule, then: the studio already HAS a cutout tool. A mode that is not it
+ * does not silently become it. Only the two shapes whose vendor output is
+ * inherently isolated — a garment holding its own shape, a flat lay — keep the
+ * default.
+ */
+const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSearchParams, files: ProviderInput['files']) => void>> = {
+  on_model: (p, q, files) => {
+    q.set('virtualModel.mode', 'ai.auto');
+    // A person wearing the garment IS the new background, so cutting the old
+    // one out first is both wasted work and, per the vendor, refused.
+    q.set('removeBackground', 'false');
+    // `model` and `scene` are objects, not strings: each is either a named
+    // preset or a photo of your own. The dotted query path is how the vendor
+    // spells a nested field, so it is `.preset.name`, never a bare value —
+    // sending the bare value is a 400 that says "must match a schema in anyOf".
+    const photo = files.modelPhotoKey?.url;
+    if (photo) q.set('virtualModel.model.custom.imageUrl', photo);
+    else if (p.model && p.model !== 'custom') q.set('virtualModel.model.preset.name', p.model);
+    q.set('virtualModel.scene.preset.name', p.scene ?? 'random');
+    // Pose really is a plain string — the one flat field of the three.
+    q.set('virtualModel.pose', p.pose ?? 'random');
+    q.set('virtualModel.size', sizeOf(p));
+    // Roughly 1K, 2K or 4K on the long side. The only mode with this
+    // parameter; sending it elsewhere would send a key nothing reads.
+    q.set('virtualModel.quality', SHOT_SIZES[p.shotSize].vendor);
+    if (p.prompt) q.set('virtualModel.prompt', p.prompt);
+    // The only place the vendor accepts more angles of the product. Elsewhere
+    // the extra photos are ours to keep for a retry, not the vendor's to read.
+    //
+    // The array is INDEXED and each element is an OBJECT — the same shape as
+    // `model` and `scene` above, one level deeper. Repeating a bare
+    // `virtualModel.additionalProductImages` is refused outright: "was
+    // provided more than once, but can only be provided once". Indexing makes
+    // each key unique, which is what it is asking for.
+    const angles = Object.keys(files)
+      .filter((n) => n.startsWith('angleKeys['))
+      .sort();
+    angles.forEach((name, i) => q.set(`virtualModel.additionalProductImages[${i}].imageUrl`, files[name]!.url));
+  },
+  ghost_mannequin: (p, q) => {
+    q.set('ghostMannequin.mode', 'ai.auto');
+    q.set('ghostMannequin.size', sizeOf(p));
+    if (p.prompt) q.set('ghostMannequin.prompt', p.prompt);
+  },
+  flat_lay: (p, q) => {
+    q.set('flatLay.mode', 'ai.auto');
+    q.set('flatLay.size', sizeOf(p));
+    if (p.prompt) q.set('flatLay.prompt', p.prompt);
+  },
+  // No options at all in the spec, and none in their app either: a photo in, a
+  // pressed photo out — and the room it was photographed in still behind it.
+  ironing: (_p, q) => {
+    q.set('ironing.mode', 'ai.auto');
+    q.set('removeBackground', 'false');
+  },
+  /**
+   * `beautify` takes a subject tuning and a seed. There is no prompt.
+   *
+   * IT IS THE FLAKY ONE. Three live runs of the same request: one picture,
+   * two HTTP 500s reading "An error occurred during Subject Beautifier
+   * processing". A 500 is the vendor's own failure, not a rejected parameter,
+   * and the identical request succeeding once rules out the request.
+   *
+   * (An earlier note here blamed `removeBackground`, on the strength of one
+   * failure that happened to follow that change. Removing it again produced
+   * the same 500. That was a coincidence read as a cause, which is the
+   * cheapest kind of wrong explanation to write and the most expensive to
+   * inherit.)
+   *
+   * Nothing to do in the adapter: the runner classifies 5xx as RETRYABLE,
+   * requeues with a delay, and refunds when the attempts are gone — which is
+   * the right handling for a vendor having a bad minute. Worth watching in
+   * production, and worth demoting the mode if the success rate stays this
+   * poor.
+   *
+   * It does come back cut out, which is real and confirmed from the one that
+   * worked. The mode's description says so.
+   */
+  beautify: (p, q) => q.set('beautify.mode', `ai.${p.subject}`),
+  /**
+   * Taking someone else's writing off a photo.
+   *
+   * Half the pictures a reseller starts from arrive with a supplier's
+   * watermark or a stranger's phone number burned into them, so this is the
+   * step between having a photo and being able to post it. The background
+   * stays: the writing is the only thing that should leave.
+   */
+  text_removal: (p, q) => {
+    q.set('textRemoval.mode', TEXT_KINDS[p.textKind].vendor);
+    q.set('removeBackground', 'false');
+  },
+  /**
+   * The escape hatch, for the problem that is not on the list. The prompt is
+   * required by the schema here — it is the instruction, not a garnish, and a
+   * described edit with nothing described is a paid call that can only come
+   * back unchanged.
+   */
+  edit: (p, q) => {
+    q.set('editWithAI.mode', 'ai.auto');
+    q.set('editWithAI.prompt', p.prompt ?? '');
+    q.set('removeBackground', 'false');
+  },
+  // Widening the frame is the whole point, so this one must not keep the original size.
+  expand: (p, q) => {
+    q.set('expand.mode', 'ai.auto');
+    q.set('outputSize', OUTPUT_SIZE_BY_ASPECT[p.aspect]);
+    q.set('referenceBox', 'originalImage');
+    // Reserve room even when the requested aspect matches the source.
+    q.set('padding', '0.1');
+    // The vendor refuses outright: "expand.mode will activate when
+    // `removeBackground` is set to false". Which is right — continuing the
+    // surroundings requires surroundings to continue.
+    q.set('removeBackground', 'false');
+  },
+};
+
+export class PhotoroomProvider extends BaseProvider {
+  static all(apiKey: string): PhotoroomProvider[] {
+    return Object.entries(KNOWN).map(([key, caps]) => new PhotoroomProvider(apiKey, key, caps));
+  }
+
+  constructor(
+    private readonly apiKey: string,
+    key: string,
+    capabilities: Capability[],
+  ) {
+    super(key, capabilities);
+  }
+
+  async generate(input: ProviderInput, opts: ProviderOpts): Promise<ProviderResult> {
+    const q = new URLSearchParams({ imageUrl: this.file(input, 'sourceKey'), outputSize: 'originalImage', 'export.format': 'png' });
+    switch (input.capability) {
+      case 'BACKGROUND_REPLACE': {
+        const p = this.params(input, 'BACKGROUND_REPLACE');
+        q.set('background.prompt', p.prompt);
+        // Honour the requested scene instead of letting prompt expansion invent props.
+        q.set('background.expandPrompt.mode', 'ai.never');
+        q.set('removeBackground', 'true');
+        q.set('referenceBox', 'originalImage');
+        q.set('scaling', 'fit');
+        // `originalImage` silently ignored the public aspect control. The API
+        // accepts an exact WIDTHxHEIGHT outputSize and generates the new
+        // background into that frame.
+        q.set('outputSize', OUTPUT_SIZE_BY_ASPECT[p.aspect]);
+        if (p.shadow) q.set('shadow.mode', this.str(input.config, 'shadow', 'ai.soft'));
+        if (p.relight) q.set('lighting.mode', 'ai.auto');
+        break;
+      }
+      case 'RELIGHT': {
+        const p = this.params(input, 'RELIGHT');
+        // Background removal is the endpoint default; a relight must not turn
+        // the customer's photograph into an unrelated transparent cutout.
+        q.set('removeBackground', 'false');
+        if (p.prompt?.trim()) {
+          // `lighting.mode` is automatic and has no prompt field. Photoroom's
+          // supported free-form edit feature is the honest way to honour a
+          // directed light request instead of silently discarding it.
+          q.set('editWithAI.mode', 'ai.auto');
+          q.set(
+            'editWithAI.prompt',
+            `Change only the lighting as follows: ${p.prompt.trim()}. Keep the product, colours, text, background and composition unchanged.`,
+          );
+        } else {
+          q.set('lighting.mode', 'ai.preserve-hue-and-saturation');
+        }
+        break;
+      }
+      case 'BACKGROUND_REMOVE': {
+        const p = this.params(input, 'BACKGROUND_REMOVE');
+        // This alpha mask is also used to locate pixels in the ORIGINAL
+        // photo. The provider's subjectBox default enlarges/recentres it.
+        q.set('referenceBox', 'originalImage');
+        q.set('scaling', 'fit');
+        if (p.background !== 'transparent') q.set('background.color', p.background.slice(1));
+        break;
+      }
+      case 'PRODUCT_SHOT': {
+        const p = this.params(input, 'PRODUCT_SHOT');
+        const fields = MODE_FIELDS[p.mode];
+        // A mode with no mapping is one whose parameters we have not confirmed.
+        // Refusing here is free; sending a request the vendor half-understands
+        // is not, and the customer pays for the half.
+        if (!fields) throw new ProviderError('INVALID_INPUT', `${this.key} cannot do "${p.mode}" yet`, this.key);
+        fields(p, q, input.files);
+        const shadow = SHADOW_STYLES[p.shadow].mode;
+        if (shadow) q.set('shadow.mode', shadow);
+        break;
+      }
+      default:
+        return this.unsupported(input.capability);
+    }
+
+    // removeBackground=false alone still defaults to a subject bounding box,
+    // which zoomed/cropped our live relight and text-removal samples. Photoroom's
+    // feature guides explicitly pair it with referenceBox=originalImage.
+    if (q.get('removeBackground') === 'false') {
+      q.set('referenceBox', 'originalImage');
+      q.set('scaling', 'fit');
+      // Do not add a second creative shadow operation to a preservation edit.
+      q.delete('shadow.mode');
+    }
+
+    opts.onProgress?.('Editing your photo', 30);
+    const linked = linkedTimeoutSignal(opts.signal, opts.timeoutMs);
+    try {
+      const res = await fetch(`https://image-api.photoroom.com/v2/edit?${q.toString()}`, {
+        headers: { 'x-api-key': this.apiKey, accept: 'image/png, application/json' },
+        signal: linked.signal,
+      });
+
+      const mime = res.headers.get('content-type')?.split(';')[0] ?? '';
+      if (!res.ok || !mime.startsWith('image/')) {
+        const text = new TextDecoder().decode(await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_JSON_BYTES, 'error response'));
+        const kind = res.status === 400 && /prompt|content|policy/i.test(text) ? 'CONTENT_REJECTED' : kindForStatus(res.status);
+        throw new ProviderError(kind, `${this.key}: HTTP ${res.status}: ${text.slice(0, 400)}`, this.key, { status: res.status });
+      }
+      const bytes = await readLimitedResponseBytes(this.key, res, MAX_PROVIDER_OUTPUT_BYTES, 'image response');
+      return { providerKey: this.key, providerJobId: res.headers.get('x-request-id') ?? undefined, artifacts: [{ bytes, mime, role: 'image' }] };
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError('RETRYABLE', `${this.key}: ${err instanceof Error ? err.message : err}`, this.key);
+    } finally {
+      linked.dispose();
+    }
+  }
+}

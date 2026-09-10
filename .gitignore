@@ -22,3 +22,33 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# --- AnyStudio ---
+node_modules
+.pnpm-store/
+dist/
+.next/
+.turbo/
+.env.local
+coverage/
+.DS_Store
+*.tsbuildinfo
+.open-next/
+.wrangler/
+.dev.vars
+
+# What a verification run leaves behind.
+#
+# scripts/verify-photoroom.ts writes the pictures it got back so they can be
+# looked at — that is the whole point of it, since a mode can return HTTP 200
+# and still have ignored what it was asked. They are evidence for one
+# afternoon, not source: sandbox output with another company's watermark
+# across it, megabytes of it, regenerated whenever anyone re-runs the check.
+#
+# The script drops a .gitignore into whatever --out folder it is given, so
+# any future run ignores itself whatever it is called. These are the ones
+# that already existed before it learned to.
+apps/api/photoroom-check/
+apps/api/angles/
+apps/api/check2/
+apps/api/check4/

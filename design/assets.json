@@ -1,0 +1,90 @@
+{
+  "note": "Product photography and video for AnyStudio. The 'edits' below are true background replacements of source-raw (Seedream 5.0 Pro, is_inpaint) — the same bottle, a new studio behind it. The earlier text-to-image studio shots were retired because they showed a DIFFERENT bottle, which contradicted the page's claim that the product is never redrawn. Download rawUrl into public/shots/ for the Next.js build; the CloudFront links are convenient, not hosting.",
+  "generated": "2026-09-02",
+  "shots": [
+    {
+      "id": "source-raw",
+      "use": "The seller's original photo — the 'before' everywhere on the page",
+      "model": "recraft_v4_1",
+      "suggestedFile": "public/shots/source-raw.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp"
+    },
+    {
+      "id": "edit-peach",
+      "use": "Background replaced, clean peach→magenta studio sweep. Compare default + sheet frame 02",
+      "model": "seedream_v5_pro (edit of source-raw)",
+      "suggestedFile": "public/shots/edit-peach.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"
+    },
+    {
+      "id": "edit-teal",
+      "use": "Background replaced, navy→teal studio. Backdrop swatch + sheet frame 03",
+      "model": "seedream_v5_pro (edit of source-raw)",
+      "suggestedFile": "public/shots/edit-teal.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp"
+    },
+    {
+      "id": "edit-white",
+      "use": "Background replaced, white e-commerce sweep. Backdrop swatch",
+      "model": "seedream_v5_pro (edit of source-raw)",
+      "suggestedFile": "public/shots/edit-white.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_e87338d7-84d7-4d2f-ab2a-67fc1def28eb_min.webp"
+    },
+    {
+      "id": "edit-sand",
+      "use": "Background replaced, sand and cream studio. Backdrop swatch",
+      "model": "seedream_v5_pro (edit of source-raw)",
+      "suggestedFile": "public/shots/edit-sand.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141705_5fc8bea0-b04b-4ca8-9ced-7ebd57fb2fcb_min.webp"
+    },
+    {
+      "id": "ankara-bag",
+      "use": "Second product — ankara wax-print handbag",
+      "model": "recraft_v4_1",
+      "suggestedFile": "public/shots/ankara-bag.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp"
+    },
+    {
+      "id": "sneaker",
+      "use": "Third product — white sneaker on coral",
+      "model": "recraft_v4_1",
+      "suggestedFile": "public/shots/sneaker.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_6980c8b9-bdb8-4b35-83f5-bc5feb14156d_min.webp"
+    },
+    {
+      "id": "reel-still-vertical",
+      "use": "9:16 cinematic still — RETIRED, shows a different bottle. Kept only for reference; edit-peach is the poster now.",
+      "model": "recraft_v4_1",
+      "suggestedFile": "public/shots/reel-vertical.webp",
+      "rawUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100625_c2389c65-b809-45c7-be87-70ee2da1d46e.png",
+      "webpUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100625_c2389c65-b809-45c7-be87-70ee2da1d46e_min.webp"
+    }
+  ],
+  "video": [
+    {
+      "id": "reel-vertical",
+      "use": "5s auto-playing reel, 9:16 — hero, sheet frame 06 and the languages section",
+      "model": "kling3_0 (image-to-video from edit-peach)",
+      "suggestedFile": "public/shots/reel-vertical.mp4",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4",
+      "poster": "edit-peach"
+    },
+    {
+      "id": "reel-square",
+      "use": "5s auto-playing reel, 1:1",
+      "model": "kling3_0 (image-to-video from edit-peach)",
+      "suggestedFile": "public/shots/reel-square.mp4",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033730_e88d408d-ad4b-4938-a379-3f1a8041e6e5.mp4",
+      "poster": "edit-peach"
+    }
+  ],
+  "promptNote": "Wording matters for background replacement. 'Remove the background and the table' left the wooden surface, the cloth and the crumbs in place. What worked: 'Isolate the bottle and keep it pixel-identical. Erase the entire kitchen: no table, no cloth, no crumbs, no dirt. Place it on a flawless infinity-curve studio backdrop.' Name every object to delete, and describe the replacement surface as an infinity curve.",
+  "resolved": "Both reels were regenerated on 2026-09-02 from edit-peach with kling3_0, so every moving frame now shows the same Ravi bottle as frames 01-03. The retired reels (hf_20260901_124918/124919) came from the older text-to-image bottles and must not be reused. The reel poster still was swapped from reel-still-vertical to edit-peach for the same reason."
+}

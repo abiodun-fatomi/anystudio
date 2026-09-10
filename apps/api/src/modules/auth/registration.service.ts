@@ -1,0 +1,191 @@
+/**
+ * Registration — turning a stranger into an account.
+ *
+ * Kept out of AuthService on purpose (single responsibility): AuthService
+ * answers "is this person who they say they are"; this service answers "make
+ * this person exist". They share nothing but the password hasher.
+ *
+ * One registration is ONE transaction that writes six things — user,
+ * password identity, personal workspace, membership, wallet, and the signup
+ * credit grant — plus the consent rows. Either all of them exist afterwards
+ * or none do. A user with no workspace, or a workspace with no wallet, is a
+ * support ticket we would rather not be able to create.
+ */
+
+import { Injectable } from '@nestjs/common';
+import { isValidPhoneNumber, parsePhoneNumber, type CountryCode } from 'libphonenumber-js/min';
+import { Prisma, PrismaClient, type User } from '@prisma/client';
+import type { Request } from 'express';
+import { SIGNUP_PROMO_CREDITS, currencyForCountry, regionForCountry, signupGrantKey } from '@anystudio/shared';
+import { hashPassword } from '../../utils/crypto/password';
+import { ValidationError } from '../../../config/globals/errors';
+import { logger } from '../../../config/logger';
+import { LedgerService } from '../ledger/ledger.service';
+
+export interface RegistrationInput {
+  name: string;
+  email: string;
+  /** E.164, already validated by the controller. */
+  phone: string;
+  /** ISO 3166-1 alpha-2, upper-case; null when nothing could tell us. Prices the first workspace. */
+  country: string | null;
+  password: string;
+  /** Functional: can we deliver over WhatsApp. Not consent to market. */
+  phoneIsWhatsApp: boolean;
+  /** Marketing consent, and the exact sentence that was ticked. */
+  marketing: { granted: boolean; wording: string };
+  /** Where the form lived, for the consent record. */
+  sourceUrl?: string;
+}
+
+export type RegistrationOutcome =
+  | { kind: 'created'; user: User; workspaceId: string }
+  /** Email or phone already belongs to an account. Same shape either way. */
+  | { kind: 'conflict' };
+
+@Injectable()
+export class RegistrationService {
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly ledger: LedgerService,
+  ) {}
+
+  /**
+   * Create the account, its first workspace and its starting credits.
+   *
+   * Duplicate email/phone is reported as a single 'conflict' rather than as
+   * "which field" — the sign-up form is the other half of the login oracle,
+   * and telling an attacker that +234… is already registered is the same leak
+   * as telling them the password was wrong for it.
+   *
+   * The password is hashed BEFORE the transaction opens, because Argon2 takes
+   * tens of milliseconds and a transaction should not hold locks while we do
+   * CPU work.
+   */
+  async register(input: RegistrationInput, req: Request): Promise<RegistrationOutcome> {
+    const passwordHash = await hashPassword(input.password);
+    const workspaceName = `${input.name.trim().split(/\s+/)[0] ?? 'My'}'s studio`;
+
+    try {
+      const result = await this.db.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            name: input.name.trim(),
+            email: input.email,
+            phone: input.phone,
+            country: input.country,
+            phoneIsWhatsApp: input.phoneIsWhatsApp,
+            passwordHash,
+            identities: { create: { provider: 'PASSWORD', providerUid: input.email } },
+            consents: {
+              create: {
+                channel: 'WHATSAPP_MARKETING',
+                granted: input.marketing.granted,
+                wording: input.marketing.wording,
+                sourceUrl: input.sourceUrl,
+                ip: req.ip,
+                userAgent: req.get('user-agent')?.slice(0, 400),
+              },
+            },
+          },
+        });
+
+        const workspace = await tx.workspace.create({
+          data: {
+            type: 'PERSONAL',
+            name: workspaceName,
+            currency: currencyForCountry(input.country),
+            region: regionForCountry(input.country),
+            members: { create: { userId: user.id, role: 'OWNER' } },
+            wallet: { create: {} },
+          },
+          include: { wallet: { select: { id: true } } },
+        });
+
+        // Starting credits go through the same Postgres function as every
+        // other movement — no special-cased "initial balance" column.
+        if (workspace.wallet) {
+          await this.ledger.grant(
+            {
+              walletId: workspace.wallet.id,
+              amount: SIGNUP_PROMO_CREDITS,
+              idempotencyKey: signupGrantKey(workspace.id),
+              reason: 'Welcome credits',
+            },
+            tx,
+          );
+        }
+
+        await tx.authEvent.create({
+          data: {
+            userId: user.id,
+            type: 'SIGNED_UP',
+            surface: 'APP',
+            requestId: req.requestId,
+            ip: req.ip,
+            userAgent: req.get('user-agent')?.slice(0, 400),
+          },
+        });
+
+        return { user, workspaceId: workspace.id };
+      });
+
+      return { kind: 'created', ...result };
+    } catch (err) {
+      // P2002 = unique violation. Email and phone are both unique; we do not
+      // say which one collided (see the method comment).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return { kind: 'conflict' };
+      }
+      logger.error({ err }, 'registration failed');
+      throw err;
+    }
+  }
+
+  /**
+   * Validate a phone number into E.164 or throw a field error.
+   *
+   * Deliberately strict: a number we cannot normalise is a number we cannot
+   * send a WhatsApp message to, so accepting it would only move the failure
+   * to a worse place.
+   */
+  /**
+   * The country a phone number belongs to, from its country code — the most
+   * honest signal we have: a person who typed +254 is in Kenya whatever
+   * their IP says. Null when the number does not say (it always should).
+   */
+  static countryOfPhone(e164: string): string | null {
+    try {
+      return parsePhoneNumber(e164)?.country ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Where the request came from, as the edge saw it: the web app forwards
+   * Cloudflare's country header as x-anystudio-country. A fallback for
+   * accounts with no phone (Google sign-ups); "XX"/"T1" mean unknown.
+   */
+  static countryOfRequest(req: Request): string | null {
+    const raw = (req.get('x-anystudio-country') ?? req.get('cf-ipcountry') ?? '').toUpperCase();
+    return /^[A-Z]{2}$/.test(raw) && raw !== 'XX' && raw !== 'T1' ? raw : null;
+  }
+
+  static normalisePhone(raw: string, country?: string): string {
+    const text = raw.trim();
+    // A number with its country code is parsed as such, from anywhere; a local
+    // number is read in the country the form said (the sign-up form always
+    // sends E.164, so this is for the API and the bot). Nigeria remains the
+    // fallback for a bare local number, because that is where most arrive from.
+    try {
+      const parsed = text.startsWith('+') ? parsePhoneNumber(text) : parsePhoneNumber(text, (country?.toUpperCase() as CountryCode | undefined) ?? 'NG');
+      if (parsed && isValidPhoneNumber(parsed.number)) return parsed.number;
+    } catch {
+      /* fall through to the message */
+    }
+    throw new ValidationError({
+      fields: [{ path: 'phone', message: 'Enter a real number with its country code, like +234 801 234 5678 or +254 712 345678.' }],
+    });
+  }
+}
