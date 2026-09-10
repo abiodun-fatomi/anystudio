@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TEMPLATE_CATEGORIES, TEMPLATE_CATEGORY_KEYS, type TemplateCategory } from '@anystudio/shared';
 import { api, type AdminTemplate } from '@/lib/api';
-import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { renderMissingExamples, type RenderProgress } from './renderExamples';
 import { PageHeader } from '@/components/shell/Page';
@@ -63,7 +62,18 @@ const blank = (): Draft => ({
 
 export default function TemplatesPage() {
   const { atLeast } = useAdmin();
-  const { workspace } = useApp();
+  /**
+   * Which workspace pays for the renders.
+   *
+   * The console is not a workspace app — it has no "current workspace", and
+   * reaching for the customer app's provider here is what crashed this page
+   * the first time. It is also the better question: these renders cost real
+   * credits, so the operator names the account that is charged rather than
+   * having one chosen for them silently.
+   */
+  const billTo = useAdmin().me.workspaces;
+  const [payer, setPayer] = useState<string>(() => billTo[0]?.id ?? '');
+  const [setup, setSetup] = useState<{ reason: string } | null>(null);
   const { toast } = useToast();
   const [render, setRender] = useState<RenderProgress | null>(null);
   const stock = useRef<HTMLInputElement>(null);
@@ -167,28 +177,25 @@ export default function TemplatesPage() {
    * Fill the empty tiles by actually making the pictures.
    *
    * One stock product photo in, one ordinary generation per template out,
-   * each promoted to that template's example. Charged to this workspace like
-   * any other job, because it is one.
+   * each promoted to that template's example. Charged to the workspace the
+   * operator named, like any other job, because it is one.
    */
-  const renderAll = async (product: File) => {
+  const renderAll = async (product: File, workspaceId: string, reason: string) => {
     const missing = (rows ?? []).filter((r) => r.active && !r.thumbnailKey);
     if (missing.length === 0) {
       toast({ title: 'Nothing to render', body: 'Every live template already has an example.', tone: 'ok' });
       return;
     }
-    const reason = window.prompt(`Render ${missing.length} example${missing.length === 1 ? '' : 's'}. This spends credits. Why? (on the record)`);
-    if (!reason || reason.trim().length < 4) return;
-
     const controller = new AbortController();
     stop.current = controller;
     setRender({ done: 0, total: missing.length, current: null, failures: [] });
     try {
-      const asset = await uploadFile(workspace.id, product);
+      const asset = await uploadFile(workspaceId, product);
       const out = await renderMissingExamples({
-        workspaceId: workspace.id,
+        workspaceId,
         sourceKey: asset.key,
         templates: missing,
-        reason: reason.trim(),
+        reason,
         onProgress: setRender,
         signal: controller.signal,
       });
@@ -230,7 +237,9 @@ export default function TemplatesPage() {
         onChange={(e) => {
           const product = e.target.files?.[0];
           e.target.value = '';
-          if (product) void renderAll(product);
+          const chosen = setup;
+          setSetup(null);
+          if (product && chosen) void renderAll(product, payer, chosen.reason.trim());
         }}
       />
 
@@ -264,7 +273,7 @@ export default function TemplatesPage() {
           {missingRenders} live {missingRenders === 1 ? 'template has' : 'templates have'} no example render yet and show a plain gradient in the picker. A
           template without one is a preset with extra steps — the seller is back to choosing by reading.{' '}
           {!render && (
-            <Button variant="ghost" onClick={() => stock.current?.click()}>
+            <Button variant="ghost" onClick={() => setSetup({ reason: '' })}>
               Render them all from one product photo
             </Button>
           )}
@@ -379,6 +388,47 @@ export default function TemplatesPage() {
           if (chosen && row) void upload(row, chosen);
         }}
       />
+
+      <Dialog
+        open={setup !== null}
+        onClose={() => setSetup(null)}
+        title={`Render ${missingRenders} example${missingRenders === 1 ? '' : 's'}`}
+        footer={
+          <Button disabled={!setup || setup.reason.trim().length < 4 || !payer} onClick={() => stock.current?.click()}>
+            Choose a product photo and start
+          </Button>
+        }
+      >
+        {setup && (
+          <div style={{ display: 'grid', gap: 'var(--s-4)' }}>
+            <p className={styles.small}>
+              Each template becomes one ordinary generation — same prompt, same providers, same fidelity check a seller would get — and the picture it produces
+              becomes that template&rsquo;s tile. It spends credits, roughly one scene each. Templates that already have a render are skipped, so running this
+              again only costs what it has not reached.
+            </p>
+            {billTo.length === 0 ? (
+              <p className={styles.warn}>
+                Your staff account has no workspace to bill these to. Renders have to be charged somewhere, so make or join one first.
+              </p>
+            ) : (
+              <Select
+                label="Charge these to"
+                hint="These are real credits, from a real balance. Pick the account that should pay."
+                value={payer}
+                onChange={(e) => setPayer(e.target.value)}
+                options={billTo.map((w) => ({ value: w.id, label: `${w.name} · ${w.type.toLowerCase()}` }))}
+              />
+            )}
+            <Textarea
+              label="Why (on the record)"
+              rows={2}
+              hint="Goes in the audit log against every template this touches."
+              value={setup.reason}
+              onChange={(e) => setSetup({ reason: e.target.value })}
+            />
+          </div>
+        )}
+      </Dialog>
 
       <Dialog
         open={draft !== null}
