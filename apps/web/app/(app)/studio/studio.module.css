@@ -1421,6 +1421,112 @@
   color: var(--ink);
 }
 
+/* ---- templates ----
+   A template tile is a photograph of a room, so it is sized to be looked at
+   rather than read: 4:3 and at least 132px wide, which is the point below
+   which two warm-toned living rooms stop being distinguishable at a glance.
+   The preset tiles next door are square and 72px because a colour needs no
+   more room than that. */
+.templateRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--s-2);
+}
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--s-3);
+}
+.template {
+  display: grid;
+  gap: 3px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+.template:hover {
+  border-color: var(--line);
+}
+.template[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.templateShot {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: calc(var(--r-md) - 3px);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+.templateShot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.templateName {
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.template[aria-checked='true'] .templateName {
+  color: var(--ink);
+}
+/* The sentence is what separates "Warm living room" from "Bright apartment"
+   once both tiles are the same warm beige. Two lines, then clipped. */
+.templateNote {
+  font-size: var(--t-1);
+  color: var(--muted);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The category chips. A scrolling row rather than a wrapping block: eleven
+   categories would be three lines on a phone, and three lines of chips above
+   a grid pushes the pictures — the entire point of the sheet — off screen. */
+.chipRow {
+  display: flex;
+  gap: var(--s-2);
+  overflow-x: auto;
+  padding: 0 var(--s-3) var(--s-2);
+  scrollbar-width: none;
+}
+.chipRow::-webkit-scrollbar {
+  display: none;
+}
+.chip {
+  flex: none;
+  padding: 6px var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--ink-soft);
+}
+.chip[data-on] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
 /* ---- the merchant shots ----
    Wider than a preset tile because each one carries the sentence that says
    when to reach for it — "Your clothing worn by a person, without hiring one." */

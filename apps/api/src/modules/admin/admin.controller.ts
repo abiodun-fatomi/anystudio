@@ -4,7 +4,7 @@
  * additionally refuse self-dealing and a stale factor in the service.
  */
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
-import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentActor, RequireStaff, RequireSurface } from '../auth/decorators';
 import type { Actor } from '../auth/policy';
@@ -23,6 +23,9 @@ import {
   ReasonDto,
   SearchDto,
   StaffGrantDto,
+  TemplateCreateDto,
+  TemplatePatchDto,
+  TemplateThumbnailDto,
 } from './admin.dto';
 
 @ApiTags('admin')
@@ -129,6 +132,34 @@ export class AdminController {
   }
   @Patch('/catalogue/packs/:code') patchPack(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: CataloguePatchDto, @Req() req: Request) {
     return this.admin.patchPack(a, code, b, req);
+  }
+
+  // The template catalogue. ADMIN and a recent second factor, like prices —
+  // a template is what a customer's picture ends up looking like, and a bad
+  // one is visible to everybody at once.
+  @Get('/templates')
+  @ApiOperation({ summary: 'Every template, retired ones included' })
+  templates() {
+    return this.admin.templates();
+  }
+
+  @Post('/templates')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a template' })
+  createTemplate(@CurrentActor() a: Actor, @Body() b: TemplateCreateDto, @Req() req: Request) {
+    return this.admin.createTemplate(a, b, req);
+  }
+
+  @Patch('/templates/:code')
+  @ApiOperation({ summary: 'Change a template: copy, prompt, category, order, or retire it' })
+  patchTemplate(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: TemplatePatchDto, @Req() req: Request) {
+    return this.admin.patchTemplate(a, code, b, req);
+  }
+
+  @Post('/templates/:code/thumbnail')
+  @ApiOperation({ summary: "A signed PUT for this template's example render" })
+  templateThumbnail(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: TemplateThumbnailDto, @Req() req: Request) {
+    return this.admin.templateThumbnailUpload(a, code, b, req);
   }
 
   @Get('/prices') prices() {

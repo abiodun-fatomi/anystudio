@@ -18,6 +18,7 @@
  */
 
 import { GENRES, VOICES } from './seed-audio';
+import { TEMPLATES, templateParams } from './seed-templates';
 import { PrismaClient, type Prisma, type ProviderCapability, type WorkspaceType } from '@prisma/client';
 
 const db = new PrismaClient();
@@ -595,8 +596,45 @@ async function reference() {
     };
     await db.voiceProfile.upsert({ where: { key: vs.key }, create: { key: vs.key, ...data }, update: data });
   }
+
+  /**
+   * Templates split their ownership down the middle, and the split is the
+   * point of the table.
+   *
+   * The seed owns what exists — a release may add a template, and may fix the
+   * copy or the prompt of one nobody has touched. The operator owns
+   * everything about how it is presented and whether it runs at all: `sort`,
+   * `active`, and `thumbnailKey`, the render they produced and reviewed. None
+   * of those three ever appear in `update`, so a deploy cannot reorder the
+   * picker, un-retire a template someone pulled, or blank a photograph.
+   *
+   * `operatorEdited` extends that to the copy and the prompt the moment
+   * somebody edits either from the console. A template that comes out wrong
+   * is meant to be fixed in production in a minute; a seed that then reverted
+   * the fix on the next deploy would make the console a lie.
+   */
+  let templatesTouched = 0;
+  for (const tpl of TEMPLATES) {
+    const previous = await db.template.findUnique({ where: { code: tpl.code }, select: { operatorEdited: true } });
+    const copy = {
+      name: tpl.name,
+      note: tpl.note,
+      category: tpl.category,
+      kind: tpl.kind,
+      params: templateParams(tpl) as Prisma.InputJsonValue,
+      swatch: tpl.swatch as unknown as Prisma.InputJsonValue,
+      keywords: tpl.keywords ?? null,
+    };
+    await db.template.upsert({
+      where: { code: tpl.code },
+      create: { code: tpl.code, sort: tpl.sort, ...copy },
+      update: previous?.operatorEdited ? {} : copy,
+    });
+    if (!previous?.operatorEdited) templatesTouched += 1;
+  }
+
   console.log(
-    `reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${USAGE_RATES.length} rates, ${PROVIDERS.length} models, ${GENRES.length} genres, ${VOICES.length} voices`,
+    `reference: ${CREDIT_COSTS.length} costs, ${PLANS.length} plans, ${PACKS.length} packs, ${USAGE_RATES.length} rates, ${PROVIDERS.length} models, ${GENRES.length} genres, ${VOICES.length} voices, ${TEMPLATES.length} templates (${templatesTouched} refreshed, ${TEMPLATES.length - templatesTouched} operator-owned)`,
   );
 }
 
