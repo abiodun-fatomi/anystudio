@@ -26,7 +26,7 @@ describe('where a person is', () => {
     expect(currencyForCountry('NG')).toBe('NGN');
     expect(currencyForCountry('GB')).toBe('GBP');
     expect(currencyForCountry('KE')).toBe('USD');
-    expect(currencyForCountry(null)).toBe('NGN');
+    expect(currencyForCountry(null)).toBe('USD');
     expect(regionForCountry('KE')).toBe('ke');
   });
 

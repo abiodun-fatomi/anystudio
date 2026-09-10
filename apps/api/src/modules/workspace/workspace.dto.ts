@@ -1,6 +1,6 @@
 import { MARKET_CURRENCIES, type MarketCurrency } from '@anystudio/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsISO31661Alpha2, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export const CHANNELS = ['whatsapp', 'instagram', 'tiktok', 'facebook', 'jiji', 'shop', 'market'] as const;
 export const TONES = ['warm', 'direct', 'playful', 'premium'] as const;
@@ -62,6 +62,11 @@ export class WorkspaceDeleteDto {
 
 /** A second workspace: a business beside the personal one, or an organization for the API. */
 export class WorkspaceCreateDto {
+  @ApiPropertyOptional({ example: 'NG', description: 'Confirmed business billing country; determines this new workspace currency only.' })
+  @IsOptional()
+  @IsISO31661Alpha2()
+  billingCountry?: string;
+
   @ApiProperty({ maxLength: 80, example: 'Acme Commerce' })
   @IsString()
   @IsNotEmpty()

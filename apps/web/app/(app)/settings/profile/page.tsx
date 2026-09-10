@@ -123,7 +123,7 @@ export default function ProfilePage() {
         timezone: v.timezone || null,
         ...(draft.country !== undefined ? { country: draft.country } : {}),
         ...(draft.phoneIsWhatsApp !== undefined ? { phoneIsWhatsApp: draft.phoneIsWhatsApp } : {}),
-        ...(phoneChanged && phone.e164 ? { phone: phone.e164, country: phone.country } : {}),
+        ...(phoneChanged && phone.e164 ? { phone: phone.e164 } : {}),
       });
       setDraft({});
       setPhoneDraft(null);
@@ -252,7 +252,7 @@ export default function ProfilePage() {
             options={countries.length ? countries : [{ value: v.country, label: v.country || '—' }]}
             value={v.country}
             onChange={(e) => setDraft((d) => ({ ...d, country: e.target.value }))}
-            hint="Sets how a local phone number is read and the currency of a new workspace."
+            hint="Your residence or business location, separate from your phone number. Existing workspace currencies do not change."
           />
           <Switch
             label="This number is on WhatsApp"

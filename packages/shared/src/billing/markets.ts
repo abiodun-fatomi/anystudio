@@ -7,10 +7,9 @@
  * pounds, and everyone else in dollars — the gateway is chosen from the
  * currency (NGN → Flutterwave, the rest → Paddle).
  *
- * The country itself comes, in order, from the phone number's country code
- * (a person who typed +254 is in Kenya whatever their IP says), then the
- * request's geolocation, then nothing — in which case the defaults below
- * apply. A person can change both in Settings.
+ * A confirmed residence/business country takes precedence over phone and
+ * location suggestions. Unknown markets display USD provisionally. This
+ * helper selects initial prices, never migrates existing subscriptions.
  */
 export const MARKET_CURRENCIES = ['NGN', 'USD', 'GBP'] as const;
 export type MarketCurrency = (typeof MARKET_CURRENCIES)[number];
@@ -18,7 +17,7 @@ export type MarketCurrency = (typeof MARKET_CURRENCIES)[number];
 const BY_COUNTRY: Record<string, MarketCurrency> = { NG: 'NGN', GB: 'GBP' };
 
 export function currencyForCountry(country: string | null | undefined): MarketCurrency {
-  if (!country) return 'NGN';
+  if (!country) return 'USD';
   return BY_COUNTRY[country.toUpperCase()] ?? 'USD';
 }
 

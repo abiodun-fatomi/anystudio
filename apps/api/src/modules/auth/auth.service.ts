@@ -93,7 +93,7 @@ export class AuthService {
         email: dto.email.toLowerCase(),
         password: dto.password,
         phone,
-        country: RegistrationService.countryOfPhone(phone) ?? RegistrationService.countryOfRequest(req),
+        country: dto.billingCountry?.toUpperCase() ?? RegistrationService.countryOfPhone(phone) ?? RegistrationService.countryOfRequest(req),
         phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
         marketing: dto.marketing,
         sourceUrl: dto.sourceUrl,

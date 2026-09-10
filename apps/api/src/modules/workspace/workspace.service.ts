@@ -4,6 +4,7 @@
  * they are built.
  */
 import { Injectable } from '@nestjs/common';
+import { currencyForCountry } from '@anystudio/shared';
 import { PrismaClient } from '@prisma/client';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import type { Request } from 'express';
@@ -11,6 +12,7 @@ import { authLog } from '../auth/auth.log';
 import { Helpers } from '../../utils/helpers';
 import { MediaService } from '../media/media.service';
 import type { WorkspaceCreateDto, WorkspaceDeleteDto, WorkspaceProfileDto, WorkspaceUpdateDto } from './workspace.dto';
+import { RegistrationService } from '../auth/registration.service';
 
 @Injectable()
 export class WorkspaceService {
@@ -37,7 +39,10 @@ export class WorkspaceService {
       data: {
         type: dto.type,
         name: dto.name.trim(),
-        currency: seed?.workspace.currency ?? 'NGN',
+        currency: dto.billingCountry
+          ? currencyForCountry(dto.billingCountry)
+          : (seed?.workspace.currency ?? currencyForCountry(RegistrationService.countryOfRequest(req))),
+        profile: dto.billingCountry ? { billingCountry: dto.billingCountry.toUpperCase() } : {},
         region: seed?.workspace.region ?? 'ng',
         members: { create: { userId: actorId, role: 'OWNER' } },
         wallet: { create: {} },
