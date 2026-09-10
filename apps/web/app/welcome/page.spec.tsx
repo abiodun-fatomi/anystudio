@@ -39,7 +39,12 @@ it('requires country even when Google onboarding questions are skipped', async (
     country.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await act(async () => skip.click());
-  expect(mocks.create).toHaveBeenCalledWith({ name: 'Ada studio', type: 'BUSINESS', billingCountry: 'GB' });
+  // PERSONAL, and named after their first name, because this is the person's
+  // FIRST studio — the same shape registration gives an email signup and
+  // WhatsApp gives a phone signup. The API grants the welcome credits off the
+  // back of it being their first workspace, so BUSINESS here would quietly
+  // hand a Google signup a differently-shaped account from everyone else.
+  expect(mocks.create).toHaveBeenCalledWith({ name: "Ada's studio", type: 'PERSONAL', billingCountry: 'GB' });
 });
 it('never recreates an existing workspace or changes its currency', async () => {
   mocks.me.workspaces = [{ id: 'existing' }];
