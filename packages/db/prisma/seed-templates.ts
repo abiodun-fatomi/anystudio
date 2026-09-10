@@ -34,11 +34,13 @@
  * looks like, so the tile is honest even before the photograph lands.
  */
 
+import type { TemplateCategory } from '@anystudio/shared';
+
 export interface TemplateSeed {
   code: string;
   name: string;
   note: string;
-  category: string;
+  category: TemplateCategory;
   kind: 'cut' | 'scene';
   prompt: string;
   swatch: { colors: [string] | [string, string]; ink: 'light' | 'dark' };

@@ -15,6 +15,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anystudio/shared": "workspace:*",
     "@prisma/client": "^5.20.0",
     "argon2": "^0.41.0"
   },

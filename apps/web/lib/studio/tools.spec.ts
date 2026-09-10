@@ -50,6 +50,7 @@ import {
   anglesWouldHelp,
   coerceParams,
   groupOfCapability,
+  isCutChoice,
   missingFor,
   restoreToolValues,
   searchTools,
@@ -461,5 +462,48 @@ describe('the words a reel is made from', () => {
     // Blank goes as absent, and the server fills it from the format — the one
     // place that decision is made.
     expect(coerceParams(video, { ...video.defaults, brief: 'format' }).prompt).toBeUndefined();
+  });
+});
+
+describe('cut or scene, across two catalogues', () => {
+  const scene = TOOLS.find((t) => t.id === 'scene')!;
+
+  it('reads a preset directly, because presets are compiled in', () => {
+    expect(isCutChoice({ preset: 'white' })).toBe(true);
+    expect(isCutChoice({ preset: 'studio_blush' })).toBe(false);
+    expect(isCutChoice({})).toBe(false);
+  });
+
+  it('reads a template from the values, because the catalogue is fetched and this runs synchronously', () => {
+    // A cut template clears the prompt and writes a background; a scene
+    // template writes the prompt. `templateParams` on the API side is what
+    // makes that true, and this is the assertion that would break if it
+    // stopped being true.
+    expect(isCutChoice({ template: 'general_white', background: '#FFFFFF', prompt: '' })).toBe(true);
+    expect(isCutChoice({ template: 'furniture_living_warm', prompt: 'A warm living room.' })).toBe(false);
+    // A background left over from a previous pick must not turn a scene into
+    // a cut — the prompt is what decides.
+    expect(isCutChoice({ template: 'furniture_living_warm', background: '#FFFFFF', prompt: 'A warm living room.' })).toBe(false);
+  });
+
+  it('prices a cut as a background removal and a scene as an edit', () => {
+    expect(scene.capabilityFor!({ preset: 'white' })).toBe('BACKGROUND_REMOVE');
+    expect(scene.capabilityFor!({ template: 'general_white', background: '#FFFFFF', prompt: '' })).toBe('BACKGROUND_REMOVE');
+    expect(scene.capabilityFor!({ template: 'furniture_living_warm', prompt: 'A warm living room.' })).toBe('IMAGE_EDIT');
+  });
+
+  it('hides the fields a cut has nothing to say about, whichever catalogue chose it', () => {
+    // A cut-out onto a flat colour has no setting to describe and no shape to
+    // pick. Showing those fields for a template but not a preset would be the
+    // same control behaving differently for no reason a seller could see.
+    const hidden = (values: Record<string, unknown>) => scene.fields.filter((f) => 'showIf' in f && f.showIf && !f.showIf(values)).map((f) => f.key);
+    const byPreset = hidden({ preset: 'white' });
+    const byTemplate = hidden({ template: 'general_white', background: '#FFFFFF', prompt: '' });
+    expect(byPreset).toContain('prompt');
+    expect(byTemplate).toEqual(byPreset);
+  });
+
+  it('offers the room picker on the scene tool', () => {
+    expect(scene.fields.find((f) => f.kind === 'templates')?.key).toBe('template');
   });
 });
