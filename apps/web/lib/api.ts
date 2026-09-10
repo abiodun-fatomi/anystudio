@@ -7,7 +7,36 @@
  * screen can show "quote req_… to support" without knowing anything else.
  */
 
-import type { TemplateView } from '@anystudio/shared';
+import type { TemplateCategory, TemplateView } from '@anystudio/shared';
+
+/** A catalogue row as the console sees it: the stored key, not a signed URL. */
+export interface AdminTemplate {
+  code: string;
+  name: string;
+  note: string;
+  category: string;
+  kind: 'cut' | 'scene';
+  params: Record<string, unknown>;
+  thumbnailKey: string | null;
+  swatch: { colors: string[]; ink: 'light' | 'dark' };
+  keywords: string | null;
+  active: boolean;
+  sort: number;
+  /** Once true the seed stops overwriting this row's copy and prompt. */
+  operatorEdited: boolean;
+}
+
+export interface AdminTemplateWrite {
+  name: string;
+  note: string;
+  category: TemplateCategory;
+  kind: 'cut' | 'scene';
+  prompt?: string;
+  colors?: string[];
+  ink?: 'light' | 'dark';
+  keywords?: string;
+  sort?: number;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -1155,6 +1184,19 @@ export const api = {
     ) => request<AdminProvider>('PATCH', `/admin/providers/${capability}/${encodeURIComponent(key)}`, body),
     resetBreaker: (capability: string, key: string) =>
       request<{ reset: boolean }>('POST', `/admin/providers/${capability}/${encodeURIComponent(key)}/reset-breaker`),
+    /** The whole catalogue, retired rows included — the console has to be able to bring one back. */
+    templates: () => request<AdminTemplate[]>('GET', '/admin/templates'),
+    createTemplate: (body: AdminTemplateWrite & { code: string; reason: string }) => request<AdminTemplate>('POST', '/admin/templates', body),
+    patchTemplate: (code: string, body: Partial<AdminTemplateWrite> & { active?: boolean; reason: string }) =>
+      request<AdminTemplate>('PATCH', `/admin/templates/${encodeURIComponent(code)}`, body),
+    /**
+     * A signed PUT for the example render. The bytes go straight to storage
+     * from the browser — an image has no business passing through the API,
+     * and the key is derived server-side from the code so the console cannot
+     * choose where it lands.
+     */
+    templateThumbnailUpload: (code: string, body: { mime: string; bytes: number; reason: string }) =>
+      request<{ url: string; expiresInSec: number; key: string }>('POST', `/admin/templates/${encodeURIComponent(code)}/thumbnail`, body),
     prices: () => request<Array<{ code: string; credits: number; label: string }>>('GET', '/admin/prices'),
     patchPrice: (code: string, credits: number, reason: string) =>
       request<{ code: string; credits: number }>('PATCH', `/admin/prices/${code}`, { credits, reason }),
