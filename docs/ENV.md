@@ -186,6 +186,27 @@ text, `\n` for line breaks:
 `AnyStudio Ltd\nGTBank 0123456789\nSort code / SWIFT …\nReference: the invoice number`.
 Leave empty to offer online payment only.
 
+### `PAYMENTS_DISABLED` (production only, until the gateways are approved)
+
+Set to the exact string `true` when production is live **before** Paddle and
+Flutterwave are approved — the site serves, people sign in and generate, and
+organizations run on a credit line, but nobody can buy credits.
+
+Without it the API is right to call itself degraded: a production deployment
+with no gateway is normally a mistake. But `/ready` then answers `degraded`
+forever, and `scripts/smoke-api.sh` requires `ready`, so **every release goes
+red at the last step** — after the deploy has already landed. A gate that is
+always red is a gate nobody reads.
+
+It excuses one thing only: the absence of both gateways. Configure either one
+and every catalogue check applies again, including the requirement for the
+other — half a gateway is the state that takes money it cannot deliver on.
+`/ready` reports `billing: { ready: true, payments: "off" }`, and the API
+warns on every boot that nobody can buy anything.
+
+**Delete it the day the keys go in.** Leave it and a real misconfiguration
+reads as ready.
+
 ### `BOOTSTRAP_SUPERADMIN_EMAIL` (once, then remove)
 
 The first staff account. Sign up normally on the app surface with your

@@ -66,7 +66,14 @@ export class GatewayRegistry {
       this.gateways.set('PADDLE', new PaddleGateway(env.PADDLE_API_KEY, env.PADDLE_WEBHOOK_SECRET, paddleEnv));
     }
     if (!this.isProd) this.gateways.set('STUB', new StubGateway(env.BILLING_STUB_SECRET ?? 'stub'));
-    logger.info({ gateways: [...this.gateways.keys()], production: this.isProd }, 'payment gateways registered');
+    const declaredOff = this.isProd && env.PAYMENTS_DISABLED?.trim().toLowerCase() === 'true';
+    logger.info({ gateways: [...this.gateways.keys()], production: this.isProd, paymentsDisabled: declaredOff }, 'payment gateways registered');
+    // Loud, once, every boot. A deployment that cannot sell is a state someone
+    // chose and someone else has to remember to undo; silence is how it lasts
+    // three months past the day the keys arrived.
+    if (declaredOff && this.gateways.size === 0) {
+      logger.warn({}, 'PAYMENTS_DISABLED is set: nobody can buy credits on this deployment. Remove it once the gateway keys are in.');
+    }
   }
 
   /** The gateway a workspace in this currency pays through. */

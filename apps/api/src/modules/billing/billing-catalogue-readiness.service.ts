@@ -6,6 +6,31 @@ import { GatewayRegistry } from './gateways/gateway.registry';
 export interface BillingCatalogueReadiness {
   ready: boolean;
   missing: string[];
+  /** True when this production deployment is running deliberately without payment gateways. */
+  paymentsDisabled?: boolean;
+}
+
+/**
+ * Is this production deployment running on purpose with no way to take money?
+ *
+ * A production API with no gateway configured is normally a mistake, and the
+ * two checks below exist to catch it. But there is a real state before the
+ * gateways are approved — the site is live, people can sign in and generate,
+ * organizations run on a credit line — and in that state "no gateway" is the
+ * intended configuration, not an incident.
+ *
+ * Without a way to say so, `/ready` reports `degraded` forever, and
+ * scripts/smoke-api.sh requires `ready`: every release goes red at the last
+ * step, after the deploy has already happened. A gate that is always red is a
+ * gate nobody reads, which costs more than the check was worth.
+ *
+ * So the state has to be DECLARED. Not inferred from the absence of keys —
+ * that is exactly the mistake the checks are for — but written down, in the
+ * environment, by a person who meant it. Remove it the day the keys go in;
+ * `check()` then fails loudly again if either gateway is missing.
+ */
+function paymentsDeliberatelyDisabled(): boolean {
+  return process.env.PAYMENTS_DISABLED?.trim().toLowerCase() === 'true';
 }
 
 /** Local-only launch checks: credentials and catalogue rows, never vendor I/O. */
@@ -22,8 +47,13 @@ export class BillingCatalogueReadinessService {
     const paddle = this.gateways.has('PADDLE');
     const missing: string[] = [];
 
-    if (production && !flutterwave) missing.push('Flutterwave is required for the production NGN market');
-    if (production && !paddle) missing.push('Paddle is required for the production USD and GBP markets');
+    // Declared-off applies ONLY to the "a gateway must exist" pair. Every
+    // catalogue check below still runs against whatever IS configured, so a
+    // half-configured deployment is never quietly waved through.
+    const disabled = production && paymentsDeliberatelyDisabled() && !flutterwave && !paddle;
+
+    if (production && !disabled && !flutterwave) missing.push('Flutterwave is required for the production NGN market');
+    if (production && !disabled && !paddle) missing.push('Paddle is required for the production USD and GBP markets');
 
     const [plans, packs] = await Promise.all([
       this.db.plan.findMany({ where: { active: true }, select: { code: true, providerRefs: true } }),
@@ -52,7 +82,7 @@ export class BillingCatalogueReadinessService {
       if (!paddleId(process.env.PADDLE_USAGE_PRODUCT_ID, 'pro_')) missing.push('PADDLE_USAGE_PRODUCT_ID must be a Paddle pro_ identifier');
     }
 
-    return { ready: missing.length === 0, missing };
+    return disabled ? { ready: missing.length === 0, missing, paymentsDisabled: true } : { ready: missing.length === 0, missing };
   }
 }
 
