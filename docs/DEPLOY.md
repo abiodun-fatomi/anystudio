@@ -522,7 +522,11 @@ credit adjustments with a reason, owner notified); generations (inputs,
 outputs, provider job id, the operator-facing failure reason; end a stuck
 row; goodwill refund); payments (mark refunded after refunding at the
 gateway; credits clawed back); providers (on/off, priority, close a
-breaker) and prices; platform messages (into every bell, by audience);
+breaker); prices (credits per generation); the catalogue — what a plan or
+pack costs in each market, plus the gateway's own price ids for it, which
+are set here and never seeded because they differ per environment and
+`/ready` stays degraded until every active plan has them; platform
+messages (into every bell, by audience);
 staff; the audit log.
 
 **Locally**: `next dev -p 3003` beside the app on 3000 — the API maps

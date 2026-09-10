@@ -90,10 +90,17 @@ function record(value: Prisma.JsonValue | undefined): Record<string, Prisma.Json
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, Prisma.JsonValue>) : {};
 }
 
-function flutterwaveId(value: unknown): boolean {
+/**
+ * Exported so the staff console rejects a reference at the moment someone
+ * types it, using the same predicate that decides whether production is ready
+ * to sell. Two copies of "what a Paddle price id looks like" is how you get a
+ * console that accepts a value and a readiness check that refuses it, with
+ * nothing to tell you which one is wrong.
+ */
+export function flutterwaveId(value: unknown): boolean {
   return (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) || (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim()));
 }
 
-function paddleId(value: unknown, prefix: 'pri_' | 'pro_'): boolean {
+export function paddleId(value: unknown, prefix: 'pri_' | 'pro_'): boolean {
   return typeof value === 'string' && new RegExp(`^${prefix}[A-Za-z0-9]+$`).test(value.trim());
 }

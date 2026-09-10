@@ -11,10 +11,12 @@ import type { Actor } from '../auth/policy';
 import { AdminService } from './admin.service';
 import {
   AuditQueryDto,
+  CataloguePatchDto,
   CreditsDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
+  PlanPatchDto,
   PlatformMessagePatchDto,
   PricePatchDto,
   ProviderPatchDto,
@@ -115,6 +117,18 @@ export class AdminController {
     @Req() req: Request,
   ) {
     return this.admin.resetBreaker(a, key, capability, req);
+  }
+
+  // The money: what a plan or pack costs per market, and the gateway's own
+  // ids for it. Separate from /prices, which is credits per generation.
+  @Get('/catalogue') catalogue() {
+    return this.admin.catalogue();
+  }
+  @Patch('/catalogue/plans/:code') patchPlan(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: PlanPatchDto, @Req() req: Request) {
+    return this.admin.patchPlan(a, code, b, req);
+  }
+  @Patch('/catalogue/packs/:code') patchPack(@CurrentActor() a: Actor, @Param('code') code: string, @Body() b: CataloguePatchDto, @Req() req: Request) {
+    return this.admin.patchPack(a, code, b, req);
   }
 
   @Get('/prices') prices() {
