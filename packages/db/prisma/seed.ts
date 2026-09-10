@@ -507,6 +507,22 @@ async function reference() {
   for (const c of CREDIT_COSTS) {
     await db.creditCost.upsert({ where: { code: c.code }, create: c, update: c });
   }
+  // WHO OWNS WHAT, ONCE A ROW EXISTS
+  //
+  // The seed owns `credits` — what a plan or pack GIVES you is part of the
+  // product and belongs in a reviewed commit.
+  //
+  // The staff console owns the money: `priceByMarket`, `yearlyPriceByMarket`,
+  // `active`, `sort`, and the gateway `providerRefs`. Those are per-market and
+  // per-environment, they change without a release, and the console records
+  // who changed them and why.
+  //
+  // So `update` deliberately does NOT restate them. It used to, and that made
+  // the console unusable for pricing: an operator would change a price, the
+  // next deploy would run the seed, and the literal below would silently put
+  // it back — with nothing in any log to say a price had moved. The values
+  // here are the STARTING catalogue for a fresh database, not the standing
+  // truth for an old one.
   for (const p of PLANS) {
     await db.plan.upsert({
       where: { code: p.code },
@@ -518,20 +534,14 @@ async function reference() {
         sort: p.sort,
         active: p.active,
       },
-      update: {
-        credits: p.credits,
-        priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp },
-        yearlyPriceByMarket: p.usd ? { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 } : undefined,
-        sort: p.sort,
-        active: p.active,
-      },
+      update: { credits: p.credits },
     });
   }
   for (const k of PACKS) {
     await db.creditPack.upsert({
       where: { code: k.code },
       create: { code: k.code, credits: k.credits, priceByMarket: { USD: k.usd, NGN: k.ngn, GBP: k.gbp }, sort: k.sort },
-      update: { credits: k.credits, priceByMarket: { USD: k.usd, NGN: k.ngn, GBP: k.gbp }, sort: k.sort },
+      update: { credits: k.credits },
     });
   }
   for (const r of USAGE_RATES) {

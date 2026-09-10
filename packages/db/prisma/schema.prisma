@@ -570,15 +570,20 @@ model Plan {
   priceByMarket       Json
   /// Yearly price per market, when the plan can be billed yearly. Null = monthly only.
   yearlyPriceByMarket Json?
-  /// The gateway's own ids for this plan, set from the admin console once the
-  /// products exist there: { "paddle": { "month": "pri_…", "year": "pri_…" },
-  ///                         "flutterwave": { "month": 12345, "year": 12346 } }
-  /// A plan with no ref for a gateway cannot be bought through that gateway.
+  /// The gateway's own ids for this plan: { "paddle": { "month": "pri_…", "year": "pri_…" },
+  ///                                        "flutterwave": { "month": 12345, "year": 12346 } }
+  /// Set in the staff console (Catalogue), never seeded — they differ per
+  /// environment, and a wrong one charges the wrong amount. A plan with no ref
+  /// for a gateway cannot be bought through that gateway, and
+  /// BillingCatalogueReadinessService keeps production unready until every
+  /// active plan has one.
   providerRefs        Json?
   /// Shown on the plans page, in order. A plan that is not for sale is still a row (old invoices).
   active              Boolean  @default(true)
   sort                Int      @default(100)
-  /// Effective-dated so historical invoices still reconcile after a price change.
+  /// Set on creation. Historical invoices reconcile against the Payment row,
+  /// which stores its own amountMinor, currency and credits at the time it was
+  /// taken — so a price edit in the console never rewrites what someone paid.
   effectiveFrom       DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

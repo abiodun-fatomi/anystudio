@@ -13,8 +13,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type StaffRole } from '@prisma/client';
 import type { Request } from 'express';
-import { CAPABILITIES, SCENE_PROVIDERS, PRESERVATION_POLICIES } from '@anystudio/shared';
-import { ConflictError, NotFoundError } from '../../../config/globals/errors';
+import { CAPABILITIES, MARKET_CURRENCIES, SCENE_PROVIDERS, PRESERVATION_POLICIES } from '@anystudio/shared';
+import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
+import { flutterwaveId, paddleId } from '../billing/billing-catalogue-readiness.service';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
 import { assertStaff, assertStaffMutation, type Actor } from '../auth/policy';
@@ -25,10 +26,12 @@ import { ProviderRegistry } from '../provider/provider.registry';
 import { ProviderRouter } from '../provider/provider.router';
 import type {
   AuditQueryDto,
+  CataloguePatchDto,
   CreditsDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
+  PlanPatchDto,
   PlatformMessagePatchDto,
   PricePatchDto,
   ProviderPatchDto,
@@ -507,6 +510,51 @@ export class AdminService {
     return this.db.creditCost.findMany({ orderBy: { code: 'asc' } });
   }
 
+  // -------------------------------------------------------------- catalogue
+  //
+  // WHAT A PLAN AND A PACK COST, AND HOW THE GATEWAY KNOWS THEM
+  //
+  // `credit_costs` above is the INTERNAL price — credits per generation. This
+  // is the money: what a subscription tier costs per market, what a one-off
+  // credit pack costs, and the gateway's own identifiers for each.
+  //
+  // Those identifiers had no supported home. The seed deliberately does not
+  // write them (they differ per environment, and a wrong one charges the wrong
+  // amount), and the schema's comment claimed they were "set from the admin
+  // console" — a screen that did not exist. So the only way to get a Paddle
+  // price id into production was to open a shell on the database, and
+  // BillingCatalogueReadinessService refuses to call production ready until
+  // every active plan has one.
+  //
+  // Editing a price here does not disturb history: a Payment stores its own
+  // amountMinor, currency and credits at the time it was taken, so old
+  // invoices reconcile against themselves rather than against the row.
+
+  async catalogue() {
+    const [plans, packs] = await Promise.all([this.db.plan.findMany({ orderBy: { sort: 'asc' } }), this.db.creditPack.findMany({ orderBy: { sort: 'asc' } })]);
+    return { plans, packs, markets: MARKET_CURRENCIES };
+  }
+
+  async patchPlan(actor: Actor, code: string, dto: PlanPatchDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const row = await this.db.plan.findUnique({ where: { code } });
+    if (!row) throw new NotFoundError('plan');
+    const data = catalogueUpdate(dto, { yearly: true });
+    const updated = await this.db.plan.update({ where: { code }, data });
+    authLog('admin.plan', 'succeeded', { userId: actor.userId, code, changed: Object.keys(data), reason: dto.reason }, req);
+    return updated;
+  }
+
+  async patchPack(actor: Actor, code: string, dto: CataloguePatchDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const row = await this.db.creditPack.findUnique({ where: { code } });
+    if (!row) throw new NotFoundError('credit pack');
+    const data = catalogueUpdate(dto, { yearly: false });
+    const updated = await this.db.creditPack.update({ where: { code }, data });
+    authLog('admin.pack', 'succeeded', { userId: actor.userId, code, changed: Object.keys(data), reason: dto.reason }, req);
+    return updated;
+  }
+
   async patchPrice(actor: Actor, code: string, dto: PricePatchDto, req: Request) {
     assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
     const row = await this.db.creditCost.findUnique({ where: { code } });
@@ -625,4 +673,94 @@ export class AdminService {
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+/**
+ * Turn a merge-patch into a Prisma update, refusing anything the checkout or
+ * the readiness check would later choke on.
+ *
+ * Every rule here exists because the alternative surfaces somewhere worse: a
+ * missing market throws at checkout for customers in that market only; a
+ * malformed Paddle id is accepted by the console and then keeps
+ * `/ready` degraded with no clue which row is at fault; a negative price is a
+ * gateway error in a language nobody on the team reads.
+ */
+function catalogueUpdate(dto: CataloguePatchDto & { yearlyPriceByMarket?: Record<string, unknown> | null }, opts: { yearly: boolean }) {
+  const bad: Record<string, string> = {};
+  const data: Record<string, unknown> = {};
+
+  if (dto.priceByMarket !== undefined) {
+    const priced = money(dto.priceByMarket, bad, 'priceByMarket');
+    if (priced) data.priceByMarket = priced;
+  }
+  if (opts.yearly && dto.yearlyPriceByMarket !== undefined) {
+    if (dto.yearlyPriceByMarket === null) data.yearlyPriceByMarket = Prisma.DbNull;
+    else {
+      const priced = money(dto.yearlyPriceByMarket, bad, 'yearlyPriceByMarket');
+      if (priced) data.yearlyPriceByMarket = priced;
+    }
+  }
+  if (dto.providerRefs !== undefined) {
+    const refs = gatewayRefs(dto.providerRefs, bad);
+    if (refs) data.providerRefs = refs;
+  }
+  if (dto.active !== undefined) data.active = dto.active;
+  if (dto.sort !== undefined) data.sort = dto.sort;
+
+  if (Object.keys(bad).length) throw new ValidationError(bad);
+  if (!Object.keys(data).length) throw new ValidationError({ patch: 'Nothing to change.' });
+  return data;
+}
+
+/** Every market, a whole number of currency units, never negative. */
+function money(value: Record<string, unknown>, bad: Record<string, string>, field: string): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const market of MARKET_CURRENCIES) {
+    const raw = value[market];
+    if (raw === undefined) {
+      bad[`${field}.${market}`] = `A price for ${market} is required — a market with no price cannot be bought in.`;
+      continue;
+    }
+    const n = typeof raw === 'string' ? Number(raw) : raw;
+    if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) bad[`${field}.${market}`] = 'Must be a number of currency units, zero or more.';
+    else out[market] = n;
+  }
+  const extra = Object.keys(value).filter((k) => !MARKET_CURRENCIES.includes(k as never));
+  if (extra.length) bad[field] = `Not a market we sell in: ${extra.join(', ')}.`;
+  return Object.keys(bad).length ? null : out;
+}
+
+/**
+ * The gateway's own ids, checked with the SAME predicates the readiness check
+ * uses, so a value the console accepts can never be one production refuses.
+ * An empty object clears the refs, which is how you take a plan off a gateway.
+ */
+function gatewayRefs(value: Record<string, unknown>, bad: Record<string, string>): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const [gateway, raw] of Object.entries(value)) {
+    if (gateway !== 'paddle' && gateway !== 'flutterwave') {
+      bad[`providerRefs.${gateway}`] = 'Only paddle and flutterwave have references.';
+      continue;
+    }
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      bad[`providerRefs.${gateway}`] = 'Expected { month, year } (a pack uses { once }).';
+      continue;
+    }
+    const terms: Record<string, unknown> = {};
+    for (const [term, id] of Object.entries(raw as Record<string, unknown>)) {
+      if (term !== 'month' && term !== 'year' && term !== 'once') {
+        bad[`providerRefs.${gateway}.${term}`] = 'Expected month, year or once.';
+        continue;
+      }
+      const ok = gateway === 'paddle' ? paddleId(id, 'pri_') : flutterwaveId(id);
+      if (!ok) {
+        bad[`providerRefs.${gateway}.${term}`] =
+          gateway === 'paddle' ? 'A Paddle price id looks like pri_01abc…' : 'A Flutterwave payment-plan id is a positive whole number.';
+        continue;
+      }
+      terms[term] = typeof id === 'string' ? id.trim() : id;
+    }
+    out[gateway] = terms;
+  }
+  return Object.keys(bad).length ? null : out;
 }
