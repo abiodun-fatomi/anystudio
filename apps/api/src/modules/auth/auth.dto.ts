@@ -11,7 +11,20 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID, Length, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsISO31661Alpha2,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  Length,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'ada@bimbofabrics.ng', description: 'Email address or E.164 phone number' })
@@ -98,6 +111,11 @@ export class RegisterDto {
   @IsString()
   @Length(2, 2)
   country?: string;
+
+  @ApiPropertyOptional({ example: 'GB', description: 'Confirmed residence/business country, independent of the phone dialing country.' })
+  @IsOptional()
+  @IsISO31661Alpha2()
+  billingCountry?: string;
 
   @ApiProperty({ minLength: 8, maxLength: 400 })
   @IsString()

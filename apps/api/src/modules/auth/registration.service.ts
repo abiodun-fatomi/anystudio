@@ -95,6 +95,7 @@ export class RegistrationService {
             type: 'PERSONAL',
             name: workspaceName,
             currency: currencyForCountry(input.country),
+            profile: input.country ? { billingCountry: input.country } : {},
             region: regionForCountry(input.country),
             members: { create: { userId: user.id, role: 'OWNER' } },
             wallet: { create: {} },

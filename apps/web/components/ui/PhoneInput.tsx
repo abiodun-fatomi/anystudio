@@ -54,7 +54,7 @@ const TZ_TO_COUNTRY: Record<string, CountryCode> = {
   'Europe/Berlin': 'DE',
 };
 
-export function guessCountry(): CountryCode {
+export function detectCountry(): CountryCode | null {
   try {
     const region = new Intl.Locale(navigator.language).region?.toUpperCase();
     if (region && (getCountries() as string[]).includes(region) && region !== 'US') return region as CountryCode;
@@ -64,7 +64,11 @@ export function guessCountry(): CountryCode {
   } catch {
     /* fall through */
   }
-  return 'NG';
+  return null;
+}
+
+export function guessCountry(): CountryCode {
+  return detectCountry() ?? 'NG';
 }
 
 export interface PhoneValue {
