@@ -51,6 +51,21 @@ export const SCENE_FIDELITY = { keep: SCENE_ACCEPTANCE_DEFAULT };
 async function sceneCandidate(ctx: PipelineContext, p: CapabilityParams<'IMAGE_EDIT'>, source: Uint8Array | null, cutout: Uint8Array | null) {
   const rows = await ctx.db.providerModel.findMany({ where: { OR: SCENE_PROVIDERS.map((p) => ({ key: p.key, capability: p.capability })) } });
   const configs = SCENE_PROVIDERS.map((p) => ({ ...p, config: sceneConfig(rows.find((r) => r.key === p.key && r.capability === p.capability)?.config) }));
+  /**
+   * One acceptance for the whole feature, read from SCENE_PROVIDERS[0].
+   *
+   * This looks like a bug and is not. The console offers a single
+   * "Preservation acceptance" for New Scene and stores it on
+   * `SCENE_PROVIDERS[0]` — flux's row is the storage location, not the subject
+   * of the setting — so reading it back from the same place is what keeps the
+   * two ends agreeing. Making it per-provider would silently ignore the value
+   * an operator actually set on every provider but the first.
+   *
+   * Both ends index the UNSORTED constant, so an operator's reordering moves
+   * which provider is tried first without moving where the number lives. If
+   * this is ever made genuinely per-provider, the console has to change in the
+   * same commit.
+   */
   const keep = configs[0]?.config.sceneAcceptance ?? SCENE_ACCEPTANCE_DEFAULT;
   const providers = configs
     .sort((a, b) => (a.config.scenePriority ?? a.priority) - (b.config.scenePriority ?? b.priority) || a.priority - b.priority)

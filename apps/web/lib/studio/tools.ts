@@ -34,6 +34,7 @@ import {
   TEXT_KINDS,
   TEXT_KIND_KEYS,
   OFFERED_PRODUCT_MODES,
+  priceExample,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
@@ -65,8 +66,12 @@ export type Field =
       maxLength?: number;
       rows?: number;
       required?: boolean;
-      /** A placeholder that follows another control — the format's own direction, so the box shows what blank means. */
-      placeholderFor?: (values: Record<string, unknown>) => string | undefined;
+      /**
+       * A placeholder that follows the panel's own state or the workspace —
+       * the format's own direction, so the box shows what blank means, or an
+       * example price in the money this workspace actually sells in.
+       */
+      placeholderFor?: (values: Record<string, unknown>, ctx: { currency: string }) => string | undefined;
       /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
       suggestions?: string[];
     }
@@ -266,7 +271,7 @@ export const TOOLS: Tool[] = [
         key: 'price',
         kind: 'text',
         label: 'Price on the image',
-        placeholder: '₦12,000',
+        placeholderFor: (_values, { currency }) => priceExample(currency),
         maxLength: 40,
         showIf: (v) => !isCutChoice(v),
       },
@@ -600,7 +605,7 @@ export const TOOLS: Tool[] = [
       { key: 'gap', kind: 'slider', label: 'Space between', min: 0, max: 40, step: 2, format: (v) => (v === 0 ? 'Edge to edge' : `${v}`) },
       { key: 'rounded', kind: 'switch', label: 'Rounded corners' },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
-      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '₦12,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
       // The switch that puts a merchant's shop on the picture. Its sentence is
       // built from the brand kit and whatever price was typed above, so it
@@ -762,7 +767,7 @@ export const TOOLS: Tool[] = [
         })),
       },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
-      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
       // The switch that puts a merchant's shop on the picture. Its sentence is
       // built from the brand kit and whatever price was typed above, so it
@@ -938,7 +943,7 @@ export const TOOLS: Tool[] = [
         rows: 3,
         maxLength: 800,
       },
-      { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       {
         key: 'language',
         kind: 'select',
@@ -1090,7 +1095,7 @@ export const TOOLS: Tool[] = [
         ],
       },
       { key: 'productName', kind: 'text', label: 'Product name', placeholder: 'For the end card', maxLength: 120 },
-      { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000 — shown on the end card', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price', placeholderFor: (_v, { currency }) => `${priceExample(currency)} — shown on the end card`, maxLength: 40 },
       // ---- a person talking to camera: only for "filmed by a customer", 15 s and up
       {
         key: 'presenterKind',

@@ -31,3 +31,25 @@ export const CURRENCY_WORDS: Record<MarketCurrency, { symbol: string; name: stri
   USD: { symbol: '$', name: 'US dollar' },
   GBP: { symbol: '£', name: 'British pound' },
 };
+
+/**
+ * A price the seller would recognise as one of their own.
+ *
+ * The studio's price box is a placeholder, not a conversion: it exists so a
+ * merchant sees what shape of thing belongs in the field before they type.
+ * "₦12,000" does that in Lagos and reads as nonsense in London, so each
+ * market gets an amount that looks like an ordinary small-merchant item
+ * THERE. These are not the same money and are not meant to be — converting
+ * them would be a live-FX conversion, which the invariants forbid, and would
+ * anyway produce the sort of number nobody prices anything at.
+ */
+const PRICE_EXAMPLES: Record<MarketCurrency, string> = {
+  NGN: '\u20a612,000',
+  USD: '$25',
+  GBP: '\u00a320',
+};
+
+export function priceExample(currency: string | null | undefined): string {
+  const key = (currency ?? '').toUpperCase() as MarketCurrency;
+  return PRICE_EXAMPLES[key] ?? PRICE_EXAMPLES.USD;
+}

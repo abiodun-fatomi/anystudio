@@ -1,4 +1,5 @@
 'use client';
+import { priceExample } from '@anystudio/shared';
 /**
  * Brand — the kit every image and caption picks up automatically.
  *
@@ -304,7 +305,8 @@ export default function BrandPage() {
             <div className={styles.previewProduct} />
             {(v.showPrice ?? true) && (
               <div className={styles.previewPrice} style={{ background: primary }}>
-                ₦12,000
+                {/* The same example the studio's price box shows, in this workspace's money. */}
+                {priceExample(workspace.currency)}
               </div>
             )}
             {logoUrl ? (

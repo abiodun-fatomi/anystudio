@@ -194,6 +194,19 @@ export class TemplateThumbnailDto extends ReasonDto {
   @ApiProperty({ minimum: 1, maximum: 5_000_000 }) @Type(() => Number) @IsInt() @Min(1) @Max(5_000_000) bytes!: number;
 }
 
+/**
+ * Promote a generation the operator just made into a template's example.
+ *
+ * The renders have to come from the real pipeline — the same providers, the
+ * same fidelity loop, the same prompt the template will actually send — or the
+ * tile is a promise the studio cannot keep. So the console makes an ordinary
+ * generation and then names it here, rather than uploading a picture from
+ * somewhere else.
+ */
+export class TemplateRenderDto extends ReasonDto {
+  @ApiProperty({ format: 'uuid' }) @IsUUID() generationId!: string;
+}
+
 export class StaffGrantDto extends ReasonDto {
   @ApiProperty() @IsEmail() email!: string;
   @ApiProperty({ enum: STAFF_ROLES }) @IsIn(STAFF_ROLES as readonly string[]) role!: string;

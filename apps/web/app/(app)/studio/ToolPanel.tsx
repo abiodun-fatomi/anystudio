@@ -1132,6 +1132,10 @@ function FieldControl({
   /** Write several fields at once — a preset filling in the look it stands for. */
   onFill: (params: Record<string, unknown>) => void;
 }) {
+  // The price placeholder is an example, and an example in the wrong money is
+  // worse than none: it tells a London seller to type naira.
+  const { workspace } = useApp();
+  const placeholderCtx = { currency: workspace.currency };
   switch (field.kind) {
     case 'text':
       if (field.suggestions && !field.rows) {
@@ -1149,7 +1153,7 @@ function FieldControl({
           <div>
             <Input
               label={field.label}
-              placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+              placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
               hint={field.hint}
               maxLength={field.maxLength}
               value={String(value ?? '')}
@@ -1169,7 +1173,7 @@ function FieldControl({
       return field.rows ? (
         <Textarea
           label={field.label}
-          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+          placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
           hint={field.hint}
           rows={field.rows}
           maxLength={field.maxLength}
@@ -1181,7 +1185,7 @@ function FieldControl({
       ) : (
         <Input
           label={field.label}
-          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+          placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
           hint={field.hint}
           maxLength={field.maxLength}
           value={String(value ?? '')}

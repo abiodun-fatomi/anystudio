@@ -26,6 +26,7 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
+import { priceExample } from '@anystudio/shared';
 
 describe('flyer quality routing', () => {
   it.each(['new', 'photo'])('tags the %s path as design rather than photographic generation', (useSource) => {
@@ -505,5 +506,42 @@ describe('cut or scene, across two catalogues', () => {
 
   it('offers the room picker on the scene tool', () => {
     expect(scene.fields.find((f) => f.kind === 'templates')?.key).toBe('template');
+  });
+});
+
+describe('the price box speaks the seller’s money', () => {
+  const priceFields = TOOLS.flatMap((t) => t.fields.filter((f) => f.key === 'price').map((f) => [t.id, f] as const));
+
+  it('offers a price example on every tool that takes one', () => {
+    expect(priceFields.length).toBeGreaterThan(3);
+    for (const [tool, field] of priceFields) {
+      expect(field.kind, tool).toBe('text');
+      // A fixed `placeholder` here is the bug: it tells a London seller to
+      // type naira. The example has to be resolved against the workspace.
+      expect('placeholderFor' in field && typeof field.placeholderFor === 'function', tool).toBe(true);
+    }
+  });
+
+  it.each([
+    ['NGN', '₦'],
+    ['USD', '$'],
+    ['GBP', '£'],
+  ])('shows %s prices with %s', (currency, symbol) => {
+    for (const [tool, field] of priceFields) {
+      const shown = 'placeholderFor' in field ? field.placeholderFor?.({}, { currency }) : undefined;
+      expect(shown, `${tool} in ${currency}`).toContain(symbol);
+    }
+  });
+
+  it('falls back to dollars for a currency it has no example for', () => {
+    // A workspace whose currency is not a market currency must still get a
+    // sensible box rather than an empty one.
+    expect(priceExample('KES')).toBe('$25');
+    expect(priceExample(undefined)).toBe('$25');
+  });
+
+  it('never sends the example — a placeholder is not a value', () => {
+    const scene = TOOLS.find((t) => t.id === 'scene')!;
+    expect(coerceParams(scene, { ...scene.defaults, prompt: 'on a marble counter' }).price).toBeUndefined();
   });
 });

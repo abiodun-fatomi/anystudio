@@ -23,6 +23,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TEMPLATE_CATEGORIES, TEMPLATE_CATEGORY_KEYS, type TemplateCategory } from '@anystudio/shared';
 import { api, type AdminTemplate } from '@/lib/api';
+import { useApp } from '@/lib/app-context';
+import { uploadFile } from '@/lib/upload';
+import { renderMissingExamples, type RenderProgress } from './renderExamples';
 import { PageHeader } from '@/components/shell/Page';
 import { Button, Dialog, Input, Select, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
 import { useAdmin } from '../AdminShell';
@@ -60,7 +63,11 @@ const blank = (): Draft => ({
 
 export default function TemplatesPage() {
   const { atLeast } = useAdmin();
+  const { workspace } = useApp();
   const { toast } = useToast();
+  const [render, setRender] = useState<RenderProgress | null>(null);
+  const stock = useRef<HTMLInputElement>(null);
+  const stop = useRef<AbortController | null>(null);
   const [rows, setRows] = useState<AdminTemplate[] | null>(null);
   const [category, setCategory] = useState<TemplateCategory | 'all'>('all');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -156,6 +163,48 @@ export default function TemplatesPage() {
     }
   };
 
+  /**
+   * Fill the empty tiles by actually making the pictures.
+   *
+   * One stock product photo in, one ordinary generation per template out,
+   * each promoted to that template's example. Charged to this workspace like
+   * any other job, because it is one.
+   */
+  const renderAll = async (product: File) => {
+    const missing = (rows ?? []).filter((r) => r.active && !r.thumbnailKey);
+    if (missing.length === 0) {
+      toast({ title: 'Nothing to render', body: 'Every live template already has an example.', tone: 'ok' });
+      return;
+    }
+    const reason = window.prompt(`Render ${missing.length} example${missing.length === 1 ? '' : 's'}. This spends credits. Why? (on the record)`);
+    if (!reason || reason.trim().length < 4) return;
+
+    const controller = new AbortController();
+    stop.current = controller;
+    setRender({ done: 0, total: missing.length, current: null, failures: [] });
+    try {
+      const asset = await uploadFile(workspace.id, product);
+      const out = await renderMissingExamples({
+        workspaceId: workspace.id,
+        sourceKey: asset.key,
+        templates: missing,
+        reason: reason.trim(),
+        onProgress: setRender,
+        signal: controller.signal,
+      });
+      toast({
+        title: `${out.done - out.failures.length} of ${out.total} rendered`,
+        body: out.failures.length ? `${out.failures.length} failed — the list is under the button.` : 'Every tile is a photograph now.',
+        tone: out.failures.length ? 'danger' : 'ok',
+      });
+      load();
+    } catch (e) {
+      toast({ title: 'Rendering stopped', body: e instanceof Error ? e.message : undefined, tone: 'danger' });
+    } finally {
+      stop.current = null;
+    }
+  };
+
   if (!atLeast('ADMIN')) {
     return (
       <>
@@ -173,13 +222,52 @@ export default function TemplatesPage() {
         actions={<Button onClick={() => setDraft(blank())}>Add a template</Button>}
       />
 
+      <input
+        ref={stock}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const product = e.target.files?.[0];
+          e.target.value = '';
+          if (product) void renderAll(product);
+        }}
+      />
+
+      {render && (
+        <div className={styles.card}>
+          <strong>
+            Rendering examples — {render.done} of {render.total}
+          </strong>
+          <p className={styles.small}>
+            {render.current ? `Working on “${render.current}”.` : 'Finishing.'} Keep this tab open; closing it stops after the jobs already running, and
+            re-running skips whatever finished.
+          </p>
+          {render.failures.length > 0 && (
+            <p className={styles.warn}>
+              {render.failures.length} failed: {render.failures.map((f) => `${f.code} (${f.why})`).join(', ')}
+            </p>
+          )}
+          {render.done < render.total && (
+            <Button variant="ghost" onClick={() => stop.current?.abort()}>
+              Stop
+            </Button>
+          )}
+        </div>
+      )}
+
       {missingRenders > 0 && (
         // Not a warning tucked in a corner: a template with no photograph is
         // a preset with extra steps, and the whole point of the catalogue is
         // that the seller chooses by looking.
         <p className={styles.warn}>
-          {missingRenders} live {missingRenders === 1 ? 'template has' : 'templates have'} no example render yet and show a plain gradient in the picker.
-          Uploading one is the single biggest thing that makes this catalogue worth having.
+          {missingRenders} live {missingRenders === 1 ? 'template has' : 'templates have'} no example render yet and show a plain gradient in the picker. A
+          template without one is a preset with extra steps — the seller is back to choosing by reading.{' '}
+          {!render && (
+            <Button variant="ghost" onClick={() => stock.current?.click()}>
+              Render them all from one product photo
+            </Button>
+          )}
         </p>
       )}
 
