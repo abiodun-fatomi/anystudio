@@ -73,7 +73,10 @@ export class WorkspaceCreateDto {
   @MaxLength(80)
   name!: string;
 
-  @ApiProperty({ enum: ['BUSINESS', 'ORGANIZATION'] })
-  @IsIn(['BUSINESS', 'ORGANIZATION'])
-  type!: 'BUSINESS' | 'ORGANIZATION';
+  // PERSONAL is accepted so the welcome screen can create a Google user's
+  // FIRST studio in the same shape registration gives everyone else; the
+  // service refuses it for anyone who already has a workspace.
+  @ApiProperty({ enum: ['PERSONAL', 'BUSINESS', 'ORGANIZATION'] })
+  @IsIn(['PERSONAL', 'BUSINESS', 'ORGANIZATION'])
+  type!: 'PERSONAL' | 'BUSINESS' | 'ORGANIZATION';
 }
