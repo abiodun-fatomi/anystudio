@@ -32,6 +32,7 @@ import { voiceoverPipeline } from './voiceover';
 import { dubPipeline } from './dub';
 import { lipsyncPipeline } from './lipsync';
 import { brandedImagePipeline } from './image';
+import { backgroundRemovePipeline } from './background-remove';
 import { productShotPipeline } from './product-shot';
 import { collagePipeline } from './collage';
 import { batchPipeline } from './batch';
@@ -135,6 +136,8 @@ export class Pipelines {
     IMAGE_TO_VIDEO: videoShotPipeline,
     TEXT_GENERATE: copyPipeline,
     IMAGE_EDIT: brandedImagePipeline,
+    // Not passthrough: the background colour is our promise, not each vendor's.
+    BACKGROUND_REMOVE: backgroundRemovePipeline,
     PRODUCT_SHOT: productShotPipeline,
     COLLAGE: collagePipeline,
     BATCH: batchPipeline,

@@ -26,6 +26,7 @@
  * still fails when it should.
  */
 import { describe, expect, it } from 'vitest';
+import { priceExample } from '@anystudio/shared';
 
 describe('flyer quality routing', () => {
   it.each(['new', 'photo'])('tags the %s path as design rather than photographic generation', (useSource) => {
@@ -50,6 +51,7 @@ import {
   anglesWouldHelp,
   coerceParams,
   groupOfCapability,
+  isCutChoice,
   missingFor,
   restoreToolValues,
   searchTools,
@@ -461,5 +463,85 @@ describe('the words a reel is made from', () => {
     // Blank goes as absent, and the server fills it from the format — the one
     // place that decision is made.
     expect(coerceParams(video, { ...video.defaults, brief: 'format' }).prompt).toBeUndefined();
+  });
+});
+
+describe('cut or scene, across two catalogues', () => {
+  const scene = TOOLS.find((t) => t.id === 'scene')!;
+
+  it('reads a preset directly, because presets are compiled in', () => {
+    expect(isCutChoice({ preset: 'white' })).toBe(true);
+    expect(isCutChoice({ preset: 'studio_blush' })).toBe(false);
+    expect(isCutChoice({})).toBe(false);
+  });
+
+  it('reads a template from the values, because the catalogue is fetched and this runs synchronously', () => {
+    // A cut template clears the prompt and writes a background; a scene
+    // template writes the prompt. `templateParams` on the API side is what
+    // makes that true, and this is the assertion that would break if it
+    // stopped being true.
+    expect(isCutChoice({ template: 'general_white', background: '#FFFFFF', prompt: '' })).toBe(true);
+    expect(isCutChoice({ template: 'furniture_living_warm', prompt: 'A warm living room.' })).toBe(false);
+    // A background left over from a previous pick must not turn a scene into
+    // a cut — the prompt is what decides.
+    expect(isCutChoice({ template: 'furniture_living_warm', background: '#FFFFFF', prompt: 'A warm living room.' })).toBe(false);
+  });
+
+  it('prices a cut as a background removal and a scene as an edit', () => {
+    expect(scene.capabilityFor!({ preset: 'white' })).toBe('BACKGROUND_REMOVE');
+    expect(scene.capabilityFor!({ template: 'general_white', background: '#FFFFFF', prompt: '' })).toBe('BACKGROUND_REMOVE');
+    expect(scene.capabilityFor!({ template: 'furniture_living_warm', prompt: 'A warm living room.' })).toBe('IMAGE_EDIT');
+  });
+
+  it('hides the fields a cut has nothing to say about, whichever catalogue chose it', () => {
+    // A cut-out onto a flat colour has no setting to describe and no shape to
+    // pick. Showing those fields for a template but not a preset would be the
+    // same control behaving differently for no reason a seller could see.
+    const hidden = (values: Record<string, unknown>) => scene.fields.filter((f) => 'showIf' in f && f.showIf && !f.showIf(values)).map((f) => f.key);
+    const byPreset = hidden({ preset: 'white' });
+    const byTemplate = hidden({ template: 'general_white', background: '#FFFFFF', prompt: '' });
+    expect(byPreset).toContain('prompt');
+    expect(byTemplate).toEqual(byPreset);
+  });
+
+  it('offers the room picker on the scene tool', () => {
+    expect(scene.fields.find((f) => f.kind === 'templates')?.key).toBe('template');
+  });
+});
+
+describe('the price box speaks the seller’s money', () => {
+  const priceFields = TOOLS.flatMap((t) => t.fields.filter((f) => f.key === 'price').map((f) => [t.id, f] as const));
+
+  it('offers a price example on every tool that takes one', () => {
+    expect(priceFields.length).toBeGreaterThan(3);
+    for (const [tool, field] of priceFields) {
+      expect(field.kind, tool).toBe('text');
+      // A fixed `placeholder` here is the bug: it tells a London seller to
+      // type naira. The example has to be resolved against the workspace.
+      expect('placeholderFor' in field && typeof field.placeholderFor === 'function', tool).toBe(true);
+    }
+  });
+
+  it.each([
+    ['NGN', '₦'],
+    ['USD', '$'],
+    ['GBP', '£'],
+  ])('shows %s prices with %s', (currency, symbol) => {
+    for (const [tool, field] of priceFields) {
+      const shown = 'placeholderFor' in field ? field.placeholderFor?.({}, { currency }) : undefined;
+      expect(shown, `${tool} in ${currency}`).toContain(symbol);
+    }
+  });
+
+  it('falls back to dollars for a currency it has no example for', () => {
+    // A workspace whose currency is not a market currency must still get a
+    // sensible box rather than an empty one.
+    expect(priceExample('KES')).toBe('$25');
+    expect(priceExample(undefined)).toBe('$25');
+  });
+
+  it('never sends the example — a placeholder is not a value', () => {
+    const scene = TOOLS.find((t) => t.id === 'scene')!;
+    expect(coerceParams(scene, { ...scene.defaults, prompt: 'on a marble counter' }).price).toBeUndefined();
   });
 });

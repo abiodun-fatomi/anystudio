@@ -592,6 +592,58 @@ model Plan {
   @@map("plans")
 }
 
+/// A setting the seller picks by looking at a photograph of it.
+///
+/// A row and not a constant for one reason: the tile is a rendered example,
+/// and a photograph has to be produced, reviewed, reordered and replaced.
+/// None of that should require a release, and a seasonal set should not
+/// require a pull request. The prompt lives here for the same reason a
+/// genre's `promptHints` does — a template that comes out wrong is fixed by
+/// editing a row.
+///
+/// Grouped by what is being SOLD, not by setting, because that is the
+/// question a seller can answer instantly about their own item.
+model Template {
+  code           String   @id /// e.g. "furniture_living_warm"
+  name           String
+  /// One line under the tile, in the seller's words.
+  note           String
+  /// One of TEMPLATE_CATEGORIES in @anystudio/shared. A plain string and not
+  /// an enum so a new category is a seed change, not a migration.
+  category       String
+  /// "cut" flattens a cut-out onto a colour; "scene" asks a model for a
+  /// setting. Same meaning, and same cost split, as a photo preset's kind.
+  kind           String   @default("scene")
+  /// What tapping the tile fills in — { "prompt": "…" } for a scene,
+  /// { "background": "#FFFFFF" } for a cut. Merged over what the seller typed.
+  params         Json
+  /// The storage object key of the example render, under the reserved
+  /// `templates/` prefix. A KEY, never a URL: the URL is signed at the edge
+  /// and expires in minutes, like every other object here. Null until an
+  /// operator has produced the render, and the tile falls back to `swatch`.
+  thumbnailKey   String?
+  /// The gradient drawn in place of a photograph: { "colors": ["#..."], "ink": "dark" }.
+  /// Not optional, because a catalogue that cannot ship before the
+  /// photography is finished never ships.
+  swatch         Json
+  /// What a seller might type looking for this — "living room", "owambe".
+  keywords       String?
+  /// A retired template is still a row: old generations reference it.
+  active         Boolean  @default(true)
+  sort           Int      @default(100)
+  /// Set the first time an operator edits this row from the console, and
+  /// never cleared. It is how the seed knows to stop overwriting the copy and
+  /// the prompt: without it, a release would silently revert a fix someone
+  /// made in production, which is the worst possible failure for a table
+  /// whose whole point is being editable without a release.
+  operatorEdited Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category, sort])
+  @@map("templates")
+}
+
 /// A music genre the customer can pick. Rows, not constants, because the
 /// catalogue is global (Amapiano next to cumbia next to K-pop) and grows by
 /// request; `promptHints` is what the pipeline tells the model, so a genre

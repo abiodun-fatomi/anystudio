@@ -14,6 +14,7 @@ import { useApp } from '@/lib/app-context';
 import { uploadFile } from '@/lib/upload';
 import { filesFromDrop, uploadMany } from '@/lib/studio/folder';
 import { voicesCache } from '@/lib/studio/voices-cache';
+import { templates as fetchTemplates } from '@/lib/studio/templates-cache';
 import { PLATFORM_OPTIONS, SIZE_OPTIONS, coerceParams, missingFor, type Field, type Tool } from '@/lib/studio/tools';
 import {
   BRAND_OFF,
@@ -21,6 +22,7 @@ import {
   PRESENTERS,
   PRESETS_INLINE,
   PRESET_GROUPS,
+  TEMPLATES_INLINE,
   OFFERED_PRODUCT_MODES,
   PRODUCT_MODES,
   acceptsSourceKey,
@@ -32,10 +34,12 @@ import {
   type BrandTyped,
   type PhotoPreset,
   type PresetGroup,
+  type TemplateView,
 } from '@anystudio/shared';
 import { Button, Combobox, Input, Progress, SegmentedControl, Select, Skeleton, Slider, Switch, Textarea } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { PresetSheet } from './PresetSheet';
+import { TemplateSheet, TemplateTile } from './TemplateSheet';
 import styles from './studio.module.css';
 
 const BUTTON_LABEL: Record<string, string> = {
@@ -741,7 +745,10 @@ function PresetsField({
       return;
     }
     onChange(p.key);
-    onFill(p.params);
+    // Clearing the template keeps one first draft on screen at a time. Two
+    // tiles both showing as chosen, filling the same fields, is a panel
+    // arguing with itself.
+    onFill({ ...p.params, template: '' });
   };
   /**
    * The chosen look is always shown, even when it lives past the cut. Hiding
@@ -805,6 +812,97 @@ function PresetsField({
         </button>
       )}
       {all && <PresetSheet current={value || null} onPick={pick} onClose={() => setAll(false)} />}
+      {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * The template picker.
+ *
+ * Six tiles inline and a door to the rest, the same shape the looks field
+ * uses — a panel is a menu, not a catalogue. Which six is the only decision
+ * worth arguing about, and the answer is: whatever is already chosen first,
+ * then the settings that work for anything. A seller who has not opened the
+ * sheet yet should see tiles they could pick without knowing their category,
+ * not the alphabetically-first chip's contents.
+ *
+ * The catalogue is fetched, so this field has three states the compiled-in
+ * fields never do — loading, empty, and failed — and it must not lose the
+ * seller's choice in any of them. It renders nothing at all while loading
+ * rather than a spinner in a panel that already has plenty to look at, and
+ * says so plainly if the fetch failed, because a silently missing control is
+ * worse than a visibly broken one.
+ */
+function TemplatesField({
+  field,
+  value,
+  onChange,
+  onFill,
+}: {
+  field: Extract<Field, { kind: 'templates' }>;
+  value: string;
+  onChange: (v: unknown) => void;
+  onFill: (params: Record<string, unknown>) => void;
+}) {
+  const [all, setAll] = useState<TemplateView[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [sheet, setSheet] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    fetchTemplates()
+      .then((list) => live && setAll(list))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const pick = (t: TemplateView) => {
+    setSheet(false);
+    if (value === t.code) {
+      onChange('');
+      return;
+    }
+    onChange(t.code);
+    onFill({ ...t.params, preset: '' });
+  };
+
+  const inline = useMemo(() => {
+    if (!all) return [];
+    const chosen = all.find((t) => t.code === value);
+    const rest = all.filter((t) => t.code !== value);
+    const general = rest.filter((t) => t.category === 'general');
+    const others = rest.filter((t) => t.category !== 'general');
+    return [...(chosen ? [chosen] : []), ...general, ...others].slice(0, TEMPLATES_INLINE);
+  }, [all, value]);
+
+  if (failed) {
+    return (
+      <div>
+        <span className={styles.fieldLabel}>{field.label}</span>
+        <span className={styles.fieldHint}>Templates could not be loaded just now. Pick a look above instead — it does the same job.</span>
+      </div>
+    );
+  }
+  if (!all || all.length === 0) return null;
+
+  return (
+    <div>
+      <span className={styles.fieldLabel}>{field.label}</span>
+      <div className={styles.templateRow} role="radiogroup" aria-label={field.label}>
+        {inline.map((t) => (
+          <TemplateTile key={t.code} template={t} chosen={t.code === value} onPick={() => pick(t)} />
+        ))}
+      </div>
+      {all.length > inline.length && (
+        <button type="button" className={styles.seeMore} onClick={() => setSheet(true)}>
+          See all {all.length} templates
+          <Icon.chevron width={14} height={14} />
+        </button>
+      )}
+      {sheet && <TemplateSheet templates={all} current={value || null} onPick={pick} onClose={() => setSheet(false)} />}
       {field.hint && <span className={styles.fieldHint}>{field.hint}</span>}
     </div>
   );
@@ -1034,6 +1132,10 @@ function FieldControl({
   /** Write several fields at once — a preset filling in the look it stands for. */
   onFill: (params: Record<string, unknown>) => void;
 }) {
+  // The price placeholder is an example, and an example in the wrong money is
+  // worse than none: it tells a London seller to type naira.
+  const { workspace } = useApp();
+  const placeholderCtx = { currency: workspace.currency };
   switch (field.kind) {
     case 'text':
       if (field.suggestions && !field.rows) {
@@ -1051,7 +1153,7 @@ function FieldControl({
           <div>
             <Input
               label={field.label}
-              placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+              placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
               hint={field.hint}
               maxLength={field.maxLength}
               value={String(value ?? '')}
@@ -1071,7 +1173,7 @@ function FieldControl({
       return field.rows ? (
         <Textarea
           label={field.label}
-          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+          placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
           hint={field.hint}
           rows={field.rows}
           maxLength={field.maxLength}
@@ -1083,7 +1185,7 @@ function FieldControl({
       ) : (
         <Input
           label={field.label}
-          placeholder={field.placeholderFor?.(values) ?? field.placeholder}
+          placeholder={field.placeholderFor?.(values, placeholderCtx) ?? field.placeholder}
           hint={field.hint}
           maxLength={field.maxLength}
           value={String(value ?? '')}
@@ -1141,6 +1243,8 @@ function FieldControl({
       return <AnglesField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
     case 'presets':
       return <PresetsField field={field} value={String(value ?? '')} onChange={onChange} onFill={onFill} />;
+    case 'templates':
+      return <TemplatesField field={field} value={String(value ?? '')} onChange={onChange} onFill={onFill} />;
     case 'photos':
       return <PhotosField field={field} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} />;
     case 'photoLabels':

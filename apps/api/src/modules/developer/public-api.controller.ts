@@ -29,6 +29,7 @@ import type { Request } from 'express';
 import { Public } from '../auth/decorators';
 import { AudioService } from '../audio/audio.service';
 import { ProviderRegistry } from '../provider/provider.registry';
+import { TemplateService } from '../template/template.service';
 import { PresignUploadDto } from '../media/media.dto';
 import { ApiKeyGuard, RequireScope } from './api-key.guard';
 import { PublicApiService } from './public-api.service';
@@ -44,6 +45,7 @@ export class PublicApiController {
     private readonly api: PublicApiService,
     private readonly audio: AudioService,
     private readonly registry: ProviderRegistry,
+    private readonly templateCatalogue: TemplateService,
   ) {}
 
   @Get('/capabilities')
@@ -133,6 +135,13 @@ export class PublicApiController {
   @ApiOperation({ summary: 'Music genres' })
   genres() {
     return this.audio.genres();
+  }
+
+  @Get('/catalogue/templates')
+  @RequireScope('catalogue:read')
+  @ApiOperation({ summary: 'Settings a generation can be placed in — the template catalogue' })
+  templates() {
+    return this.templateCatalogue.list();
   }
 
   @Get('/catalogue/audio/voices')

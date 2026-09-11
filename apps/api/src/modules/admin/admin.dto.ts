@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsEmail,
   IsIn,
@@ -11,13 +14,14 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { CAPABILITIES, STAFF_ROLES, PRESERVATION_POLICIES, type PreservationUseCase } from '@anystudio/shared';
+import { CAPABILITIES, STAFF_ROLES, PRESERVATION_POLICIES, TEMPLATE_CATEGORY_KEYS, type PreservationUseCase } from '@anystudio/shared';
 
 export class SearchDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) q?: string;
@@ -122,6 +126,85 @@ export class PlanPatchDto extends CataloguePatchDto {
   @IsOptional()
   @IsObject()
   yearlyPriceByMarket?: Record<string, unknown> | null;
+}
+
+/**
+ * A new template.
+ *
+ * `code` is the primary key and is never reused, so it is validated tightly:
+ * lowercase, digits and underscores only. It also becomes part of the
+ * thumbnail's object key, which is the real reason a slash or a dot cannot be
+ * allowed anywhere near it.
+ */
+export class TemplateCreateDto extends ReasonDto {
+  @ApiProperty({ pattern: '^[a-z0-9_]{3,60}$' }) @IsString() @Matches(/^[a-z0-9_]{3,60}$/) code!: string;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(60) name!: string;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(120) note!: string;
+  @ApiProperty({ enum: TEMPLATE_CATEGORY_KEYS }) @IsIn(TEMPLATE_CATEGORY_KEYS as readonly string[]) category!: string;
+  @ApiProperty({ enum: ['cut', 'scene'] }) @IsIn(['cut', 'scene']) kind!: 'cut' | 'scene';
+  /** Empty for a `cut`, which paints a colour instead of asking a model for a setting. */
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) prompt?: string;
+  @ApiPropertyOptional({ description: 'One or two #rrggbb colours for the fallback tile' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2)
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { each: true })
+  colors?: string[];
+  @ApiPropertyOptional({ enum: ['light', 'dark'] }) @IsOptional() @IsIn(['light', 'dark']) ink?: 'light' | 'dark';
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) keywords?: string;
+  @ApiPropertyOptional({ minimum: 0, maximum: 100000 }) @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) sort?: number;
+}
+
+/**
+ * A change to an existing template.
+ *
+ * Every field optional and `@ValidateIf` rather than `@IsOptional` on the
+ * nullable ones, because clearing a template's keywords and never mentioning
+ * them are different requests and the service has to be able to tell.
+ */
+export class TemplatePatchDto extends ReasonDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) @MaxLength(60) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) @MaxLength(120) note?: string;
+  @ApiPropertyOptional({ enum: TEMPLATE_CATEGORY_KEYS }) @IsOptional() @IsIn(TEMPLATE_CATEGORY_KEYS as readonly string[]) category?: string;
+  @ApiPropertyOptional({ enum: ['cut', 'scene'] }) @IsOptional() @IsIn(['cut', 'scene']) kind?: 'cut' | 'scene';
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) prompt?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2)
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { each: true })
+  colors?: string[];
+  @ApiPropertyOptional({ enum: ['light', 'dark'] }) @IsOptional() @IsIn(['light', 'dark']) ink?: 'light' | 'dark';
+  @ApiPropertyOptional({ description: 'Empty string clears it' }) @ValidateIf((_o, v) => v !== undefined) @IsString() @MaxLength(200) keywords?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+  @ApiPropertyOptional({ minimum: 0, maximum: 100000 }) @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000) sort?: number;
+}
+
+/**
+ * Asking for somewhere to put an example render.
+ *
+ * The console uploads straight to storage with the returned signature rather
+ * than posting the bytes through the API — an image has no business
+ * occupying a Node process, and the API never has to hold it in memory.
+ */
+export class TemplateThumbnailDto extends ReasonDto {
+  @ApiProperty({ enum: ['image/webp', 'image/jpeg', 'image/png'] }) @IsIn(['image/webp', 'image/jpeg', 'image/png']) mime!: string;
+  @ApiProperty({ minimum: 1, maximum: 5_000_000 }) @Type(() => Number) @IsInt() @Min(1) @Max(5_000_000) bytes!: number;
+}
+
+/**
+ * Promote a generation the operator just made into a template's example.
+ *
+ * The renders have to come from the real pipeline — the same providers, the
+ * same fidelity loop, the same prompt the template will actually send — or the
+ * tile is a promise the studio cannot keep. So the console makes an ordinary
+ * generation and then names it here, rather than uploading a picture from
+ * somewhere else.
+ */
+export class TemplateRenderDto extends ReasonDto {
+  @ApiProperty({ format: 'uuid' }) @IsUUID() generationId!: string;
 }
 
 export class StaffGrantDto extends ReasonDto {

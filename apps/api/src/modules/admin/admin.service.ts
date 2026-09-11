@@ -13,7 +13,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, PrismaClient, type StaffRole } from '@prisma/client';
 import type { Request } from 'express';
-import { CAPABILITIES, MARKET_CURRENCIES, SCENE_PROVIDERS, PRESERVATION_POLICIES } from '@anystudio/shared';
+import { CAPABILITIES, MARKET_CURRENCIES, SCENE_PROVIDERS, PRESERVATION_POLICIES, templateThumbnailKey } from '@anystudio/shared';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { flutterwaveId, paddleId } from '../billing/billing-catalogue-readiness.service';
 import { logger } from '../../../config/logger';
@@ -24,6 +24,8 @@ import { LedgerService } from '../ledger/ledger.service';
 import { NotificationService } from '../notification/notification.service';
 import { ProviderRegistry } from '../provider/provider.registry';
 import { ProviderRouter } from '../provider/provider.router';
+import { MediaService } from '../media/media.service';
+import { TemplateService } from '../template/template.service';
 import type {
   AuditQueryDto,
   CataloguePatchDto,
@@ -37,6 +39,10 @@ import type {
   ProviderPatchDto,
   SearchDto,
   StaffGrantDto,
+  TemplateCreateDto,
+  TemplatePatchDto,
+  TemplateRenderDto,
+  TemplateThumbnailDto,
 } from './admin.dto';
 
 const DAY_MS = 86_400_000;
@@ -52,6 +58,8 @@ export class AdminService {
     private readonly registry: ProviderRegistry,
     private readonly router: ProviderRouter,
     private readonly notifications: NotificationService,
+    private readonly media: MediaService,
+    private readonly templateCatalogue: TemplateService,
   ) {}
 
   // ---------------------------------------------------------------- overview
@@ -506,6 +514,165 @@ export class AdminService {
     return { reset: true };
   }
 
+  // -------------------------------------------------------------------------
+  // The template catalogue.
+  //
+  // Every write here does two things that the other console writes do not:
+  // it stamps `operatorEdited`, which permanently stops the seed overwriting
+  // this row's copy and prompt, and it drops the studio's read memo so the
+  // change is on the customer's screen on their next reload rather than up to
+  // four minutes later. Forgetting either turns the console into theatre.
+  // -------------------------------------------------------------------------
+
+  /** Every template including the retired ones — the console has to be able to bring one back. */
+  async templates() {
+    return this.db.template.findMany({ orderBy: [{ category: 'asc' }, { sort: 'asc' }, { name: 'asc' }] });
+  }
+
+  async createTemplate(actor: Actor, dto: TemplateCreateDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const existing = await this.db.template.findUnique({ where: { code: dto.code }, select: { code: true } });
+    if (existing) throw new ConflictError('a template with that code already exists');
+    if (dto.kind === 'scene' && !dto.prompt?.trim()) throw new BadRequestException('a scene template needs a prompt');
+
+    const created = await this.db.template.create({
+      data: {
+        code: dto.code,
+        name: dto.name,
+        note: dto.note,
+        category: dto.category,
+        kind: dto.kind,
+        params: templateParams(dto.kind, dto.prompt),
+        swatch: templateSwatch(dto.colors, dto.ink),
+        keywords: dto.keywords?.trim() || null,
+        ...(dto.sort === undefined ? {} : { sort: dto.sort }),
+        // Born in the console, so the seed never owned it in the first place.
+        operatorEdited: true,
+      },
+    });
+    this.templateCatalogue.invalidate();
+    authLog('admin.template', 'succeeded', { userId: actor.userId, code: dto.code, action: 'create', category: dto.category, reason: dto.reason }, req);
+    return created;
+  }
+
+  async patchTemplate(actor: Actor, code: string, dto: TemplatePatchDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const row = await this.db.template.findUnique({ where: { code } });
+    if (!row) throw new NotFoundError('template');
+
+    // The prompt and the kind travel together: a template that is being made
+    // into a scene needs words, and one being made into a cut must not keep
+    // the old ones lying around where a later edit would resurrect them.
+    const kind = dto.kind ?? (row.kind === 'cut' ? 'cut' : 'scene');
+    const prompt = dto.prompt ?? currentPrompt(row.params);
+    if (kind === 'scene' && !prompt.trim()) throw new BadRequestException('a scene template needs a prompt');
+
+    const data: Prisma.TemplateUpdateInput = {
+      ...(dto.name === undefined ? {} : { name: dto.name }),
+      ...(dto.note === undefined ? {} : { note: dto.note }),
+      ...(dto.category === undefined ? {} : { category: dto.category }),
+      ...(dto.active === undefined ? {} : { active: dto.active }),
+      ...(dto.sort === undefined ? {} : { sort: dto.sort }),
+      ...(dto.keywords === undefined ? {} : { keywords: dto.keywords.trim() || null }),
+      ...(dto.colors === undefined && dto.ink === undefined ? {} : { swatch: templateSwatch(dto.colors ?? currentColors(row.swatch), dto.ink) }),
+      ...(dto.kind === undefined && dto.prompt === undefined ? {} : { kind, params: templateParams(kind, prompt) }),
+      operatorEdited: true,
+    };
+
+    const updated = await this.db.template.update({ where: { code }, data });
+    this.templateCatalogue.invalidate();
+    authLog(
+      'admin.template',
+      'succeeded',
+      {
+        userId: actor.userId,
+        code,
+        action: 'update',
+        changed: Object.keys(data).filter((k) => k !== 'operatorEdited'),
+        wasActive: row.active,
+        nowActive: updated.active,
+        reason: dto.reason,
+      },
+      req,
+    );
+    return updated;
+  }
+
+  /**
+   * Somewhere to put the example render.
+   *
+   * The key is derived from the template's code, never from anything the
+   * caller sends, so this cannot be turned into a signature for an arbitrary
+   * object. The row is pointed at the key immediately rather than after the
+   * upload lands: a key with nothing behind it signs to a URL that 404s, and
+   * `TemplateService` already treats an unreadable thumbnail as a tile that
+   * falls back to its gradient. The alternative — a second confirming call —
+   * is one more thing to fail halfway.
+   */
+  async templateThumbnailUpload(actor: Actor, code: string, dto: TemplateThumbnailDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const row = await this.db.template.findUnique({ where: { code }, select: { code: true } });
+    if (!row) throw new NotFoundError('template');
+
+    const ext = dto.mime === 'image/png' ? 'png' : dto.mime === 'image/jpeg' ? 'jpg' : 'webp';
+    const key = templateThumbnailKey(code, ext);
+    const signed = await this.media.presignRaw(key, dto.mime, dto.bytes);
+    await this.db.template.update({ where: { code }, data: { thumbnailKey: key, operatorEdited: true } });
+    this.templateCatalogue.invalidate();
+    authLog('admin.template', 'succeeded', { userId: actor.userId, code, action: 'thumbnail', key, bytes: dto.bytes, reason: dto.reason }, req);
+    return { ...signed, key };
+  }
+
+  /**
+   * Copy a finished generation's picture onto a template's example key.
+   *
+   * Server-side, and deliberately: the bytes never touch the browser, so
+   * there is no signed-URL fetch to be refused by CORS, and nothing can put
+   * an arbitrary picture on a template — the only thing the caller chooses is
+   * WHICH generation, and the key is still derived from the template's code.
+   *
+   * The generation must have succeeded and must carry an image. A song, a
+   * reel or a half-finished job named here is a mistake worth saying out loud
+   * rather than a blank tile discovered later.
+   */
+  async renderTemplateThumbnail(actor: Actor, code: string, dto: TemplateRenderDto, req: Request) {
+    assertStaffMutation(actor, { min: 'ADMIN', stepUpMinutes: STEP_UP_MIN });
+    const template = await this.db.template.findUnique({ where: { code }, select: { code: true } });
+    if (!template) throw new NotFoundError('template');
+
+    const generation = await this.db.generation.findUnique({
+      where: { id: dto.generationId },
+      select: { id: true, status: true, outputs: true, workspaceId: true, capability: true },
+    });
+    if (!generation) throw new NotFoundError('generation');
+    if (generation.status !== 'SUCCEEDED') throw new BadRequestException(`that generation is ${generation.status.toLowerCase()}, not finished`);
+
+    const outputs = Array.isArray(generation.outputs) ? (generation.outputs as Array<Record<string, unknown>>) : [];
+    // The full-size picture, not a crop variant: a tile is judged on the
+    // scene, and an export crop may have cut half of it away.
+    const picture = outputs.find((o) => o.role === 'image') ?? outputs.find((o) => o.role === 'variant');
+    const sourceKey = typeof picture?.key === 'string' ? picture.key : null;
+    if (!sourceKey) throw new BadRequestException('that generation produced no picture');
+    if (MediaService.isVault(sourceKey)) throw new BadRequestException('that output is locked');
+
+    const bytes = await this.media.getBytes(sourceKey);
+    // Stored as what it is. The picker sizes it with object-fit, so the tile
+    // never depends on the render's own dimensions.
+    const mime = typeof picture?.mime === 'string' ? picture.mime : 'image/png';
+    const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    const key = templateThumbnailKey(code, ext);
+    await this.media.put(key, bytes, mime);
+    await this.db.template.update({ where: { code }, data: { thumbnailKey: key, operatorEdited: true } });
+    this.templateCatalogue.invalidate();
+    authLog(
+      'admin.template',
+      'succeeded',
+      { userId: actor.userId, code, action: 'render', generationId: generation.id, from: sourceKey, key, reason: dto.reason },
+      req,
+    );
+    return { code, thumbnailKey: key, bytes: bytes.length };
+  }
+
   async prices() {
     return this.db.creditCost.findMany({ orderBy: { code: 'asc' } });
   }
@@ -669,6 +836,28 @@ export class AdminService {
     authLog('admin.message', 'succeeded', { userId: actor.userId, messageId: id, action: 'delete' }, req);
     return { deleted: true };
   }
+}
+
+/** A `cut` paints a colour and a `scene` describes a setting; nothing else is stored. */
+function templateParams(kind: 'cut' | 'scene', prompt: string | undefined): Prisma.InputJsonValue {
+  // A cut clears the prompt: the studio reads that field to decide whether
+  // there is a setting to render at all.
+  return kind === 'cut' ? { background: '#FFFFFF', prompt: '' } : { prompt: (prompt ?? '').trim() };
+}
+
+function templateSwatch(colors: string[] | undefined, ink: 'light' | 'dark' | undefined): Prisma.InputJsonValue {
+  const picked = colors && colors.length > 0 ? colors.slice(0, 2) : ['#EFEBE4'];
+  return { colors: picked, ink: ink ?? 'dark' };
+}
+
+function currentPrompt(params: Prisma.JsonValue): string {
+  const raw = params !== null && typeof params === 'object' && !Array.isArray(params) ? (params as Record<string, unknown>) : {};
+  return typeof raw.prompt === 'string' ? raw.prompt : '';
+}
+
+function currentColors(swatch: Prisma.JsonValue): string[] | undefined {
+  const raw = swatch !== null && typeof swatch === 'object' && !Array.isArray(swatch) ? (swatch as Record<string, unknown>) : {};
+  return Array.isArray(raw.colors) ? raw.colors.filter((c): c is string => typeof c === 'string') : undefined;
 }
 
 function isUuid(v: string): boolean {

@@ -27,7 +27,6 @@ import {
   PRODUCT_REFERENCE_ANGLES,
   REEL_BRIEF,
   preset,
-  presetCapability,
   productMode,
   SHOT_SIZES,
   SHOT_SIZE_KEYS,
@@ -35,6 +34,7 @@ import {
   TEXT_KINDS,
   TEXT_KIND_KEYS,
   OFFERED_PRODUCT_MODES,
+  priceExample,
 } from '@anystudio/shared';
 import type { IconName } from '@/components/shell/icons';
 
@@ -66,8 +66,12 @@ export type Field =
       maxLength?: number;
       rows?: number;
       required?: boolean;
-      /** A placeholder that follows another control — the format's own direction, so the box shows what blank means. */
-      placeholderFor?: (values: Record<string, unknown>) => string | undefined;
+      /**
+       * A placeholder that follows the panel's own state or the workspace —
+       * the format's own direction, so the box shows what blank means, or an
+       * example price in the money this workspace actually sells in.
+       */
+      placeholderFor?: (values: Record<string, unknown>, ctx: { currency: string }) => string | undefined;
       /** Words offered as tap-to-fill chips under the box; typing stays possible. A tap toggles the word in a comma-separated list. */
       suggestions?: string[];
     }
@@ -120,6 +124,14 @@ export type Field =
    * it writes stays editable underneath.
    */
   | { key: string; kind: 'presets'; label: string; hint?: string }
+  /**
+   * Settings shown as photographs of themselves, chipped by what is being
+   * sold. The looks above are chosen by reading a name; a template is a room,
+   * and two rooms cannot be told apart by their names. Fetched from the
+   * server rather than compiled in, because the picture on each tile is a
+   * render an operator produced and can replace without a deploy.
+   */
+  | { key: string; kind: 'templates'; label: string; hint?: string }
   /** The merchant shots as tiles: on a model, ghost mannequin, flat lay, pressed. Named the way a merchant names them. */
   | { key: string; kind: 'modes'; label: string; hint?: string }
   /** Extra photos of the same product from other angles — the cheapest way to keep it exact. */
@@ -190,6 +202,28 @@ const countOf = (v: unknown): number => (Array.isArray(v) ? v.filter((k) => type
 /** A presenter needs the customer-filmed format and an ad long enough to hold a testimonial and the product. */
 const canPresent = (v: Record<string, unknown>): boolean => v.format === 'ugc' && Number(v.shots ?? 1) > 1 && v.presentation === 'presenter';
 
+/**
+ * Is the shot the seller has chosen a flat cut-out rather than a setting?
+ *
+ * Two catalogues can answer this and they answer it differently. A preset is
+ * compiled in, so its kind can be looked up directly. A template is fetched
+ * from the server, so by the time this runs — synchronously, while deciding
+ * which fields to show and which capability to price — the catalogue may not
+ * have arrived, and looking the code up is not an option.
+ *
+ * So the template case reads the VALUES instead: a cut template clears the
+ * prompt and writes a background colour, a scene template writes the prompt.
+ * That is not a coincidence to be relied on quietly — it is why
+ * `templateParams` clears the prompt on the API side, and why this comment is
+ * here rather than a lookup.
+ */
+export function isCutChoice(values: Record<string, unknown>): boolean {
+  const chosen = preset(values.preset as string);
+  if (chosen) return chosen.kind === 'cut';
+  if (!values.template) return false;
+  return !String(values.prompt ?? '').trim() && typeof values.background === 'string';
+}
+
 export const TOOLS: Tool[] = [
   {
     id: 'scene',
@@ -197,14 +231,17 @@ export const TOOLS: Tool[] = [
     short: 'Scene',
     icon: 'studio',
     capability: 'IMAGE_EDIT',
-    capabilityFor: (v) => {
-      const chosen = preset(v.preset as string);
-      return chosen ? presetCapability(chosen) : 'IMAGE_EDIT';
-    },
+    capabilityFor: (v) => (isCutChoice(v) ? 'BACKGROUND_REMOVE' : 'IMAGE_EDIT'),
     needsSource: true,
     narrative: IMAGE_STAGES,
     fields: [
       { key: 'preset', kind: 'presets', label: 'Pick a look', hint: 'Tap one to start. You can change the words underneath afterwards.' },
+      {
+        key: 'template',
+        kind: 'templates',
+        label: 'Or pick a room',
+        hint: 'A real setting, shown as a photograph. Tapping one writes the description for you.',
+      },
       {
         key: 'prompt',
         kind: 'text',
@@ -215,7 +252,7 @@ export const TOOLS: Tool[] = [
         required: true,
         hint: 'Describe the surroundings. The product itself stays exactly as photographed.',
         // A cut-out onto a flat colour has nothing to describe.
-        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+        showIf: (v) => !isCutChoice(v),
       },
       {
         key: 'aspect',
@@ -227,16 +264,16 @@ export const TOOLS: Tool[] = [
           note: `${ASPECT_USE[a].label} — ${ASPECT_USE[a].note}`,
           ratio: [ASPECT_USE[a].w, ASPECT_USE[a].h] as [number, number],
         })),
-        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+        showIf: (v) => !isCutChoice(v),
       },
-      { key: 'sizes', kind: 'sizes', label: 'Export sizes', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
+      { key: 'sizes', kind: 'sizes', label: 'Export sizes', showIf: (v) => !isCutChoice(v) },
       {
         key: 'price',
         kind: 'text',
         label: 'Price on the image',
-        placeholder: '₦12,000',
+        placeholderFor: (_values, { currency }) => priceExample(currency),
         maxLength: 40,
-        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+        showIf: (v) => !isCutChoice(v),
       },
       {
         key: 'businessName',
@@ -244,12 +281,12 @@ export const TOOLS: Tool[] = [
         label: 'Business name on the image',
         placeholder: 'Leave blank to use your brand kit',
         maxLength: 80,
-        showIf: (v) => preset(v.preset as string)?.kind !== 'cut',
+        showIf: (v) => !isCutChoice(v),
       },
       // A cut-out is a product on transparency, meant to be placed into
       // something else — stamping a shop name on it would ruin the only thing
       // it is for. Everywhere else, the switch.
-      { key: 'brand', kind: 'brand', label: 'Put my shop on it', showIf: (v) => preset(v.preset as string)?.kind !== 'cut' },
+      { key: 'brand', kind: 'brand', label: 'Put my shop on it', showIf: (v) => !isCutChoice(v) },
     ],
     defaults: { preserveProduct: true, aspect: '1:1', sizes: ['feed_square', 'story'] },
     ideas: { under: 'prompt', fills: { prompt: 'prompt' } },
@@ -568,7 +605,7 @@ export const TOOLS: Tool[] = [
       { key: 'gap', kind: 'slider', label: 'Space between', min: 0, max: 40, step: 2, format: (v) => (v === 0 ? 'Edge to edge' : `${v}`) },
       { key: 'rounded', kind: 'switch', label: 'Rounded corners' },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
-      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '₦12,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
       // The switch that puts a merchant's shop on the picture. Its sentence is
       // built from the brand kit and whatever price was typed above, so it
@@ -730,7 +767,7 @@ export const TOOLS: Tool[] = [
         })),
       },
       { key: 'sizes', kind: 'sizes', label: 'Export sizes' },
-      { key: 'price', kind: 'text', label: 'Price on the image', placeholder: '\u20a612,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price on the image', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       { key: 'businessName', kind: 'text', label: 'Business name on the image', placeholder: 'Leave blank to use your brand kit', maxLength: 80 },
       // The switch that puts a merchant's shop on the picture. Its sentence is
       // built from the brand kit and whatever price was typed above, so it
@@ -906,7 +943,7 @@ export const TOOLS: Tool[] = [
         rows: 3,
         maxLength: 800,
       },
-      { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price', placeholderFor: (_v, { currency }) => priceExample(currency), maxLength: 40 },
       {
         key: 'language',
         kind: 'select',
@@ -1058,7 +1095,7 @@ export const TOOLS: Tool[] = [
         ],
       },
       { key: 'productName', kind: 'text', label: 'Product name', placeholder: 'For the end card', maxLength: 120 },
-      { key: 'price', kind: 'text', label: 'Price', placeholder: '₦12,000 — shown on the end card', maxLength: 40 },
+      { key: 'price', kind: 'text', label: 'Price', placeholderFor: (_v, { currency }) => `${priceExample(currency)} — shown on the end card`, maxLength: 40 },
       // ---- a person talking to camera: only for "filmed by a customer", 15 s and up
       {
         key: 'presenterKind',
