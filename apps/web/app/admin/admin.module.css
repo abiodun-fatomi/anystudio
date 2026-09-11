@@ -106,6 +106,20 @@
   letter-spacing: 0.1em;
   opacity: 0.6;
 }
+/* Muted body prose, on the page's own surface.
+   NOT `.small` — that one is the RAIL's muted style, and it is built from
+   `--paper`, the rail's own background. Used anywhere else it renders text in
+   very nearly the colour it is sitting on, which is how a paragraph in a
+   dialog came out unreadable. If the text is inside `.main`, a card or a
+   dialog, it wants this. */
+.prose {
+  color: var(--muted);
+  font-size: var(--t-2);
+  line-height: var(--lh-snug);
+  margin: 0;
+}
+
+/* The rail's muted text: a dimmed version of the rail's foreground. */
 .small {
   background: none;
   border: 0;

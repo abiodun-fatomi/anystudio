@@ -216,7 +216,7 @@ export default function TemplatesPage() {
     return (
       <>
         <PageHeader title="Templates" lede="The settings sellers pick by looking." />
-        <p className={styles.small}>Editing the catalogue needs an admin. Ask someone with the rank, or read the audit log for what changed.</p>
+        <p className={styles.prose}>Editing the catalogue needs an admin. Ask someone with the rank, or read the audit log for what changed.</p>
       </>
     );
   }
@@ -248,7 +248,7 @@ export default function TemplatesPage() {
           <strong>
             Rendering examples — {render.done} of {render.total}
           </strong>
-          <p className={styles.small}>
+          <p className={styles.prose}>
             {render.current ? `Working on “${render.current}”.` : 'Finishing.'} Keep this tab open; closing it stops after the jobs already running, and
             re-running skips whatever finished.
           </p>
@@ -393,6 +393,7 @@ export default function TemplatesPage() {
         open={setup !== null}
         onClose={() => setSetup(null)}
         title={`Render ${missingRenders} example${missingRenders === 1 ? '' : 's'}`}
+        description="Each template becomes one ordinary generation — same prompt, same providers, same fidelity check a seller would get — and the picture it produces becomes that template’s tile. It spends credits, roughly one scene each. Templates that already have a render are skipped, so running this again only costs what it has not reached."
         footer={
           <Button disabled={!setup || setup.reason.trim().length < 4 || !payer} onClick={() => stock.current?.click()}>
             Choose a product photo and start
@@ -401,11 +402,6 @@ export default function TemplatesPage() {
       >
         {setup && (
           <div style={{ display: 'grid', gap: 'var(--s-4)' }}>
-            <p className={styles.small}>
-              Each template becomes one ordinary generation — same prompt, same providers, same fidelity check a seller would get — and the picture it produces
-              becomes that template&rsquo;s tile. It spends credits, roughly one scene each. Templates that already have a render are skipped, so running this
-              again only costs what it has not reached.
-            </p>
             {billTo.length === 0 ? (
               <p className={styles.warn}>
                 Your staff account has no workspace to bill these to. Renders have to be charged somewhere, so make or join one first.
