@@ -1,20 +1,33 @@
+/* The region is a manual popover so it shares the top layer with modal
+   dialogs (see Toast.tsx). That means undoing the UA's popover styles, which
+   otherwise centre it, box it and paint it: `inset: 0` alone would stretch it
+   to the full viewport and strand every toast at the top of the screen. */
 .region {
   position: fixed;
   z-index: var(--z-toast);
-  left: 0;
-  right: 0;
-  bottom: calc(var(--s-4) + env(safe-area-inset-bottom));
+  inset: auto 0 calc(var(--s-4) + env(safe-area-inset-bottom)) 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  overflow: visible;
+  background: none;
+  color: inherit;
   display: grid;
   gap: var(--s-2);
   justify-items: center;
   pointer-events: none;
   padding: 0 var(--s-4);
 }
+/* An open popover is `display: block` in the UA sheet; keep the grid. */
+.region:popover-open {
+  display: grid;
+}
 @media (min-width: 768px) {
   .region {
-    left: auto;
-    right: var(--s-5);
-    bottom: var(--s-5);
+    inset: auto var(--s-5) var(--s-5) auto;
     justify-items: end;
     padding: 0;
   }

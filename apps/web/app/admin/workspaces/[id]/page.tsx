@@ -2,7 +2,7 @@
 /** One workspace: members, plan, the ledger — and the credit adjustment, with a reason, on the record. */
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api, type AdminWorkspace } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
 import { Button, Dialog, Input, Skeleton, Table, Textarea, tableCell, useToast } from '@/components/ui';
@@ -88,9 +88,7 @@ export default function WorkspacePage() {
         <CreditLineCard workspaceId={w.id} type={w.type} currency={w.currency} account={d.billingAccount} onChanged={load} />
         <div className={styles.card}>
           <div style={{ color: 'var(--muted)', fontSize: 'var(--t-1)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Profile</div>
-          <div className={styles.mono} style={{ fontSize: '11px', color: 'var(--muted)' }}>
-            {w.profile ? JSON.stringify(w.profile).slice(0, 200) : '—'}
-          </div>
+          <ProfileFacts profile={w.profile} />
         </div>
       </div>
       <div className={styles.two}>
@@ -184,4 +182,53 @@ export default function WorkspacePage() {
       </Dialog>
     </div>
   );
+}
+
+/**
+ * What the seller told us about their shop, as lines a person can read.
+ *
+ * This was `JSON.stringify(profile).slice(0, 200)`: raw JSON, cut mid-token,
+ * and with no break opportunity anywhere in a run like
+ * `["whatsapp","instagram","tiktok","shop","market"]` it walked straight out
+ * of the card. The truncation was the giveaway — a field that has to be
+ * chopped at 200 characters to fit was never meant to be read as one string.
+ *
+ * `.kv` already wraps and already has a min-width of zero, so laying it out as
+ * key and value fixes the overflow as a side effect of making it legible.
+ */
+function ProfileFacts({ profile }: { profile: unknown }) {
+  const source = profile !== null && typeof profile === 'object' && !Array.isArray(profile) ? (profile as Record<string, unknown>) : null;
+  const rows = Object.entries(source ?? {})
+    .map(([key, value]) => [key, profileValue(value)] as const)
+    .filter(([, value]) => value !== null);
+
+  if (rows.length === 0) return <div className={styles.prose}>—</div>;
+  return (
+    <dl className={styles.kv}>
+      {rows.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt>{profileLabel(key)}</dt>
+          <dd>{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+/** `billingCountry` reads as "billing country"; the console is not the database. */
+function profileLabel(key: string): string {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ');
+  return spaced.charAt(0).toLowerCase() + spaced.slice(1);
+}
+
+/** Null for anything with nothing to say, so empty answers do not take a line. */
+function profileValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  return String(value);
 }

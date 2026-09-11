@@ -808,15 +808,34 @@ header.nav .wrap{max-width:var(--max-nav)}
   .frame-tag .pr{font-size:9px}
 }
 
+/* Below 900px `.scrub-inner` stacks to one column and roughly doubles in
+   height, while the stage stays capped at 88vh with `min-height:560px`,
+   `overflow:hidden` and `align-items:center`. A flex item taller than its
+   line box centres and overflows BOTH ways, so the top and bottom of the copy
+   were silently cut off — the headline first, which is why it read as the
+   channels band covering it. The frames pushed the page sideways for the same
+   reason.
+
+   The page already abandons the pinned stage for a short viewport and for
+   reduced motion. A narrow one has the same problem and takes the same way
+   out: scroll-scrubbing is a wide-screen conceit, and below the point where
+   the layout stacks it is only fighting the content. `min-height` has to go
+   with it, or a static stage still reserves 560px of nothing. */
+@media(max-width:900px){
+  .scrub{height:auto;margin-bottom:32px}
+  .scrub-stage{position:static;height:auto;min-height:0;padding-block:40px}
+  .scrub-grid .frame{opacity:1 !important;transform:none !important}
+}
+
 /* a phone in landscape has no room for a 100vh stage — fall back to static */
 @media(max-height:560px){
   .scrub{height:auto;margin-bottom:32px}
-  .scrub-stage{position:static;height:auto;padding-block:40px}
+  .scrub-stage{position:static;height:auto;min-height:0;padding-block:40px}
   .scrub-grid .frame{opacity:1 !important;transform:none !important}
 }
 @media(prefers-reduced-motion:reduce){
   .scrub{height:auto}
-  .scrub-stage{position:static;height:auto;padding-block:40px}
+  .scrub-stage{position:static;height:auto;min-height:0;padding-block:40px}
   .scrub-grid .frame{opacity:1 !important;transform:none !important}
 }
 
