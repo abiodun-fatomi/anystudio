@@ -6,7 +6,7 @@
  * credits are back. Every result offers the next thing: download at a
  * size, use as the source, send to video, do it again, copy the caption.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { COPY_FIELDS } from '@anystudio/shared';
 import type { GenerationOutputRow } from '@/lib/api';
 import { anglesWouldHelp, toolById } from '@/lib/studio/tools';
@@ -15,6 +15,7 @@ import { Badge, Button, Progress, Skeleton, useToast } from '@/components/ui';
 import { Icon } from '@/components/shell/icons';
 import { PublishDialog } from '@/components/publishing/PublishDialog';
 import { Lightbox, type Shot } from './Lightbox';
+import { StageFilm } from './StageFilm';
 import styles from './studio.module.css';
 
 const STATUS_TONE: Record<GenerationCard['status'], 'accent' | 'ok' | 'warn' | 'danger' | undefined> = {
@@ -111,6 +112,28 @@ export function ResultCard({
   const missingUrls = useMemo(() => card.outputs.filter((o) => o.key && !card.urls[o.key]).map((o) => o.key), [card.outputs, card.urls]);
   const narrative = card.detail ?? tool.narrative[card.stage] ?? 'Working';
   const elapsed = useElapsed(card.createdAt, live);
+  /**
+   * The seller's own photo, so the wait can be about their product rather than
+   * about a grey box.
+   *
+   * Outputs resolve themselves as they land; the SOURCE never did, because
+   * until now nothing on this card needed it. If the call fails, `sourceUrl`
+   * stays undefined and StageFilm draws its own surface, which is what a
+   * source-less generation gets anyway.
+   *
+   * The ref is not belt-and-braces. `onRefreshUrls` is an inline arrow at the
+   * call site, so its identity changes on every parent render — and a live
+   * card re-renders on every SSE progress tick. Without the ref this asks for
+   * a signed URL several times a second until the first one lands.
+   */
+  const sourceKey = card.sourceKey;
+  const sourceUrl = sourceKey ? card.urls[sourceKey] : undefined;
+  const askedForSource = useRef<string | null>(null);
+  useEffect(() => {
+    if (!live || !sourceKey || sourceUrl || askedForSource.current === sourceKey) return;
+    askedForSource.current = sourceKey;
+    onRefreshUrls(card.clientKey, [sourceKey]);
+  }, [live, sourceKey, sourceUrl, card.clientKey, onRefreshUrls]);
 
   return (
     <article className={styles.card} data-status={card.status} aria-live={live ? 'polite' : undefined}>
@@ -229,7 +252,15 @@ export function ResultCard({
         </div>
       )}
       {spoken?.script && <LyricsView label="Script" text={spoken.script} />}
-      {live && !main && card.status === 'RUNNING' && card.stage !== 'queued' && <Skeleton className={styles.previewSkel} />}
+      {/*
+        The wait. Same condition as the grey skeleton this replaces, so nothing
+        that did not animate before animates now — and StageFilm falls back to
+        its own surface when a generation has no source photo, which keeps
+        captions, voiceovers and songs looking exactly as they did.
+      */}
+      {live && !main && card.status === 'RUNNING' && card.stage !== 'queued' && (
+        <StageFilm stage={card.stage} label={narrative} src={sourceUrl} alt="Your photo, being worked on" />
+      )}
 
       {variants.length > 0 && (
         <div className={styles.variants} aria-label="Sizes">
