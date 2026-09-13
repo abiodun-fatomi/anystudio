@@ -2365,12 +2365,416 @@ figure{margin:0}
 
 <!-- ============================== API ============================== -->
 <section class="sec" id="api">
+<style>
+/* /developers is THIS section, lifted out of the landing page by
+   scripts/sync-prototypes.mjs. Three things follow from that, and all three
+   have already been got wrong once:
+
+   Keep it as ONE top-level <section>. blocks() splits design/landing.html on
+   top-level <section> tags, so a second one here would be left behind on the
+   landing page — and so is any comment written ABOVE the banner comment,
+   which is why this note is inside the section rather than over it.
+
+   No href="#anchor" inside it. resolveAnchors() rewrites those to /#anchor on
+   every page that isn't the landing page, which from here sends a reader home.
+
+   And this stylesheet lives in the body, not the head, on purpose.
+
+   dissect() in scripts/sync-prototypes.mjs gives every page the SAME <head>,
+   so a rule added up there ships on the landing page, /pricing and /why as
+   well — nine kilobytes of CSS that only one page can ever match. The landing
+   page was just taken from 4.3MB to 724KB; it does not get that back.
+
+   Kept inside the section, it travels with the section to /developers and
+   nowhere else. blocks() splits on top-level <section> tags, so it moves
+   with it automatically. */
+/* ============================================================
+   FOR PLATFORMS — everything below is the /developers page
+   ============================================================
+   scripts/sync-prototypes.mjs lifts <section id="api"> out of the
+   landing page entirely, so this section IS /developers and costs the
+   landing page nothing — which is why it can afford to be a whole page
+   rather than the one screen it used to be.
+
+   Every rule here is namespaced under #api. Nothing below can reach
+   another page, and nothing above needed changing to make room.
+   ============================================================ */
+/* The shared .api-cta stretches its two buttons to equal halves, which was
+   right for one row on one page. Here the same row sits in columns as narrow
+   as 370px, where "Try it on your own catalogue" is wider than its half and
+   ran out over the button beside it. Size to content, wrap when it doesn't fit. */
+#api .api-cta .btn{flex:0 1 auto;min-width:0}
+#api .dev-eyebrow{
+  display:inline-flex;align-items:center;margin-bottom:18px;
+  font-family:var(--f-mono);font-size:11px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;
+  color:var(--cyan);background:var(--cyan-wash);padding:5px 10px;border-radius:var(--r);
+}
+/* Sized here rather than left to .sec.lead, so the section reads the same
+   opened straight from design/ as it does once promoted to a page. */
+#api .org-grid :is(h1,h2){font-size:clamp(28px,4.4vw,46px);font-weight:800;max-width:20ch;line-height:1.06}
+
+/* --- hero: what they sent, what you publish, what it wrote --- */
+#api .dev-ba{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#api .dev-ba>*{min-width:0}
+#api .dev-ba figure{margin:0;display:flex;flex-direction:column;gap:8px}
+#api .dev-ba figcaption{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);
+}
+#api .dev-ba figure.out figcaption{color:var(--accent)}
+#api .dev-ba .art{position:relative;border-radius:var(--r);overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
+#api .dev-ba figure.out .art{box-shadow:var(--frame-shadow-lg)}
+/* height:auto matters. The width/height attributes are there to reserve the
+   box before CSS arrives, but Chromium maps them to real width/height values —
+   and aspect-ratio is ignored unless one of the two is auto, which is how a
+   square crop came out 285x900. */
+#api .dev-ba .art img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover}
+#api .dev-ba .stamp{
+  position:absolute;left:9px;bottom:9px;
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.03em;
+  color:#FFF;background:rgba(23,19,26,.62);padding:3px 7px;border-radius:2px;
+}
+#api .dev-copyout{
+  grid-column:span 2;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:14px 16px;
+}
+#api .dev-copyout p{margin-top:5px;font-size:14.5px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- the three numbers --- */
+#api .dev-stats{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;
+  background:var(--line-soft);border:1px solid var(--line-soft);
+  border-radius:6px;overflow:hidden;margin-top:clamp(40px,6vw,64px);
+}
+@media(max-width:760px){#api .dev-stats{grid-template-columns:1fr}}
+#api .dev-stats>div{min-width:0;background:var(--surface);padding:26px 24px;display:flex;flex-direction:column;gap:7px}
+#api .dev-stats b{font-family:var(--f-display);font-size:clamp(28px,3.4vw,36px);font-weight:800;letter-spacing:-.03em;line-height:1}
+#api .dev-stats span{font-size:14.5px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- shared furniture for the three blocks below the hero --- */
+#api .dev-band{
+  margin-top:clamp(48px,7vw,84px);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;padding:clamp(24px,4vw,44px);
+}
+#api .dev-head{margin-bottom:clamp(24px,3vw,34px)}
+#api .dev-head h2{font-size:clamp(24px,3.2vw,32px);font-weight:700;letter-spacing:-.025em;line-height:1.1}
+#api .dev-head p{margin-top:9px;font-size:16px;line-height:1.6;color:var(--muted);max-width:62ch}
+#api .dev-note{display:flex;gap:12px;align-items:flex-start;margin-top:24px;padding:16px 18px;border-radius:var(--r);background:var(--cyan-wash)}
+#api .dev-note svg{width:20px;height:20px;flex:none;margin-top:2px;stroke:var(--cyan);fill:none;stroke-width:1.8;stroke-linecap:round}
+#api .dev-note p{font-size:14.5px;line-height:1.55}
+
+/* --- where it sits in your flow --- */
+#api .dev-flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+@media(max-width:1000px){#api .dev-flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){#api .dev-flow{grid-template-columns:1fr}}
+#api .dev-flow>div{
+  min-width:0;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:20px 18px;display:flex;flex-direction:column;gap:9px;
+}
+/* The merchant's step is the one a platform's product owner is worried about,
+   so it is the one that is marked. Same box, one heavier border. */
+#api .dev-flow>div.theirs{border:2px solid var(--accent);padding:19px 17px}
+#api .dev-flow .n{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;color:var(--accent)}
+#api .dev-flow h4{font-size:16.5px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+#api .dev-flow p{font-size:14px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- the four operations --- */
+#api .dev-caps{display:flex;flex-direction:column;gap:16px}
+#api .dev-cap{
+  display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);
+  gap:clamp(20px,3vw,32px);align-items:start;
+  background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:clamp(20px,3vw,28px);
+}
+@media(max-width:860px){#api .dev-cap{grid-template-columns:1fr}}
+#api .dev-cap>*{min-width:0}
+#api .dev-cap.fresh{border:2px solid var(--accent)}
+#api .dev-cap .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#api .dev-cap .hd svg{width:22px;height:22px;flex:none;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#api .dev-cap h3{font-size:20px;font-weight:700;letter-spacing:-.015em;line-height:1.2}
+#api .dev-cap .tagnew{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-wash);padding:3px 7px;border-radius:var(--r);
+}
+#api .dev-cap>div>p{margin-top:10px;font-size:15px;line-height:1.55;color:var(--ink-soft)}
+#api .dev-cap .cost{
+  display:inline-block;margin-top:12px;font-family:var(--f-mono);font-size:12px;
+  color:var(--muted);background:var(--line-soft);padding:4px 9px;border-radius:var(--r);
+}
+/* A payload is only worth printing if it can be read where it is printed. The
+   samples are wrapped at ~38 columns and the type drops on a phone so the whole
+   call fits without a sideways drag — a cut-off "BACKGROUND_R…" is worse than
+   no sample at all. */
+@media(max-width:560px){
+  #api .dev-band{padding:20px 16px}
+  #api .dev-cap{padding:18px 14px}
+  #api pre.code{font-size:10.5px;line-height:1.72;padding:14px 11px}
+}
+
+/* --- try it on your own catalogue --- */
+#api .dev-try{
+  position:relative;overflow:hidden;margin-top:clamp(48px,7vw,84px);
+  background:var(--ink);color:var(--paper);border-radius:8px;
+  padding:clamp(30px,5vw,56px);
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:clamp(28px,4vw,56px);align-items:center;
+}
+@media(max-width:900px){#api .dev-try{grid-template-columns:1fr}}
+#api .dev-try>*{min-width:0;position:relative;z-index:1}
+#api .dev-try::after{
+  content:"";position:absolute;inset:auto -10% -60% 38%;height:220px;
+  background:radial-gradient(closest-side,var(--accent),transparent);opacity:.3;
+}
+#api .dev-try h2{font-size:clamp(26px,3.6vw,36px);font-weight:800;letter-spacing:-.028em;line-height:1.1}
+#api .dev-try>div>p{margin-top:16px;font-size:17px;line-height:1.55;max-width:50ch;color:color-mix(in srgb,var(--paper) 78%,transparent)}
+#api .dev-try .fine{margin-top:14px;font-size:13.5px;color:color-mix(in srgb,var(--paper) 60%,transparent)}
+#api .dev-try .btn-ghost{border-color:color-mix(in srgb,var(--paper) 34%,transparent);color:var(--paper)}
+#api .dev-try .btn-ghost:hover{border-color:var(--paper)}
+#api .dev-try .api-cta{margin-top:26px}
+#api .dev-get{
+  background:color-mix(in srgb,var(--paper) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--paper) 18%,transparent);
+  border-radius:var(--r);padding:clamp(20px,3vw,28px);
+}
+#api .dev-get ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+#api .dev-get li{display:flex;gap:12px;align-items:flex-start;font-size:15px;line-height:1.5}
+#api .dev-get li svg{width:18px;height:18px;flex:none;margin-top:3px;stroke:var(--accent);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+</style>
   <div class="wrap">
-    <div class="org-wrap rv">
+
+    <!-- ---------------- the promise, and the proof of it ---------------- -->
+    <div class="org-grid rv">
+      <div>
+        <span class="dev-eyebrow">For marketplaces &amp; platforms</span>
+        <h2>Your merchants photograph badly. Fix it before it reaches your storefront.</h2>
+        <p class="sec-lede" style="margin-top:16px">One API call at the moment a merchant uploads. A clean image, a description no other listing on your platform is using, and a warning when the photo isn't the product. The merchant approves it. You store it. Nothing about your listing flow changes.</p>
+        <div class="api-cta">
+          <a class="btn btn-primary btn-lg" href="org.html">Get a test key</a>
+          <a class="btn btn-ghost btn-lg" href="org.html#contact">Talk to us about volume</a>
+        </div>
+        <p class="api-note">500 test credits, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
+      </div>
+
+      <div class="dev-ba">
+        <figure>
+          <figcaption>What they uploaded</figcaption>
+          <div class="art">
+            <img alt="A bucket hat photographed at home on a kitchen table, lit from one side" src="/shots/hat-source.webp" width="900" height="900" srcset="/shots/hat-source-400w.webp 400w, /shots/hat-source-800w.webp 800w, /shots/hat-source-1200w.webp 1200w" sizes="(max-width: 900px) 46vw, (max-width: 1228px) 24vw, 285px" decoding="async">
+            <span class="stamp">uneven light</span>
+          </div>
+        </figure>
+        <figure class="out">
+          <figcaption>What you publish</figcaption>
+          <div class="art">
+            <img alt="The same hat on a plain studio background, centred, with a soft shadow" src="/shots/hat-white.webp" width="900" height="900" srcset="/shots/hat-white-400w.webp 400w, /shots/hat-white-800w.webp 800w, /shots/hat-white-1200w.webp 1200w" sizes="(max-width: 900px) 46vw, (max-width: 1228px) 24vw, 285px" decoding="async">
+            <span class="stamp">1024² · studio sweep</span>
+          </div>
+        </figure>
+        <div class="dev-copyout">
+          <span class="mono">and the description it wrote</span>
+          <p>Reversible cotton bucket hat with a stitched brim and a wide band. Holds its shape after washing. Sold by [MERCHANT], ships from Lagos in 2–3 days.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- the three numbers that answer the objection ---------------- -->
+    <div class="dev-stats rv">
+      <div>
+        <b>1 call</b>
+        <span>per listing. Four things come back: images, description, resolution, and a verdict on whether the photo is even the product.</span>
+      </div>
+      <div>
+        <b>0 seconds</b>
+        <span>of merchant waiting. The work happens while they are still filling in name, price and stock.</span>
+      </div>
+      <div>
+        <b>0 changes</b>
+        <span>to how a merchant lists. You store their original before we are called, and it stays the fallback.</span>
+      </div>
+    </div>
+
+    <!-- ---------------- where it sits ---------------- -->
+    <div class="dev-band rv">
+      <div class="dev-head">
+        <h2>Where it sits in your flow</h2>
+        <p>Server to server. Your backend holds the key — the platform API returns no CORS headers at all, deliberately, so a key cannot end up in a merchant's browser.</p>
+      </div>
+
+      <div class="dev-flow">
+        <div>
+          <span class="n">01</span>
+          <h4>Merchant uploads</h4>
+          <p>Your form, unchanged. You store the original first — always.</p>
+        </div>
+        <div>
+          <span class="n">02</span>
+          <h4>You call us</h4>
+          <p>Hand us the CDN URL you already have. No bytes leave your network by upload.</p>
+        </div>
+        <div>
+          <span class="n">03</span>
+          <h4>Job ids, immediately</h4>
+          <p>The response is an id, not a picture. The merchant keeps typing.</p>
+        </div>
+        <div>
+          <span class="n">04</span>
+          <h4>Webhook lands</h4>
+          <p>A signed callback per job. You fetch the result server-side and attach it to the draft.</p>
+        </div>
+        <div class="theirs">
+          <span class="n">05</span>
+          <h4>Merchant decides</h4>
+          <p>Keep ours or keep theirs. Their own photo publishes if they prefer it — every time.</p>
+        </div>
+      </div>
+
+      <div class="dev-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <p><strong>If we are down, nothing breaks.</strong> The original is already stored by the time you call, so the listing saves exactly as it does today and the merchant never sees an error that belongs to us. We enhance. We do not gate.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- the operations ---------------- -->
+    <div class="dev-band rv">
+      <div class="dev-head">
+        <h2>Four operations, priced separately</h2>
+        <p>Call the ones you want, on the listings you want. Each is metered per project and attributed per merchant, so you can decide later whether to re-bill stores or absorb it.</p>
+      </div>
+
+      <div class="dev-caps">
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l4.5-4.5a2 2 0 0 1 2.8 0L15 15"/><circle cx="15.5" cy="8.5" r="1.5"/></svg>
+              <h3>Clean the image</h3>
+            </div>
+            <p>Cut the product out, set it on a background you choose, correct the light. You pick the background per category, not per merchant — one look across a catalogue is what makes a grid read as deliberate rather than collected.</p>
+            <span class="cost">10 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"BACKGROUND_REPLACE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"&lt;from /uploads&gt;"</span>,
+    <span class="s">"prompt"</span>: <span class="s">"Warm grey studio"</span>,
+    <span class="s">"shadow"</span>: true,
+    <span class="s">"relight"</span>: true
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:bg:v1"</span>,
+  <span class="s">"merchantRef"</span>: <span class="s">"store-441"</span>
+}
+
+<span class="c">// clientKey is your idempotency key.</span>
+<span class="c">// Replay it after a timeout and you</span>
+<span class="c">// get the same job back, not a</span>
+<span class="c">// second charge.</span></pre>
+        </div>
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 11h16M4 16h10"/></svg>
+              <h3>Write the description</h3>
+            </div>
+            <p>Unique, indexable copy per listing, in structured fields rather than a blob of prose. Blank and duplicated descriptions are the usual reason marketplace pages do not rank — this is a search-traffic change, not a cosmetic one.</p>
+            <span class="cost">2 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"TEXT_GENERATE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"&lt;same upload&gt;"</span>,
+    <span class="s">"productKey"</span>: <span class="s">"sku-88213"</span>,
+    <span class="s">"productName"</span>: <span class="s">"Bucket hat"</span>,
+    <span class="s">"details"</span>: <span class="s">"reversible, cotton"</span>,
+    <span class="s">"language"</span>: <span class="s">"en"</span>
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:copy:v1"</span>
+}
+
+<span class="c">// productKey is your listing id.</span>
+<span class="c">// Copy is compared against it, so</span>
+<span class="c">// a second angle of one product</span>
+<span class="c">// never comes back reading like a</span>
+<span class="c">// duplicate listing.</span></pre>
+        </div>
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/></svg>
+              <h3>Raise the resolution</h3>
+            </div>
+            <p>So a thumbnail survives a product page. Cheap, fast, and no model judgement is involved — worth running unconditionally on anything that arrives below your display size.</p>
+            <span class="cost">3 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"UPSCALE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"…"</span>,
+    <span class="s">"factor"</span>: 2
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:up:v1"</span>
+}</pre>
+        </div>
+
+        <div class="dev-cap fresh">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2M11 8.5v3M11 14v.01"/></svg>
+              <h3>Check it is the product</h3>
+              <span class="tagnew">Not built yet</span>
+            </div>
+            <p>A screenshot instead of a photograph. Last week's price list. Somebody's child. You hear about it before it goes live — and the answer is always a warning with a reason, never a block. A merchant who is told what is wrong fixes it; a merchant who is refused opens a support ticket.</p>
+            <span class="cost">1 credit, proposed</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/inspect
+{
+  <span class="s">"sourceKey"</span>: <span class="s">"…"</span>,
+  <span class="s">"declared"</span>: {
+    <span class="s">"category"</span>: <span class="s">"bags"</span>,
+    <span class="s">"name"</span>: <span class="s">"Mini handbag"</span>
+  }
+}
+
+<span class="c">// →</span>
+{
+  <span class="s">"verdict"</span>: <span class="s">"mismatch"</span>,
+  <span class="s">"confidence"</span>: 0.91,
+  <span class="s">"sawInstead"</span>: <span class="s">"a screenshot"</span>,
+  <span class="s">"advice"</span>: <span class="s">"Looks like a photo of"</span>
+             <span class="s">"a price list rather…"</span>
+}</pre>
+        </div>
+      </div>
+
+      <div class="dev-note" style="background:var(--accent-wash)">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:var(--accent)"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <p>The first three are live today and metered. <strong>Inspect is designed, not shipped</strong> — it is on this page because it is the piece platforms ask for first, and we would rather show you the shape we intend than quietly imply it already exists.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- keys and projects ---------------- -->
+    <div class="org-wrap rv" style="margin-top:clamp(48px,7vw,84px)">
       <div class="org-grid">
         <div>
-          <h2 style="font-size:clamp(26px,3.8vw,38px);font-weight:800;max-width:18ch">Content for every merchant, from one integration.</h2>
-          <p class="sec-lede" style="margin-top:16px">Your merchants upload what they can manage — a photo on a table, under a ceiling light. Send it to AnyStudio and give it back to them ready for your storefront, with a description no other listing on your platform is using.</p>
+          <h2 style="font-size:clamp(24px,3.2vw,32px);font-weight:700;letter-spacing:-.025em;line-height:1.1">One account. A key per environment.</h2>
+          <p class="sec-lede" style="margin-top:14px">Test keys cannot touch live resources. Keys are stored hashed, scoped to a project, and revocable without a deploy. Usage is metered per project and attributed per merchant from the very first call — so you can see real numbers before you decide who pays for them.</p>
+          <div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:22px">
+            <div>
+              <b style="font-family:var(--f-display);font-size:22px;font-weight:700;display:block">Per project</b>
+              <span style="font-size:14px;color:var(--muted)">quotas and billing</span>
+            </div>
+            <div>
+              <b style="font-family:var(--f-display);font-size:22px;font-weight:700;display:block">Per merchant</b>
+              <span style="font-size:14px;color:var(--muted)">usage, from call one</span>
+            </div>
+          </div>
+        </div>
+        <div>
           <div class="keyrow">
             <span><span class="kn">Marketplace — production</span><br><span class="kv">as_live_4f2b••••••••••</span></span>
             <span class="pill live">Live</span>
@@ -2379,28 +2783,36 @@ figure{margin:0}
             <span><span class="kn">Mobile app — staging</span><br><span class="kv">as_test_9c71••••••••••</span></span>
             <span class="pill">Test</span>
           </div>
-          <p style="margin-top:18px;color:var(--muted);font-size:14.5px">One account, many projects, separate keys and quotas for each. Billed on what you actually generate.</p>
-        </div>
-        <div>
-<pre class="code"><span class="c">// One call per merchant listing</span>
-<span class="k">await</span> anystudio.generations.<span class="k">create</span>({
-  project: <span class="s">"marketplace-prod"</span>,
-  source:  <span class="s">"https://cdn.yourshop.com/p/8812.jpg"</span>,
-  outputs: [<span class="s">"storefront"</span>, <span class="s">"description"</span>],
-  brand:   { name: <span class="s">"Bimbo Fabrics"</span> },
-  webhook: <span class="s">"https://api.yourshop.com/hooks/as"</span>
-})
-
-<span class="c">// → 4 optimized images + a unique description</span>
-<span class="c">// → 1 API call, 40 credits, ~12s</span></pre>
-          <div class="api-cta">
-            <a class="btn btn-primary" href="org.html">Get a test key</a>
-            <a class="btn btn-ghost" href="org.html#contact">Talk to us about volume</a>
+          <div class="keyrow" style="border-style:dashed;color:var(--muted)">
+            <span><span class="kn" style="font-weight:500">+ New project</span></span>
           </div>
-          <p class="api-note">500 test credits, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
+          <p style="margin-top:18px;color:var(--muted);font-size:14.5px">One account, many projects, separate keys and quotas for each. Billed on what you actually generate.</p>
         </div>
       </div>
     </div>
+
+    <!-- ---------------- try it on your own catalogue ---------------- -->
+    <div class="dev-try rv">
+      <div>
+        <h2>See it on your own catalogue, not ours.</h2>
+        <p>Send us a link to your storefront. We run ten of your live listings through and send back a private page comparing them — before and after, with the descriptions beside them. No integration, no signup, nothing to install.</p>
+        <div class="api-cta">
+          <a class="btn btn-primary btn-lg" href="org.html#contact">Try it on your own catalogue</a>
+          <a class="btn btn-ghost btn-lg" href="org.html">Get a test key instead</a>
+        </div>
+        <p class="fine">Takes an email and a storefront URL. We approve requests by hand before the link goes out, usually the same day — which is slower than a signup form, and the reason the ten listings are yours rather than ours.</p>
+      </div>
+      <div class="dev-get">
+        <span class="mono">What comes back</span>
+        <ul>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>Ten of your own listings, before and after</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A written description for each, ready to paste</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A sandbox key, so your engineers can make the calls themselves</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A note on where the images go and how long they are kept, for your security review</span></li>
+        </ul>
+      </div>
+    </div>
+
   </div>
 </section>
 
