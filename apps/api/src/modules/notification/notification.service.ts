@@ -42,6 +42,7 @@ const CAPABILITY_WORD: Record<string, string> = {
   MUSIC: 'song',
   DUB: 'translated video',
   LIPSYNC: 'lip-synced video',
+  INSPECT: 'photo check',
 };
 
 @Injectable()

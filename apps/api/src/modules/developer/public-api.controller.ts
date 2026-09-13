@@ -8,6 +8,7 @@
  *   POST /api/v1/uploads                 a presigned PUT for large files
  *   POST /api/v1/uploads/:id/complete
  *   POST /api/v1/generations             { capability, params, clientKey?, merchantRef? }
+ *   POST /api/v1/inspect                 { sourceKey, declared?, clientKey?, merchantRef? } — the verdict inline
  *   GET  /api/v1/generations             this key's project, newest first
  *   GET  /api/v1/generations/:id
  *   POST /api/v1/generations/:id/cancel
@@ -23,9 +24,9 @@
  * Every answer is the same envelope the portal gets; every error has a
  * `error` identifier and may include a `fields` array. See docs/API.md.
  */
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
 import { Public } from '../auth/decorators';
 import { AudioService } from '../audio/audio.service';
 import { ProviderRegistry } from '../provider/provider.registry';
@@ -33,7 +34,7 @@ import { TemplateService } from '../template/template.service';
 import { PresignUploadDto } from '../media/media.dto';
 import { ApiKeyGuard, RequireScope } from './api-key.guard';
 import { PublicApiService } from './public-api.service';
-import { ApiCreateGenerationDto, ApiListGenerationsDto, ApiQuoteGenerationDto, ApiUploadUrlDto } from './public-api.dto';
+import { ApiCreateGenerationDto, ApiInspectDto, ApiListGenerationsDto, ApiQuoteGenerationDto, ApiUploadUrlDto } from './public-api.dto';
 
 @ApiTags('public api')
 @ApiBearerAuth('apiKey')
@@ -89,6 +90,17 @@ export class PublicApiController {
   @ApiOperation({ summary: 'Ask for a generation; poll it or receive a webhook when it finishes' })
   create(@Req() req: Request, @Body() body: ApiCreateGenerationDto) {
     return this.api.create(req.apiKey!, body);
+  }
+
+  @Post('/inspect')
+  @RequireScope('generations:write')
+  @ApiOperation({ summary: 'Is this photo the product? One credit; the verdict comes back inline' })
+  @ApiResponse({ status: 200, description: 'Finished: `inspection` holds the verdict, or is null with `generation.failure` set and the credit returned' })
+  @ApiResponse({ status: 202, description: 'Still running after the wait: poll `generation.id` or take the webhook' })
+  async inspect(@Req() req: Request, @Body() body: ApiInspectDto, @Res({ passthrough: true }) res: Response) {
+    const { status, body: out } = await this.api.inspect(req.apiKey!, body);
+    res.status(status);
+    return out;
   }
 
   @Post('/generations/quote')

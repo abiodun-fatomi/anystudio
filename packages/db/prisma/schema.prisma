@@ -1295,6 +1295,7 @@ enum ProviderCapability {
   MUSIC
   DUB
   LIPSYNC
+  INSPECT
 }
 
 /// One routable provider model FOR ONE CAPABILITY. The same vendor model can

@@ -51,6 +51,7 @@ export const CAPABILITIES = [
   'MUSIC',
   'DUB',
   'LIPSYNC',
+  'INSPECT',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 /** Customer-callable capabilities; stitching is an internal worker operation. */
@@ -610,6 +611,20 @@ export const capabilityParams = {
     tone: z.string().max(80).optional(),
     platforms: z.array(z.enum(['instagram', 'tiktok', 'whatsapp_status', 'facebook', 'x'])).default(['instagram', 'whatsapp_status']),
   }),
+  /**
+   * Is this photo the product? One vision call, a verdict, a reason and one
+   * sentence of advice. The declared name and category are what the platform
+   * was told by the merchant; the check compares the picture against them.
+   */
+  INSPECT: z.object({
+    sourceKey: objectKey,
+    declared: z
+      .object({
+        name: z.string().max(120).optional(),
+        category: z.string().max(80).optional(),
+      })
+      .optional(),
+  }),
   VOICEOVER: z.object({
     script: z.string().min(1).max(4000),
     language: z.string().max(16).default('en'),
@@ -799,6 +814,7 @@ export const DEFAULT_COST_CODE: Record<Capability, string> = {
   MUSIC: 'audio.music.preview',
   DUB: 'video.translate',
   LIPSYNC: 'video.lipsync',
+  INSPECT: 'image.inspect',
 };
 
 /**

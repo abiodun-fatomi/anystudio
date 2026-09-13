@@ -438,6 +438,7 @@ header.nav .wrap{max-width:var(--max-nav)}
 .hero-h em{font-style:normal;color:var(--accent)}
 .hero-sub{margin-top:20px;font-size:clamp(16.5px,1.9vw,19px);color:var(--ink-soft);max-width:50ch;line-height:1.55}
 .hero-actions{margin-top:30px;display:flex;gap:12px;flex-wrap:wrap}
+.hero-actions .btn[hidden]{display:none} /* the audience switch hides the other pair; .btn's display beats the attribute */
 .hero-note{margin-top:16px;display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:13.5px;min-height:2.6em}
 .hero-note .dot{margin-top:7px}
 /* the longest note wraps to two lines on a phone — reserve for it */
@@ -1493,11 +1494,15 @@ figure{margin:0}
 
 
         <div class="hero-actions">
-          <a class="btn btn-primary btn-lg" href="https://wa.me/17753032588?text=Hi%20AnyStudio%2C%20I%27d%20like%20to%20try%20it" target="_blank" rel="noopener noreferrer">
+          <a class="btn btn-primary btn-lg" data-cta="seller" href="https://wa.me/17753032588?text=Hi%20AnyStudio%2C%20I%27d%20like%20to%20try%20it" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.1-1.3A10 10 0 1012 2zm0 2a8 8 0 11-4.1 14.9l-.4-.2-3 .8.8-2.9-.2-.4A8 8 0 0112 4z"/></svg>
             Try it free
           </a>
-          <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+          <!-- A platform is not a WhatsApp customer. Its button goes to the
+               API page; the build rewrites #api to /developers. -->
+          <a class="btn btn-primary btn-lg" data-cta="org" href="#api" hidden>Try it on your catalogue</a>
+          <a class="btn btn-ghost btn-lg" data-cta="seller" href="#how">See how it works</a>
+          <a class="btn btn-ghost btn-lg" data-cta="org" href="org.html#contact" hidden>Talk to us about volume</a>
         </div>
         <p class="hero-note"><span class="dot"></span> <span id="heroNote">No card. Works on WhatsApp or the web.</span></p>
       </div>
@@ -2375,8 +2380,8 @@ figure{margin:0}
    landing page — and so is any comment written ABOVE the banner comment,
    which is why this note is inside the section rather than over it.
 
-   No href="#anchor" inside it. resolveAnchors() rewrites those to /#anchor on
-   every page that isn't the landing page, which from here sends a reader home.
+   Hash links inside it go through resolveBodyAnchors(): one whose id is not
+   on this page is sent to the landing page, which from here is a wrong turn.
 
    And this stylesheet lives in the body, not the head, on purpose.
 
@@ -2726,10 +2731,10 @@ figure{margin:0}
             <div class="hd">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2M11 8.5v3M11 14v.01"/></svg>
               <h3>Check it is the product</h3>
-              <span class="tagnew">Not built yet</span>
+              <span class="tagnew">New</span>
             </div>
-            <p>A screenshot instead of a photograph. Last week's price list. Somebody's child. You hear about it before it goes live — and the answer is always a warning with a reason, never a block. A merchant who is told what is wrong fixes it; a merchant who is refused opens a support ticket.</p>
-            <span class="cost">1 credit, proposed</span>
+            <p>A screenshot instead of a photograph. Last week's price list. A person and no product. You hear about it before it goes live — a verdict, the reasons from a fixed list you can put in your own words, and one sentence the merchant can act on. Never a block: a merchant who is told what is wrong fixes it; a merchant who is refused opens a support ticket.</p>
+            <span class="cost">1 credit</span>
           </div>
 <pre class="code"><span class="k">POST</span> /api/v1/inspect
 {
@@ -2737,23 +2742,25 @@ figure{margin:0}
   <span class="s">"declared"</span>: {
     <span class="s">"category"</span>: <span class="s">"bags"</span>,
     <span class="s">"name"</span>: <span class="s">"Mini handbag"</span>
-  }
+  },
+  <span class="s">"merchantRef"</span>: <span class="s">"store-441"</span>
 }
 
-<span class="c">// →</span>
+<span class="c">// → 200, inline, within 20s</span>
 {
   <span class="s">"verdict"</span>: <span class="s">"mismatch"</span>,
   <span class="s">"confidence"</span>: 0.91,
-  <span class="s">"sawInstead"</span>: <span class="s">"a screenshot"</span>,
-  <span class="s">"advice"</span>: <span class="s">"Looks like a photo of"</span>
-             <span class="s">"a price list rather…"</span>
+  <span class="s">"saw"</span>: <span class="s">"brown sandals on tiles"</span>,
+  <span class="s">"issues"</span>: [<span class="s">"category_mismatch"</span>],
+  <span class="s">"advice"</span>: <span class="s">"Take a photo of the</span>
+    <span class="s">bag itself, on a plain surface."</span>
 }</pre>
         </div>
       </div>
 
-      <div class="dev-note" style="background:var(--accent-wash)">
-        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:var(--accent)"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
-        <p>The first three are live today and metered. <strong>Inspect is designed, not shipped</strong> — it is on this page because it is the piece platforms ask for first, and we would rather show you the shape we intend than quietly imply it already exists.</p>
+      <div class="dev-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <p><strong>All four are live and metered.</strong> The verdicts and the reasons are closed lists — <span class="mono" style="letter-spacing:0;text-transform:none;font-size:12.5px">product · mismatch · not_a_product · unclear</span> — so you translate them once and never meet a new string in production. <span class="mono" style="letter-spacing:0;text-transform:none;font-size:12.5px">low_resolution</span> comes from the file's own dimensions, not from a model's guess.</p>
       </div>
     </div>
 
@@ -3230,6 +3237,9 @@ figure{margin:0}
         el.classList.remove("swap"); void el.offsetWidth; el.classList.add("swap");
       });
       heroH.innerHTML = c.h; heroSub.textContent = c.s; heroNote.textContent = c.n;
+      // The buttons follow the audience: a platform is sent to the API page, everyone else to WhatsApp.
+      var want = b.dataset.aud === "org" ? "org" : "seller";
+      document.querySelectorAll(".hero-actions [data-cta]").forEach(function(a){ a.hidden = a.dataset.cta !== want; });
     });
   });
 
