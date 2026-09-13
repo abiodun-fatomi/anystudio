@@ -196,6 +196,29 @@ function resolveAnchors(html, onLanding) {
   return html.replace(/href="#([a-z-]+)"/g, (_m, id) => (id === 'top' ? 'href="/"' : `href="/#${id}"`));
 }
 
+/**
+ * The same, for a page's BODY — which the chrome rule above never touched.
+ *
+ * The landing page shipped with "What a hundred costs" pointing at #pricing,
+ * a section this very script had lifted out to /pricing: the link scrolled
+ * nowhere. The nav was rewritten, the body was not, and nothing checked.
+ *
+ * A body is not the nav, though: the Why page links to its own #roi and
+ * must keep it. So the rule is by what the body actually contains. A hash
+ * whose id is on this page stays. A promoted section that is not on this
+ * page goes to its own URL. Anything else is a landing-page section, so a
+ * subpage sends it home and the landing page keeps it.
+ */
+function resolveBodyAnchors(body, onLanding) {
+  return body.replace(/href="#([a-z-]+)"/g, (m, id) => {
+    if (body.includes(`id="${id}"`)) return m;
+    const promoted = PROMOTED.find((p) => p.id === id);
+    if (promoted) return `href="${promoted.path}"`;
+    if (onLanding) return m;
+    return id === 'top' ? 'href="/"' : `href="/#${id}"`;
+  });
+}
+
 // ------------------------------------------------------------ the landing
 
 const landingSrc = readFileSync(resolve(root, 'design/landing.html'), 'utf8');
@@ -304,7 +327,7 @@ for (const page of PAGES) {
   const doc = [
     headFor(head, page),
     markCurrent(resolveAnchors(nav, page.keepAnchors), page.path),
-    page.body,
+    resolveBodyAnchors(page.body, page.keepAnchors),
     resolveAnchors(footer, page.keepAnchors),
     script,
   ].join('\n');
