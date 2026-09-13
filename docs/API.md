@@ -288,7 +288,7 @@ timestamp. Old output URLs in a replay can be expired: GET the generation again.
 
 ## Limits
 
-- POST generations: 60/minute per key, plus 10/minute per merchantRef behind that key.
+- POST generations and POST inspect: 60/minute per key, plus 10/minute per merchantRef behind that key.
 - POST generations/quote: 60/minute per key; generation list/get: 300/minute per key.
 - RateLimit-Limit/Remaining/Reset describe the evaluated rule; Retry-After is sent
   on 429, not every response. Respect it and apply backoff.

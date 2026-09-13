@@ -2558,7 +2558,7 @@ figure{margin:0}
           <a class="btn btn-primary btn-lg" href="org.html">Get a test key</a>
           <a class="btn btn-ghost btn-lg" href="org.html#contact">Talk to us about volume</a>
         </div>
-        <p class="api-note">500 test credits, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
+        <p class="api-note">150 credits to start, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
       </div>
 
       <div class="dev-ba">
@@ -2659,6 +2659,7 @@ figure{margin:0}
             <span class="cost">10 credits</span>
           </div>
 <pre class="code"><span class="k">POST</span> /api/v1/generations
+<span class="c">Authorization: Bearer as_live_••••</span>
 {
   <span class="s">"capability"</span>: <span class="s">"BACKGROUND_REPLACE"</span>,
   <span class="s">"params"</span>: {
@@ -2687,6 +2688,7 @@ figure{margin:0}
             <span class="cost">2 credits</span>
           </div>
 <pre class="code"><span class="k">POST</span> /api/v1/generations
+<span class="c">Authorization: Bearer as_live_••••</span>
 {
   <span class="s">"capability"</span>: <span class="s">"TEXT_GENERATE"</span>,
   <span class="s">"params"</span>: {
@@ -2716,6 +2718,7 @@ figure{margin:0}
             <span class="cost">3 credits</span>
           </div>
 <pre class="code"><span class="k">POST</span> /api/v1/generations
+<span class="c">Authorization: Bearer as_live_••••</span>
 {
   <span class="s">"capability"</span>: <span class="s">"UPSCALE"</span>,
   <span class="s">"params"</span>: {
@@ -2737,6 +2740,7 @@ figure{margin:0}
             <span class="cost">1 credit</span>
           </div>
 <pre class="code"><span class="k">POST</span> /api/v1/inspect
+<span class="c">Authorization: Bearer as_live_••••</span>
 {
   <span class="s">"sourceKey"</span>: <span class="s">"…"</span>,
   <span class="s">"declared"</span>: {
