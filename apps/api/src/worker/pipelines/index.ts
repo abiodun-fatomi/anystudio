@@ -38,6 +38,7 @@ import { collagePipeline } from './collage';
 import { batchPipeline } from './batch';
 import { adPipeline } from './ad';
 import { videoShotPipeline } from './video-shot';
+import { inspectPipeline } from './inspect';
 import type { GenerationService } from '../../modules/generation/generation.service';
 
 export interface PipelineContext {
@@ -145,6 +146,8 @@ export class Pipelines {
     VOICEOVER: voiceoverPipeline,
     DUB: dubPipeline,
     LIPSYNC: lipsyncPipeline,
+    // A vision question routed through the text models; no provider declares INSPECT itself.
+    INSPECT: inspectPipeline,
   };
 
   run(ctx: PipelineContext): Promise<PipelineResult> {

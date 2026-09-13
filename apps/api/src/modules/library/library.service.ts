@@ -50,6 +50,7 @@ export const TYPE_OF: Record<ProviderCapability, Exclude<LibraryType, 'all'>> = 
   DUB: 'video',
   LIPSYNC: 'video',
   TEXT_GENERATE: 'copy',
+  INSPECT: 'copy',
   VOICEOVER: 'audio',
   MUSIC: 'audio',
 };

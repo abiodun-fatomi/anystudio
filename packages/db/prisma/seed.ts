@@ -36,6 +36,10 @@ const CREDIT_COSTS = [
   { code: 'image.background', credits: 10, label: 'Background replacement' },
   { code: 'image.bg_remove', credits: 2, label: 'Background removal' },
   { code: 'image.upscale', credits: 3, label: 'Upscale' },
+  // One credit, so a marketplace can afford to run it on every upload: is
+  // this photo the product the merchant says it is? A verdict and one line
+  // of advice — never a block.
+  { code: 'image.inspect', credits: 1, label: 'Product check' },
   { code: 'image.relight', credits: 5, label: 'Relight and shadow' },
   // Ours end to end — sharp on our own box, no vendor — so it is priced to be
   // used freely: a seller who makes a collage of every batch posts more often.

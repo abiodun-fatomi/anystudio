@@ -1673,6 +1673,8 @@ const GROUP_BY_CAPABILITY: Partial<Record<Capability, ToolGroup>> = {
   MUSIC: 'sound',
   VOICEOVER: 'sound',
   TEXT_GENERATE: 'words',
+  // A verdict is text about the photo, not a photo; it sifts with the copy.
+  INSPECT: 'words',
 };
 /**
  * Takes a plain string: a result carries whatever capability the server
