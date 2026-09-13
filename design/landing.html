@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <!-- ==================== DISCOVERY ==================== -->
-<meta name="description" content="Send one phone photo on WhatsApp and get back branded product images, a written description and a short reel — ready to post. Three generations free, no card.">
+<meta name="description" content="Send one phone photo on WhatsApp and get back branded product images, a written description and a short reel — ready to post. 15 free images, no card.">
 <meta name="keywords" content="product photo editor, AI product photography, background remover, product description generator, reel maker, WhatsApp AI, social media content for sellers, e-commerce image optimisation, brand kit, UGC ads">
 <meta name="author" content="AnyStudio">
 <meta name="publisher" content="AnyStudio">
@@ -126,7 +126,7 @@
         "highPrice": "199",
         "offerCount": "4",
         "offers": [
-          {"@type":"Offer","name":"Starter","price":"0","priceCurrency":"USD","description":"Three generations free. No card required."},
+          {"@type":"Offer","name":"Starter","price":"0","priceCurrency":"USD","description":"15 free branded images. No card required."},
           {"@type":"Offer","name":"Creator","price":"9","priceCurrency":"USD","description":"600 credits a month — about 60 images or 5 reels."},
           {"@type":"Offer","name":"Business","price":"29","priceCurrency":"USD","description":"2,400 credits a month — about 240 images or 20 reels."},
           {"@type":"Offer","name":"Organization","price":"199","priceCurrency":"USD","description":"12,000 credits a month, seats with roles, projects and API access."}
@@ -511,10 +511,26 @@ header.nav .wrap{max-width:var(--max-nav)}
 }
 .frame.wide{grid-column:span 2;aspect-ratio:2/1}
 
-/* ---- reel frames: they play themselves ----
-   A muted looping video sits over the still. If it can't load (the artifact
-   viewer blocks external media) the still stays and gets a slow Ken Burns
-   drift instead, so the frame still reads as moving footage. */
+/* ---- reel frames ----
+   A muted looping video sits over the still, played by script once it is
+   nearly in view — never by an `autoplay` attribute, because the shots are
+   65MB of MP4 and whoever is looking is paying for them. If the video can't
+   load (the artifact viewer blocks external media) the still stays and gets
+   a slow Ken Burns drift instead, so the frame still reads as footage.
+
+   On a metered connection no video is fetched at all and the frame offers a
+   play badge instead: a tap is the viewer deciding the megabytes are worth
+   it, which is the only honest way to spend someone else's data. */
+.tap-to-play{position:relative;cursor:pointer}
+.tap-to-play::after{
+  content:"";position:absolute;left:50%;top:50%;z-index:6;
+  width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;
+  background:rgba(0,0,0,.55) no-repeat center;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E");
+  background-size:20px 20px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.25);
+  pointer-events:none;
+}
 .frame .vd{
   position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;
   display:block;background:#17131A;
@@ -1479,7 +1495,7 @@ figure{margin:0}
         <div class="hero-actions">
           <a class="btn btn-primary btn-lg" href="https://wa.me/17753032588?text=Hi%20AnyStudio%2C%20I%27d%20like%20to%20try%20it" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.1-1.3A10 10 0 1012 2zm0 2a8 8 0 11-4.1 14.9l-.4-.2-3 .8.8-2.9-.2-.4A8 8 0 0112 4z"/></svg>
-            Try three free
+            Try it free
           </a>
           <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
         </div>
@@ -1496,14 +1512,14 @@ figure{margin:0}
 
           <div class="frame source" data-i="0">
             <div class="frame-art" style="background:linear-gradient(150deg,#b9a998,#7d6f63 55%,#4d4a46)"></div>
-            <img class="ph" alt="A bucket hat photographed at home on a kitchen table" src="/shots/hat-source.webp">
+            <img class="ph" alt="A bucket hat photographed at home on a kitchen table" src="/shots/hat-source.webp" srcset="/shots/hat-source-400w.webp 400w, /shots/hat-source-800w.webp 800w, /shots/hat-source-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px">
             <span class="fnum">01</span>
             <span class="badge">Your photo</span>
           </div>
 
           <div class="frame" data-i="1">
             <div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div>
-            <img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp">
+            <img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp" srcset="/shots/hat-peach-400w.webp 400w, /shots/hat-peach-800w.webp 800w, /shots/hat-peach-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
             <span class="scrim"></span>
             <span class="fnum">02</span>
             <div class="frame-tag"><span class="nm">Ládé<br>Hats</span><span class="pr">$24</span></div>
@@ -1511,7 +1527,7 @@ figure{margin:0}
 
           <div class="frame" data-i="2">
             <div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div>
-            <img class="ph" alt="The same hat on a deep teal backdrop" src="/shots/hat-teal.webp">
+            <img class="ph" alt="The same hat on a deep teal backdrop" src="/shots/hat-teal.webp" srcset="/shots/hat-teal-400w.webp 400w, /shots/hat-teal-800w.webp 800w, /shots/hat-teal-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
             <span class="scrim"></span>
             <span class="fnum">03</span>
             <div class="frame-tag"><span class="nm">Ládé<br>Hats</span><span class="pr">$24</span></div>
@@ -1525,8 +1541,8 @@ figure{margin:0}
 
           <div class="frame reel" data-i="4">
             <div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div>
-            <img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp">
-            <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="/shots/hat-reel.mp4" type="video/mp4"></video>
+            <img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp" srcset="/shots/hat-peach-400w.webp 400w, /shots/hat-peach-800w.webp 800w, /shots/hat-peach-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
+            <video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/hat-reel.mp4" type="video/mp4"></video>
             <span class="scrim"></span>
             <span class="fnum">05</span>
             <span class="dur">0:05</span>
@@ -1535,8 +1551,8 @@ figure{margin:0}
 
           <div class="frame" data-i="5">
             <div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
-            <img class="ph" alt="The same hat held up to the camera, filmed the way a customer would" src="/shots/hat-ugc.webp">
-            <video class="vd" autoplay muted loop playsinline preload="metadata" disablepictureinpicture><source src="/shots/hat-ugc.mp4" type="video/mp4"></video>
+            <img class="ph" alt="The same hat held up to the camera, filmed the way a customer would" src="/shots/hat-ugc.webp" srcset="/shots/hat-ugc-400w.webp 400w, /shots/hat-ugc-800w.webp 800w, /shots/hat-ugc-1200w.webp 1200w" sizes="(max-width: 700px) 139px, 160px" loading="lazy" decoding="async">
+            <video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/hat-ugc.mp4" type="video/mp4"></video>
             <span class="scrim"></span>
             <span class="fnum">06</span>
             <span class="ugc">UGC ad</span>
@@ -1585,14 +1601,14 @@ figure{margin:0}
           <div class="cell" data-slot="01">
           <div class="frame source" data-s="0">
             <div class="frame-art" style="background:linear-gradient(150deg,#b9a998,#7d6f63 55%,#4d4a46)"></div>
-            <img class="ph" alt="A bottle of hair oil photographed at home on a kitchen table" src="/shots/oil-source.webp">
+            <img class="ph" alt="A bottle of hair oil photographed at home on a kitchen table" src="/shots/oil-source.webp" srcset="/shots/oil-source-400w.webp 400w, /shots/oil-source-800w.webp 800w, /shots/oil-source-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
             <span class="badge">Your photo</span>
           </div>
           </div>
           <div class="cell" data-slot="02">
           <div class="frame" data-s="1">
             <div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div>
-            <img class="ph" alt="The same bottle on a soft peach studio backdrop" src="/shots/oil-peach.webp">
+            <img class="ph" alt="The same bottle on a soft peach studio backdrop" src="/shots/oil-peach.webp" srcset="/shots/oil-peach-400w.webp 400w, /shots/oil-peach-800w.webp 800w, /shots/oil-peach-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
             <span class="scrim"></span>
             <div class="frame-tag"><span class="nm">Ravi Beauty</span><span class="pr">$12</span></div>
           </div>
@@ -1600,7 +1616,7 @@ figure{margin:0}
           <div class="cell" data-slot="03">
           <div class="frame" data-s="2">
             <div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div>
-            <img class="ph" alt="The same bottle on a deep teal backdrop" src="/shots/oil-teal.webp">
+            <img class="ph" alt="The same bottle on a deep teal backdrop" src="/shots/oil-teal.webp" srcset="/shots/oil-teal-400w.webp 400w, /shots/oil-teal-800w.webp 800w, /shots/oil-teal-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
             <span class="scrim"></span>
             <div class="frame-tag"><span class="nm">Ravi Beauty</span><span class="pr">$12</span></div>
           </div>
@@ -1608,7 +1624,7 @@ figure{margin:0}
           <div class="cell" data-slot="04">
           <div class="frame" data-s="3">
             <div class="frame-art" style="background:linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)"></div>
-            <img class="ph" alt="The same bottle on a plain white sweep" src="/shots/oil-white.webp">
+            <img class="ph" alt="The same bottle on a plain white sweep" src="/shots/oil-white.webp" srcset="/shots/oil-white-400w.webp 400w, /shots/oil-white-800w.webp 800w, /shots/oil-white-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
             <span class="scrim"></span>
             <div class="frame-tag"><span class="nm">Ravi Beauty</span><span class="pr">$12</span></div>
           </div>
@@ -1616,8 +1632,8 @@ figure{margin:0}
           <div class="cell" data-slot="05">
           <div class="frame reel" data-s="4">
             <div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div>
-            <img class="ph" alt="The same bottle on a soft peach studio backdrop" src="/shots/oil-peach.webp">
-            <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="/shots/oil-reel.mp4" type="video/mp4"></video>
+            <img class="ph" alt="The same bottle on a soft peach studio backdrop" src="/shots/oil-peach.webp" srcset="/shots/oil-peach-400w.webp 400w, /shots/oil-peach-800w.webp 800w, /shots/oil-peach-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
+            <video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/oil-reel.mp4" type="video/mp4"></video>
             <span class="scrim"></span>
             <span class="dur">0:05</span>
             <span class="live"><i></i>Reel</span><span class="prog"><i></i></span>
@@ -1626,8 +1642,8 @@ figure{margin:0}
           <div class="cell" data-slot="06">
           <div class="frame" data-s="5">
             <div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div>
-            <img class="ph" alt="The same bottle held up to the camera, filmed the way a customer would" src="/shots/oil-ugc.webp">
-            <video class="vd" autoplay muted loop playsinline preload="metadata" disablepictureinpicture><source src="/shots/oil-ugc.mp4" type="video/mp4"></video>
+            <img class="ph" alt="The same bottle held up to the camera, filmed the way a customer would" src="/shots/oil-ugc.webp" srcset="/shots/oil-ugc-400w.webp 400w, /shots/oil-ugc-800w.webp 800w, /shots/oil-ugc-1200w.webp 1200w" sizes="(max-width: 700px) 91px, 175px" loading="lazy" decoding="async">
+            <video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/oil-ugc.mp4" type="video/mp4"></video>
             <span class="scrim"></span>
             <span class="ugc">UGC ad</span>
             <div class="frame-tag"><span class="nm">Ravi Beauty</span><span class="pr">$12</span></div>
@@ -1660,12 +1676,12 @@ figure{margin:0}
       </div>
       <div class="demo-card">
         <div class="demo-row tall six">
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div><img class="ph" alt="The vase on a soft peach studio backdrop" src="/shots/vase-peach.webp" width="1024" height="1024" loading="lazy" decoding="async"><span class="scrim"></span><span class="fnum">01</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div><img class="ph" alt="The same vase on a deep teal backdrop" src="/shots/vase-teal.webp" width="1024" height="1024" loading="lazy" decoding="async"><span class="scrim"></span><span class="fnum">02</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)"></div><img class="ph" alt="The same vase on a plain white sweep" src="/shots/vase-white.webp" width="1024" height="1024" loading="lazy" decoding="async"><span class="scrim"></span><span class="fnum">03</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div><img class="ph" alt="The same vase on a pale oak sideboard in window light" src="/shots/vase-shelf.webp" width="1024" height="1024" loading="lazy" decoding="async"><span class="scrim"></span><span class="fnum">04</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
-          <div class="frame reel"><div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div><img class="ph" alt="The same vase in a five-second reel" src="/shots/vase-peach.webp" width="1024" height="1024" loading="lazy" decoding="async"><video class="vd" autoplay muted loop playsinline preload="metadata" disablepictureinpicture><source src="/shots/vase-reel.mp4" type="video/mp4"></video><span class="scrim"></span><span class="fnum">05</span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
-          <div class="frame"><div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div><img class="ph" alt="The same vase held up to the camera, filmed the way a customer would" src="/shots/vase-ugc.webp" width="1024" height="1024" loading="lazy" decoding="async"><video class="vd" autoplay muted loop playsinline preload="metadata" disablepictureinpicture><source src="/shots/vase-ugc.mp4" type="video/mp4"></video><span class="scrim"></span><span class="fnum">06</span><span class="ugc">UGC ad</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div><img class="ph" alt="The vase on a soft peach studio backdrop" src="/shots/vase-peach.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-peach-400w.webp 400w, /shots/vase-peach-800w.webp 800w, /shots/vase-peach-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><span class="scrim"></span><span class="fnum">01</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#1E2A4A,#00808F 90%)"></div><img class="ph" alt="The same vase on a deep teal backdrop" src="/shots/vase-teal.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-teal-400w.webp 400w, /shots/vase-teal-800w.webp 800w, /shots/vase-teal-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><span class="scrim"></span><span class="fnum">02</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(200deg,#F2EFEA,#CFC7BD 90%)"></div><img class="ph" alt="The same vase on a plain white sweep" src="/shots/vase-white.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-white-400w.webp 400w, /shots/vase-white-800w.webp 800w, /shots/vase-white-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><span class="scrim"></span><span class="fnum">03</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(30deg,#F5D0A9,#C9455E 95%)"></div><img class="ph" alt="The same vase on a pale oak sideboard in window light" src="/shots/vase-shelf.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-shelf-400w.webp 400w, /shots/vase-shelf-800w.webp 800w, /shots/vase-shelf-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><span class="scrim"></span><span class="fnum">04</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame reel"><div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div><img class="ph" alt="The same vase in a five-second reel" src="/shots/vase-peach.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-peach-400w.webp 400w, /shots/vase-peach-800w.webp 800w, /shots/vase-peach-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/vase-reel.mp4" type="video/mp4"></video><span class="scrim"></span><span class="fnum">05</span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
+          <div class="frame"><div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div><img class="ph" alt="The same vase held up to the camera, filmed the way a customer would" src="/shots/vase-ugc.webp" width="1024" height="1024" loading="lazy" decoding="async" srcset="/shots/vase-ugc-400w.webp 400w, /shots/vase-ugc-800w.webp 800w, /shots/vase-ugc-1200w.webp 1200w" sizes="(max-width: 700px) 143px, 178px"><video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/vase-ugc.mp4" type="video/mp4"></video><span class="scrim"></span><span class="fnum">06</span><span class="ugc">UGC ad</span><div class="frame-tag"><span class="nm">Casa Lume</span><span class="pr">$68</span></div></div>
         </div>
       </div>
     </div>
@@ -1684,15 +1700,15 @@ figure{margin:0}
         <div class="cmp" id="cmp">
           <div class="cmp-layer cmp-before">
             <div class="frame-art" style="background:linear-gradient(150deg,#b9a998,#7d6f63 55%,#4d4a46)"></div>
-            <img class="ph" alt="The seller's original photo of the hat, taken on a kitchen table" src="/shots/hat-source.webp">
+            <img class="ph" alt="The seller's original photo of the hat, taken on a kitchen table" src="/shots/hat-source.webp" srcset="/shots/hat-source-400w.webp 400w, /shots/hat-source-800w.webp 800w, /shots/hat-source-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px">
             <span class="cmp-tag left">Their photo</span>
           </div>
           <div class="cmp-layer cmp-after" id="cmpAfter">
             <div class="frame-art" style="background:linear-gradient(160deg,#FF9E6D,#D6006E 78%)"></div>
-            <img class="ph bgopt on" data-bg="peach" alt="The same hat on a peach studio backdrop" src="/shots/hat-peach.webp">
-            <img class="ph bgopt" data-bg="teal" alt="The same hat on a teal studio backdrop" src="/shots/hat-teal.webp">
-            <img class="ph bgopt" data-bg="white" alt="The same hat on a white studio sweep" src="/shots/hat-white.webp">
-            <img class="ph bgopt" data-bg="sand" alt="The same hat on a sand studio backdrop" src="/shots/hat-sand.webp">
+            <img class="ph bgopt on" data-bg="peach" alt="The same hat on a peach studio backdrop" src="/shots/hat-peach.webp" srcset="/shots/hat-peach-400w.webp 400w, /shots/hat-peach-800w.webp 800w, /shots/hat-peach-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
+            <img class="ph bgopt" data-bg="teal" alt="The same hat on a teal studio backdrop" src="/shots/hat-teal.webp" srcset="/shots/hat-teal-400w.webp 400w, /shots/hat-teal-800w.webp 800w, /shots/hat-teal-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
+            <img class="ph bgopt" data-bg="white" alt="The same hat on a white studio sweep" src="/shots/hat-white.webp" srcset="/shots/hat-white-400w.webp 400w, /shots/hat-white-800w.webp 800w, /shots/hat-white-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
+            <img class="ph bgopt" data-bg="sand" alt="The same hat on a sand studio backdrop" src="/shots/hat-sand.webp" srcset="/shots/hat-sand-400w.webp 400w, /shots/hat-sand-800w.webp 800w, /shots/hat-sand-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async">
             <span class="cmp-tag right">New background</span>
           </div>
           <div class="cmp-bar" id="cmpBar" aria-hidden="true">
@@ -1757,8 +1773,8 @@ figure{margin:0}
       </div>
       <div class="demo-card">
         <div class="demo-row">
-          <div class="frame reel" style="aspect-ratio:9/16"><div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div><img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp"><video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="/shots/hat-reel.mp4" type="video/mp4"></video><span class="scrim"></span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span></div>
-          <div class="frame reel" style="aspect-ratio:9/16"><div class="frame-art" style="background:linear-gradient(160deg,#0C2A33,#00808F 130%)"></div><img class="ph" alt="The same hat on a deep teal backdrop" src="/shots/hat-teal.webp"><video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture><source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033730_e88d408d-ad4b-4938-a379-3f1a8041e6e5.mp4" type="video/mp4"></video><span class="scrim"></span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span></div>
+          <div class="frame reel" style="aspect-ratio:9/16"><div class="frame-art" style="background:linear-gradient(140deg,#2B1B33,#D6006E 120%)"></div><img class="ph" alt="The same hat on a soft peach studio backdrop" src="/shots/hat-peach.webp" srcset="/shots/hat-peach-400w.webp 400w, /shots/hat-peach-800w.webp 800w, /shots/hat-peach-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async"><video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="/shots/hat-reel.mp4" type="video/mp4"></video><span class="scrim"></span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span></div>
+          <div class="frame reel" style="aspect-ratio:9/16"><div class="frame-art" style="background:linear-gradient(160deg,#0C2A33,#00808F 130%)"></div><img class="ph" alt="The same hat on a deep teal backdrop" src="/shots/hat-teal.webp" srcset="/shots/hat-teal-400w.webp 400w, /shots/hat-teal-800w.webp 800w, /shots/hat-teal-1200w.webp 1200w" sizes="(max-width: 700px) 295px, 554px" loading="lazy" decoding="async"><video class="vd" muted loop playsinline preload="none" disablepictureinpicture><source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033730_e88d408d-ad4b-4938-a379-3f1a8041e6e5.mp4" type="video/mp4"></video><span class="scrim"></span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span></div>
           <div class="frame reel" style="aspect-ratio:9/16"><div class="frame-art" style="background:linear-gradient(20deg,#43261C,#FF9E6D 130%)"></div><img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100741_ee51b3da-93f1-4d8c-9749-0d518372e22c_min.webp"><span class="scrim"></span><span class="dur">0:05</span><span class="live"><i></i>Reel</span><span class="prog"><i></i></span></div>
         </div>
       </div>
@@ -1779,7 +1795,7 @@ figure{margin:0}
 
     <div class="shots-lead rv">
       <figure class="shots-src">
-        <img alt="A linen dress photographed on a bed with a phone, under a ceiling light" src="/shots/shot-source.webp" width="900" height="1200">
+        <img alt="A linen dress photographed on a bed with a phone, under a ceiling light" src="/shots/shot-source.webp" width="900" height="1200" srcset="/shots/shot-source-400w.webp 400w, /shots/shot-source-800w.webp 800w, /shots/shot-source-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 218px" loading="lazy" decoding="async">
         <span class="tag">What you send</span>
       </figure>
       <div>
@@ -1792,19 +1808,19 @@ figure{margin:0}
 
     <div class="shots rv">
       <figure class="shot">
-        <img alt="The same linen dress worn by a model on a studio backdrop" src="/shots/shot-model.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <img alt="The same linen dress worn by a model on a studio backdrop" src="/shots/shot-model.webp" loading="lazy" decoding="async" width="900" height="1200" srcset="/shots/shot-model-400w.webp 400w, /shots/shot-model-800w.webp 800w, /shots/shot-model-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 271px">
         <figcaption><b>On a model</b><span>Worn, front and centre, on a clean backdrop. Pick the look, the pose and the setting.</span></figcaption>
       </figure>
       <figure class="shot">
-        <img alt="The same linen dress as a hollow ghost mannequin shot" src="/shots/shot-ghost.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <img alt="The same linen dress as a hollow ghost mannequin shot" src="/shots/shot-ghost.webp" loading="lazy" decoding="async" width="900" height="1200" srcset="/shots/shot-ghost-400w.webp 400w, /shots/shot-ghost-800w.webp 800w, /shots/shot-ghost-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 271px">
         <figcaption><b>Ghost mannequin</b><span>The shape of a body, nobody inside it. What every marketplace listing wants.</span></figcaption>
       </figure>
       <figure class="shot">
-        <img alt="The same linen dress folded and photographed from above" src="/shots/shot-flat.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <img alt="The same linen dress folded and photographed from above" src="/shots/shot-flat.webp" loading="lazy" decoding="async" width="900" height="1200" srcset="/shots/shot-flat-400w.webp 400w, /shots/shot-flat-800w.webp 800w, /shots/shot-flat-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 271px">
         <figcaption><b>Flat lay</b><span>Folded, square to the camera, from above — the shot that shows the whole print.</span></figcaption>
       </figure>
       <figure class="shot">
-        <img alt="A shirt with every crease pressed out" src="/shots/shot-pressed.webp" loading="lazy" decoding="async" width="900" height="1200">
+        <img alt="A shirt with every crease pressed out" src="/shots/shot-pressed.webp" loading="lazy" decoding="async" width="900" height="1200" srcset="/shots/shot-pressed-400w.webp 400w, /shots/shot-pressed-800w.webp 800w, /shots/shot-pressed-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 271px">
         <figcaption><b>Pressed</b><span>Creases from the wardrobe taken out, without touching the cut or the colour.</span></figcaption>
       </figure>
     </div>
@@ -1824,14 +1840,14 @@ figure{margin:0}
     <div class="reels rv">
       <div class="reel">
         <span class="tag">Reveal</span>
-        <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+        <video muted loop playsinline preload="none" disablepictureinpicture
                poster="/shots/hat-peach.webp">
           <source src="/shots/hat-reel.mp4" type="video/mp4">
         </video>
       </div>
       <div class="reel">
         <span class="tag">Price drop</span>
-        <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+        <video muted loop playsinline preload="none" disablepictureinpicture
                poster="/shots/hat-teal.webp">
           <source src="/shots/hat-price.mp4" type="video/mp4">
         </video>
@@ -1842,10 +1858,10 @@ figure{margin:0}
         <b style="margin-top:6px">Or put a person in it.</b>
         <p>A presenter reads your script to camera across several shots, so the product has somebody vouching for it. The voice, the words and the face are yours to choose.</p>
         <div class="faces">
-          <img alt="" src="/shots/presenter-1.webp" loading="lazy" decoding="async" width="76" height="76">
-          <img alt="" src="/shots/presenter-2.webp" loading="lazy" decoding="async" width="76" height="76">
-          <img alt="" src="/shots/presenter-3.webp" loading="lazy" decoding="async" width="76" height="76">
-          <img alt="" src="/shots/presenter-4.webp" loading="lazy" decoding="async" width="76" height="76">
+          <img alt="" src="/shots/presenter-1.webp" loading="lazy" decoding="async" width="76" height="76" srcset="/shots/presenter-1-400w.webp 400w, /shots/presenter-1-800w.webp 800w, /shots/presenter-1-1200w.webp 1200w" sizes="(max-width: 700px) 38px, 38px">
+          <img alt="" src="/shots/presenter-2.webp" loading="lazy" decoding="async" width="76" height="76" srcset="/shots/presenter-2-400w.webp 400w, /shots/presenter-2-800w.webp 800w, /shots/presenter-2-1200w.webp 1200w" sizes="(max-width: 700px) 38px, 38px">
+          <img alt="" src="/shots/presenter-3.webp" loading="lazy" decoding="async" width="76" height="76" srcset="/shots/presenter-3-400w.webp 400w, /shots/presenter-3-800w.webp 800w, /shots/presenter-3-1200w.webp 1200w" sizes="(max-width: 700px) 38px, 38px">
+          <img alt="" src="/shots/presenter-4.webp" loading="lazy" decoding="async" width="76" height="76" srcset="/shots/presenter-4-400w.webp 400w, /shots/presenter-4-800w.webp 800w, /shots/presenter-4-1200w.webp 1200w" sizes="(max-width: 700px) 38px, 38px">
           <span>Pick who sells it — and which of nine languages they sell it in.</span>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
@@ -1877,7 +1893,7 @@ figure{margin:0}
           <li>Edit the text, colours and crop yourself</li>
           <li>Straight to your Status when it's ready</li>
         </ul>
-        <span class="foot">Three free · then from $9</span>
+        <span class="foot">15 free · then from $9</span>
       </div>
 
       <div class="card rv">
@@ -1964,7 +1980,7 @@ figure{margin:0}
       <div class="lang-stage">
         <div class="art"></div>
         <img class="ph" alt="Ravi Hair Oil on a studio backdrop" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
-        <video class="vd" autoplay muted loop playsinline preload="auto" disablepictureinpicture poster="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"><source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4" type="video/mp4"></video>
+        <video class="vd" muted loop playsinline preload="none" disablepictureinpicture poster="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp"><source src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260902_033722_f9f7dd64-220a-473f-badd-63c368e00511.mp4" type="video/mp4"></video>
         <span class="veil"></span>
         <span class="badge"><i></i>Subtitled</span>
         <button class="snd" type="button" id="langSound" aria-pressed="false" aria-label="Turn the voiceover on">
@@ -2191,23 +2207,23 @@ figure{margin:0}
     </div>
     <div class="chain rv">
       <div class="link">
-        <figure><img alt="An earbuds case photographed at home on a cluttered desk" src="/shots/gadget-source.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <figure><img alt="An earbuds case photographed at home on a cluttered desk" src="/shots/gadget-source.webp" width="900" height="1125" loading="lazy" decoding="async" srcset="/shots/gadget-source-400w.webp 400w, /shots/gadget-source-800w.webp 800w, /shots/gadget-source-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 248px"></figure>
         <p class="step">Step one</p><b>Your photo</b>
         <p>Taken on a desk under a ceiling light, cable still in shot. This is what a seller actually has.</p>
       </div>
       <div class="link">
-        <figure><img alt="The same case cut out onto plain white" src="/shots/gadget-cutout.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <figure><img alt="The same case cut out onto plain white" src="/shots/gadget-cutout.webp" width="900" height="1125" loading="lazy" decoding="async" srcset="/shots/gadget-cutout-400w.webp 400w, /shots/gadget-cutout-800w.webp 800w, /shots/gadget-cutout-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 248px"></figure>
         <p class="step">Step two</p><b>Cut out</b>
         <p>The product on its own. Two credits, seconds, and it cannot drift — nothing is invented.</p>
       </div>
       <div class="link">
-        <figure><img alt="The same case on dark slate under a raking rim light" src="/shots/gadget-scene.webp" width="900" height="1125" loading="lazy" decoding="async"></figure>
+        <figure><img alt="The same case on dark slate under a raking rim light" src="/shots/gadget-scene.webp" width="900" height="1125" loading="lazy" decoding="async" srcset="/shots/gadget-scene-400w.webp 400w, /shots/gadget-scene-800w.webp 800w, /shots/gadget-scene-1200w.webp 1200w" sizes="(max-width: 700px) 325px, 248px"></figure>
         <p class="step">Step three</p><b>Into a scene</b>
         <p>On the surface you describe, checked against your original so the product stays yours.</p>
       </div>
       <div class="link">
         <figure class="plays">
-          <video autoplay muted loop playsinline preload="metadata" disablepictureinpicture
+          <video muted loop playsinline preload="none" disablepictureinpicture
                  poster="/shots/gadget-scene.webp" aria-label="The scene turned into a short vertical reel">
             <source src="/shots/gadget-reel.mp4" type="video/mp4">
           </video>
@@ -2349,12 +2365,416 @@ figure{margin:0}
 
 <!-- ============================== API ============================== -->
 <section class="sec" id="api">
+<style>
+/* /developers is THIS section, lifted out of the landing page by
+   scripts/sync-prototypes.mjs. Three things follow from that, and all three
+   have already been got wrong once:
+
+   Keep it as ONE top-level <section>. blocks() splits design/landing.html on
+   top-level <section> tags, so a second one here would be left behind on the
+   landing page — and so is any comment written ABOVE the banner comment,
+   which is why this note is inside the section rather than over it.
+
+   No href="#anchor" inside it. resolveAnchors() rewrites those to /#anchor on
+   every page that isn't the landing page, which from here sends a reader home.
+
+   And this stylesheet lives in the body, not the head, on purpose.
+
+   dissect() in scripts/sync-prototypes.mjs gives every page the SAME <head>,
+   so a rule added up there ships on the landing page, /pricing and /why as
+   well — nine kilobytes of CSS that only one page can ever match. The landing
+   page was just taken from 4.3MB to 724KB; it does not get that back.
+
+   Kept inside the section, it travels with the section to /developers and
+   nowhere else. blocks() splits on top-level <section> tags, so it moves
+   with it automatically. */
+/* ============================================================
+   FOR PLATFORMS — everything below is the /developers page
+   ============================================================
+   scripts/sync-prototypes.mjs lifts <section id="api"> out of the
+   landing page entirely, so this section IS /developers and costs the
+   landing page nothing — which is why it can afford to be a whole page
+   rather than the one screen it used to be.
+
+   Every rule here is namespaced under #api. Nothing below can reach
+   another page, and nothing above needed changing to make room.
+   ============================================================ */
+/* The shared .api-cta stretches its two buttons to equal halves, which was
+   right for one row on one page. Here the same row sits in columns as narrow
+   as 370px, where "Try it on your own catalogue" is wider than its half and
+   ran out over the button beside it. Size to content, wrap when it doesn't fit. */
+#api .api-cta .btn{flex:0 1 auto;min-width:0}
+#api .dev-eyebrow{
+  display:inline-flex;align-items:center;margin-bottom:18px;
+  font-family:var(--f-mono);font-size:11px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;
+  color:var(--cyan);background:var(--cyan-wash);padding:5px 10px;border-radius:var(--r);
+}
+/* Sized here rather than left to .sec.lead, so the section reads the same
+   opened straight from design/ as it does once promoted to a page. */
+#api .org-grid :is(h1,h2){font-size:clamp(28px,4.4vw,46px);font-weight:800;max-width:20ch;line-height:1.06}
+
+/* --- hero: what they sent, what you publish, what it wrote --- */
+#api .dev-ba{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#api .dev-ba>*{min-width:0}
+#api .dev-ba figure{margin:0;display:flex;flex-direction:column;gap:8px}
+#api .dev-ba figcaption{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);
+}
+#api .dev-ba figure.out figcaption{color:var(--accent)}
+#api .dev-ba .art{position:relative;border-radius:var(--r);overflow:hidden;background:var(--surface);box-shadow:var(--frame-shadow)}
+#api .dev-ba figure.out .art{box-shadow:var(--frame-shadow-lg)}
+/* height:auto matters. The width/height attributes are there to reserve the
+   box before CSS arrives, but Chromium maps them to real width/height values —
+   and aspect-ratio is ignored unless one of the two is auto, which is how a
+   square crop came out 285x900. */
+#api .dev-ba .art img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover}
+#api .dev-ba .stamp{
+  position:absolute;left:9px;bottom:9px;
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.03em;
+  color:#FFF;background:rgba(23,19,26,.62);padding:3px 7px;border-radius:2px;
+}
+#api .dev-copyout{
+  grid-column:span 2;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:14px 16px;
+}
+#api .dev-copyout p{margin-top:5px;font-size:14.5px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- the three numbers --- */
+#api .dev-stats{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;
+  background:var(--line-soft);border:1px solid var(--line-soft);
+  border-radius:6px;overflow:hidden;margin-top:clamp(40px,6vw,64px);
+}
+@media(max-width:760px){#api .dev-stats{grid-template-columns:1fr}}
+#api .dev-stats>div{min-width:0;background:var(--surface);padding:26px 24px;display:flex;flex-direction:column;gap:7px}
+#api .dev-stats b{font-family:var(--f-display);font-size:clamp(28px,3.4vw,36px);font-weight:800;letter-spacing:-.03em;line-height:1}
+#api .dev-stats span{font-size:14.5px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- shared furniture for the three blocks below the hero --- */
+#api .dev-band{
+  margin-top:clamp(48px,7vw,84px);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;padding:clamp(24px,4vw,44px);
+}
+#api .dev-head{margin-bottom:clamp(24px,3vw,34px)}
+#api .dev-head h2{font-size:clamp(24px,3.2vw,32px);font-weight:700;letter-spacing:-.025em;line-height:1.1}
+#api .dev-head p{margin-top:9px;font-size:16px;line-height:1.6;color:var(--muted);max-width:62ch}
+#api .dev-note{display:flex;gap:12px;align-items:flex-start;margin-top:24px;padding:16px 18px;border-radius:var(--r);background:var(--cyan-wash)}
+#api .dev-note svg{width:20px;height:20px;flex:none;margin-top:2px;stroke:var(--cyan);fill:none;stroke-width:1.8;stroke-linecap:round}
+#api .dev-note p{font-size:14.5px;line-height:1.55}
+
+/* --- where it sits in your flow --- */
+#api .dev-flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+@media(max-width:1000px){#api .dev-flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){#api .dev-flow{grid-template-columns:1fr}}
+#api .dev-flow>div{
+  min-width:0;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:20px 18px;display:flex;flex-direction:column;gap:9px;
+}
+/* The merchant's step is the one a platform's product owner is worried about,
+   so it is the one that is marked. Same box, one heavier border. */
+#api .dev-flow>div.theirs{border:2px solid var(--accent);padding:19px 17px}
+#api .dev-flow .n{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;color:var(--accent)}
+#api .dev-flow h4{font-size:16.5px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+#api .dev-flow p{font-size:14px;line-height:1.5;color:var(--ink-soft)}
+
+/* --- the four operations --- */
+#api .dev-caps{display:flex;flex-direction:column;gap:16px}
+#api .dev-cap{
+  display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);
+  gap:clamp(20px,3vw,32px);align-items:start;
+  background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r);padding:clamp(20px,3vw,28px);
+}
+@media(max-width:860px){#api .dev-cap{grid-template-columns:1fr}}
+#api .dev-cap>*{min-width:0}
+#api .dev-cap.fresh{border:2px solid var(--accent)}
+#api .dev-cap .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#api .dev-cap .hd svg{width:22px;height:22px;flex:none;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#api .dev-cap h3{font-size:20px;font-weight:700;letter-spacing:-.015em;line-height:1.2}
+#api .dev-cap .tagnew{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-wash);padding:3px 7px;border-radius:var(--r);
+}
+#api .dev-cap>div>p{margin-top:10px;font-size:15px;line-height:1.55;color:var(--ink-soft)}
+#api .dev-cap .cost{
+  display:inline-block;margin-top:12px;font-family:var(--f-mono);font-size:12px;
+  color:var(--muted);background:var(--line-soft);padding:4px 9px;border-radius:var(--r);
+}
+/* A payload is only worth printing if it can be read where it is printed. The
+   samples are wrapped at ~38 columns and the type drops on a phone so the whole
+   call fits without a sideways drag — a cut-off "BACKGROUND_R…" is worse than
+   no sample at all. */
+@media(max-width:560px){
+  #api .dev-band{padding:20px 16px}
+  #api .dev-cap{padding:18px 14px}
+  #api pre.code{font-size:10.5px;line-height:1.72;padding:14px 11px}
+}
+
+/* --- try it on your own catalogue --- */
+#api .dev-try{
+  position:relative;overflow:hidden;margin-top:clamp(48px,7vw,84px);
+  background:var(--ink);color:var(--paper);border-radius:8px;
+  padding:clamp(30px,5vw,56px);
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:clamp(28px,4vw,56px);align-items:center;
+}
+@media(max-width:900px){#api .dev-try{grid-template-columns:1fr}}
+#api .dev-try>*{min-width:0;position:relative;z-index:1}
+#api .dev-try::after{
+  content:"";position:absolute;inset:auto -10% -60% 38%;height:220px;
+  background:radial-gradient(closest-side,var(--accent),transparent);opacity:.3;
+}
+#api .dev-try h2{font-size:clamp(26px,3.6vw,36px);font-weight:800;letter-spacing:-.028em;line-height:1.1}
+#api .dev-try>div>p{margin-top:16px;font-size:17px;line-height:1.55;max-width:50ch;color:color-mix(in srgb,var(--paper) 78%,transparent)}
+#api .dev-try .fine{margin-top:14px;font-size:13.5px;color:color-mix(in srgb,var(--paper) 60%,transparent)}
+#api .dev-try .btn-ghost{border-color:color-mix(in srgb,var(--paper) 34%,transparent);color:var(--paper)}
+#api .dev-try .btn-ghost:hover{border-color:var(--paper)}
+#api .dev-try .api-cta{margin-top:26px}
+#api .dev-get{
+  background:color-mix(in srgb,var(--paper) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--paper) 18%,transparent);
+  border-radius:var(--r);padding:clamp(20px,3vw,28px);
+}
+#api .dev-get ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+#api .dev-get li{display:flex;gap:12px;align-items:flex-start;font-size:15px;line-height:1.5}
+#api .dev-get li svg{width:18px;height:18px;flex:none;margin-top:3px;stroke:var(--accent);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+</style>
   <div class="wrap">
-    <div class="org-wrap rv">
+
+    <!-- ---------------- the promise, and the proof of it ---------------- -->
+    <div class="org-grid rv">
+      <div>
+        <span class="dev-eyebrow">For marketplaces &amp; platforms</span>
+        <h2>Your merchants photograph badly. Fix it before it reaches your storefront.</h2>
+        <p class="sec-lede" style="margin-top:16px">One API call at the moment a merchant uploads. A clean image, a description no other listing on your platform is using, and a warning when the photo isn't the product. The merchant approves it. You store it. Nothing about your listing flow changes.</p>
+        <div class="api-cta">
+          <a class="btn btn-primary btn-lg" href="org.html">Get a test key</a>
+          <a class="btn btn-ghost btn-lg" href="org.html#contact">Talk to us about volume</a>
+        </div>
+        <p class="api-note">500 test credits, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
+      </div>
+
+      <div class="dev-ba">
+        <figure>
+          <figcaption>What they uploaded</figcaption>
+          <div class="art">
+            <img alt="A bucket hat photographed at home on a kitchen table, lit from one side" src="/shots/hat-source.webp" width="900" height="900" srcset="/shots/hat-source-400w.webp 400w, /shots/hat-source-800w.webp 800w, /shots/hat-source-1200w.webp 1200w" sizes="(max-width: 900px) 46vw, (max-width: 1228px) 24vw, 285px" decoding="async">
+            <span class="stamp">uneven light</span>
+          </div>
+        </figure>
+        <figure class="out">
+          <figcaption>What you publish</figcaption>
+          <div class="art">
+            <img alt="The same hat on a plain studio background, centred, with a soft shadow" src="/shots/hat-white.webp" width="900" height="900" srcset="/shots/hat-white-400w.webp 400w, /shots/hat-white-800w.webp 800w, /shots/hat-white-1200w.webp 1200w" sizes="(max-width: 900px) 46vw, (max-width: 1228px) 24vw, 285px" decoding="async">
+            <span class="stamp">1024² · studio sweep</span>
+          </div>
+        </figure>
+        <div class="dev-copyout">
+          <span class="mono">and the description it wrote</span>
+          <p>Reversible cotton bucket hat with a stitched brim and a wide band. Holds its shape after washing. Sold by [MERCHANT], ships from Lagos in 2–3 days.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- the three numbers that answer the objection ---------------- -->
+    <div class="dev-stats rv">
+      <div>
+        <b>1 call</b>
+        <span>per listing. Four things come back: images, description, resolution, and a verdict on whether the photo is even the product.</span>
+      </div>
+      <div>
+        <b>0 seconds</b>
+        <span>of merchant waiting. The work happens while they are still filling in name, price and stock.</span>
+      </div>
+      <div>
+        <b>0 changes</b>
+        <span>to how a merchant lists. You store their original before we are called, and it stays the fallback.</span>
+      </div>
+    </div>
+
+    <!-- ---------------- where it sits ---------------- -->
+    <div class="dev-band rv">
+      <div class="dev-head">
+        <h2>Where it sits in your flow</h2>
+        <p>Server to server. Your backend holds the key — the platform API returns no CORS headers at all, deliberately, so a key cannot end up in a merchant's browser.</p>
+      </div>
+
+      <div class="dev-flow">
+        <div>
+          <span class="n">01</span>
+          <h4>Merchant uploads</h4>
+          <p>Your form, unchanged. You store the original first — always.</p>
+        </div>
+        <div>
+          <span class="n">02</span>
+          <h4>You call us</h4>
+          <p>Hand us the CDN URL you already have. No bytes leave your network by upload.</p>
+        </div>
+        <div>
+          <span class="n">03</span>
+          <h4>Job ids, immediately</h4>
+          <p>The response is an id, not a picture. The merchant keeps typing.</p>
+        </div>
+        <div>
+          <span class="n">04</span>
+          <h4>Webhook lands</h4>
+          <p>A signed callback per job. You fetch the result server-side and attach it to the draft.</p>
+        </div>
+        <div class="theirs">
+          <span class="n">05</span>
+          <h4>Merchant decides</h4>
+          <p>Keep ours or keep theirs. Their own photo publishes if they prefer it — every time.</p>
+        </div>
+      </div>
+
+      <div class="dev-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <p><strong>If we are down, nothing breaks.</strong> The original is already stored by the time you call, so the listing saves exactly as it does today and the merchant never sees an error that belongs to us. We enhance. We do not gate.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- the operations ---------------- -->
+    <div class="dev-band rv">
+      <div class="dev-head">
+        <h2>Four operations, priced separately</h2>
+        <p>Call the ones you want, on the listings you want. Each is metered per project and attributed per merchant, so you can decide later whether to re-bill stores or absorb it.</p>
+      </div>
+
+      <div class="dev-caps">
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l4.5-4.5a2 2 0 0 1 2.8 0L15 15"/><circle cx="15.5" cy="8.5" r="1.5"/></svg>
+              <h3>Clean the image</h3>
+            </div>
+            <p>Cut the product out, set it on a background you choose, correct the light. You pick the background per category, not per merchant — one look across a catalogue is what makes a grid read as deliberate rather than collected.</p>
+            <span class="cost">10 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"BACKGROUND_REPLACE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"&lt;from /uploads&gt;"</span>,
+    <span class="s">"prompt"</span>: <span class="s">"Warm grey studio"</span>,
+    <span class="s">"shadow"</span>: true,
+    <span class="s">"relight"</span>: true
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:bg:v1"</span>,
+  <span class="s">"merchantRef"</span>: <span class="s">"store-441"</span>
+}
+
+<span class="c">// clientKey is your idempotency key.</span>
+<span class="c">// Replay it after a timeout and you</span>
+<span class="c">// get the same job back, not a</span>
+<span class="c">// second charge.</span></pre>
+        </div>
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 11h16M4 16h10"/></svg>
+              <h3>Write the description</h3>
+            </div>
+            <p>Unique, indexable copy per listing, in structured fields rather than a blob of prose. Blank and duplicated descriptions are the usual reason marketplace pages do not rank — this is a search-traffic change, not a cosmetic one.</p>
+            <span class="cost">2 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"TEXT_GENERATE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"&lt;same upload&gt;"</span>,
+    <span class="s">"productKey"</span>: <span class="s">"sku-88213"</span>,
+    <span class="s">"productName"</span>: <span class="s">"Bucket hat"</span>,
+    <span class="s">"details"</span>: <span class="s">"reversible, cotton"</span>,
+    <span class="s">"language"</span>: <span class="s">"en"</span>
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:copy:v1"</span>
+}
+
+<span class="c">// productKey is your listing id.</span>
+<span class="c">// Copy is compared against it, so</span>
+<span class="c">// a second angle of one product</span>
+<span class="c">// never comes back reading like a</span>
+<span class="c">// duplicate listing.</span></pre>
+        </div>
+
+        <div class="dev-cap">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/></svg>
+              <h3>Raise the resolution</h3>
+            </div>
+            <p>So a thumbnail survives a product page. Cheap, fast, and no model judgement is involved — worth running unconditionally on anything that arrives below your display size.</p>
+            <span class="cost">3 credits</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/generations
+{
+  <span class="s">"capability"</span>: <span class="s">"UPSCALE"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"sourceKey"</span>: <span class="s">"…"</span>,
+    <span class="s">"factor"</span>: 2
+  },
+  <span class="s">"clientKey"</span>: <span class="s">"shop:88213:up:v1"</span>
+}</pre>
+        </div>
+
+        <div class="dev-cap fresh">
+          <div>
+            <div class="hd">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2M11 8.5v3M11 14v.01"/></svg>
+              <h3>Check it is the product</h3>
+              <span class="tagnew">Not built yet</span>
+            </div>
+            <p>A screenshot instead of a photograph. Last week's price list. Somebody's child. You hear about it before it goes live — and the answer is always a warning with a reason, never a block. A merchant who is told what is wrong fixes it; a merchant who is refused opens a support ticket.</p>
+            <span class="cost">1 credit, proposed</span>
+          </div>
+<pre class="code"><span class="k">POST</span> /api/v1/inspect
+{
+  <span class="s">"sourceKey"</span>: <span class="s">"…"</span>,
+  <span class="s">"declared"</span>: {
+    <span class="s">"category"</span>: <span class="s">"bags"</span>,
+    <span class="s">"name"</span>: <span class="s">"Mini handbag"</span>
+  }
+}
+
+<span class="c">// →</span>
+{
+  <span class="s">"verdict"</span>: <span class="s">"mismatch"</span>,
+  <span class="s">"confidence"</span>: 0.91,
+  <span class="s">"sawInstead"</span>: <span class="s">"a screenshot"</span>,
+  <span class="s">"advice"</span>: <span class="s">"Looks like a photo of"</span>
+             <span class="s">"a price list rather…"</span>
+}</pre>
+        </div>
+      </div>
+
+      <div class="dev-note" style="background:var(--accent-wash)">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:var(--accent)"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <p>The first three are live today and metered. <strong>Inspect is designed, not shipped</strong> — it is on this page because it is the piece platforms ask for first, and we would rather show you the shape we intend than quietly imply it already exists.</p>
+      </div>
+    </div>
+
+    <!-- ---------------- keys and projects ---------------- -->
+    <div class="org-wrap rv" style="margin-top:clamp(48px,7vw,84px)">
       <div class="org-grid">
         <div>
-          <h2 style="font-size:clamp(26px,3.8vw,38px);font-weight:800;max-width:18ch">Content for every merchant, from one integration.</h2>
-          <p class="sec-lede" style="margin-top:16px">Your merchants upload what they can manage — a photo on a table, under a ceiling light. Send it to AnyStudio and give it back to them ready for your storefront, with a description no other listing on your platform is using.</p>
+          <h2 style="font-size:clamp(24px,3.2vw,32px);font-weight:700;letter-spacing:-.025em;line-height:1.1">One account. A key per environment.</h2>
+          <p class="sec-lede" style="margin-top:14px">Test keys cannot touch live resources. Keys are stored hashed, scoped to a project, and revocable without a deploy. Usage is metered per project and attributed per merchant from the very first call — so you can see real numbers before you decide who pays for them.</p>
+          <div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:22px">
+            <div>
+              <b style="font-family:var(--f-display);font-size:22px;font-weight:700;display:block">Per project</b>
+              <span style="font-size:14px;color:var(--muted)">quotas and billing</span>
+            </div>
+            <div>
+              <b style="font-family:var(--f-display);font-size:22px;font-weight:700;display:block">Per merchant</b>
+              <span style="font-size:14px;color:var(--muted)">usage, from call one</span>
+            </div>
+          </div>
+        </div>
+        <div>
           <div class="keyrow">
             <span><span class="kn">Marketplace — production</span><br><span class="kv">as_live_4f2b••••••••••</span></span>
             <span class="pill live">Live</span>
@@ -2363,28 +2783,36 @@ figure{margin:0}
             <span><span class="kn">Mobile app — staging</span><br><span class="kv">as_test_9c71••••••••••</span></span>
             <span class="pill">Test</span>
           </div>
-          <p style="margin-top:18px;color:var(--muted);font-size:14.5px">One account, many projects, separate keys and quotas for each. Billed on what you actually generate.</p>
-        </div>
-        <div>
-<pre class="code"><span class="c">// One call per merchant listing</span>
-<span class="k">await</span> anystudio.generations.<span class="k">create</span>({
-  project: <span class="s">"marketplace-prod"</span>,
-  source:  <span class="s">"https://cdn.yourshop.com/p/8812.jpg"</span>,
-  outputs: [<span class="s">"storefront"</span>, <span class="s">"description"</span>],
-  brand:   { name: <span class="s">"Bimbo Fabrics"</span> },
-  webhook: <span class="s">"https://api.yourshop.com/hooks/as"</span>
-})
-
-<span class="c">// → 4 optimized images + a unique description</span>
-<span class="c">// → 1 API call, 40 credits, ~12s</span></pre>
-          <div class="api-cta">
-            <a class="btn btn-primary" href="org.html">Get a test key</a>
-            <a class="btn btn-ghost" href="org.html#contact">Talk to us about volume</a>
+          <div class="keyrow" style="border-style:dashed;color:var(--muted)">
+            <span><span class="kn" style="font-weight:500">+ New project</span></span>
           </div>
-          <p class="api-note">500 test credits, no card, and per-merchant usage reported from the first call — so you can check the billing model before you sign anything.</p>
+          <p style="margin-top:18px;color:var(--muted);font-size:14.5px">One account, many projects, separate keys and quotas for each. Billed on what you actually generate.</p>
         </div>
       </div>
     </div>
+
+    <!-- ---------------- try it on your own catalogue ---------------- -->
+    <div class="dev-try rv">
+      <div>
+        <h2>See it on your own catalogue, not ours.</h2>
+        <p>Send us a link to your storefront. We run ten of your live listings through and send back a private page comparing them — before and after, with the descriptions beside them. No integration, no signup, nothing to install.</p>
+        <div class="api-cta">
+          <a class="btn btn-primary btn-lg" href="org.html#contact">Try it on your own catalogue</a>
+          <a class="btn btn-ghost btn-lg" href="org.html">Get a test key instead</a>
+        </div>
+        <p class="fine">Takes an email and a storefront URL. We approve requests by hand before the link goes out, usually the same day — which is slower than a signup form, and the reason the ten listings are yours rather than ours.</p>
+      </div>
+      <div class="dev-get">
+        <span class="mono">What comes back</span>
+        <ul>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>Ten of your own listings, before and after</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A written description for each, ready to paste</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A sandbox key, so your engineers can make the calls themselves</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg><span>A note on where the images go and how long they are kept, for your security review</span></li>
+        </ul>
+      </div>
+    </div>
+
   </div>
 </section>
 
@@ -2394,7 +2822,7 @@ figure{margin:0}
     <div class="sec-head rv">
       <div>
         <h2>Pay for what you make. Nothing else.</h2>
-        <p class="sec-lede">Three generations free, no card. After that, a plan or a one-off top-up — whichever suits how you work. Credits from top-ups never expire.</p>
+        <p class="sec-lede">15 branded images free, no card. After that, a plan or a one-off top-up — whichever suits how you work. Credits from top-ups never expire.</p>
       </div>
     </div>
 
@@ -2415,7 +2843,7 @@ figure{margin:0}
       <div class="plan" data-plan="free">
         <h3>Starter</h3>
         <div class="amt"><span class="v" data-price="free">0</span><span class="per">free forever</span></div>
-        <span class="cr">3 generations total</span>
+        <span class="cr">15 branded images</span>
         <ul>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Branded images and captions</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> WhatsApp and web</li>
@@ -2547,7 +2975,7 @@ figure{margin:0}
   <div class="wrap">
     <div class="cta rv">
       <h2>Send one photo. See what comes back.</h2>
-      <p>Three generations free, no card, no setup. If it is not better than what you post today, you have lost four minutes.</p>
+      <p>15 branded images free, no card, no setup. If they are not better than what you post today, you have lost four minutes.</p>
       <div class="hero-actions">
         <a class="btn btn-primary btn-lg" href="https://wa.me/17753032588?text=Hi%20AnyStudio%2C%20I%27d%20like%20to%20try%20it" target="_blank" rel="noopener noreferrer">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.1-1.3A10 10 0 1012 2zm0 2a8 8 0 11-4.1 14.9l-.4-.2-3 .8.8-2.9-.2-.4A8 8 0 0112 4z"/></svg>
@@ -2672,38 +3100,91 @@ figure{margin:0}
   });
 
   /* ==========================================================
-     AUTO-PLAYING REELS
-     Muted + playsinline is what lets a phone autoplay at all.
-     If the video can't load, the frame falls back to a slow drift
-     on the still. Reels off-screen are paused so a page full of
-     them doesn't cook the battery.
+     REELS, PAID FOR BY WHOEVER IS LOOKING
+     Muted + playsinline is what lets a phone autoplay at all. But the
+     shots folder is 65MB of MP4, and a seller in Lagos buys the data to
+     fetch it with money, before deciding whether to trust us. So no
+     video element carries `autoplay` any more: playback is granted by
+     this function, and only when the connection can afford it.
+
+     Every video on the page sits over its own still — an <img class="ph">
+     inside a frame, a poster= everywhere else — so a page that fetches
+     no video at all still reads exactly as designed.
+
+     Off-screen reels pause, so a page full of them doesn't cook a
+     battery, and a video that can't load drops back to a slow drift on
+     the still.
      ========================================================== */
   (function(){
-    var reels = document.querySelectorAll(".frame.reel");
-    reels.forEach(function(f){
+    var videos = [].slice.call(document.querySelectorAll("video"));
+    var reels = [].slice.call(document.querySelectorAll(".frame.reel"));
+
+    /* An UNKNOWN connection counts as a good one: Safari and Firefox do
+       not implement this API, and their users should not be punished for
+       their browser's privacy stance. Only an explicit signal — the
+       viewer's own Save-Data toggle, or a measured 2g/3g — turns video
+       off. Those are the cases where it is genuinely their money. */
+    var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var thrifty = !!(c && (c.saveData === true || /^((slow-)?2g|3g)$/.test(c.effectiveType || "")));
+    var hold = thrifty || reduce;
+
+    document.documentElement.classList.toggle("thrifty", thrifty);
+
+    videos.forEach(function(v){
+      v.removeAttribute("autoplay");
+      /* preload=none is the whole saving: metadata alone is a request and
+         the first few hundred KB of a file we may never show. */
+      if (hold) v.preload = "none";
+    });
+
+    function guard(f){
       var v = f.querySelector("video.vd");
-      if (!v){ f.classList.add("no-video"); return; }
-      function fail(){ f.classList.add("no-video"); v.remove(); }
+      if (!v){ f.classList.add("no-video"); return null; }
+      function fail(){ f.classList.add("no-video"); if (v.parentNode) v.remove(); }
       v.addEventListener("error", fail, true);
       /* a <source> that 404s leaves the element with no readable media */
       setTimeout(function(){
         if (v.parentNode && v.networkState === 3 /* NETWORK_NO_SOURCE */) fail();
       }, 2500);
-      if (reduce) v.removeAttribute("autoplay");
-      var p = v.play && v.play();
-      if (p && p.catch) p.catch(function(){ /* blocked autoplay is fine — poster shows */ });
-    });
+      return v;
+    }
+    reels.forEach(guard);
+
+    if (hold){
+      /* Not a dead end — a tap is consent, and the person who taps has
+         decided the megabytes are worth it. */
+      videos.forEach(function(v){
+        var host = v.closest(".frame, .reel, .plays, .link, figure") || v;
+        host.classList.add("tap-to-play");
+        host.addEventListener("click", function once(){
+          host.classList.remove("tap-to-play");
+          v.preload = "auto";
+          v.loop = true;
+          var p = v.play();
+          if (p && p.catch) p.catch(function(){});
+          host.removeEventListener("click", once);
+        });
+      });
+      return;
+    }
+
+    function play(v){ var p = v.play && v.play(); if (p && p.catch) p.catch(function(){}); }
 
     if ("IntersectionObserver" in window){
       var vo = new IntersectionObserver(function(es){
         es.forEach(function(e){
-          var v = e.target.querySelector("video.vd");
+          var v = e.target.matches("video") ? e.target : e.target.querySelector("video");
           if (!v) return;
-          if (e.isIntersecting && !reduce){ var q = v.play(); if (q && q.catch) q.catch(function(){}); }
+          /* Fetching starts here rather than at parse time, so a reel
+             eight screens down costs nothing until it is nearly in view. */
+          if (e.isIntersecting){ if (v.preload === "none") v.preload = "auto"; play(v); }
           else v.pause();
         });
-      }, { threshold: .25 });
+      }, { threshold: .25, rootMargin: "200px 0px" });
       reels.forEach(function(f){ vo.observe(f); });
+      videos.forEach(function(v){ if (!v.closest(".frame.reel")) vo.observe(v); });
+    } else {
+      videos.forEach(play);
     }
   })();
 
@@ -2728,7 +3209,7 @@ figure{margin:0}
     personal:{
       h:'One photo.<br><em>A flyer worth sharing.</em>',
       s:'Birthday, shop opening, church programme, graduation. Upload a picture or just describe it, pick a look, change the words yourself, and have something you are proud to put on your Status in under a minute.',
-      n:'Three free. No design skill needed.'
+      n:'15 free. No design skill needed.'
     },
     org:{
       h:'Product content for<br><em>every merchant you host.</em>',
@@ -3070,7 +3551,7 @@ figure{margin:0}
 
     var why;
     if (need === 0) why = "Move a slider to see what you'd need.";
-    else if (tier.key === "free") why = "Your three free generations cover this.";
+    else if (tier.key === "free") why = "Your 15 free images cover this.";
     else if (need > tier.credits * 0.85) why = "This is close to the ceiling — top-ups cover a busy month.";
     else why = fmt(tier.credits) + " credits covers this comfortably.";
     document.getElementById("recWhy").textContent = why;

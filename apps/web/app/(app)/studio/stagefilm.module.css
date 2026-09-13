@@ -1,0 +1,213 @@
+/* The animated wait. See StageFilm.tsx for why it is shaped this way.
+
+   Every animation here is an INFINITE loop scoped to one phase, and phases are
+   switched by [data-phase] from the worker's stage. Nothing advances itself:
+   a phase that lasts forty seconds loops for forty seconds, which is the only
+   way a slow provider can look slow. */
+
+.film {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 320px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+}
+
+.source {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--sunk);
+  transition:
+    filter var(--dur-slow) var(--ease),
+    opacity var(--dur-slow) var(--ease);
+}
+/* Being worked on: the original recedes so the instruments over it read. It
+   never disappears — the seller should be able to see it is still their photo. */
+.film[data-phase='make'] .source {
+  filter: saturate(0.55) brightness(0.72);
+}
+.film[data-phase='settle'] .source {
+  filter: saturate(0.8) brightness(0.86);
+}
+
+/* --- the scan: reading the photo ------------------------------------------ */
+.scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 18px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.film[data-phase='read'] .scan {
+  animation: sweep 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes sweep {
+  0% {
+    top: -2px;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image: linear-gradient(var(--accent) 1px, transparent 1px), linear-gradient(90deg, var(--accent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+.film[data-phase='read'] .grid {
+  opacity: 0.14;
+}
+
+/* --- the checker: the background being lifted off the product -------------
+   A hard wipe, not a soft one. The first version faded a masked band across
+   the photo and the result read as fog — "my picture has gone cloudy" rather
+   than "the background is coming off". An edge you can point at is the whole
+   effect: a bright line travels down and leaves transparency behind it. */
+.checker {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: repeating-conic-gradient(var(--line) 0% 25%, var(--surface-2) 0% 50%) 50% / 18px 18px;
+  clip-path: inset(0 0 100% 0);
+  transition: opacity var(--dur-slow) var(--ease);
+}
+/* Not opaque. The point of showing the seller their own photo is lost the
+   moment the effect covers it, so the checker sits at two thirds and the
+   product stays visible through the part that has been cut. */
+.film[data-phase='make'] .checker {
+  opacity: 0.66;
+  animation: lift 2.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes lift {
+  0%,
+  6% {
+    clip-path: inset(0 0 100% 0);
+  }
+  62%,
+  76% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+/* The edge itself, riding the same clock as the wipe. */
+.edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  opacity: 0;
+  background: var(--accent);
+  box-shadow: 0 0 14px 3px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.film[data-phase='make'] .edge {
+  animation: edge 2.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+/* `top`, not translateY: a percentage translate resolves against the element's
+   own height, and this element is two pixels tall. translateY(100%) moved it
+   two pixels and the edge never appeared anywhere near the wipe. */
+@keyframes edge {
+  0%,
+  6% {
+    top: 0;
+    opacity: 1;
+  }
+  62% {
+    top: calc(100% - 2px);
+    opacity: 1;
+  }
+  76%,
+  100% {
+    top: calc(100% - 2px);
+    opacity: 0;
+  }
+}
+
+/* --- the ground: the new scene, once there is one -------------------------
+   It belongs to `settle`, not to `make`. Painting a new background in while
+   the model is still working implies we already have one; at 0.4 opacity over
+   the whole frame it also simply washed the photo out. */
+.ground {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-2) 58%, var(--sunk) 100%);
+  clip-path: inset(100% 0 0 0);
+  transition:
+    opacity var(--dur-slow) var(--ease),
+    clip-path 600ms var(--ease);
+}
+.film[data-phase='settle'] .ground {
+  opacity: 0.55;
+  clip-path: inset(0 0 0 0);
+}
+
+/* --- the caption ---------------------------------------------------------- */
+.foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--s-5) var(--s-4) var(--s-3);
+  background: linear-gradient(180deg, transparent, rgba(10, 8, 12, 0.78) 46%);
+}
+.label {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  letter-spacing: 0.04em;
+  /* This sits on a painted-black scrim in both themes, so it is white in both
+     themes. --ink would turn it black on black the moment the app goes dark. */
+  color: #fff;
+}
+
+/* Waiting for a slot: no instruments, because nothing is being done yet.
+   A machine that animates before it has started is the same lie as a bar
+   that fills on a timer. */
+.film[data-phase='wait'] .source {
+  filter: saturate(0.5) brightness(0.62);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan,
+  .checker,
+  .edge,
+  .ground {
+    animation: none !important;
+  }
+  /* Held on the frame that says the most: the cut half-done, so the phase is
+     still legible standing still, with the stage named underneath. Nothing
+     moves and nothing is hidden. */
+  .film[data-phase='make'] .checker {
+    opacity: 0.7;
+    clip-path: inset(0 0 55% 0);
+  }
+  .film[data-phase='make'] .edge {
+    opacity: 1;
+    top: 45%;
+  }
+  .scan {
+    opacity: 0;
+  }
+}
