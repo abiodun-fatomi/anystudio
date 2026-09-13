@@ -1,10 +1,16 @@
 /**
- * Upload a file: announce it, PUT the bytes straight to storage, tell the
- * API it landed. XHR rather than fetch for the one thing fetch cannot do —
+ * Upload a file: shrink it if it is a photograph bigger than anything
+ * downstream can use, announce it, PUT the bytes straight to storage, tell
+ * the API it landed. XHR rather than fetch for the one thing fetch cannot do —
  * report upload progress — which on a phone on 3G is the difference between
  * "it's working" and "it's broken".
+ *
+ * The shrink happens BEFORE the presign, so the byte count we declare is the
+ * byte count we send. Doing it after would announce a size storage then
+ * refuses to accept.
  */
 import { api, ApiError, type MediaAssetRow } from './api';
+import { downscaleImage } from './downscale';
 
 export interface UploadProgress {
   loaded: number;
@@ -12,7 +18,9 @@ export interface UploadProgress {
   pct: number;
 }
 
-export async function uploadFile(workspaceId: string, file: File, onProgress?: (p: UploadProgress) => void, signal?: AbortSignal): Promise<MediaAssetRow> {
+export async function uploadFile(workspaceId: string, original: File, onProgress?: (p: UploadProgress) => void, signal?: AbortSignal): Promise<MediaAssetRow> {
+  // Never throws, and returns the original on any doubt — see downscale.ts.
+  const { file } = await downscaleImage(original);
   // A recorder announces its codec too ("audio/webm;codecs=opus"); the parameters are not part of the type.
   const mime = (file.type || guessMime(file.name)).split(';')[0]!.trim();
   const presigned = await api.media.presign(workspaceId, { filename: file.name, mime, bytes: file.size });
