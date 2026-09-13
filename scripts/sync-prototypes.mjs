@@ -269,7 +269,7 @@ const PAGES = [
     title: 'For platforms — AnyStudio',
     ogTitle: 'Content for every merchant, from one integration.',
     description:
-      'One API call turns a merchant’s phone photo into storefront-ready images and a description no other listing is using. Test keys work immediately, on 500 free credits.',
+      'One API call turns a merchant’s phone photo into storefront-ready images and a description no other listing is using. Keys work immediately, on 150 free credits.',
   },
 ];
 

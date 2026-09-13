@@ -59,6 +59,11 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
     { limit: 60, windowSec: 60, scope: 'apiKey' },
     { limit: 10, windowSec: 60, scope: 'merchant' },
   ],
+  // The photo check runs on every merchant upload; it is a generation with a wait, so it is limited like one.
+  'POST /api/v1/inspect': [
+    { limit: 60, windowSec: 60, scope: 'apiKey' },
+    { limit: 10, windowSec: 60, scope: 'merchant' },
+  ],
   'POST /api/v1/uploads/from-url': [{ limit: 60, windowSec: 60, scope: 'apiKey' }],
   'POST /api/v1/uploads': [{ limit: 120, windowSec: 60, scope: 'apiKey' }],
   'GET /api/v1/generations': [{ limit: 300, windowSec: 60, scope: 'apiKey' }],
