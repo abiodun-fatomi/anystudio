@@ -27,7 +27,7 @@ product itself is never redrawn; only what surrounds it changes.
 
 Credits, not per-seat. An image costs 10 credits; a reel costs 120.
 
-- **Starter** — free, three generations total, no card required.
+- **Starter** — free, 15 branded images, no card required.
 - **Creator** — $9/month, 600 credits (~60 images or 5 reels).
 - **Business** — $29/month, 2,400 credits (~240 images or 20 reels).
 - **Organization** — $199/month, 12,000 credits, seats, projects and API access.

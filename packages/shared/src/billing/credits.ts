@@ -3,17 +3,24 @@
  *
  * Per-action prices live in the database (CreditCost rows) so staff can
  * change them without a deploy. What lives HERE is the handful of numbers
- * that are promises made in product copy — "start with three free
- * generations" — and therefore change with the copy, in a pull request,
- * where a reviewer sees both sides move together.
+ * that are promises made in product copy — "start with 15 free images" —
+ * and therefore change with the copy, in a pull request, where a reviewer
+ * sees both sides move together.
  */
 
 /**
  * Credits granted to a new personal workspace at signup.
  *
- * Sized to the landing page promise: three full product sheets (each sheet is
- * one branded image set + description + captions) at launch pricing, with a
- * little slack so the third one never fails on a rounding edge.
+ * The grant has not changed; what it is CALLED has. This is three full product
+ * sheets (a sheet being one branded image set + description + captions), and
+ * it is also exactly fifteen branded images at `image.storefront`'s 10 credits
+ * — the same number, counted in the unit a seller actually thinks in. "Three
+ * generations" is our word for a bundle nobody outside this repo has heard of,
+ * and it reads as five times smaller than the thing being given away, which is
+ * an expensive way to describe your own generosity.
+ *
+ * Whoever changes this number changes the copy in `design/` in the same commit;
+ * a reviewer should see both sides move or neither.
  */
 export const SIGNUP_PROMO_CREDITS = 150;
 
