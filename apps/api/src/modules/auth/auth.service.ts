@@ -442,17 +442,49 @@ export class AuthService {
    * Origin and Referer headers are the fallbacks, and neither is present on a
    * top-level navigation — which is precisely when the OAuth handshake needs
    * to know where to send someone back to.
+   *
+   * ALL THREE ARE ATTACKER-CONTROLLED. `x-anystudio-origin` is set by our own
+   * middleware, but the API is its own public Render service on `api.<base>`,
+   * so anything that reaches it with curl writes all three headers itself and
+   * the proxy is not in the path. CORS does not help: it constrains browsers,
+   * and this caller is not one.
+   *
+   * That matters because the value becomes a LINK IN AN EMAIL WE SEND — the
+   * password reset, the address verification, the workspace invite — and the
+   * OAuth redirect. Validating its shape, which is what this used to do, let
+   * anyone who could POST /auth/forgot with someone else's address have the
+   * genuine reset mail delivered carrying a host of their choosing. One click
+   * on a real AnyStudio email and the token is theirs; completing the reset
+   * then rotates `credentialEpoch` and signs the actual owner out.
+   *
+   * So an origin is only echoed back if it is one we recognise: a surface for
+   * this environment, or the marketing site the sign-in pages live on. Anything
+   * else falls back to our own APP origin, which is where a confused-but-honest
+   * request wanted to go anyway.
    */
   publicOrigin(req: Request): string {
-    const forwarded = req.get('x-anystudio-origin');
-    if (forwarded && /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(forwarded)) return forwarded;
-    const origin = req.get('origin');
-    if (origin) return origin;
-    try {
-      return new URL(req.get('referer') ?? '').origin;
-    } catch {
-      return process.env.ORIGIN_APP ?? '';
-    }
+    const env = this.appEnv();
+    const known = (value: string | undefined): string | null => {
+      if (!value) return null;
+      let url: URL;
+      try {
+        url = new URL(value);
+      } catch {
+        return null;
+      }
+      // Scheme first. The host map below matches on host alone, so without
+      // this an `http://app.anystudio.ai` passes and a reset token goes out
+      // over plaintext. Only local development runs without TLS.
+      if (url.protocol !== (env === 'local' ? 'http:' : 'https:')) return null;
+      // `.origin` normalises as well as parses: a Referer carries a full URL,
+      // and only its origin may ever be reflected.
+      const origin = url.origin;
+      return surfaceForOrigin(origin, env) !== null || isMarketingOrigin(origin, env) ? origin : null;
+    };
+
+    return (
+      known(req.get('x-anystudio-origin')) ?? known(req.get('origin')) ?? known(req.get('referer')) ?? process.env.ORIGIN_APP ?? surfaceOriginFor('APP', env)
+    );
   }
 
   /**
