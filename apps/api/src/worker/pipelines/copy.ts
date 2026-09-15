@@ -192,7 +192,7 @@ function copyRequest(p: CapabilityParams<'TEXT_GENERATE'>, ctx: PipelineContext,
     p.language === 'en' && ctx.workspace.region === 'ng'
       ? 'Natural Nigerian register — no slang the seller did not use, no "amazing", no exclamation marks in a row.'
       : '',
-    `Voice: ${voice(p, tone)}. Say what the product does for the buyer before what it is made of. Never invent a feature, material, size or origin that is not visible in the photo or given below — if unsure, leave it out. Never mention that anything was generated.`,
+    `Voice: ${voice(p, tone)}. Say what the product does for the buyer before what it is made of. Be specific about what is plainly visible — the colour and finish, the shape, the parts you can count, the condition — in concrete words a buyer would search for. Never invent a feature, material, size, capacity, model year or origin that is not visible in the photo or given below — if unsure, leave it out. Never mention that anything was generated.`,
     profile.sells ? `What this seller sells: ${String(profile.sells)}.` : '',
     profile.channels ? `Where they sell: ${String((profile.channels as string[]).join(', '))}.` : '',
     `Prices: quote exactly as given, in ${currency}, never converted. If no price is given, do not mention one.`,

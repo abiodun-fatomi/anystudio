@@ -259,7 +259,11 @@ export class MediaService {
 
     const read = readProductPage(html, target.toString());
     if (read.images.length === 0)
-      throw new ValidationError({ url: 'That page does not present a product picture we can find. Paste the image link, or upload the photo.' });
+      throw new ValidationError({
+        url: read.appShell
+          ? 'That page builds itself in the browser, so its picture is not in the page we can read — sharing this link on WhatsApp would show no preview either. Right-click the product photo, copy the image address and paste that, or upload the photo.'
+          : 'That page does not present a product picture we can find. Paste the image link, or upload the photo.',
+      });
     let lastReason = '';
     for (const candidate of read.images.slice(0, 4)) {
       try {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlaygroundExhaustedError, PlaygroundService, dailyLimit } from './playground.service';
+import { parseCapabilityParams } from '@anystudio/shared';
+import { FEATURE_KEYS, PlaygroundExhaustedError, PlaygroundService, dailyLimit } from './playground.service';
 
 /**
  * Every playground run is real provider spend, so what is pinned is the
@@ -14,6 +15,7 @@ const actor = { userId: 'user-1' } as never;
 let db: {
   mediaAsset: { findFirst: ReturnType<typeof vi.fn> };
   generation: { count: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+  creditCost: { findMany: ReturnType<typeof vi.fn> };
 };
 let generations: { request: ReturnType<typeof vi.fn> };
 let service: PlaygroundService;
@@ -22,6 +24,17 @@ beforeEach(() => {
   db = {
     mediaAsset: { findFirst: vi.fn(async () => ({ id: 'asset-12345678-aaaa', key: 'ws/uploads/bag.jpg', status: 'READY' })) },
     generation: { count: vi.fn(async () => 0), findMany: vi.fn(async () => []) },
+    creditCost: {
+      findMany: vi.fn(async () => [
+        { code: 'image.inspect', credits: 1 },
+        { code: 'text.description', credits: 2 },
+        { code: 'image.background', credits: 10 },
+        { code: 'image.product_shot', credits: 10 },
+        { code: 'image.bg_remove', credits: 2 },
+        { code: 'video.reel', credits: 120 },
+        { code: 'video.ad_15s_presenter', credits: 400 },
+      ]),
+    },
   };
   generations = {
     request: vi.fn(async (r: { capability: string; clientKey: string }) => ({
@@ -54,9 +67,58 @@ describe('the daily allowance', () => {
   });
 });
 
+describe('the menu', () => {
+  it('is priced from the credit table, and the product-alone shot is an edit that names the hand', async () => {
+    const menu = await service.features();
+    expect(menu.map((f) => [f.key, f.credits])).toEqual([
+      ['check', 1],
+      ['copy', 2],
+      ['background', 10],
+      ['product_alone', 10],
+      ['cutout', 2],
+      ['enhance', 10],
+      ['reel', 120],
+      ['ugc', 400],
+    ]);
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone', 'ugc'] });
+    expect(generations.request).toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'PRODUCT_SHOT', params: expect.objectContaining({ mode: 'edit', prompt: expect.stringContaining('hand') }) }),
+    );
+    expect(generations.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capability: 'IMAGE_TO_VIDEO',
+        params: expect.objectContaining({ format: 'ugc', shots: 2, presenter: { kind: 'stock', key: 'daphne' } }),
+      }),
+    );
+  });
+
+  it('every feature builds parameters the capability schema accepts — with and without a title', async () => {
+    for (const title of ['Mini handbag', null]) {
+      generations.request.mockClear();
+      await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: [...FEATURE_KEYS], title, details: title ? '128 GB' : null });
+      const calls = generations.request.mock.calls.map((c) => c[0] as { capability: never; params: Record<string, unknown> });
+      expect(calls).toHaveLength(FEATURE_KEYS.length);
+      for (const c of calls) {
+        const parsed = parseCapabilityParams(c.capability, c.params);
+        expect(parsed.ok, `${String(c.capability)} ${JSON.stringify(parsed)}`).toBe(true);
+      }
+    }
+  });
+
+  it('ignores a feature that is not on the menu rather than reaching past it', async () => {
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check', 'delete_everything' as never] });
+    expect(generations.request).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('a run', () => {
   it('starts each chosen call through GenerationService, keyed on the photo, and reports the allowance after', async () => {
-    const out = await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT', 'TEXT_GENERATE'], title: 'Mini handbag' });
+    const out = await service.run(actor, 'ws', {
+      assetId: 'asset-12345678-aaaa',
+      features: ['check', 'copy'],
+      title: 'Mini handbag',
+      details: '128 GB, unlocked',
+    });
     expect(generations.request).toHaveBeenCalledTimes(2);
     expect(generations.request).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -64,39 +126,42 @@ describe('a run', () => {
         requestedById: 'user-1',
         capability: 'INSPECT',
         params: { sourceKey: 'ws/uploads/bag.jpg', declared: { name: 'Mini handbag' } },
-        clientKey: 'playground:asset-12:inspect:v1',
+        clientKey: 'playground:asset-12:check:v1',
         channel: 'WEB',
       }),
     );
     expect(generations.request).toHaveBeenCalledWith(
-      expect.objectContaining({ capability: 'TEXT_GENERATE', params: { sourceKey: 'ws/uploads/bag.jpg', productName: 'Mini handbag', language: 'en' } }),
+      expect.objectContaining({
+        capability: 'TEXT_GENERATE',
+        params: { sourceKey: 'ws/uploads/bag.jpg', productName: 'Mini handbag', details: '128 GB, unlocked', language: 'en' },
+      }),
     );
-    expect(out.runs.map((r) => r.capability)).toEqual(['INSPECT', 'TEXT_GENERATE']);
+    expect(out.runs.map((r) => r.feature)).toEqual(['check', 'copy']);
     expect(out.balance).toBe(137);
     expect(out.allowance.dailyLimit).toBe(15);
   });
 
   it('refuses before any money moves when the day is used up', async () => {
     db.generation.count.mockResolvedValue(14);
-    await expect(service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT', 'BACKGROUND_REPLACE'] })).rejects.toBeInstanceOf(
+    await expect(service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check', 'background'] })).rejects.toBeInstanceOf(
       PlaygroundExhaustedError,
     );
     expect(generations.request).not.toHaveBeenCalled();
     // one more fits exactly
-    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT'] });
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] });
     expect(generations.request).toHaveBeenCalledTimes(1);
   });
 
   it('does not count a replay of the same photo against the day', async () => {
     db.generation.count.mockResolvedValue(15);
-    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:inspect:v1' }]);
-    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT'] });
+    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:check:v1' }]);
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] });
     expect(generations.request).toHaveBeenCalledTimes(1); // GenerationService answers the existing row for free
   });
 
   it('says so with the allowance in the error, and a 429', async () => {
     db.generation.count.mockResolvedValue(15);
-    const err = await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT'] }).catch((e: unknown) => e);
+    const err = await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PlaygroundExhaustedError);
     expect((err as PlaygroundExhaustedError).status).toBe(429);
     expect((err as PlaygroundExhaustedError).details).toMatchObject({ allowance: { remaining: 0 } });
@@ -105,7 +170,7 @@ describe('a run', () => {
 
   it('does not run on a photo from another workspace', async () => {
     db.mediaAsset.findFirst.mockResolvedValueOnce(null);
-    await expect(service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', capabilities: ['INSPECT'] })).rejects.toMatchObject({ status: 404 });
+    await expect(service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] })).rejects.toMatchObject({ status: 404 });
     expect(db.mediaAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'asset-12345678-aaaa', workspaceId: 'ws' } }));
   });
 });
