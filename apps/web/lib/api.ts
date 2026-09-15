@@ -1261,7 +1261,7 @@ export const api = {
         'GET',
         '/admin/waitlist',
       ),
-    leads: (q: { show?: 'open' | 'all'; cursor?: string | null; take?: number }) =>
+    leads: (q: { status?: 'all' | 'new' | 'handled'; from?: string; to?: string; cursor?: string | null; take?: number }) =>
       request<{ rows: AdminLead[]; nextCursor: string | null }>(
         'GET',
         `/admin/leads?${new URLSearchParams(
