@@ -184,21 +184,31 @@ export const productShotPipeline: Pipeline = async (ctx) => {
  * Product alone: whatever was holding, hanging or surrounding the product
  * taken out, the product itself untouched.
  *
- * This is deliberately NOT a described edit sent to the product-shot vendor.
- * Asked to "remove the hand" on a phone, that vendor drew a different phone
- * — same brand, another colour, another camera — and the ordinary check
- * could not have caught it, because the ordinary check measures against the
- * photo's own cutout, and the cutout of a phone in a hand is the phone AND
- * the hand: the result that did as asked and the result that invented a
- * phone both score as "product changed".
+ * "Untouched" is the whole specification, and it rules out the obvious
+ * approach. Asked to "remove the hand" on a phone, every generative model
+ * tried — the product-shot vendor's free-form edit, Flux, Gemini — handed
+ * back a phone of its own: another colour, another camera, a panel gone.
+ * Measured against the real photo, none scored above 0.6 of the 0.86 a
+ * kept product needs. A model that redraws the frame redraws the product.
  *
- * So the work goes to the image-edit route, the models that hold a subject
- * still while its surroundings change, and the check is turned round. The
- * RESULT is cut out — by then it is the product alone — and that product is
- * looked for in the ORIGINAL photo. Found there with the same structure and
- * colour, it is the seller's product and the picture ships. Not found, the
- * model invented one: a different model is asked once, sternly, and a second
- * miss is refused and refunded rather than posted.
+ * So the first ask is not a model drawing anything. It is the product-shot
+ * vendor's text-guided cut: keep the product, drop the hand, hanger or
+ * stand, put what is left on a plain ground with a shadow. The pixels of
+ * the product are the photo's own pixels. The one thing it cannot do is
+ * invent the sliver of product that was under a finger — that edge stays
+ * as the cut leaves it — and that is the honest limit of "untouched".
+ *
+ * Only when the vendor is not there (no key, or the stub standing in for
+ * it outside production) does the work fall to the image-edit route — the
+ * models that hold a subject still while its surroundings change — and
+ * there a different model is asked once after a miss.
+ *
+ * Every answer, the vendor's included, goes through the check turned round:
+ * the RESULT is cut out (by then it is the product alone) and that product
+ * is looked for in the ORIGINAL photo, with a fifth of it allowed to have
+ * been hidden by the hand. Found there with the same structure and colour,
+ * it is the seller's product; not found, nothing ships and the credits go
+ * back. Two misses end it.
  */
 async function productAlone(ctx: PipelineContext, p: Params) {
   await ctx.stage('preparing', 8, 'Reading your photo');
@@ -207,59 +217,50 @@ async function productAlone(ctx: PipelineContext, p: Params) {
   const upright = meta.orientation && meta.orientation >= 5 ? { w: meta.height ?? 1, h: meta.width ?? 1 } : { w: meta.width ?? 1, h: meta.height ?? 1 };
   const aspect = nearestAspect(upright.w / upright.h);
 
-  // Who is asked. The image-edit route first, and on a miss the same route
-  // minus the model that missed. When that route has nobody at all — no
-  // image-edit key on this deployment — the product-shot vendor's own
-  // free-form edit is asked instead, under the same check: it is the vendor
-  // that drew the wrong phone, so its answer is trusted exactly as far as
-  // the check says and not an inch further.
   const exclude: string[] = [];
-  let viaVendor = false;
+  const asks: Array<{ how: string; stage: string; run: () => Promise<ProviderResult> }> = [
+    { how: 'vendor cut', stage: 'Cutting around the product', run: () => vendorCut(ctx, p) },
+    { how: 'edit route', stage: 'Taking out what is holding it', run: () => routeEdit(ctx, p, aspect, 1, exclude) },
+    { how: 'edit route, another model', stage: 'That one changed your product — asking another model', run: () => routeEdit(ctx, p, aspect, 2, exclude) },
+  ];
   let picked: { bytes: Uint8Array; cut: Uint8Array | null; result: ProviderResult; report: FidelityReport | null } | null = null;
   let last: FidelityReport | null = null;
-  let attempt = 0;
-  while (attempt < 2 && !picked) {
-    attempt++;
-    await ctx.stage(
-      'generating',
-      attempt === 1 ? 20 : 30,
-      attempt === 1 ? 'Taking out what is holding it' : 'That one changed your product — asking another model',
-    );
+  let judged = 0;
+  for (const ask of asks) {
+    if (picked || judged >= 2) break;
+    await ctx.stage('generating', 20 + judged * 10, ask.stage);
     let result: ProviderResult;
     try {
-      result = viaVendor ? await vendorEdit(ctx, p, attempt) : await routeEdit(ctx, p, aspect, attempt, exclude);
+      result = await ask.run();
     } catch (err) {
       rethrowIfAborted(ctx.signal, err);
-      if (viaVendor || !(err instanceof ProviderError) || err.kind !== 'PROVIDER_DOWN') throw err;
-      ctx.log.warn({ err: err.message }, 'no image-edit provider for product-alone; asking the product-shot vendor under the same check');
-      viaVendor = true;
-      attempt--;
+      // Nobody on that route: not a miss, not counted; the next ask stands in.
+      if (err instanceof ProviderError && err.kind === 'PROVIDER_DOWN') {
+        ctx.log.warn({ how: ask.how, err: err.message }, 'product-alone: nobody to ask there; moving on');
+        continue;
+      }
+      throw err;
+    }
+    // Outside production the stub answers an empty route with a placeholder. That is "nobody" too.
+    if (result.providerKey === STUB_KEY) {
+      ctx.log.warn({ how: ask.how }, 'product-alone: the stub answered; moving on');
       continue;
     }
-    // Outside production the stub answers a route with nobody on it, with a
-    // placeholder. That is "nobody" too: not judged, not counted, and the
-    // vendor is asked instead — so a dev deployment with a Photoroom key and
-    // no image-edit key still gets a real answer.
-    if (!viaVendor && result.providerKey === STUB_KEY) {
-      ctx.log.warn('the image-edit route answered with the stub; asking the product-shot vendor under the same check');
-      viaVendor = true;
-      attempt--;
-      continue;
-    }
+    judged++;
     const bytes = await artifactBytes(result, ctx.signal);
 
     // The check needs the result's product on its own. If the cutout cannot
     // be made, the picture ships unchecked — as every shot does when the
     // helper call is down — rather than a credit being spent on our plumbing.
     await ctx.stage('composing', 60, 'Checking it is still your product');
-    const cut = await resultCutout(ctx, bytes, attempt);
+    const cut = await resultCutout(ctx, bytes, judged);
     if (!cut) {
       picked = { bytes, cut: null, result, report: null };
       break;
     }
     const report = await fidelity(bytes, cut, source, { occluded: ALONE.occluded });
     ctx.log.info(
-      { mode: p.mode, pass: attempt, ...report, keep: FIDELITY.keep, occluded: ALONE.occluded, providerKey: result.providerKey },
+      { mode: p.mode, how: ask.how, pass: judged, ...report, keep: FIDELITY.keep, occluded: ALONE.occluded, providerKey: result.providerKey },
       'product-alone fidelity measured (result located in the original)',
     );
     if (report.placed && report.structure >= FIDELITY.locate && report.score >= FIDELITY.keep) {
@@ -269,14 +270,14 @@ async function productAlone(ctx: PipelineContext, p: Params) {
     last = report;
     exclude.push(result.providerKey);
     ctx.log.warn(
-      { mode: p.mode, pass: attempt, score: report.score, structure: report.structure, providerKey: result.providerKey },
+      { mode: p.mode, how: ask.how, pass: judged, score: report.score, structure: report.structure, providerKey: result.providerKey },
       'product-alone result is not the photographed product',
     );
   }
   if (!picked) {
     throw new ProviderError(
       'LOW_QUALITY',
-      `product alone: the edited product was not the photographed one after 2 attempts: fidelity ${last?.score ?? 0} (keep ${FIDELITY.keep}); structure ${last?.structure ?? 0} (locate ${FIDELITY.locate})`,
+      `product alone: no answer kept the photographed product (${judged} judged): fidelity ${last?.score ?? 0} (keep ${FIDELITY.keep}); structure ${last?.structure ?? 0} (locate ${FIDELITY.locate})`,
       'product-alone',
       { raw: last },
     );
@@ -309,7 +310,15 @@ async function productAlone(ctx: PipelineContext, p: Params) {
  */
 export const ALONE = { occluded: 0.2 } as const;
 
-/** The image-edit route: the models that hold a subject still while its surroundings change. */
+/** The product-shot vendor's text-guided cut: the mode's own mapping in the adapter, nothing generated. */
+function vendorCut(ctx: PipelineContext, p: Params): Promise<ProviderResult> {
+  return ctx.callProvider(
+    { generationId: ctx.row.id, workspaceId: ctx.row.workspaceId, capability: 'PRODUCT_SHOT', params: { ...p, sizes: [] }, files: ctx.files },
+    { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
+  );
+}
+
+/** The image-edit route: the models that hold a subject still while its surroundings change. A fallback, judged like the rest. */
 function routeEdit(ctx: PipelineContext, p: Params, aspect: Aspect, attempt: number, exclude: string[]): Promise<ProviderResult> {
   return ctx.callCapability(
     'IMAGE_EDIT',
@@ -328,20 +337,6 @@ function routeEdit(ctx: PipelineContext, p: Params, aspect: Aspect, attempt: num
   );
 }
 
-/** The product-shot vendor's free-form edit, for a deployment with no image-edit key. Checked like any other answer. */
-function vendorEdit(ctx: PipelineContext, p: Params, attempt: number): Promise<ProviderResult> {
-  return ctx.callProvider(
-    {
-      generationId: ctx.row.id,
-      workspaceId: ctx.row.workspaceId,
-      capability: 'PRODUCT_SHOT',
-      params: { ...p, mode: 'edit', prompt: aloneInstruction(p, attempt), sizes: [] },
-      files: ctx.files,
-    },
-    { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
-  );
-}
-
 const SHADOW_WORDS: Record<Params['shadow'], string> = {
   soft: ' with a soft, natural contact shadow beneath it',
   hard: ' with a crisp contact shadow beneath it',
@@ -352,7 +347,7 @@ const SHADOW_WORDS: Record<Params['shadow'], string> = {
 function aloneInstruction(p: Params, attempt: number): string {
   const steer = p.prompt?.trim();
   const base =
-    `Remove the hand, person, hanger, stand or any prop that is holding, wearing or surrounding the product${steer ? ` (${steer})` : ''}. ` +
+    `Remove the hand, person, hanger, stand or any prop that is holding, wearing or surrounding the product${steer ? ` (the product is the ${steer})` : ''}. ` +
     `Show the product alone, complete and exactly as photographed — the same angle, size, colours, materials, text, logos and every detail unchanged — ` +
     `on a plain, seamless, evenly lit light studio background${SHADOW_WORDS[p.shadow]}.`;
   return attempt === 1

@@ -74,12 +74,13 @@ const FEATURES: Feature[] = [
     key: 'product_alone',
     capability: 'PRODUCT_SHOT',
     label: 'Product alone',
-    help: 'The hand, hanger or stand taken out; the product itself untouched, on a plain background.',
+    help: 'The hand, hanger or stand cut away; the product itself untouched, on a plain background. Nothing is redrawn.',
     costCode: 'image.product_shot',
     kind: 'image',
-    // v2: the pipeline's own mode, which checks that the product it hands back is the one photographed. v1 was a described edit.
+    // v2: the pipeline's own mode — the vendor's text-guided cut, checked against the photo. v1 was a described edit that drew a different phone.
+    // The product's name, when given, is what the cut is told to keep.
     version: 2,
-    params: (sourceKey) => ({ sourceKey, mode: 'isolate', sizes: [] }),
+    params: (sourceKey, title) => ({ sourceKey, mode: 'isolate', sizes: [], ...(title ? { prompt: title } : {}) }),
   },
   {
     key: 'cutout',

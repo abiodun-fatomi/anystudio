@@ -155,18 +155,20 @@ retain their finite duration. Previously generated files are not modified.
 PRODUCT_SHOT modes: `on_model`, `ghost_mannequin`, `flat_lay`, `ironing`,
 `beautify`, `text_removal`, `isolate`, `edit`, `expand`. Custom edit needs a prompt.
 
-`PRODUCT_SHOT` mode `isolate` ("Product alone") takes out the hand, hanger,
+`PRODUCT_SHOT` mode `isolate` ("Product alone") cuts away the hand, hanger,
 stand or prop holding the product and returns the product unchanged on a plain
-light background. It is composed by the pipeline, not sent to the product-shot
-vendor: the edit runs on the `IMAGE_EDIT` route with the subject held constant,
-the result is cut out, and that product is located in the original photo. A
-result whose product is not found there (a redrawn phone, a recoloured bag) is
-refused and a second model asked once; two misses fail the row as
-`LOW_QUALITY` with credits refunded. The comparison allows a fifth of the
-product to be hidden in the photo (the fingers that were over it); the bar is
-the ordinary one. A deployment with no `IMAGE_EDIT` provider falls back to the
-product-shot vendor's free-form edit, held to the same check. Set `shadow` (`soft` by default, `none`
-to omit) and `prompt` to steer what should be removed. `edit` remains the
+light background. It is not a described edit: every generative model tried
+redrew the phone it was asked to keep. The vendor's text-guided segmentation
+(`segmentation.prompt` = the item, `segmentation.negativePrompt` = the things
+that hold one) keeps the photo's own pixels of the product; `prompt` names the
+item ("phone", "bag") and is the cleanest steer. Nothing is redrawn, so an edge
+that was under a finger stays as the cut leaves it. The pipeline then cuts the
+result out and locates that product in the original photo (a fifth allowed
+hidden); a result whose product is not found there is refused. Only when the
+vendor is absent does the work fall to the `IMAGE_EDIT` route with the subject
+held constant, a different model asked once after a miss; two misses fail the
+row as `LOW_QUALITY` with credits refunded. Set `shadow` (`soft` by default,
+`none` to omit). `edit` remains the
 free-form mode and, like the reshaping modes, is measured but never refused.
 
 `PRODUCT_SHOT` mode `beautify` (including batch children) now enhances the

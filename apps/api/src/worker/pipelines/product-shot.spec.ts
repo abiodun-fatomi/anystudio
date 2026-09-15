@@ -268,21 +268,34 @@ describe('a shot that came back as a different product', () => {
 });
 
 /**
- * Product alone. The edit goes to the image-edit route, never the product-shot
- * vendor; the result is cut out and looked for in the ORIGINAL photo; a model
- * that drew a different product is refused, and a second model is asked
- * before anyone is refunded.
+ * Product alone. The vendor's text-guided cut is asked first — nothing
+ * generated; the image-edit route only when the vendor is not there; every
+ * answer is cut out and looked for in the ORIGINAL photo, and two misses
+ * end it with a refund.
  */
-function aloneCtx(attempts: Array<{ image: Uint8Array; cut: Uint8Array | null; providerKey: string }>, over: Record<string, unknown> = {}) {
+type Answer = { image: Uint8Array; cut: Uint8Array | null; providerKey: string };
+function aloneCtx(script: { vendor: Answer[] | 'down' | 'stub'; route?: Answer[] }, over: Record<string, unknown> = {}) {
   const base = ctxWith({ params: params({ mode: 'isolate', ...over }), output: new Uint8Array(), mask: null });
-  let edits = 0;
   const cutsFor = new Map<string, Uint8Array | null>();
+  let works = 0;
+  const hand = (a: Answer, job: string) => {
+    cutsFor.set(`work-${works + 1}`, a.cut);
+    return { providerKey: a.providerKey, providerJobId: job, costMinor: 3, artifacts: [{ role: 'image', mime: 'image/png', bytes: a.image }] };
+  };
+  let vendorCalls = 0;
+  const callProvider = vi.fn(async () => {
+    if (script.vendor === 'down') throw new ProviderError('PROVIDER_DOWN', 'no provider available for PRODUCT_SHOT', 'router');
+    if (script.vendor === 'stub') return { providerKey: 'stub:any', costMinor: 0, artifacts: [{ role: 'image', mime: 'image/png', bytes: await nothing() }] };
+    const a = script.vendor[vendorCalls++];
+    if (!a) throw new Error('no more vendor answers scripted');
+    return hand(a, `pr-${vendorCalls}`);
+  });
+  let edits = 0;
   const callCapability = vi.fn(async (capability: string, input: { params: { sourceKey: string } }) => {
     if (capability === 'IMAGE_EDIT') {
-      const a = attempts[edits++];
-      if (!a) throw new Error('no more attempts scripted');
-      cutsFor.set(`work-${edits}`, a.cut);
-      return { providerKey: a.providerKey, providerJobId: `job-${edits}`, costMinor: 13, artifacts: [{ role: 'image', mime: 'image/png', bytes: a.image }] };
+      const a = (script.route ?? [])[edits++];
+      if (!a) throw new ProviderError('PROVIDER_DOWN', 'no provider available for IMAGE_EDIT', 'router');
+      return hand(a, `job-${edits}`);
     }
     if (capability === 'BACKGROUND_REMOVE') {
       const cut = cutsFor.get(input.params.sourceKey);
@@ -291,7 +304,6 @@ function aloneCtx(attempts: Array<{ image: Uint8Array; cut: Uint8Array | null; p
     }
     throw new Error(`unexpected capability ${capability}`);
   });
-  let works = 0;
   const media = {
     getBytes: vi.fn(async () => Buffer.from(sourceBytes)),
     putGenerationWork: vi.fn(async () => `work-${++works}`),
@@ -299,25 +311,29 @@ function aloneCtx(attempts: Array<{ image: Uint8Array; cut: Uint8Array | null; p
   };
   const ctx = {
     ...(base.ctx as object),
+    callProvider,
     callCapability,
     media,
     row: { ...(base.ctx.row as object), createdAt: new Date('2026-09-15T00:00:00Z') },
   } as unknown as PipelineContext;
-  return { ctx, callCapability, callProvider: base.callProvider, media, warn: base.warn };
+  return { ctx, callCapability, callProvider, media, warn: base.warn };
 }
 
 describe('Product alone', () => {
-  it('asks the image-edit route, not the product-shot vendor, and ships a result whose product is found in the photo', async () => {
-    sourceBytes = await photo(RED);
-    const { ctx, callCapability, callProvider, media } = aloneCtx([
-      { image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' },
-    ]);
+  it('asks the vendor for its cut first — the mode itself, nothing generated — and ships when the product is found in the photo', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability, callProvider, media } = aloneCtx(
+      { vendor: [{ image: await photo(RED), cut: await cutout(RED), providerKey: 'photoroom:edit' }] },
+      { prompt: 'phone' },
+    );
 
     const out = await productShotPipeline(ctx);
-    expect(callProvider).not.toHaveBeenCalled();
-    const edit = callCapability.mock.calls.find((c) => c[0] === 'IMAGE_EDIT')![1] as { params: Record<string, unknown> };
-    expect(edit.params).toMatchObject({ sourceKey: 'ws-1/p.png', preserveProduct: true, useCase: 'photography', aspect: '1:1', sizes: [] });
-    expect(String(edit.params.prompt)).toMatch(/hand.*exactly as photographed/s);
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    expect(callProvider.mock.calls[0]![0]).toMatchObject({
+      capability: 'PRODUCT_SHOT',
+      params: expect.objectContaining({ mode: 'isolate', prompt: 'phone', sizes: [] }),
+    });
+    expect(callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT')).toHaveLength(0);
     // The RESULT is what gets cut out and checked, by way of the work store.
     expect(media.putGenerationWork).toHaveBeenCalledWith(expect.objectContaining({ name: 'alone-1.png', generationId: 'g-1' }));
     expect(callCapability).toHaveBeenCalledWith(
@@ -325,120 +341,99 @@ describe('Product alone', () => {
       expect.objectContaining({ params: { sourceKey: 'work-1', background: 'transparent' } }),
       expect.anything(),
     );
-    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
+    expect(out.providerKey).toBe('photoroom:edit');
     expect(out.artifacts.filter((a) => a.role === 'variant')).toHaveLength(2);
     expect(out.artifacts[0]).toMatchObject({ width: 256, height: 256 });
   });
 
-  it('ships a clean result of a product that was held: the fingers in the photo do not count against it', async () => {
+  it('with no vendor, goes to the image-edit route with the subject held constant, at the photo’s own aspect', async () => {
     sourceBytes = await held(RED);
-    const { ctx, callProvider } = aloneCtx([{ image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' }]);
+    const { ctx, callCapability, callProvider } = aloneCtx({
+      vendor: 'down',
+      route: [{ image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' }],
+    });
     const out = await productShotPipeline(ctx);
-    expect(callProvider).not.toHaveBeenCalled();
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    const edit = callCapability.mock.calls.find((c) => c[0] === 'IMAGE_EDIT')![1] as { params: Record<string, unknown> };
+    expect(edit.params).toMatchObject({ sourceKey: 'ws-1/p.png', preserveProduct: true, useCase: 'photography', aspect: '1:1', sizes: [] });
+    expect(String(edit.params.prompt)).toMatch(/hand.*exactly as photographed/s);
     expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
   });
 
-  it('with no image-edit provider at all, asks the product-shot vendor instead — and holds it to the same check', async () => {
+  it('treats the stub standing in for the vendor as nobody there, and goes to the route without judging it', async () => {
     sourceBytes = await held(RED);
-    // Vendor draws the wrong product first, then keeps it.
-    const answers = [await photo(BLUE), await photo(RED)];
-    const cuts = [await cutout(BLUE), await cutout(RED)];
-    const { ctx, callCapability, callProvider } = aloneCtx([]);
-    callCapability.mockImplementation(async (capability: string, input: { params: { sourceKey: string } }) => {
-      if (capability === 'IMAGE_EDIT') throw new ProviderError('PROVIDER_DOWN', 'no provider available for IMAGE_EDIT', 'router');
-      const n = Number(input.params.sourceKey.replace('work-', '')) - 1;
-      return { providerKey: 'x:cut', costMinor: 1, artifacts: [{ role: 'image', mime: 'image/png', bytes: cuts[n]! }] };
-    });
-    let n = 0;
-    callProvider.mockImplementation(async () => ({
-      providerKey: 'photoroom:edit',
-      providerJobId: `pr-${n + 1}`,
-      costMinor: 2,
-      artifacts: [{ role: 'image', mime: 'image/png', bytes: answers[n++]! }],
-    }));
-
+    const { ctx, media } = aloneCtx({ vendor: 'stub', route: [{ image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' }] });
     const out = await productShotPipeline(ctx);
-    expect(out.providerKey).toBe('photoroom:edit');
-    expect(callProvider).toHaveBeenCalledTimes(2);
-    expect(callProvider.mock.calls[0]![0]).toMatchObject({
-      capability: 'PRODUCT_SHOT',
-      params: expect.objectContaining({ mode: 'edit', prompt: expect.stringContaining('hand') }),
-    });
-    // The image-edit route was asked once and found empty; the vendor's two answers were each checked.
-    expect(callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT')).toHaveLength(1);
-    expect(callCapability.mock.calls.filter((c) => c[0] === 'BACKGROUND_REMOVE')).toHaveLength(2);
-  });
-
-  it('treats a stub answer on the image-edit route as nobody there, and goes to the vendor', async () => {
-    sourceBytes = await held(RED);
-    const { ctx, callCapability, callProvider, media } = aloneCtx([{ image: await nothing(), cut: null, providerKey: 'stub:any' }]);
-    const red = await photo(RED);
-    const cut = await cutout(RED);
-    const inner = callCapability.getMockImplementation()!;
-    callCapability.mockImplementation(async (capability: string, input: { params: { sourceKey: string } }) =>
-      capability === 'BACKGROUND_REMOVE' && input.params.sourceKey === 'work-1'
-        ? { providerKey: 'x:cut', costMinor: 1, artifacts: [{ role: 'image', mime: 'image/png', bytes: cut }] }
-        : inner(capability, input),
-    );
-    callProvider.mockResolvedValue({
-      providerKey: 'photoroom:edit',
-      providerJobId: 'pr-1',
-      costMinor: 2,
-      artifacts: [{ role: 'image', mime: 'image/png', bytes: red }],
-    });
-
-    const out = await productShotPipeline(ctx);
-    expect(out.providerKey).toBe('photoroom:edit');
-    expect(callProvider).toHaveBeenCalledTimes(1);
-    // The stub's placeholder was never cut out or judged.
+    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
     expect(media.putGenerationWork).toHaveBeenCalledTimes(1);
   });
 
-  it('every ask builds parameters the capability schemas accept', async () => {
+  it('a vendor cut that is not the product is refused and the route asked, excluding the vendor', async () => {
     sourceBytes = await held(RED);
-    const { ctx, callCapability, callProvider } = aloneCtx([
-      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
-      { image: await photo(RED), cut: await cutout(RED), providerKey: 'b:two' },
-    ]);
-    await productShotPipeline(ctx);
-    for (const c of callCapability.mock.calls) {
-      const parsed = parseCapabilityParams(c[0] as never, (c[1] as { params: Record<string, unknown> }).params);
-      expect(parsed.ok, `${String(c[0])} ${JSON.stringify(parsed)}`).toBe(true);
-    }
-    expect(callProvider).not.toHaveBeenCalled();
+    const { ctx, callCapability, warn } = aloneCtx({
+      vendor: [{ image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'photoroom:edit' }],
+      route: [{ image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' }],
+    });
+    const out = await productShotPipeline(ctx);
+    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
+    const edits = callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT');
+    expect(edits).toHaveLength(1);
+    expect(edits[0]![2]).toMatchObject({ route: { exclude: ['photoroom:edit'] } });
+    expect(warn.mock.calls.flat().join(' ')).toContain('not the photographed product');
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('put back');
   });
 
-  it('refuses a model that drew a different product, asks another model once, and ships when that one kept it', async () => {
-    sourceBytes = await photo(RED);
-    const { ctx, callCapability, warn } = aloneCtx([
-      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'photoroom:edit' },
-      { image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' },
-    ]);
-
+  it('with no vendor, a model that drew a different product is refused and another model asked once, sternly', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability } = aloneCtx({
+      vendor: 'down',
+      route: [
+        { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'fal:flux-2-pro-edit' },
+        { image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' },
+      ],
+    });
     const out = await productShotPipeline(ctx);
     expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
     const edits = callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT');
     expect(edits).toHaveLength(2);
-    // The second ask goes elsewhere, and says why.
-    expect(edits[1]![2]).toMatchObject({ route: { exclude: ['photoroom:edit'] } });
+    expect(edits[1]![2]).toMatchObject({ route: { exclude: ['fal:flux-2-pro-edit'] } });
     expect(String((edits[1]![1] as { params: { prompt: string } }).params.prompt)).toContain('drew a different product');
-    expect(warn.mock.calls.flat().join(' ')).toContain('not the photographed product');
-    // And never a paste-back: the blue one is simply not used.
-    expect(warn.mock.calls.flat().join(' ')).not.toContain('put back');
   });
 
-  it('is refused and refunded after two invented products, with the numbers', async () => {
-    sourceBytes = await photo(RED);
-    const { ctx } = aloneCtx([
-      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
-      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'b:two' },
-    ]);
+  it('is refused and refunded after two answers that were not the product, with the numbers — a third is never bought', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability } = aloneCtx({
+      vendor: [{ image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'photoroom:edit' }],
+      route: [
+        { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
+        { image: await photo(RED), cut: await cutout(RED), providerKey: 'b:two' },
+      ],
+    });
     await expect(productShotPipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY', message: expect.stringContaining(`keep ${FIDELITY.keep}`) });
+    expect(callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT')).toHaveLength(1);
+  });
+
+  it('every ask builds parameters the capability schemas accept', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability, callProvider } = aloneCtx({
+      vendor: [{ image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'photoroom:edit' }],
+      route: [{ image: await photo(RED), cut: await cutout(RED), providerKey: 'b:two' }],
+    });
+    await productShotPipeline(ctx);
+    for (const c of callProvider.mock.calls) {
+      const input = c[0] as unknown as { capability: never; params: Record<string, unknown> };
+      const parsed = parseCapabilityParams(input.capability, input.params);
+      expect(parsed.ok, `PRODUCT_SHOT ${JSON.stringify(parsed)}`).toBe(true);
+    }
+    for (const c of callCapability.mock.calls) {
+      const parsed = parseCapabilityParams(c[0] as never, (c[1] as { params: Record<string, unknown> }).params);
+      expect(parsed.ok, `${String(c[0])} ${JSON.stringify(parsed)}`).toBe(true);
+    }
   });
 
   it('still ships when the result cannot be cut out, rather than spending the credit on our plumbing', async () => {
     sourceBytes = await photo(RED);
-    const { ctx, warn } = aloneCtx([{ image: await photo(RED), cut: null, providerKey: 'vertex:gemini-3-pro-image' }]);
+    const { ctx, warn } = aloneCtx({ vendor: [{ image: await photo(RED), cut: null, providerKey: 'photoroom:edit' }] });
     const out = await productShotPipeline(ctx);
     expect(out.artifacts.length).toBeGreaterThan(0);
     expect(warn.mock.calls.flat().join(' ')).toContain('unchecked');

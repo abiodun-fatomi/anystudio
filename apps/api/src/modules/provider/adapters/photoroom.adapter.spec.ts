@@ -312,12 +312,23 @@ describe('a mode we have not confirmed', () => {
     await expect(sent(shot({ mode: 'sketch' }))).rejects.toThrow(/cannot do "sketch"/);
   });
 
-  it('has a mapping for every mode the studio offers, and refuses the ones the pipeline composes itself', async () => {
-    const { OFFERED_PRODUCT_MODES, PIPELINE_OWNED_MODES } = await import('@anystudio/shared');
+  it('has a mapping for every mode the studio offers', async () => {
+    const { OFFERED_PRODUCT_MODES } = await import('@anystudio/shared');
     for (const mode of OFFERED_PRODUCT_MODES) {
       const extra = mode === 'edit' ? { prompt: 'x' } : {};
-      if (PIPELINE_OWNED_MODES.includes(mode)) await expect(sent(shot({ mode })), mode).rejects.toThrow(/cannot do/);
-      else await expect(sent(shot({ mode, ...extra })), mode).resolves.toBeTruthy();
+      await expect(sent(shot({ mode, ...extra })), mode).resolves.toBeTruthy();
     }
+  });
+
+  it('product alone is a text-guided cut, never a generative edit: keep the named item, drop what holds it', async () => {
+    const q = await sent(shot({ mode: 'isolate', prompt: 'phone' }));
+    expect(q.get('segmentation.prompt')).toBe('phone');
+    expect(q.get('segmentation.negativePrompt')).toContain('hand');
+    expect(q.get('editWithAI.mode')).toBeNull();
+    expect(q.get('removeBackground')).toBeNull(); // the vendor's default: the background goes
+    expect(q.get('background.color')).toBe('F5F4F2');
+    expect(q.get('shadow.mode')).toBe('ai.soft');
+    // With no name, the vendor is asked for "the product".
+    expect((await sent(shot({ mode: 'isolate' }))).get('segmentation.prompt')).toBe('product');
   });
 });

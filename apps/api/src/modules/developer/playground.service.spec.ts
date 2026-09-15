@@ -90,6 +90,12 @@ describe('the menu', () => {
         params: expect.objectContaining({ format: 'ugc', shots: 2, presenter: { kind: 'stock', key: 'daphne' } }),
       }),
     );
+    // Told the product's name, the cut is told what to keep.
+    generations.request.mockClear();
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone'], title: 'phone' });
+    expect(generations.request).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { sourceKey: 'ws/uploads/bag.jpg', mode: 'isolate', sizes: [], prompt: 'phone' } }),
+    );
   });
 
   it('every feature builds parameters the capability schema accepts — with and without a title', async () => {
