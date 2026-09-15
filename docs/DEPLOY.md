@@ -680,8 +680,8 @@ under `careers/`), a confirmation email to the applicant, and an alert to
 `POST /api/v1/waitlist`; counts and the latest signups are at
 `GET /api/v1/admin/waitlist`. The platform contact form on `/org#contact`
 posts every field to `POST /api/v1/leads`; leads are read and marked
-handled in the console → **Platform leads**, and announced to `LEADS_EMAIL`
-if set.
+handled in the console → **Platform leads**, and emailed whole to the
+`MAIL_FROM` inbox.
 
 **Migrations.** `20260918000002_careers`, `20260918000003_waitlist`,
 `20260925000001_leads`.
