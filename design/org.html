@@ -223,7 +223,7 @@ form{margin-top:24px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:560px){.two{grid-template-columns:1fr}}
 .field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px}
-input[type=text],input[type=email],input[type=url],input[type=tel],input[type=password],select{
+input[type=text],input[type=email],input[type=url],input[type=tel],input[type=password],select,textarea{
   width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);
   background:var(--surface-2);color:var(--ink);font:inherit;font-size:16px;
   transition:border-color .16s,box-shadow .16s;
@@ -232,7 +232,11 @@ select{appearance:none;-webkit-appearance:none;cursor:pointer;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E6575' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
   background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}
 input::placeholder{color:var(--muted);opacity:.75}
-input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+textarea{resize:vertical;min-height:88px;line-height:1.5}
+textarea::placeholder{color:var(--muted);opacity:.75}
+/* the field people never see; a bot fills it, the API drops the message */
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 input[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--danger)}
 .hint{font-size:12.5px;color:var(--muted);margin-top:7px;line-height:1.5}
 .err{font-size:13px;color:var(--danger);margin-top:8px;display:none;align-items:flex-start;gap:7px;line-height:1.4}
@@ -597,12 +601,17 @@ pre.code .c{color:#ADA3B7}
           </div>
           <div class="field">
             <label for="cNeed">Anything that would stop this working</label>
-            <input id="cNeed" type="text" placeholder="SSO, data residency, a security review, invoicing in naira…">
+            <textarea id="cNeed" rows="3" maxlength="4000" placeholder="SSO, data residency, a security review, invoicing in naira…"></textarea>
             <p class="hint">Say it now and the first reply answers it, rather than the third.</p>
           </div>
+          <div class="hp" aria-hidden="true">
+            <label for="cSite">Website</label>
+            <input id="cSite" type="text" name="website" tabindex="-1" autocomplete="off">
+          </div>
 
+          <p class="err" id="e-cForm" role="alert" style="margin-top:14px"></p>
           <div class="actions">
-            <button class="btn" type="submit">Send<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+            <button class="btn" type="submit" id="bSend">Send<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
             <a class="btn ghost" href="https://wa.me/17753032588?text=We%27re%20looking%20at%20AnyStudio%20for%20our%20platform" target="_blank" rel="noopener noreferrer">WhatsApp</a>
           </div>
         </form>
@@ -846,16 +855,44 @@ pre.code .c{color:#ADA3B7}
       });
   });
 
+  /* The whole form goes to the leads endpoint — organization, role, volume,
+     timing and the blocker — because every one of those is the reason for
+     the call back. The API keeps the row and emails it on. */
   document.getElementById("fContact").addEventListener("submit", function(e){
     e.preventDefault();
     if(!validate(["cOrg","cEmail","cRole","cVol","cWhen"])) return;
-    var b=e.target.querySelector('button[type="submit"]');
+    var b=document.getElementById("bSend"), formErr=document.getElementById("e-cForm");
+    var v=function(id){ return document.getElementById(id).value.trim(); };
+    formErr.textContent = ""; formErr.removeAttribute("data-show");
     b.disabled = true; b.textContent = "Sending…";
-    var done=function(){ b.textContent = "Sent — we'll reply within a working day"; b.style.opacity = ".65"; };
-    var failed=function(){ b.disabled = false; b.textContent = "Could not send — try again, or WhatsApp"; };
-    fetch("/api/v1/waitlist", { method:"POST", headers:{"content-type":"application/json"},
-      body: JSON.stringify({ email: document.getElementById("cEmail").value.trim(), source: "org-contact" }) })
-      .then(function(r){ (r.ok || r.status === 409) ? done() : failed(); }, failed);
+    var done=function(){
+      b.textContent = "Sent — we'll reply within a working day"; b.style.opacity = ".65";
+      ["cOrg","cEmail","cRole","cVol","cWhen","cNeed"].forEach(function(id){ document.getElementById(id).disabled = true; });
+    };
+    var failed=function(msg){
+      b.disabled = false; b.innerHTML = 'Send<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
+      formErr.textContent = msg; formErr.setAttribute("data-show","true");
+      if (b.scrollIntoView) b.scrollIntoView({ block:"nearest" });
+    };
+    var body = {
+      organization: v("cOrg"),
+      email: v("cEmail").toLowerCase(),
+      role: v("cRole"),
+      volume: v("cVol"),
+      timeline: v("cWhen"),
+      notes: v("cNeed"),
+      website: v("cSite"),
+      source: "org-contact"
+    };
+    fetch("/api/v1/leads", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status:r.status, body:j }; }); }, function(){ return { status:0, body:{} }; })
+      .then(function(res){
+        if (res.status === 201) return done();
+        if (res.status === 400 && res.body && res.body.fields && res.body.fields.length) return failed(res.body.fields[0].message);
+        if (res.status === 429) return failed("That is a few messages from here in a short time. Give it an hour, or WhatsApp.");
+        if (res.status === 0) return failed("Could not reach the server. Check your connection and try again, or WhatsApp.");
+        failed((res.body && res.body.message) || "Could not send just now — try again, or WhatsApp.");
+      });
   });
 
   document.querySelectorAll(".copy").forEach(function(c){

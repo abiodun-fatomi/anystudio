@@ -373,6 +373,20 @@ export interface AdminApplication {
   updatedAt: string;
 }
 
+/** A platform that filled in the /org contact form — the whole form, not just the address. */
+export interface AdminLead {
+  id: string;
+  organization: string;
+  email: string;
+  role: string | null;
+  volume: string | null;
+  timeline: string | null;
+  notes: string | null;
+  source: string;
+  handledAt: string | null;
+  createdAt: string;
+}
+
 export interface AdminBillingAccount extends BillingAccountView {
   workspace: { id: string; name: string };
   balance: number;
@@ -1247,6 +1261,18 @@ export const api = {
         'GET',
         '/admin/waitlist',
       ),
+    leads: (q: { show?: 'open' | 'all'; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminLead[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/leads?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setLeadHandled: (id: string, handled: boolean) => request<AdminLead>('PATCH', `/admin/leads/${id}`, { handled }),
     billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
     billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
     billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>

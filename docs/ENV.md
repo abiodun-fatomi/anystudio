@@ -292,11 +292,13 @@ share sheet still works with no account.
   posts are private to the account; the connector opens up automatically
   once review is through.
 
-### Announcements — `REFUNDS_EMAIL`, `CAREERS_EMAIL` (optional)
+### Announcements — `REFUNDS_EMAIL`, `CAREERS_EMAIL`, `LEADS_EMAIL` (optional)
 
-Inbox addresses that get a copy when a customer requests a refund or
-someone applies for a job. The staff console shows both regardless; set
-these only if you want the email too.
+Inbox addresses that get a copy when a customer requests a refund, someone
+applies for a job, or a platform fills in the contact form on `/org`. The
+staff console shows all three regardless; set these only if you want the
+email too. `LEADS_EMAIL` is the one to set if you want to hear about a
+platform the hour it writes in: the email carries the whole form.
 
 ### Error tracking — `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (optional)
 
