@@ -48,7 +48,7 @@ import sharp from 'sharp';
 import { EXPORT_SIZES, ProviderError, judgesShape, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity, type FidelityReport } from './fidelity';
-import { preservationThresholds } from './preservation-policy';
+import { preservationThresholds, tunedUseCase } from './preservation-policy';
 import { applyBrand, artifactBytes, pasteProductAt } from './image';
 import { focalCrop, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
@@ -86,8 +86,9 @@ export const productShotPipeline: Pipeline = async (ctx) => {
   }
 
   const strict = judgesShape(p.mode);
-  const thresholds =
-    strict && p.mode !== 'on_model' && p.mode !== 'ghost_mannequin' && p.mode !== 'flat_lay' ? await preservationThresholds(ctx, p.mode) : FIDELITY;
+  // Only a mode the check may refuse has a tunable acceptance; the rest are measured against the fixed defaults, for the record.
+  const tuned = strict ? tunedUseCase(p.mode) : null;
+  const thresholds = tuned ? await preservationThresholds(ctx, tuned) : FIDELITY;
 
   // 1. The mask, and the original to measure against.
   //

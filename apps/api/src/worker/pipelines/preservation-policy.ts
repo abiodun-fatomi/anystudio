@@ -2,6 +2,11 @@ import { PRESERVATION_POLICIES, preservationAcceptance, type PreservationUseCase
 import type { PipelineContext } from './index';
 import { FIDELITY } from './fidelity';
 
+/** The policy id for a mode an operator can tune, or null for one that has no acceptance gate. */
+export function tunedUseCase(mode: string): PreservationUseCase | null {
+  return PRESERVATION_POLICIES.some((p) => p.id === mode) ? (mode as PreservationUseCase) : null;
+}
+
 export async function preservationThresholds(ctx: PipelineContext, useCase: PreservationUseCase) {
   const policy = PRESERVATION_POLICIES.find((p) => p.id === useCase)!;
   const row = await ctx.db.providerModel.findUnique({
