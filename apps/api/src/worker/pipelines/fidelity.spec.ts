@@ -4,7 +4,14 @@
  * background, the product recoloured, the product replaced. The score must
  * order them the way a seller would.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// These tests do real pixel work — cutouts, the sliding search, every export
+// crop — on the same CPU the rest of the suite is using. Two seconds here on a
+// laptop is five and more on a loaded CI runner, and a timeout there is not a
+// finding about the pipeline. Thirty seconds still catches a hang.
+vi.setConfig({ testTimeout: 30_000 });
+
 import sharp from 'sharp';
 import { FIDELITY, fidelity } from './fidelity';
 import { pasteProduct, pasteProductAt } from './image';
