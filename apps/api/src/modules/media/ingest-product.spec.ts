@@ -30,13 +30,17 @@ const page = `<html><head><meta property="og:title" content="Mini handbag"><meta
 
 let service: MediaService;
 let ingestUrl: ReturnType<typeof vi.fn>;
+let render: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.mocked(safeFetch).mockReset();
   service = Object.create(MediaService.prototype) as MediaService;
   ingestUrl = vi.fn(async (_ws: string, _u: string | null, url: string) => ({ id: 'asset', key: `k:${url}` }));
-  Object.assign(service, { ingestUrl });
+  render = vi.fn(async () => null);
+  Object.assign(service, { ingestUrl, renderer: { render } });
 });
+
+const SHELL = '<html><head><title>Mykiya | Shop Electronics</title></head><body><div id="root"></div><script src="/main.js"></script></body></html>';
 
 describe('a product from a link', () => {
   it('reads a listing page and ingests the picture it presents, with the page title', async () => {
@@ -63,14 +67,33 @@ describe('a product from a link', () => {
     expect(out.asset.key).toBe('k:https://shop.ng/i/bag-2.jpg');
   });
 
-  it('says why when a page is an app shell — the picture is not in the HTML at all', async () => {
-    vi.mocked(safeFetch).mockResolvedValueOnce(
-      response('<html><head><title>Mykiya</title></head><body><div id="root"></div><script src="/main.js"></script></body></html>', 'text/html'),
+  it('renders an app shell through a browser when one is configured, and reads what the browser saw', async () => {
+    vi.mocked(safeFetch).mockResolvedValueOnce(response(SHELL, 'text/html'));
+    render.mockResolvedValueOnce(
+      '<html><head><title>Mykiya | Shop Electronics</title></head><body><div id="root"><h1>iPhone 17 pro</h1><img src="https://cdn.mykiya.ng/p/1073/main.jpg" alt="iPhone 17 pro"></div></body></html>',
     );
+    const out = await service.ingestProduct('ws', 'u', 'https://www.mykiya.ng/storefront/productdetail/1073');
+    expect(render).toHaveBeenCalledWith('https://www.mykiya.ng/storefront/productdetail/1073');
+    expect(ingestUrl).toHaveBeenCalledWith('ws', 'u', 'https://cdn.mykiya.ng/p/1073/main.jpg');
+    // the heading is the product; the tab title is the site
+    expect(out.title).toBe('iPhone 17 pro');
+  });
+
+  it('says why when a page is an app shell and no browser is configured, or the render came back empty', async () => {
+    vi.mocked(safeFetch).mockResolvedValueOnce(response(SHELL, 'text/html'));
     await expect(service.ingestProduct('ws', 'u', 'https://www.mykiya.ng/storefront/productdetail/1073')).rejects.toMatchObject({
       details: { url: expect.stringContaining('builds itself in the browser') },
     });
+    expect(render).toHaveBeenCalledTimes(1);
     expect(ingestUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a render when the page simply has no picture — that is not what a browser would fix', async () => {
+    vi.mocked(safeFetch).mockResolvedValueOnce(response(`<html><body><h1>About us</h1><p>${'Words about us. '.repeat(40)}</p></body></html>`, 'text/html'));
+    await expect(service.ingestProduct('ws', 'u', 'https://shop.ng/about')).rejects.toMatchObject({
+      details: { url: expect.stringContaining('does not present') },
+    });
+    expect(render).not.toHaveBeenCalled();
   });
 
   it('says plainly when a page has no product picture', async () => {
