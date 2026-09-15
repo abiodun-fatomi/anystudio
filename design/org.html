@@ -612,7 +612,6 @@ pre.code .c{color:#ADA3B7}
           <p class="err" id="e-cForm" role="alert" style="margin-top:14px"></p>
           <div class="actions">
             <button class="btn" type="submit" id="bSend">Send<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
-            <a class="btn ghost" href="https://wa.me/17753032588?text=We%27re%20looking%20at%20AnyStudio%20for%20our%20platform" target="_blank" rel="noopener noreferrer">WhatsApp</a>
           </div>
         </form>
         <span class="skip">We answer within one working day, in your timezone.</span>
@@ -866,7 +865,7 @@ pre.code .c{color:#ADA3B7}
     formErr.textContent = ""; formErr.removeAttribute("data-show");
     b.disabled = true; b.textContent = "Sending…";
     var done=function(){
-      b.textContent = "Sent — we'll reply within a working day"; b.style.opacity = ".65";
+      b.textContent = "Sent — a copy is on its way to your inbox"; b.style.opacity = ".65";
       ["cOrg","cEmail","cRole","cVol","cWhen","cNeed"].forEach(function(id){ document.getElementById(id).disabled = true; });
     };
     var failed=function(msg){
@@ -889,9 +888,9 @@ pre.code .c{color:#ADA3B7}
       .then(function(res){
         if (res.status === 201) return done();
         if (res.status === 400 && res.body && res.body.fields && res.body.fields.length) return failed(res.body.fields[0].message);
-        if (res.status === 429) return failed("That is a few messages from here in a short time. Give it an hour, or WhatsApp.");
-        if (res.status === 0) return failed("Could not reach the server. Check your connection and try again, or WhatsApp.");
-        failed((res.body && res.body.message) || "Could not send just now — try again, or WhatsApp.");
+        if (res.status === 429) return failed("That is a few messages from here in a short time. Give it an hour and try again.");
+        if (res.status === 0) return failed("Could not reach the server. Check your connection and try again.");
+        failed((res.body && res.body.message) || "Could not send just now — try again in a moment.");
       });
   });
 

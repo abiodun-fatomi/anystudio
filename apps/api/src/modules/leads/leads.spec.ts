@@ -68,10 +68,20 @@ describe('a platform writes in', () => {
     });
   });
 
+  it('acknowledges the sender with what they wrote, so the promise on the page has a record behind it', async () => {
+    await service.create(form, req);
+    const mail = mailer.send.mock.calls.map((c) => c[0] as { to: string; subject: string; text: string }).find((m) => m.to === 'ada@bimbomarket.ng')!;
+    expect(mail).toBeDefined();
+    expect(mail.subject).toContain('Bimbo Marketplace');
+    for (const s of ['Head of Product', '5,000 images and 200 reels', 'Before the December sale', 'Cloudinary', 'one working day']) {
+      expect(mail.text).toContain(s);
+    }
+  });
+
   it('emails the whole form to LEADS_EMAIL, so it can be answered from a phone', async () => {
     await service.create(form, req);
-    expect(mailer.send).toHaveBeenCalledTimes(1);
-    const mail = mailer.send.mock.calls[0]![0] as { to: string; subject: string; text: string };
+    expect(mailer.send).toHaveBeenCalledTimes(2);
+    const mail = mailer.send.mock.calls.map((c) => c[0] as { to: string; subject: string; text: string }).find((m) => m.to === 'fatomi@anystudio.ai')!;
     expect(mail.to).toBe('fatomi@anystudio.ai');
     expect(mail.subject).toBe('Platform lead: Bimbo Marketplace');
     for (const s of ['ada@bimbomarket.ng', 'Head of Product', '5,000 images and 200 reels', 'Before the December sale', 'Cloudinary']) {
@@ -79,16 +89,18 @@ describe('a platform writes in', () => {
     }
   });
 
-  it('still stores the lead when no LEADS_EMAIL is set, and sends nothing', async () => {
+  it('still stores the lead when no LEADS_EMAIL is set; only the sender hears', async () => {
     delete process.env.LEADS_EMAIL;
     const out = await service.create(form, req);
     expect(out.id).toBe('lead-1');
-    expect(mailer.send).not.toHaveBeenCalled();
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+    expect((mailer.send.mock.calls[0]![0] as { to: string }).to).toBe('ada@bimbomarket.ng');
   });
 
-  it('does not fail the submission because the email did', async () => {
-    mailer.send.mockRejectedValueOnce(new Error('Resend refused the message (500)'));
+  it('does not fail the submission because either email did', async () => {
+    mailer.send.mockRejectedValue(new Error('Resend refused the message (500)'));
     await expect(service.create(form, req)).resolves.toEqual({ ok: true, id: 'lead-1' });
+    expect(mailer.send).toHaveBeenCalledTimes(2);
   });
 
   it('drops a filled honeypot without a row or an email, and still says ok', async () => {

@@ -5,9 +5,11 @@
  * they want to be live and what would stop it — and every one of those is
  * the reason for the call back, so every one is stored. Public and
  * rate-limited by address; a honeypot for the bots that fill every field;
- * an email to LEADS_EMAIL when it is set, and the row in the staff console
- * whether or not it is. Nothing is unique: an organization that writes twice
- * has more to say, not a duplicate.
+ * an acknowledgement to the sender with what they wrote, so the promise on
+ * the page ("within one working day") has a record behind it; an email to
+ * LEADS_EMAIL when it is set, and the row in the staff console whether or
+ * not it is. Nothing is unique: an organization that writes twice has more
+ * to say, not a duplicate.
  */
 import { Body, Controller, Get, HttpCode, HttpStatus, Injectable, Module, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
@@ -17,6 +19,7 @@ import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, IsUUID, Length, Matche
 import type { Request } from 'express';
 import { NotFoundError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
+import { leadReceived } from '../../assets/email-templates';
 import { Mailer } from '../../utils/mail-service';
 import { AuthModule } from '../auth/auth.module';
 import { Public, RequireStaff, RequireSurface } from '../auth/decorators';
@@ -87,8 +90,16 @@ export class LeadsService {
       },
     });
     logger.info({ leadId: lead.id, source: lead.source }, 'lead received');
+    await this.acknowledge(lead);
     await this.announce(lead);
     return { ok: true, id: lead.id };
+  }
+
+  /** The sender's copy. Never fatal: the row and the alert do not depend on it. */
+  private async acknowledge(lead: Lead) {
+    await this.mailer
+      .send(leadReceived(lead.email, { organization: lead.organization, role: lead.role, volume: lead.volume, timeline: lead.timeline, notes: lead.notes }))
+      .catch((err: unknown) => logger.error({ err, leadId: lead.id }, 'lead acknowledgement failed'));
   }
 
   /**
