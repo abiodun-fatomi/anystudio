@@ -17,7 +17,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
-import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, ProviderError, judgesShape, type ProductMode } from '@anystudio/shared';
+import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, ProviderError, judgesShape, parseCapabilityParams, type ProductMode } from '@anystudio/shared';
 import { nearestAspect, productShotPipeline } from './product-shot';
 import { FIDELITY } from './fidelity';
 import type { PipelineContext } from './index';
@@ -367,6 +367,45 @@ describe('Product alone', () => {
     // The image-edit route was asked once and found empty; the vendor's two answers were each checked.
     expect(callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT')).toHaveLength(1);
     expect(callCapability.mock.calls.filter((c) => c[0] === 'BACKGROUND_REMOVE')).toHaveLength(2);
+  });
+
+  it('treats a stub answer on the image-edit route as nobody there, and goes to the vendor', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability, callProvider, media } = aloneCtx([{ image: await nothing(), cut: null, providerKey: 'stub:any' }]);
+    const red = await photo(RED);
+    const cut = await cutout(RED);
+    const inner = callCapability.getMockImplementation()!;
+    callCapability.mockImplementation(async (capability: string, input: { params: { sourceKey: string } }) =>
+      capability === 'BACKGROUND_REMOVE' && input.params.sourceKey === 'work-1'
+        ? { providerKey: 'x:cut', costMinor: 1, artifacts: [{ role: 'image', mime: 'image/png', bytes: cut }] }
+        : inner(capability, input),
+    );
+    callProvider.mockResolvedValue({
+      providerKey: 'photoroom:edit',
+      providerJobId: 'pr-1',
+      costMinor: 2,
+      artifacts: [{ role: 'image', mime: 'image/png', bytes: red }],
+    });
+
+    const out = await productShotPipeline(ctx);
+    expect(out.providerKey).toBe('photoroom:edit');
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    // The stub's placeholder was never cut out or judged.
+    expect(media.putGenerationWork).toHaveBeenCalledTimes(1);
+  });
+
+  it('every ask builds parameters the capability schemas accept', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callCapability, callProvider } = aloneCtx([
+      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
+      { image: await photo(RED), cut: await cutout(RED), providerKey: 'b:two' },
+    ]);
+    await productShotPipeline(ctx);
+    for (const c of callCapability.mock.calls) {
+      const parsed = parseCapabilityParams(c[0] as never, (c[1] as { params: Record<string, unknown> }).params);
+      expect(parsed.ok, `${String(c[0])} ${JSON.stringify(parsed)}`).toBe(true);
+    }
+    expect(callProvider).not.toHaveBeenCalled();
   });
 
   it('refuses a model that drew a different product, asks another model once, and ships when that one kept it', async () => {

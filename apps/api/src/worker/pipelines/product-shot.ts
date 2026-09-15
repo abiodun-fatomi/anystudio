@@ -61,6 +61,7 @@ import { preservationThresholds, tunedUseCase } from './preservation-policy';
 import { applyBrand, artifactBytes, pasteProductAt } from './image';
 import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
+import { STUB_KEY } from '../../modules/provider/provider.router';
 import { rethrowIfAborted } from './abort';
 import { restylePipeline } from './restyle';
 
@@ -231,6 +232,16 @@ async function productAlone(ctx: PipelineContext, p: Params) {
       rethrowIfAborted(ctx.signal, err);
       if (viaVendor || !(err instanceof ProviderError) || err.kind !== 'PROVIDER_DOWN') throw err;
       ctx.log.warn({ err: err.message }, 'no image-edit provider for product-alone; asking the product-shot vendor under the same check');
+      viaVendor = true;
+      attempt--;
+      continue;
+    }
+    // Outside production the stub answers a route with nobody on it, with a
+    // placeholder. That is "nobody" too: not judged, not counted, and the
+    // vendor is asked instead — so a dev deployment with a Photoroom key and
+    // no image-edit key still gets a real answer.
+    if (!viaVendor && result.providerKey === STUB_KEY) {
+      ctx.log.warn('the image-edit route answered with the stub; asking the product-shot vendor under the same check');
       viaVendor = true;
       attempt--;
       continue;

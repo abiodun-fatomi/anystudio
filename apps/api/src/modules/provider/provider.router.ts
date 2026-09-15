@@ -66,7 +66,7 @@ const TRIP_ERROR_RATE = 0.5;
 const COOLDOWN_MS = 60 * 1000;
 
 /** The no-vendor adapter's key; registered only outside production. */
-const STUB_KEY = 'stub:any';
+export const STUB_KEY = 'stub:any';
 
 /** A row the stub can be routed through when the table has none for it. Never persisted. */
 function stubRow(capability: Capability): ProviderModel {
