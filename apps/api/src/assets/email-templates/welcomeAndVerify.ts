@@ -1,3 +1,4 @@
+import { SIGNUP_PROMO_CREDITS } from '@anystudio/shared';
 import type { Mail } from '../../utils/mail-service';
 import { SIGNATURE, assetBase, esc, greet, render } from './_layout';
 
@@ -17,7 +18,7 @@ export function welcomeAndVerify(to: string, name: string | null, link: string):
     text: [
       greet(name),
       '',
-      'Your AnyStudio account is ready, and you have three free generations waiting — no card.',
+      `Your AnyStudio account is ready, and you have ${SIGNUP_PROMO_CREDITS} free credits waiting — no card.`,
       '',
       'Confirm this address so we can reach you if you ever lose your password:',
       link,
@@ -27,13 +28,13 @@ export function welcomeAndVerify(to: string, name: string | null, link: string):
       SIGNATURE,
     ].join('\n'),
     html: render({
-      preheader: 'Three free generations are waiting. Confirm your email to keep your account safe.',
+      preheader: `${SIGNUP_PROMO_CREDITS} free credits are waiting. Confirm your email to keep your account safe.`,
       eyebrow: 'Welcome',
       title: 'One photo in. Everything you post, out.',
       ...(assets ? { hero: { src: `${assets}/welcome-hero.jpg`, alt: 'A product photo beside the branded posts made from it', width: 528, height: 297 } } : {}),
       paragraphs: [
         esc(greet(name)),
-        'Your AnyStudio account is ready, and you have <strong>three free generations</strong> waiting — no card needed. Send one product photo and get back branded images, a description, captions and a reel.',
+        `Your AnyStudio account is ready, and you have <strong>${SIGNUP_PROMO_CREDITS} free credits</strong> waiting — no card needed. Send one product photo and get back branded images, a description, captions and a reel.`,
         'First, confirm this address so we can reach you if you ever lose your password.',
       ],
       action: { label: 'Confirm my email', url: link },

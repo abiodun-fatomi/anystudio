@@ -6,6 +6,7 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { ApiKeyGuard } from './api-key.guard';
 import { DeveloperController } from './developer.controller';
 import { DeveloperService } from './developer.service';
+import { PlaygroundService } from './playground.service';
 import { PublicApiController } from './public-api.controller';
 import { PublicApiService } from './public-api.service';
 import { WebhookDispatcher } from './webhook.dispatcher';
@@ -13,7 +14,7 @@ import { WebhookDispatcher } from './webhook.dispatcher';
 @Module({
   imports: [LedgerModule, GenerationModule, AudioModule, TemplateModule],
   controllers: [DeveloperController, PublicApiController],
-  providers: [DeveloperService, PublicApiService, WebhookDispatcher, ApiKeyGuard],
+  providers: [DeveloperService, PublicApiService, PlaygroundService, WebhookDispatcher, ApiKeyGuard],
   exports: [WebhookDispatcher],
 })
 export class DeveloperModule {}

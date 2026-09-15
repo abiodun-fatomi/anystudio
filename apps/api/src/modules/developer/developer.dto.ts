@@ -1,6 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { isProductionDeployment } from '../../../config/environment';
 import { API_SCOPES, WEBHOOK_EVENTS } from './developer.types';
 
@@ -137,4 +153,24 @@ export class MerchantRefDto {
   @IsString()
   @Matches(MERCHANT_REF)
   merchantRef?: string;
+}
+
+export class PlaygroundRunDto {
+  @ApiProperty({ format: 'uuid', description: 'An uploaded photo in this workspace.' }) @IsUUID() assetId!: string;
+  @ApiProperty({ enum: ['check', 'copy', 'background', 'product_alone', 'cutout', 'enhance', 'reel', 'ugc'], isArray: true })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(8)
+  @IsIn(['check', 'copy', 'background', 'product_alone', 'cutout', 'enhance', 'reel', 'ugc'], { each: true })
+  features!: Array<'check' | 'copy' | 'background' | 'product_alone' | 'cutout' | 'enhance' | 'reel' | 'ugc'>;
+  @ApiPropertyOptional({ description: 'The product name: the check compares against it, the copy and the reel are named after it.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+  @ApiPropertyOptional({ description: 'What the seller knows that the photo cannot show — specs, material, size, what is in the box.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(800)
+  details?: string;
 }

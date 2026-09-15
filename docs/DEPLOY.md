@@ -323,7 +323,12 @@ must allow the app's origin. R2 → bucket → **Settings → CORS Policy**:
 ```json
 [
   {
-    "AllowedOrigins": ["https://app.dev.anystudio.ai", "http://localhost:3000"],
+    "AllowedOrigins": [
+      "https://app.dev.anystudio.ai",
+      "https://org.dev.anystudio.ai",
+      "http://localhost:3000",
+      "http://localhost:3002"
+    ],
     "AllowedMethods": ["GET", "PUT", "HEAD"],
     "AllowedHeaders": ["content-type", "content-length"],
     "ExposeHeaders": ["etag"],
@@ -332,8 +337,11 @@ must allow the app's origin. R2 → bucket → **Settings → CORS Policy**:
 ]
 ```
 
-Production's bucket gets the same with `https://app.anystudio.ai`. Without
-it every upload fails in the browser as "The upload was interrupted".
+Both portal hosts must be listed: organizations upload from `org.` (the
+welcome demo, the developer Playground), sellers from `app.`. Staging and
+production buckets get the same with their own `app.` and `org.` hosts.
+A host that is missing fails every upload in the browser as "The upload
+was interrupted" — the API never sees the request, so nothing is logged.
 
 ---
 
@@ -678,9 +686,13 @@ back with a CV (PDF or Word, up to 8 MB, presigned straight to storage
 under `careers/`), a confirmation email to the applicant, and an alert to
 `CAREERS_EMAIL` if set. The mobile-app waitlist on `/why#mobile` posts to
 `POST /api/v1/waitlist`; counts and the latest signups are at
-`GET /api/v1/admin/waitlist`.
+`GET /api/v1/admin/waitlist`. The platform contact form on `/org#contact`
+posts every field to `POST /api/v1/leads`; leads are read and marked
+handled in the console → **Platform leads**, and emailed whole to the
+`MAIL_FROM` inbox.
 
-**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.
+**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`,
+`20260925000001_leads`.
 
 ## 17. Error tracking (Sentry, optional)
 

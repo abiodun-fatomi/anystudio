@@ -1,0 +1,296 @@
+/* The playground: pick the calls, give it a photo, watch the rows come back. */
+.allowance {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-size: var(--t-2);
+  color: var(--muted);
+}
+.meter {
+  flex: 0 0 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.meter[data-empty='true'] > span {
+  background: var(--warn);
+}
+
+.picks {
+  display: grid;
+  gap: var(--s-2);
+}
+.pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+.pick[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.pick strong {
+  display: block;
+  font-size: var(--t-2);
+}
+.pick span {
+  display: block;
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.pick .cost {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  color: var(--ink-soft);
+}
+
+.source {
+  display: grid;
+  gap: 10px;
+}
+.drop {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 26px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.drop[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.drop input {
+  display: none;
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line-soft);
+}
+.urlrow {
+  display: flex;
+  gap: 8px;
+}
+.urlrow .inp {
+  flex: 1;
+  min-width: 0;
+}
+.note {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--cyan-wash);
+  font-size: var(--t-2);
+  line-height: 1.5;
+}
+.note[data-tone='warn'] {
+  background: var(--warn-wash);
+}
+
+.results {
+  display: grid;
+  gap: 12px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.shot {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+  aspect-ratio: 1;
+}
+.shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shot .tag {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: rgba(23, 19, 26, 0.72);
+  color: #fff;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.shot .wait {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, transparent, rgba(10, 8, 12, 0.78));
+  color: #fff;
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
+.line {
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--t-2);
+  line-height: 1.5;
+}
+.line[data-status='FAILED'] {
+  background: var(--danger-wash);
+}
+.line strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.verdict {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.verdict[data-v='mismatch'],
+.verdict[data-v='not_a_product'] {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+.verdict[data-v='unclear'] {
+  background: var(--sunk);
+  color: var(--muted);
+}
+
+/* The request and the response, as code, per call. */
+.wire {
+  display: grid;
+  gap: var(--s-2);
+}
+.wireHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+.wireHead code {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+
+/* What the product is: the name and the details the photo cannot show. */
+.about {
+  display: grid;
+  gap: var(--s-3);
+}
+
+/* Results: the original and every picture or clip that came back. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.shot[data-transparent='true'] {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e6e2ea 25%, transparent 25%), linear-gradient(-45deg, #e6e2ea 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e2ea 75%), linear-gradient(-45deg, transparent 75%, #e6e2ea 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+}
+.shot[data-transparent='true'] img {
+  object-fit: contain;
+}
+.shot[data-video='true'] {
+  aspect-ratio: 9 / 16;
+}
+.shot video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.pick[data-kind='video'] .cost {
+  color: var(--accent);
+}
+
+/* The copy, whole: paragraph, bullets, specs. */
+.para {
+  margin: 0 0 var(--s-2);
+  white-space: pre-wrap;
+}
+.bullets {
+  margin: 0 0 var(--s-2);
+  padding-left: 1.2em;
+}
+.bullets li {
+  margin: 2px 0;
+}
+.specs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+}
+.specs > div {
+  display: flex;
+  gap: var(--s-2);
+  font-size: var(--t-1);
+}
+.specs dt {
+  color: var(--muted);
+  flex: none;
+}
+.specs dd {
+  margin: 0;
+  color: var(--ink);
+}

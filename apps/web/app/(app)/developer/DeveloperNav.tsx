@@ -5,6 +5,7 @@ import styles from './developer.module.css';
 
 const ITEMS = [
   { href: '/developer', label: 'Overview', exact: true },
+  { href: '/developer/playground', label: 'Playground' },
   { href: '/developer/keys', label: 'API keys' },
   { href: '/developer/webhooks', label: 'Webhooks' },
   { href: '/developer/projects', label: 'Projects' },

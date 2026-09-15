@@ -35,23 +35,24 @@ POST with a new clientKey after an ambiguous network failure.
 
 The table describes the contents of the success envelope's `data`.
 
-| Method | Path                                 | Required scope    | Result / use                                                                                       |
-| ------ | ------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------- |
-| GET    | `/capabilities`                      | catalogue:read    | Array of public capabilities, parameter summaries, base rates and scenario examples                |
-| GET    | `/balance`                           | balance:read      | `{ credits, currency }`; workspace-wide wallet                                                     |
-| POST   | `/uploads/from-url`                  | media:write       | `{ url }` → `{ upload }`; public HTTPS media only                                                  |
-| POST   | `/uploads`                           | media:write       | `{ filename, mime, bytes }` → `{ upload: { id, key, url, method, headers, expiresInSec } }`        |
-| POST   | `/uploads/{uploadId}/complete`       | media:write       | No body; verify a completed PUT → `{ upload }` (200)                                               |
-| POST   | `/generations/quote`                 | catalogue:read    | `{ capability, params }` → `{ costCode, credits, label, balance, balanceAfter, expectedMs }` (200) |
-| POST   | `/generations`                       | generations:write | `{ capability, params, clientKey?, merchantRef? }` → `{ generation, balance }` (201)               |
-| GET    | `/generations`                       | generations:read  | `{ generations, nextCursor }`; project summaries, not signed output URLs                           |
-| GET    | `/generations/{generationId}`        | generations:read  | `{ generation }` with fresh output URLs                                                            |
-| POST   | `/generations/{generationId}/cancel` | generations:write | No body; QUEUED only → `{ generation }` (200), credits returned                                    |
-| POST   | `/generations/{generationId}/unlock` | generations:write | No body; unlock a completed song (200); fetch the generation again afterwards                      |
-| GET    | `/catalogue/audio/genres`            | catalogue:read    | Music genre catalogue                                                                              |
-| GET    | `/catalogue/audio/voices`            | catalogue:read    | Voices available in this environment                                                               |
-| GET    | `/catalogue/audio/dub-languages`     | catalogue:read    | Languages available in this environment                                                            |
-| GET    | `/catalogue/audio/unlock-price`      | catalogue:read    | `{ costCode, credits, label }` for the additional song unlock charge                               |
+| Method | Path                                 | Required scope    | Result / use                                                                                             |
+| ------ | ------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| GET    | `/capabilities`                      | catalogue:read    | Array of public capabilities, parameter summaries, base rates and scenario examples                      |
+| GET    | `/balance`                           | balance:read      | `{ credits, currency }`; workspace-wide wallet                                                           |
+| POST   | `/uploads/from-url`                  | media:write       | `{ url }` → `{ upload }`; public HTTPS media only                                                        |
+| POST   | `/uploads`                           | media:write       | `{ filename, mime, bytes }` → `{ upload: { id, key, url, method, headers, expiresInSec } }`              |
+| POST   | `/uploads/{uploadId}/complete`       | media:write       | No body; verify a completed PUT → `{ upload }` (200)                                                     |
+| POST   | `/generations/quote`                 | catalogue:read    | `{ capability, params }` → `{ costCode, credits, label, balance, balanceAfter, expectedMs }` (200)       |
+| POST   | `/generations`                       | generations:write | `{ capability, params, clientKey?, merchantRef? }` → `{ generation, balance }` (201)                     |
+| POST   | `/inspect`                           | generations:write | `{ sourceKey, declared?, clientKey?, merchantRef? }` → `{ inspection, generation, balance }` (200 / 202) |
+| GET    | `/generations`                       | generations:read  | `{ generations, nextCursor }`; project summaries, not signed output URLs                                 |
+| GET    | `/generations/{generationId}`        | generations:read  | `{ generation }` with fresh output URLs                                                                  |
+| POST   | `/generations/{generationId}/cancel` | generations:write | No body; QUEUED only → `{ generation }` (200), credits returned                                          |
+| POST   | `/generations/{generationId}/unlock` | generations:write | No body; unlock a completed song (200); fetch the generation again afterwards                            |
+| GET    | `/catalogue/audio/genres`            | catalogue:read    | Music genre catalogue                                                                                    |
+| GET    | `/catalogue/audio/voices`            | catalogue:read    | Voices available in this environment                                                                     |
+| GET    | `/catalogue/audio/dub-languages`     | catalogue:read    | Languages available in this environment                                                                  |
+| GET    | `/catalogue/audio/unlock-price`      | catalogue:read    | `{ costCode, credits, label }` for the additional song unlock charge                                     |
 
 List query: `limit` 1–100 (default 50), UUID `cursor` from nextCursor, optional
 `merchantRef`. Reads, cancel and unlock are scoped to the key's project.
@@ -127,6 +128,7 @@ the existing `UPSCALE` capability and its 2×/4× enlargement controls.
 | Song or instrumental                   | MUSIC              | brief, genre from genre catalogue, vocal, durationSec; song unlock is a separate charge |
 | Translate an existing video            | DUB                | sourceKey, targetLanguage, lipsync, quality, consent: true                              |
 | Make a video speak new words           | LIPSYNC            | sourceKey plus audioKey OR script + voiceId, quality, consent: true                     |
+| Is this photo the product?             | INSPECT            | sourceKey, declared: { name?, category? }; one credit; see `/inspect` below             |
 
 Multi-shot UGC ads (`format: "ugc"`, `shots: 2 | 4 | 6 | 8`) require a `presenter`: either a selected stock presenter or an uploaded face with explicit consent. The presenter segment uses HeyGen; product footage uses the image-to-video providers. Configure `HEYGEN_API_KEY` on the worker running ad planning. One-shot reels (`shots: 1`), including handheld UGC-style reels, and non-UGC ads must not include a presenter. Missing presenter selections are rejected before credits are held. Do not invent personal testimonials; supply an approved factual script when needed.
 
@@ -172,6 +174,60 @@ Internal pipeline fields and unsupported negativePrompt are not public inputs.
 BATCH can succeed with partial results; failed items refund their share. Its
 outputs are not a per-input success/failure manifest. When exact SKU-to-result
 mapping is required, submit one generation per SKU using distinct clientKeys.
+
+## Inspect: is this photo the product?
+
+A merchant uploads a screenshot instead of a photograph, last week's price
+list, or a picture with no product in it. `POST /inspect` looks at the file
+before the listing goes live and answers with a verdict, the reasons, and one
+sentence the merchant can act on. It costs one credit, so it can run on every
+upload.
+
+Request: `{ "sourceKey": "…", "declared": { "name": "Mini handbag", "category": "bags" }, "clientKey": "…", "merchantRef": "…" }`.
+`declared` is what the merchant typed; the picture is judged against it. Omit
+it to ask only whether the file is a product photograph at all.
+
+The verdict comes back **inline** — the call holds for up to twenty seconds:
+
+```json
+{
+  "inspection": {
+    "verdict": "mismatch",
+    "confidence": 0.91,
+    "saw": "a pair of brown leather sandals on a tiled floor",
+    "issues": ["category_mismatch"],
+    "advice": "Take a photo of the bag itself on a plain surface, in daylight.",
+    "declared": { "name": "Mini handbag", "category": "bags" }
+  },
+  "generation": { "id": "…", "status": "SUCCEEDED", "…": "…" },
+  "balance": 499
+}
+```
+
+`verdict` is one of `product`, `mismatch`, `not_a_product`, `unclear`.
+`issues` is drawn from a closed list — `screenshot`, `document_or_text`,
+`person_is_subject`, `no_product_visible`, `multiple_products`, `blurry`,
+`too_dark`, `watermark_or_overlay`, `category_mismatch`, `name_mismatch`,
+`low_resolution` — so you can map each to your own words once.
+`low_resolution` (long edge under 600px) comes from the file's dimensions, not
+from the model. `advice` is written to the merchant, in plain words, and never
+mentions a model or a score.
+
+Three answers, told apart by status and by `inspection`:
+
+- **200, `inspection` set** — done.
+- **200, `inspection` null, `generation.status` FAILED** — the photo could not
+  be checked (`generation.failure` says why); the credit is already returned.
+- **202, `inspection` null** — the queue was slower than the wait. Poll
+  `GET /generations/{id}` or take the `generation.succeeded` webhook; the
+  verdict is the generation's text output either way.
+
+It is an ordinary generation underneath: the same row, debit, per-project
+metering, per-merchant attribution and webhook as `POST /generations` with
+`capability: "INSPECT"` — use that route instead when you would rather not
+hold a connection. A verdict is advice for the merchant. Whether a listing is
+blocked, warned or waved through is your platform's decision; we recommend
+warning with the `advice` line and letting the merchant publish anyway.
 
 ## Idempotency and tenant boundaries
 
@@ -232,7 +288,7 @@ timestamp. Old output URLs in a replay can be expired: GET the generation again.
 
 ## Limits
 
-- POST generations: 60/minute per key, plus 10/minute per merchantRef behind that key.
+- POST generations and POST inspect: 60/minute per key, plus 10/minute per merchantRef behind that key.
 - POST generations/quote: 60/minute per key; generation list/get: 300/minute per key.
 - RateLimit-Limit/Remaining/Reset describe the evaluated rule; Retry-After is sent
   on 429, not every response. Respect it and apply backoff.

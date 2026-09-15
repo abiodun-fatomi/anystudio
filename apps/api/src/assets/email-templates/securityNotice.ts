@@ -1,5 +1,5 @@
 import type { Mail } from '../../utils/mail-service';
-import { SIGNATURE, esc, greet, render } from './_layout';
+import { when as at, SIGNATURE, esc, greet, render } from './_layout';
 
 export type SecurityEvent = 'password_changed' | 'email_changed' | 'mfa_enabled' | 'mfa_disabled' | 'recovery_codes' | 'signed_out_everywhere';
 
@@ -44,7 +44,7 @@ const WORDS: Record<SecurityEvent, { subject: string; title: string; line: strin
  */
 export function securityNotice(to: string, name: string | null, event: SecurityEvent, when: Date, where: string | null, securityUrl: string): Mail {
   const w = WORDS[event];
-  const stamp = `${when.toUTCString()}${where ? ` · ${where}` : ''}`;
+  const stamp = `${at(when)}${where ? ` · ${where}` : ''}`;
   return {
     to,
     subject: w.subject,
@@ -67,7 +67,7 @@ export function securityNotice(to: string, name: string | null, event: SecurityE
       tone: 'warn',
       title: w.title,
       paragraphs: [esc(greet(name)), esc(w.line)],
-      panel: [{ label: 'When', value: esc(when.toUTCString()) }, ...(where ? [{ label: 'Where', value: esc(where) }] : [])],
+      panel: [{ label: 'When', value: esc(at(when)) }, ...(where ? [{ label: 'Where', value: esc(where) }] : [])],
       action: { label: 'Open Security', url: securityUrl },
       note: "If that was you, there's nothing to do. If it wasn't, open Security straight away, change your password and sign out everywhere.",
     }),

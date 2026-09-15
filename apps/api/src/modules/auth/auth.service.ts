@@ -97,6 +97,7 @@ export class AuthService {
         phoneIsWhatsApp: dto.phoneIsWhatsApp ?? false,
         marketing: dto.marketing,
         sourceUrl: dto.sourceUrl,
+        organization: dto.organization,
       },
       req,
     );
@@ -108,7 +109,10 @@ export class AuthService {
     }
 
     await this.verification.issue(outcome.user.id, this.publicOrigin(req), req, VerificationFlavour.Welcome);
-    const result = await this.finishSignIn(outcome.user, surface, 1, '/welcome', req, res);
+    // An organization's welcome is a different page: verify, a key, a run on
+    // their own catalogue, the team. It lives on the portal, and homeSurface()
+    // sends a member of only-organization workspaces there.
+    const result = await this.finishSignIn(outcome.user, surface, 1, dto.organization ? '/welcome/organization' : '/welcome', req, res);
     authLog('auth.register', 'succeeded', { userId: outcome.user.id, surface, mfa: 1, handoff: result.status === 'handoff' }, req);
     return Helpers.successResponse<RegisterResult>(201, MESSAGES.REGISTERED, result);
   }

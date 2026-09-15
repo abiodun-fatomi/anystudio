@@ -37,6 +37,13 @@ export const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '
  */
 export const assetBase = (): string | null => process.env.MAIL_ASSET_BASE?.replace(/\/$/, '') || null;
 
+/** A moment, for people: "15 Sep 2026, 10:12 UTC". One format for every email. */
+export const when = (d: Date): string => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} UTC`;
+};
+
 // Palette: the app's light tokens, so an email and the screen it links to look like one product.
 const C = {
   ground: '#F4F0F6',
@@ -80,6 +87,12 @@ export interface EmailSpec {
   extra?: string;
   /** Why they got it. Defaults to the account line. */
   reason?: string;
+  /**
+   * Who is reading. A customer gets the "need a hand?" footer; the team's own
+   * alerts (a lead, an application, a refund request) get a footer that
+   * says what this is instead of offering help to the people who give it.
+   */
+  audience?: 'customer' | 'staff';
 }
 
 const TONE_COLOR: Record<Tone, string> = { default: C.accent, ok: C.ok, warn: C.warn, danger: C.danger };
@@ -129,17 +142,25 @@ export function render(spec: EmailSpec): string {
       `</table></td></tr>`
     : '';
 
+  // The plain link under the button. A mailto button falls back to the bare
+  // address, not a percent-encoded mailto: nobody copies one of those.
+  const fallback = (a: { url: string }) =>
+    a.url.startsWith('mailto:')
+      ? `Or write to <a href="${esc(a.url)}" style="color:${C.muted};">${esc(a.url.slice(7).split('?')[0] ?? '')}</a>`
+      : `Button not working? Copy this link into your browser:<br>` +
+        `<a href="${esc(a.url)}" style="color:${C.muted};word-break:break-all;">${esc(a.url)}</a>`;
   const action = spec.action
     ? `<tr><td style="padding:10px 0 12px;">${button(spec.action)}</td></tr>` +
-      `<tr><td style="padding:0 0 18px;font-family:${FONT};font-size:13px;line-height:1.5;color:${C.muted};">` +
-      `Button not working? Copy this link into your browser:<br>` +
-      `<a href="${esc(spec.action.url)}" style="color:${C.muted};word-break:break-all;">${esc(spec.action.url)}</a>` +
-      `</td></tr>`
+      `<tr><td style="padding:0 0 18px;font-family:${FONT};font-size:13px;line-height:1.5;color:${C.muted};">${fallback(spec.action)}</td></tr>`
     : '';
 
   const note = spec.note ? `<tr><td style="padding:0 0 6px;font-family:${FONT};font-size:13px;line-height:1.5;color:${C.muted};">${spec.note}</td></tr>` : '';
   const extra = spec.extra ? `<tr><td style="padding:0 0 12px;">${spec.extra}</td></tr>` : '';
   const reason = spec.reason ?? 'You are getting this because you have an AnyStudio account.';
+  const footer =
+    spec.audience === 'staff'
+      ? `An alert from the AnyStudio API to the team inbox. The same record is in the staff console.`
+      : `Need a hand? Reply to this email or write to <a href="mailto:hello@anystudio.ai" style="color:${C.muted};">hello@anystudio.ai</a>.`;
 
   return (
     `<!DOCTYPE html>` +
@@ -185,7 +206,7 @@ export function render(spec: EmailSpec): string {
     `</td></tr>` +
     // card footer
     `<tr><td style="padding:18px 36px 26px;border-top:1px solid ${C.line};font-family:${FONT};font-size:13px;line-height:1.5;color:${C.muted};">` +
-    `Need a hand? Reply to this email or write to <a href="mailto:hello@anystudio.ai" style="color:${C.muted};">hello@anystudio.ai</a>.` +
+    footer +
     `</td></tr>` +
     `</table>` +
     // below the card

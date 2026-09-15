@@ -1,5 +1,5 @@
 import type { Mail } from '../../utils/mail-service';
-import { SIGNATURE, esc, greet, render } from './_layout';
+import { when as stamp, SIGNATURE, esc, greet, render } from './_layout';
 
 export interface TranscriptLine {
   role: 'USER' | 'ASSISTANT' | 'STAFF' | 'SYSTEM';
@@ -10,10 +10,6 @@ export interface TranscriptLine {
 
 const LABEL: Record<TranscriptLine['role'], string> = { USER: 'You', ASSISTANT: 'AnyStudio assistant', STAFF: 'AnyStudio team', SYSTEM: '' };
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-
-function stamp(d: Date): string {
-  return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-}
 
 /**
  * A copy of a help chat, sent when it is closed. Every line, in order, with

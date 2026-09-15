@@ -35,6 +35,8 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../../config/
 import { logger } from '../../../config/logger';
 import { runFfprobe } from '../../../config/ffmpeg';
 import { sniffMime } from './sniff';
+import { pageRendererFromEnv, type PageRenderer } from './page-render';
+import { readProductPage } from './product-page';
 
 /** Signed URLs live this long. Long enough to upload on 3G, short enough to be useless when leaked. */
 const UPLOAD_TTL_SEC = 15 * 60;
@@ -84,6 +86,9 @@ export function customerReadable(asset: ReadableAsset): boolean {
 export class MediaService {
   private readonly s3: S3Client;
   private readonly bucket: string;
+
+  /** Renders single-page-app listings through a real browser when configured; see page-render.ts. */
+  private readonly renderer: PageRenderer = pageRendererFromEnv();
 
   constructor(private readonly db: PrismaClient) {
     const missing = missingMediaStorageEnv();
@@ -204,6 +209,83 @@ export class MediaService {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * A product, from a link a merchant would paste: either the picture itself,
+   * or the listing page it sits on.
+   *
+   * A direct image URL goes straight to ingestUrl. An HTML page is read the
+   * way a link preview reads it (product-page.ts) — the Open Graph image, or
+   * the next best — and THAT is fetched, through the same guard, as the
+   * source. The page's own title comes back too, so the check has a declared
+   * name and the copy has a product name, without the merchant typing either.
+   *
+   * Candidates are tried in order: a page whose og:image has gone 404 still
+   * has a product photo in its markup.
+   */
+  async ingestProduct(workspaceId: string, userId: string | null, url: string): Promise<{ asset: MediaAsset; title: string | null; pageUrl: string | null }> {
+    let target: URL;
+    try {
+      target = new URL(url.trim());
+    } catch {
+      throw new ValidationError({ url: 'That is not a valid URL.' });
+    }
+    if (target.protocol !== 'https:') throw new ValidationError({ url: 'Only https URLs are fetched.' });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    let html: string;
+    try {
+      // Ask for a page but accept a picture: a merchant pastes whichever they have.
+      const res = await safeFetch(target, {
+        signal: controller.signal,
+        headers: { accept: 'text/html,application/xhtml+xml,image/*;q=0.9,*/*;q=0.5', 'user-agent': 'AnyStudioBot/1.0 (+https://anystudio.ai)' },
+      });
+      if (!res.ok) throw new ValidationError({ url: `The link answered ${res.status}.` });
+      const mime = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+      if (mime.startsWith('image/')) {
+        clearTimeout(timer);
+        return { asset: await this.ingestUrl(workspaceId, userId, target.toString()), title: null, pageUrl: null };
+      }
+      if (!/html|xml/.test(mime)) throw new ValidationError({ url: `The link serves ${mime || 'an unknown type'}, not a product page or an image.` });
+      // Two megabytes of markup is any product page; past that it is not one.
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.byteLength > 2 * 1024 * 1024) throw new ValidationError({ url: 'That page is too large to read.' });
+      html = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    } catch (err) {
+      if (err instanceof ValidationError) throw err;
+      if (err instanceof UnsafeUrlError) throw new ValidationError({ url: err.message });
+      throw new ValidationError({ url: `Could not fetch that link: ${err instanceof Error ? (err.name === 'AbortError' ? 'timed out' : err.message) : err}` });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    let read = readProductPage(html, target.toString());
+    // An app shell has nothing to read until a browser has run it. Ask for that
+    // render (when configured) and read what the browser saw instead.
+    if (read.images.length === 0 && read.appShell) {
+      const rendered = await this.renderer.render(target.toString());
+      if (rendered) read = readProductPage(rendered, target.toString());
+    }
+    if (read.images.length === 0)
+      throw new ValidationError({
+        url: read.appShell
+          ? 'That page builds itself in the browser, so its picture is not in the page we can read — sharing this link on WhatsApp would show no preview either. Right-click the product photo, copy the image address and paste that, or upload the photo.'
+          : 'That page does not present a product picture we can find. Paste the image link, or upload the photo.',
+      });
+    let lastReason = '';
+    for (const candidate of read.images.slice(0, 4)) {
+      try {
+        const asset = await this.ingestUrl(workspaceId, userId, candidate);
+        logger.info({ workspaceId, page: target.hostname, candidate: new URL(candidate).hostname }, 'product picture taken from a listing page');
+        return { asset, title: read.title, pageUrl: target.toString() };
+      } catch (err) {
+        lastReason = err instanceof ValidationError ? JSON.stringify(err.details ?? err.message) : err instanceof Error ? err.message : String(err);
+        logger.debug({ workspaceId, candidate, err: lastReason }, 'a page picture could not be fetched; trying the next');
+      }
+    }
+    throw new ValidationError({ url: `The page names a picture but none of them could be fetched (${lastReason.slice(0, 120)}). Upload the photo instead.` });
   }
 
   /**

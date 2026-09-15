@@ -25,6 +25,7 @@ export const EXPECTED_MS: Record<Capability, number> = {
   MUSIC: 120_000,
   DUB: 240_000,
   LIPSYNC: 240_000,
+  INSPECT: 4_000,
 };
 
 export abstract class BaseProvider implements GenerationProvider {

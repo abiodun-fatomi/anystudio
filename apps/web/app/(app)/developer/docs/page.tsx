@@ -68,6 +68,26 @@ export default function DocsPage() {
 #       { "role": "variant", "size": "story", "url": "https://…" } ], "urlsExpireInSec": 3600 } } }`,
     },
     {
+      title: 'Or: check the photo before anything else',
+      body: 'One credit, and the verdict comes back inline — the call holds for up to twenty seconds. Pass what the merchant typed as declared and the picture is judged against it. A verdict is advice for the merchant, never a block; 202 means the queue was slow and the generation finishes by webhook or polling like any other.',
+      code: `curl -X POST ${base}/inspect \\
+  -H "Authorization: Bearer $ANYSTUDIO_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "sourceKey": "YOUR_WORKSPACE/uploads/product.jpg",
+    "declared": { "name": "Mini handbag", "category": "bags" },
+    "clientKey": "listing-8812-check",
+    "merchantRef": "store-441"
+  }'
+
+# → 200 { "data": { "inspection": { "verdict": "mismatch", "confidence": 0.91,
+#            "saw": "a pair of brown leather sandals on a tiled floor",
+#            "issues": ["category_mismatch"],
+#            "advice": "Take a photo of the bag itself on a plain surface, in daylight." },
+#          "generation": { "id": "…", "status": "SUCCEEDED", "credits": 1 }, "balance": 499 } }
+# verdict: product | mismatch | not_a_product | unclear — issues from a fixed list`,
+    },
+    {
       title: '4. Verify a webhook',
       body: 'Every delivery is signed with the secret shown when you added the endpoint: X-AnyStudio-Signature is t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">. Reject timestamps more than five minutes in either direction. Persist the event durably before returning 2xx, then process it asynchronously.',
       code: WEBHOOK_VERIFY_EXAMPLE,

@@ -996,6 +996,26 @@ model WaitlistSignup {
   @@map("waitlist_signups")
 }
 
+/// A platform that asked to talk: the whole of the /org "Tell us the shape of
+/// it" form, not just the address. Nothing is unique — the same organization
+/// may write twice with more to say.
+model Lead {
+  id           String    @id @default(uuid()) @db.Uuid
+  organization String
+  email        String
+  role         String?
+  volume       String?
+  timeline     String?
+  notes        String?
+  source       String    @default("org-contact")
+  ip           String?
+  handledAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([createdAt])
+  @@map("leads")
+}
+
 enum SubscriptionStatus {
   ACTIVE
   PAST_DUE
@@ -1295,6 +1315,7 @@ enum ProviderCapability {
   MUSIC
   DUB
   LIPSYNC
+  INSPECT
 }
 
 /// One routable provider model FOR ONE CAPABILITY. The same vendor model can

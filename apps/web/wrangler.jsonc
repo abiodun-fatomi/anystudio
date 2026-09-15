@@ -25,7 +25,13 @@
   // /org.html to /org at the edge, which fights the host routing in
   // middleware.ts (a rewrite to a .html file would bounce back as a redirect).
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS", "html_handling": "none" },
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // Logs and traces persisted to the Workers dashboard. Wrangler is the source of
+  // truth: a toggle flipped in the dashboard is reset by the next deploy unless
+  // it is here too.
+  "observability": {
+    "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": true, "persist": true },
+    "traces": { "enabled": true, "head_sampling_rate": 1, "persist": true },
+  },
   "workers_dev": false,
 
   "env": {

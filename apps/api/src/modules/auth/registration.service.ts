@@ -36,6 +36,8 @@ export interface RegistrationInput {
   marketing: { granted: boolean; wording: string };
   /** Where the form lived, for the consent record. */
   sourceUrl?: string;
+  /** Set, the first workspace is this organization rather than a personal studio. */
+  organization?: { name: string; website?: string };
 }
 
 export type RegistrationOutcome =
@@ -64,7 +66,9 @@ export class RegistrationService {
    */
   async register(input: RegistrationInput, req: Request): Promise<RegistrationOutcome> {
     const passwordHash = await hashPassword(input.password);
-    const workspaceName = `${input.name.trim().split(/\s+/)[0] ?? 'My'}'s studio`;
+    // An organization's workspace is the organization. A person's is their studio.
+    const organization = input.organization ? { name: input.organization.name.trim(), website: input.organization.website?.trim() || undefined } : null;
+    const workspaceName = organization ? organization.name : `${input.name.trim().split(/\s+/)[0] ?? 'My'}'s studio`;
 
     try {
       const result = await this.db.$transaction(async (tx) => {
@@ -92,10 +96,13 @@ export class RegistrationService {
 
         const workspace = await tx.workspace.create({
           data: {
-            type: 'PERSONAL',
+            type: organization ? 'ORGANIZATION' : 'PERSONAL',
             name: workspaceName,
             currency: currencyForCountry(input.country),
-            profile: input.country ? { billingCountry: input.country } : {},
+            profile: {
+              ...(input.country ? { billingCountry: input.country } : {}),
+              ...(organization?.website ? { website: organization.website } : {}),
+            },
             region: regionForCountry(input.country),
             members: { create: { userId: user.id, role: 'OWNER' } },
             wallet: { create: {} },

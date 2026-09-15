@@ -122,6 +122,8 @@ export interface RegisterInput {
   phoneIsWhatsApp: boolean;
   marketing: { granted: boolean; wording: string };
   sourceUrl?: string;
+  /** Sign up as an organization: its first workspace is the organization, and the welcome continues on the portal. */
+  organization?: { name: string; website?: string };
 }
 
 /**
@@ -371,6 +373,20 @@ export interface AdminApplication {
   updatedAt: string;
 }
 
+/** A platform that filled in the /org contact form — the whole form, not just the address. */
+export interface AdminLead {
+  id: string;
+  organization: string;
+  email: string;
+  role: string | null;
+  volume: string | null;
+  timeline: string | null;
+  notes: string | null;
+  source: string;
+  handledAt: string | null;
+  createdAt: string;
+}
+
 export interface AdminBillingAccount extends BillingAccountView {
   workspace: { id: string; name: string };
   balance: number;
@@ -430,6 +446,24 @@ export interface Quote {
   balance: number;
   balanceAfter: number;
   expectedMs: number;
+}
+
+export type PlaygroundFeatureKey = 'check' | 'copy' | 'background' | 'product_alone' | 'cutout' | 'enhance' | 'reel' | 'ugc';
+/** One thing the playground can run: a capability with its parameters decided by the API, priced from the live credit table. */
+export interface PlaygroundFeature {
+  key: PlaygroundFeatureKey;
+  capability: string;
+  label: string;
+  help: string;
+  kind: 'image' | 'text' | 'video';
+  credits: number;
+}
+/** How much of today's playground the workspace has left — real generations, so capped on top of credits. */
+export interface PlaygroundAllowance {
+  dailyLimit: number;
+  usedToday: number;
+  remaining: number;
+  resetsAt: string;
 }
 
 export interface MediaAssetRow {
@@ -1245,6 +1279,18 @@ export const api = {
         'GET',
         '/admin/waitlist',
       ),
+    leads: (q: { status?: 'all' | 'new' | 'handled'; from?: string; to?: string; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminLead[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/leads?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setLeadHandled: (id: string, handled: boolean) => request<AdminLead>('PATCH', `/admin/leads/${id}`, { handled }),
     billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
     billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
     billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
@@ -1319,6 +1365,14 @@ export const api = {
     updateProject: (workspaceId: string, id: string, body: { name?: string; description?: string; archived?: boolean }) =>
       request<DevProject>('PATCH', `/workspaces/${workspaceId}/developer/projects/${id}`, body),
     keys: (workspaceId: string) => request<DevKey[]>('GET', `/workspaces/${workspaceId}/developer/keys`),
+    playground: (workspaceId: string) =>
+      request<PlaygroundAllowance & { features: PlaygroundFeature[] }>('GET', `/workspaces/${workspaceId}/developer/playground`),
+    playgroundRun: (workspaceId: string, body: { assetId: string; features: PlaygroundFeatureKey[]; title?: string; details?: string }) =>
+      request<{
+        runs: Array<{ feature: PlaygroundFeatureKey; capability: string; generation: GenerationRow }>;
+        balance: number;
+        allowance: PlaygroundAllowance;
+      }>('POST', `/workspaces/${workspaceId}/developer/playground/runs`, body),
     createKey: (workspaceId: string, body: { projectId: string; name: string; scopes?: string[]; expiresInDays?: number }) =>
       request<DevKey & { key: string }>('POST', `/workspaces/${workspaceId}/developer/keys`, body),
     revokeKey: (workspaceId: string, id: string) => request<DevKey>('DELETE', `/workspaces/${workspaceId}/developer/keys/${id}`),
@@ -1524,6 +1578,9 @@ export const api = {
     presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
       request<PresignedUpload>('POST', `/workspaces/${workspaceId}/media/uploads`, file),
     complete: (workspaceId: string, assetId: string) => request<MediaAssetRow>('POST', `/workspaces/${workspaceId}/media/uploads/complete`, { assetId }),
+    /** A product from a link: the picture itself, or the listing page it sits on. `title` and `pageUrl` are null for a direct picture. */
+    fromUrl: (workspaceId: string, url: string) =>
+      request<{ asset: MediaAssetRow; title: string | null; pageUrl: string | null }>('POST', `/workspaces/${workspaceId}/media/from-url`, { url }),
     list: (workspaceId: string, opts: { kind?: 'SOURCE' | 'OUTPUT'; cursor?: string; take?: number } = {}) => {
       const q = new URLSearchParams();
       if (opts.kind) q.set('kind', opts.kind);

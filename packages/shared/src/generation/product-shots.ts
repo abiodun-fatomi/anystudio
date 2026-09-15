@@ -132,8 +132,18 @@ export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
  *
  * Show more room keeps the original pixels and adds canvas around them, so
  * the check finds the product where it was pushed to and judges it there.
+ *
+ * Describe a change is on the second list, and was on the first until a
+ * customer asked for the hand holding a phone to be taken out. The check
+ * measures the SUBJECT of the photo — whatever the cutout returns, and a
+ * cutout of a phone in a hand is the phone and the hand — so a result that
+ * did exactly what was asked scored as a product lost, and the pipeline
+ * either refused it or pasted the original pixels, hand included, back over
+ * the model's work. A described change is a change to what was photographed
+ * by definition, and the check cannot tell the change that was asked for
+ * from one that was not. Measured for the record, shipped regardless.
  */
-export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'text_removal', 'edit'];
+export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'text_removal'];
 /** Whether a refusal is fair for this mode, or would throw away a correct picture. */
 export const judgesShape = (mode: ProductMode): boolean => KEEPS_GEOMETRY.includes(mode);
 

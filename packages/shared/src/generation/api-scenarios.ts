@@ -74,6 +74,13 @@ export const API_SCENARIOS: ApiScenario[] = [
     { of: 'BACKGROUND_REMOVE', sourceKeys: [photo, second], params: { background: '#FFFFFF' } },
     '2–100 photos. Price is per photo. A successful parent may contain only the successful outputs; failed items receive proportional refunds.',
   ),
+  scenario(
+    'inspect',
+    'Check the photo is the product',
+    'INSPECT',
+    { sourceKey: photo, declared: { name: 'Ankara tote', category: 'bags' } },
+    'One credit. POST /inspect answers inline within twenty seconds; the same params through /generations answer by webhook. A verdict is advice for the merchant, never a block.',
+  ),
   scenario('copy', 'Product description and social captions', 'TEXT_GENERATE', {
     productName: 'Ankara tote',
     productKey: 'sku-9',

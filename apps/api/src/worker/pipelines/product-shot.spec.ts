@@ -151,13 +151,20 @@ describe('Beautify preserves the entire photo', () => {
 
 describe('which modes the check is allowed to refuse', () => {
   it('judges the ones that hand the product back unchanged', () => {
-    for (const m of ['ironing', 'beautify', 'expand'] as ProductMode[]) expect(judgesShape(m), m).toBe(true);
+    for (const m of ['ironing', 'beautify', 'expand', 'text_removal'] as ProductMode[]) expect(judgesShape(m), m).toBe(true);
   });
 
   it('never judges the ones whose whole job is to reshape it', () => {
     // A dress on a body, inflated to a torso, or laid out square is meant to
     // look different. Refusing on a low score here refuses the good ones.
     for (const m of ['on_model', 'ghost_mannequin', 'flat_lay'] as ProductMode[]) expect(judgesShape(m), m).toBe(false);
+  });
+
+  it('never judges a described change, because the change is the point', () => {
+    // "Remove the hand": the cutout the check measures against is the phone
+    // AND the hand, so the result that did as asked scores as a lost product
+    // — refused, or worse, the hand pasted back over the model's work.
+    expect(judgesShape('edit')).toBe(false);
   });
 
   it('has an answer for every mode the studio offers', () => {
@@ -226,6 +233,24 @@ describe('a shot that came back as a different product', () => {
     expect(out.artifacts.length).toBeGreaterThan(0);
     // And it does not waste a second paid call chasing a score it will not use.
     expect(callProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it('ships a described change as the model made it — no refusal, no original pixels pasted back', async () => {
+    // "Remove the hand": the result rightly no longer matches the cutout of
+    // phone-plus-hand. Before, this scored as a drifted product and the hand
+    // came back; or as a lost one and the customer was refunded a picture
+    // that was correct.
+    sourceBytes = await photo(RED);
+    const { ctx, callProvider, warn } = ctxWith({
+      params: params({ mode: 'edit', prompt: 'Remove the hand holding the phone' }),
+      output: await photo(BLUE),
+      mask: await cutout(RED),
+    });
+
+    const out = await productShotPipeline(ctx);
+    expect(out.artifacts.length).toBeGreaterThan(0);
+    expect(callProvider).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('put back where it was found');
   });
 });
 

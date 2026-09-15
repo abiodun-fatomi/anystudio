@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { MediaService } from './media.service';
-import { CompleteUploadDto, MediaListQueryDto, PresignUploadDto, ReadUrlQueryDto, ReadUrlsDto } from './media.dto';
+import { CompleteUploadDto, FromUrlDto, MediaListQueryDto, PresignUploadDto, ReadUrlQueryDto, ReadUrlsDto } from './media.dto';
 import { CurrentActor, RequireWorkspaceRole } from '../auth/decorators';
 import type { SessionActor } from '../auth/policy';
 
@@ -29,6 +29,17 @@ export class MediaController {
   @ApiResponse({ status: 400, description: 'Rejected: not a usable file, or too large' })
   complete(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Body() body: CompleteUploadDto) {
     return this.media.complete(workspaceId, body.assetId);
+  }
+
+  @Post('/from-url')
+  @RequireWorkspaceRole('MEMBER')
+  @ApiOperation({ summary: 'A product from a link: the picture itself, or the listing page it is on' })
+  @ApiParam({ name: 'workspaceId', format: 'uuid' })
+  @ApiBody({ type: FromUrlDto })
+  @ApiResponse({ status: 201, description: '{ asset, title, pageUrl } — title and pageUrl are null for a direct image link' })
+  @ApiResponse({ status: 400, description: 'Not https, not reachable, not a page with a product picture, or the picture could not be fetched' })
+  fromUrl(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @CurrentActor() actor: SessionActor, @Body() body: FromUrlDto) {
+    return this.media.ingestProduct(workspaceId, actor.userId, body.url);
   }
 
   @Get()

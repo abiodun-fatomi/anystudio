@@ -5,20 +5,48 @@ import type { Request } from 'express';
 import { CurrentActor, RequireWorkspaceRole } from '../auth/decorators';
 import type { Actor } from '../auth/policy';
 import { DeveloperService } from './developer.service';
-import { CreateApiKeyDto, CreateProjectDto, CreateWebhookDto, DeliveriesQueryDto, UpdateProjectDto, UpdateWebhookDto, UsageQueryDto } from './developer.dto';
+import {
+  CreateApiKeyDto,
+  CreateProjectDto,
+  CreateWebhookDto,
+  DeliveriesQueryDto,
+  PlaygroundRunDto,
+  UpdateProjectDto,
+  UpdateWebhookDto,
+  UsageQueryDto,
+} from './developer.dto';
+import { PlaygroundService } from './playground.service';
 
 @ApiTags('developer')
 @ApiCookieAuth('session')
 @ApiParam({ name: 'workspaceId', format: 'uuid' })
 @Controller({ path: 'workspaces/:workspaceId/developer', version: '1' })
 export class DeveloperController {
-  constructor(private readonly dev: DeveloperService) {}
+  constructor(
+    private readonly dev: DeveloperService,
+    private readonly playground: PlaygroundService,
+  ) {}
 
   @Get('/usage')
   @RequireWorkspaceRole('AUDITOR')
   @ApiOperation({ summary: 'API usage by day, project, key and merchant' })
   usage(@Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Query() q: UsageQueryDto) {
     return this.dev.usage(workspaceId, q.days, q.projectId);
+  }
+
+  @Get('/playground')
+  @RequireWorkspaceRole('AUDITOR')
+  @ApiOperation({ summary: "The playground's menu, priced, and this workspace's daily allowance" })
+  async playgroundAllowance(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
+    const [allowance, features] = await Promise.all([this.playground.allowance(workspaceId), this.playground.features()]);
+    return { ...allowance, features };
+  }
+
+  @Post('/playground/runs')
+  @RequireWorkspaceRole('MEMBER')
+  @ApiOperation({ summary: 'Run the API on an uploaded photo — real generations, on credits, within the daily allowance' })
+  playgroundRun(@CurrentActor() actor: Actor, @Param('workspaceId', ParseUUIDPipe) workspaceId: string, @Body() body: PlaygroundRunDto) {
+    return this.playground.run(actor, workspaceId, body);
   }
 
   @Get('/projects')

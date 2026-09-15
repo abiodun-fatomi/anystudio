@@ -113,7 +113,8 @@ waitlist. Without a key the API logs each email instead of sending it.
 3. **API Keys → Create API key** → name `anystudio-dev`, permission
    _Sending access_, restricted to the domain. Copy it (`re_…`).
 4. `MAIL_FROM` = `AnyStudio <hello@anystudio.ai>` — an address on the
-   verified domain.
+   verified domain, and a real mailbox: replies land there, and so does
+   every platform lead from `/org`.
 
 Optional, same tier: `MAIL_ASSET_BASE` = `https://anystudio.ai/email` so the
 emails carry their header images (they live in `apps/web/public/email`).
@@ -296,7 +297,40 @@ share sheet still works with no account.
 
 Inbox addresses that get a copy when a customer requests a refund or
 someone applies for a job. The staff console shows both regardless; set
-these only if you want the email too.
+these only if you want the email too. A platform's message from the `/org`
+contact form needs no extra variable: it is emailed, whole, to the
+`MAIL_FROM` address — the inbox their reply would reach anyway — so keep
+that a real mailbox.
+
+### `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_BROWSER_TOKEN` — reading JavaScript storefronts (optional)
+
+"Paste a listing" reads a product page the way a link preview does: the
+HTML the server sends. Marketplaces built as single-page apps (Mykiya is
+one) send an empty shell and draw the product in the browser, so there is
+nothing to read. With these two set, such a page is rendered through
+[Cloudflare Browser Rendering](https://developers.cloudflare.com/browser-rendering/)
+— a real browser on Cloudflare's machines, one REST call, the rendered DOM
+back — and read again. Nothing is installed on Render.
+
+1. Account ID: Cloudflare dashboard → the account overview, right-hand
+   column.
+2. Token: **My Profile → API Tokens → Create Token → Custom token**,
+   permission **Browser Rendering → Edit**, scoped to the account. Copy it
+   once.
+3. Workers Free gives 10 minutes of browser time a day; Workers Paid gives
+   10 hours a month, then $0.09 an hour. A render takes a few seconds, so
+   even the free tier covers a hundred-odd listings a day.
+
+Unset, or if a render fails or times out (15 s), the person gets the plain
+message: the page builds itself in the browser; paste the image address.
+
+### `PLAYGROUND_DAILY_RUNS` (optional)
+
+The developer portal's Playground runs the API on a photo without code.
+Every run is a real generation — charged to the workspace's credits and
+real provider spend for you — so on top of credits each workspace gets a
+daily cap of playground calls (UTC day). Default 15, which is five full
+runs of the three-call demo. API keys are not limited by this.
 
 ### Error tracking — `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (optional)
 

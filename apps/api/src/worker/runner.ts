@@ -81,6 +81,7 @@ export const BUDGET_MS: Record<Capability, number> = {
   MUSIC: 6 * 60_000,
   DUB: 12 * 60_000,
   LIPSYNC: 12 * 60_000,
+  INSPECT: 30_000,
 };
 
 const HEARTBEAT_MS = 20_000;

@@ -31,6 +31,29 @@ export class ApiCreateGenerationDto {
 
 export class ApiQuoteGenerationDto extends PickType(ApiCreateGenerationDto, ['capability', 'params'] as const) {}
 
+/**
+ * Is this photo the product? The same request as INSPECT through
+ * /generations, flattened, because a platform calls this from the middle of
+ * its own upload handler and should not have to know our capability names.
+ */
+export class ApiInspectDto extends PickType(ApiCreateGenerationDto, ['clientKey', 'merchantRef'] as const) {
+  @ApiProperty({ description: 'The storage key of an uploaded image (from /uploads or /uploads/from-url)' })
+  @IsString()
+  @MaxLength(512)
+  @Matches(/^[A-Za-z0-9/_.-]+$/)
+  sourceKey!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'What the merchant typed: the product name and/or category. The picture is judged against these; omit them to ask only "is it a product photo?"',
+    type: Object,
+    example: { name: 'Mini handbag', category: 'bags' },
+  })
+  @IsOptional()
+  @IsObject()
+  declared?: { name?: string; category?: string };
+}
+
 export class ApiListGenerationsDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
