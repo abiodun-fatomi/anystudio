@@ -113,7 +113,8 @@ waitlist. Without a key the API logs each email instead of sending it.
 3. **API Keys → Create API key** → name `anystudio-dev`, permission
    _Sending access_, restricted to the domain. Copy it (`re_…`).
 4. `MAIL_FROM` = `AnyStudio <hello@anystudio.ai>` — an address on the
-   verified domain.
+   verified domain, and a real mailbox: replies land there, and so does
+   every platform lead from `/org`.
 
 Optional, same tier: `MAIL_ASSET_BASE` = `https://anystudio.ai/email` so the
 emails carry their header images (they live in `apps/web/public/email`).
@@ -292,13 +293,14 @@ share sheet still works with no account.
   posts are private to the account; the connector opens up automatically
   once review is through.
 
-### Announcements — `REFUNDS_EMAIL`, `CAREERS_EMAIL`, `LEADS_EMAIL` (optional)
+### Announcements — `REFUNDS_EMAIL`, `CAREERS_EMAIL` (optional)
 
-Inbox addresses that get a copy when a customer requests a refund, someone
-applies for a job, or a platform fills in the contact form on `/org`. The
-staff console shows all three regardless; set these only if you want the
-email too. `LEADS_EMAIL` is the one to set if you want to hear about a
-platform the hour it writes in: the email carries the whole form.
+Inbox addresses that get a copy when a customer requests a refund or
+someone applies for a job. The staff console shows both regardless; set
+these only if you want the email too. A platform's message from the `/org`
+contact form needs no extra variable: it is emailed, whole, to the
+`MAIL_FROM` address — the inbox their reply would reach anyway — so keep
+that a real mailbox.
 
 ### Error tracking — `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (optional)
 

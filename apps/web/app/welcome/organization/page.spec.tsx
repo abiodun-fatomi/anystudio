@@ -11,7 +11,10 @@ import OrganizationWelcome from './page';
  * than trusting a button; a listing link goes through the page reader; the
  * demo's three calls are the three the platforms page promises, keyed so a
  * retry cannot charge twice; and invites go to the members endpoint at the
- * role chosen.
+ * role chosen. The UI kit is real here, not mocked: this page shipped
+ * crashing at prerender on `useToast must be used inside ToastProvider`
+ * while a mocked useToast kept this file green, so the provider the page
+ * brings for itself is now part of what is under test.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -29,17 +32,12 @@ const mocks = vi.hoisted(() => ({
   invite: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
-  toast: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, replace: mocks.replace }) }));
 vi.mock('@/lib/useMe', () => ({ useMe: () => ({ me: mocks.me }) }));
 vi.mock('@/lib/hosts', () => ({ siblingOrigin: () => 'https://api.example.test' }));
 vi.mock('@/lib/upload', () => ({ uploadFile: vi.fn() }));
-vi.mock('@/components/ui', async (importOriginal) => {
-  const real = await importOriginal<typeof import('@/components/ui')>();
-  return { ...real, useToast: () => ({ toast: mocks.toast }) };
-});
 vi.mock('@/lib/api', () => ({
   ApiError: class ApiError extends Error {
     constructor(

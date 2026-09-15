@@ -32,7 +32,7 @@ export default function LeadsAdminPage() {
     <div className="rise">
       <PageHeader
         title="Platform leads"
-        lede="What platforms wrote in the contact form on /org, whole. A copy goes to LEADS_EMAIL when that is set; this page has them either way."
+        lede="What platforms wrote in the contact form on /org, whole. A copy goes to the MAIL_FROM inbox; this page has them either way."
       />
       <Section title="Leads">
         <div className={styles.toolbar}>

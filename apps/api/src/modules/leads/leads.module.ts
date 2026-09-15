@@ -6,10 +6,11 @@
  * the reason for the call back, so every one is stored. Public and
  * rate-limited by address; a honeypot for the bots that fill every field;
  * an acknowledgement to the sender with what they wrote, so the promise on
- * the page ("within one working day") has a record behind it; an email to
- * LEADS_EMAIL when it is set, and the row in the staff console whether or
- * not it is. Nothing is unique: an organization that writes twice has more
- * to say, not a duplicate.
+ * the page ("within one working day") has a record behind it; the whole
+ * form emailed to the MAIL_FROM inbox — the address every reply already
+ * lands in, so there is no second one to keep in step — and the row in the
+ * staff console either way. Nothing is unique: an organization that writes
+ * twice has more to say, not a duplicate.
  */
 import { Body, Controller, Get, HttpCode, HttpStatus, Injectable, Module, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
@@ -104,13 +105,15 @@ export class LeadsService {
 
   /**
    * The email is the whole form, plain text, because the person reading it
-   * on a phone wants to reply, not click through. Never fatal: the row is
-   * already there, and the console shows it whether or not this lands.
+   * on a phone wants to reply, not click through. It goes to the MAIL_FROM
+   * inbox, which is where a platform's reply to the acknowledgement lands
+   * anyway. Never fatal: the row is already there, and the console shows it
+   * whether or not this lands.
    */
   private async announce(lead: Lead) {
-    const to = process.env.LEADS_EMAIL?.trim();
+    const to = inboxOf(process.env.MAIL_FROM);
     if (!to) {
-      logger.warn({ leadId: lead.id }, 'LEADS_EMAIL is not set; the lead is only in the staff console');
+      logger.warn({ leadId: lead.id }, 'MAIL_FROM is not set; the lead is only in the staff console');
       return;
     }
     const line = (label: string, value: string | null) => `${label}: ${value ?? '—'}`;
@@ -149,6 +152,12 @@ export class LeadsService {
     const updated = await this.db.lead.update({ where: { id }, data: { handledAt: handled ? new Date() : null } });
     return view(updated);
   }
+}
+
+/** The bare address in a `Name <addr>` or plain `addr` sender line; null when there is none. */
+export function inboxOf(from: string | undefined): string | null {
+  const m = from?.trim().match(/<([^<>\s]+@[^<>\s]+)>\s*$/) ?? from?.trim().match(/^([^\s<>]+@[^\s<>]+)$/);
+  return m?.[1] ?? null;
 }
 
 function view(l: Lead): LeadView {

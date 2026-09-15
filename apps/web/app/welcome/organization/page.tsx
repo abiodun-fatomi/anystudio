@@ -21,7 +21,7 @@ import { useMe } from '@/lib/useMe';
 import { api, ApiError, type GenerationRow, type GrantableRole, type MediaAssetRow } from '@/lib/api';
 import { uploadFile } from '@/lib/upload';
 import { siblingOrigin } from '@/lib/hosts';
-import { Button, Input, Select, useToast } from '@/components/ui';
+import { Button, Input, Select, ToastProvider, useToast } from '@/components/ui';
 import welcome from '../welcome.module.css';
 import styles from './organization.module.css';
 
@@ -61,7 +61,20 @@ const ISSUE_WORDS: Record<string, string> = {
   low_resolution: 'low resolution',
 };
 
+/**
+ * The welcome lives outside the (app) group, so nothing above it mounts a
+ * ToastProvider — and useToast throws without one, at prerender as much as
+ * in a browser. The page brings its own, the way the staff console does.
+ */
 export default function OrganizationWelcome() {
+  return (
+    <ToastProvider>
+      <OrganizationWelcomeSteps />
+    </ToastProvider>
+  );
+}
+
+function OrganizationWelcomeSteps() {
   const router = useRouter();
   const { me } = useMe();
   const { toast } = useToast();

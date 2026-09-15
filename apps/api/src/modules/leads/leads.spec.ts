@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LeadsService } from './leads.module';
+import { LeadsService, inboxOf } from './leads.module';
 
 /**
  * The reason the form exists is that someone reads it, so what is pinned is
  * that the whole form reaches the row and the email — not just the address
- * the old waitlist kept — that the email goes to LEADS_EMAIL and nowhere the
- * request could name, that a missing LEADS_EMAIL still stores the lead, that
+ * the old waitlist kept — that the alert goes to the MAIL_FROM inbox and
+ * nowhere the request could name, that a missing MAIL_FROM still stores the lead, that
  * a failed email never fails the submission, and that a filled honeypot is
  * dropped without a row.
  */
@@ -35,10 +35,10 @@ beforeEach(() => {
   };
   mailer = { send: vi.fn(async () => ({ transport: 'log' })) };
   service = new LeadsService(db as never, mailer as never);
-  process.env.LEADS_EMAIL = 'fatomi@anystudio.ai';
+  process.env.MAIL_FROM = 'AnyStudio <hello@anystudio.ai>';
 });
 afterEach(() => {
-  delete process.env.LEADS_EMAIL;
+  delete process.env.MAIL_FROM;
 });
 
 const form = {
@@ -78,19 +78,19 @@ describe('a platform writes in', () => {
     }
   });
 
-  it('emails the whole form to LEADS_EMAIL, so it can be answered from a phone', async () => {
+  it('emails the whole form to the MAIL_FROM inbox, so it can be answered from a phone', async () => {
     await service.create(form, req);
     expect(mailer.send).toHaveBeenCalledTimes(2);
-    const mail = mailer.send.mock.calls.map((c) => c[0] as { to: string; subject: string; text: string }).find((m) => m.to === 'fatomi@anystudio.ai')!;
-    expect(mail.to).toBe('fatomi@anystudio.ai');
+    const mail = mailer.send.mock.calls.map((c) => c[0] as { to: string; subject: string; text: string }).find((m) => m.to === 'hello@anystudio.ai')!;
+    expect(mail.to).toBe('hello@anystudio.ai');
     expect(mail.subject).toBe('Platform lead: Bimbo Marketplace');
     for (const s of ['ada@bimbomarket.ng', 'Head of Product', '5,000 images and 200 reels', 'Before the December sale', 'Cloudinary']) {
       expect(mail.text).toContain(s);
     }
   });
 
-  it('still stores the lead when no LEADS_EMAIL is set; only the sender hears', async () => {
-    delete process.env.LEADS_EMAIL;
+  it('still stores the lead when no MAIL_FROM is set; only the sender hears', async () => {
+    delete process.env.MAIL_FROM;
     const out = await service.create(form, req);
     expect(out.id).toBe('lead-1');
     expect(mailer.send).toHaveBeenCalledTimes(1);
@@ -114,6 +114,17 @@ describe('a platform writes in', () => {
     await service.create({ organization: 'Bimbo', email: 'a@b.ng', role: '  ', notes: '' }, req);
     const data = db.lead.create.mock.calls[0]![0].data as Record<string, unknown>;
     expect(data).toMatchObject({ role: null, volume: null, timeline: null, notes: null });
+  });
+});
+
+describe('the inbox behind MAIL_FROM', () => {
+  it('is the bare address, whichever way the sender line is written', () => {
+    expect(inboxOf('AnyStudio <hello@anystudio.ai>')).toBe('hello@anystudio.ai');
+    expect(inboxOf('hello@anystudio.ai')).toBe('hello@anystudio.ai');
+    expect(inboxOf('  "AnyStudio" <hello@anystudio.ai>  ')).toBe('hello@anystudio.ai');
+    expect(inboxOf('')).toBeNull();
+    expect(inboxOf(undefined)).toBeNull();
+    expect(inboxOf('not an address')).toBeNull();
   });
 });
 
