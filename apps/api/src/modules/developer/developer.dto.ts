@@ -1,6 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { isProductionDeployment } from '../../../config/environment';
 import { API_SCOPES, WEBHOOK_EVENTS } from './developer.types';
 
@@ -137,4 +153,19 @@ export class MerchantRefDto {
   @IsString()
   @Matches(MERCHANT_REF)
   merchantRef?: string;
+}
+
+export class PlaygroundRunDto {
+  @ApiProperty({ format: 'uuid', description: 'An uploaded photo in this workspace.' }) @IsUUID() assetId!: string;
+  @ApiProperty({ enum: ['INSPECT', 'BACKGROUND_REPLACE', 'TEXT_GENERATE'], isArray: true })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @IsIn(['INSPECT', 'BACKGROUND_REPLACE', 'TEXT_GENERATE'], { each: true })
+  capabilities!: Array<'INSPECT' | 'BACKGROUND_REPLACE' | 'TEXT_GENERATE'>;
+  @ApiPropertyOptional({ description: 'The listing title, if known: the check compares against it and the copy is named after it.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
 }

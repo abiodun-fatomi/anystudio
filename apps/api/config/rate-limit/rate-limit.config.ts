@@ -76,6 +76,8 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
   // Portal: minting keys and endpoints is rare by nature.
   'POST /api/v1/workspaces/:workspaceId/developer/keys': [{ limit: 10, windowSec: 3600, scope: 'account' }],
   'POST /api/v1/workspaces/:workspaceId/developer/webhooks': [{ limit: 10, windowSec: 3600, scope: 'account' }],
+  // The playground has its own per-workspace daily allowance in PlaygroundService; this is only the brake on a runaway client.
+  'POST /api/v1/workspaces/:workspaceId/developer/playground/runs': [{ limit: 20, windowSec: 60, scope: 'account' }],
   // The help chat: each message costs a model call.
   'POST /api/v1/support/conversations': [{ limit: 10, windowSec: 3600, scope: 'account' }],
   'POST /api/v1/support/conversations/:id/messages': [

@@ -302,6 +302,14 @@ contact form needs no extra variable: it is emailed, whole, to the
 `MAIL_FROM` address — the inbox their reply would reach anyway — so keep
 that a real mailbox.
 
+### `PLAYGROUND_DAILY_RUNS` (optional)
+
+The developer portal's Playground runs the API on a photo without code.
+Every run is a real generation — charged to the workspace's credits and
+real provider spend for you — so on top of credits each workspace gets a
+daily cap of playground calls (UTC day). Default 15, which is five full
+runs of the three-call demo. API keys are not limited by this.
+
 ### Error tracking — `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (optional)
 
 Leave empty and nothing starts. To turn it on:
