@@ -223,7 +223,7 @@ form{margin-top:24px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:560px){.two{grid-template-columns:1fr}}
 .field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px}
-input[type=text],input[type=email],input[type=url],select{
+input[type=text],input[type=email],input[type=url],input[type=tel],input[type=password],select{
   width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);
   background:var(--surface-2);color:var(--ink);font:inherit;font-size:16px;
   transition:border-color .16s,box-shadow .16s;
@@ -372,20 +372,20 @@ pre.code .c{color:#ADA3B7}
     <nav class="rail" id="rail" aria-label="Progress">
       <div class="r" data-rail="details">
         <span class="dot"><span>1</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
-        <span class="t">The organization<span class="d">Name, region and scale. Five fields.</span></span>
+        <span class="t">The organization<span class="d">Name, region, your details. One form.</span></span>
       </div>
       <div class="r" data-rail="verify">
         <span class="dot"><span>2</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
-        <span class="t">Verify and get a key<span class="d only-platform">A test key and a working call. No card.</span><span class="d only-agency">Your workspace and first project.</span></span>
+        <span class="t">Verify and get a key<span class="d only-platform">A real key, minted on the portal and shown once. No card.</span><span class="d only-agency">Your workspace and first project.</span></span>
       </div>
       <div class="r" data-rail="prove">
         <span class="dot"><span>3</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
-        <span class="t only-platform">Run it on your catalogue<span class="d">One of your own listings, on test credits.</span></span>
+        <span class="t only-platform">Run it on your catalogue<span class="d">A photo or a listing link, on your own credits.</span></span>
         <span class="t only-agency">Set up a brand kit<span class="d">Your first client's colours and voice.</span></span>
       </div>
       <div class="r" data-rail="team">
         <span class="dot"><span>4</span><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg></span>
-        <span class="t">Invite your team<span class="d">Roles, domain joining, and going live.</span></span>
+        <span class="t">Invite your team<span class="d">Real invites, by email, at the role you choose.</span></span>
       </div>
     </nav>
 
@@ -464,11 +464,31 @@ pre.code .c{color:#ADA3B7}
             <p class="err" id="e-oSite" role="alert"></p>
           </div>
 
+          <div class="two">
+            <div class="field">
+              <label for="oPerson">Your name</label>
+              <input id="oPerson" type="text" autocomplete="name" placeholder="Ada Obi" required aria-describedby="e-oPerson">
+              <p class="err" id="e-oPerson" role="alert"></p>
+            </div>
+            <div class="field">
+              <label for="oPhone">Work phone</label>
+              <input id="oPhone" type="tel" autocomplete="tel" placeholder="+234 801 234 5678" required aria-describedby="h-oPhone e-oPhone">
+              <p class="hint" id="h-oPhone">With the country code. It is the account's, not a marketing channel.</p>
+              <p class="err" id="e-oPhone" role="alert"></p>
+            </div>
+          </div>
+
           <div class="field">
             <label for="oEmail">Your work email</label>
-            <input id="oEmail" type="email" placeholder="you@bimbomarket.ng" required aria-describedby="h-oEmail e-oEmail">
-            <p class="hint" id="h-oEmail">This domain becomes the organization's. Colleagues on the same domain can be let in without an invite — you choose that at step 4.</p>
+            <input id="oEmail" type="email" autocomplete="email" placeholder="you@bimbomarket.ng" required aria-describedby="h-oEmail e-oEmail">
+            <p class="hint" id="h-oEmail">We send the verification link here. Colleagues are invited by email from the portal at step 4.</p>
             <p class="err" id="e-oEmail" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <label for="oPassword">Password</label>
+            <input id="oPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required aria-describedby="e-oPassword">
+            <p class="err" id="e-oPassword" role="alert"></p>
           </div>
 
           <div class="two">
@@ -513,167 +533,18 @@ pre.code .c{color:#ADA3B7}
 
           <p class="hint" id="h-oRegion">Region sets two things: the currency you are billed in, and which region stores your images. Both can be changed later only by talking to us, so it is worth getting right.</p>
 
+          <p class="err" id="e-oForm" role="alert"></p>
           <div class="actions">
-            <button class="btn" type="submit">Create organization<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
+            <button class="btn" type="submit" id="bCreate">Create organization<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
           </div>
+          <p class="hint">Already have an account? <a href="auth.html#login">Sign in</a> and add an organization from the workspace menu.</p>
         </form>
       </section>
 
-      <!-- ---------------- 2 · VERIFY AND CREDENTIAL ---------------- -->
-      <section class="step" data-step="verify">
-        <a class="back" href="#details"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
-        <span class="eyebrow">Step 2 of 4</span>
-        <h1>Confirm it's you, then start calling.</h1>
-        <p class="sub">We sent a link to <strong id="vEmail">you@yourcompany.com</strong>. It works once and expires in an hour.</p>
-
-        <div class="only-platform">
-          <div class="keybox">
-            <div class="hd">
-              <span class="lbl">Test key · 150 credits</span>
-              <span class="pill">Sandbox</span>
-            </div>
-            <div class="keyrow">
-              <code id="testKey">as_test_a4f0c1b9e2d7_REPLACE_ON_VERIFY</code>
-              <button class="copy" type="button" data-copy="testKey">Copy</button>
-            </div>
-            <pre class="code"><span class="c"># one call per upload — is this photo the product? The verdict comes back inline.</span>
-curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <span class="k">\</span>
-  <span class="k">-H</span> <span class="s">"Authorization: Bearer $ANYSTUDIO_KEY"</span> <span class="k">\</span>
-  <span class="k">-d</span> <span class="s">'{"sourceKey":"…","declared":{"category":"bags"},"merchantRef":"store-441"}'</span></pre>
-          </div>
-          <ul class="checks">
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Test keys never touch live merchants and never charge you</li>
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Usage is reported per merchant from the first call, so your billing model works before you sign anything</li>
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Live keys need business verification — that is the only step that asks for documents</li>
-          </ul>
-        </div>
-
-        <div class="only-agency">
-          <div class="keybox">
-            <div class="hd">
-              <span class="lbl">First project</span>
-              <span class="pill">Ready</span>
-            </div>
-            <div class="keyrow">
-              <code>Untitled project · 150 credits</code>
-              <button class="copy" type="button" data-copy="none">Rename</button>
-            </div>
-          </div>
-          <ul class="checks">
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Every client gets a project: its own brand kit, its own library, its own usage line on the invoice</li>
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Nobody sees a project they were not added to</li>
-            <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Every generation is written to an audit log with who, when and which project</li>
-          </ul>
-        </div>
-
-        <div class="actions">
-          <a class="btn" href="#prove">I've verified — continue<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
-        </div>
-        <span class="skip">Nothing arrived? <a href="#verify">Send it again</a> · <a href="https://wa.me/17753032588?text=I%20need%20help%20verifying%20our%20AnyStudio%20organization" target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a></span>
-      </section>
-
-      <!-- ---------------- 3 · PROVE IT ---------------- -->
-      <section class="step" data-step="prove">
-        <a class="back" href="#verify"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
-        <span class="eyebrow">Step 3 of 4</span>
-        <h1 class="only-platform">Run it on one of your own listings.</h1>
-        <h1 class="only-agency">Set up your first brand kit.</h1>
-        <p class="sub only-platform">A demo on our product proves nothing about yours. Paste a listing from your catalogue and see what your merchant would get back.</p>
-        <p class="sub only-agency">Colours, logo and tone. Everything generated for this client comes back inside these rules.</p>
-
-        <form novalidate id="fProve">
-          <div class="field only-platform">
-            <label for="pUrl">A product URL from your storefront</label>
-            <input id="pUrl" type="url" placeholder="https://bimbomarket.ng/p/ravi-hair-oil" aria-describedby="h-pUrl e-pUrl">
-            <p class="hint" id="h-pUrl">We read the listing image and title. Or <a href="#prove">upload a photo instead</a>.</p>
-            <p class="err" id="e-pUrl" role="alert"></p>
-          </div>
-
-          <div class="field only-agency">
-            <label for="pBrand">Client or brand name</label>
-            <input id="pBrand" type="text" placeholder="Bimbo Fabrics" aria-describedby="e-pBrand">
-            <p class="err" id="e-pBrand" role="alert"></p>
-          </div>
-
-          <div class="actions">
-            <button class="btn ghost" type="submit">Generate a sample<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
-          </div>
-        </form>
-
-        <p class="hint" style="margin-top:22px">Example output — one listing photo in, three posts and a description out:</p>
-        <div class="proof">
-          <div class="sh before">
-            <div class="art" style="background:linear-gradient(150deg,#b9a998,#6f6257)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_100709_af7b22ca-c2ab-4a47-919e-f74db1df3fd6_min.webp">
-            <span class="scrim"></span><span class="n">01</span><span class="cap">Their photo</span>
-          </div>
-          <div class="sh">
-            <div class="art" style="background:linear-gradient(150deg,#FF9E7A,#D6006E 115%)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_142549_01b19572-d291-437d-99a7-d01c6befb98f_min.webp">
-            <span class="scrim"></span><span class="n">02</span><span class="cap">Storefront</span>
-          </div>
-          <div class="sh">
-            <div class="art" style="background:linear-gradient(150deg,#0E3C4A,#00808F)"></div>
-            <img class="ph" alt="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3IddmXNLbq9Xe4BGGivqigdHdE9/hf_20260901_141653_92553fcd-599b-4b4e-8ff5-e02087669b7c_min.webp">
-            <span class="scrim"></span><span class="n">03</span><span class="cap">Social</span>
-          </div>
-        </div>
-
-        <div class="note">
-          <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 8.1-7 9-4-.9-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
-          <span><b>The product is never redrawn.</b> We relight it and replace what is around it. If a generation alters the product itself, that is a bug and the credit goes back.</span>
-        </div>
-
-        <div class="actions">
-          <a class="btn" href="#team">Continue<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
-        </div>
-        <span class="skip"><a href="#team">Skip for now</a></span>
-      </section>
-
-      <!-- ---------------- 4 · TEAM AND GOING LIVE ---------------- -->
-      <section class="step" data-step="team">
-        <a class="back" href="#prove"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Back</a>
-        <span class="eyebrow">Step 4 of 4</span>
-        <h1>Bring your team in.</h1>
-        <p class="sub">You can do this later, but the organization is more useful with more than one person in it — and the audit log only means something when it has names.</p>
-
-        <form novalidate id="fTeam">
-          <div class="inv">
-            <input type="email" placeholder="colleague@yourcompany.com" aria-label="Email to invite">
-            <select aria-label="Role"><option>Admin</option><option selected>Member</option><option>Billing</option><option>Auditor</option></select>
-          </div>
-          <div class="inv">
-            <input type="email" placeholder="Add another" aria-label="Email to invite">
-            <select aria-label="Role"><option>Admin</option><option selected>Member</option><option>Billing</option><option>Auditor</option></select>
-          </div>
-
-          <label class="switch">
-            <input type="checkbox" id="domJoin">
-            <span>
-              <span class="t">Let anyone with a <strong id="domName">@yourcompany.com</strong> address join</span>
-              <span class="d">They arrive as Members and can be promoted. Turn this off if your domain is shared with people outside the team.</span>
-            </span>
-          </label>
-
-          <div class="roles">
-            <span class="cap">What the roles can do</span>
-            <div class="role"><b>Owner</b><span>Billing, contracts and deleting the organization. Exactly one, and it can be handed over.</span></div>
-            <div class="role"><b>Admin</b><span>Projects, API keys, members and brand kits. Everything except billing and deletion.</span></div>
-            <div class="role"><b>Member</b><span>Generates work in the projects they are added to. Cannot see the others.</span></div>
-            <div class="role"><b>Billing</b><span>Invoices, credit history and usage. Cannot generate anything.</span></div>
-            <div class="role"><b>Auditor</b><span>Reads usage and the audit log. Changes nothing. For finance and security reviews.</span></div>
-          </div>
-
-          <div class="actions">
-            <button class="btn" type="submit">Send invites and finish<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></button>
-          </div>
-        </form>
-
-        <div class="note">
-          <svg viewBox="0 0 24 24"><path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
-          <span><b>What happens when you want to go live.</b> Live keys need business verification — a registration number and the billing entity. Invoicing and net terms need a contract. Security review, DPA and sub-processors are answered on our <a href="#contact">trust page</a> without a call, if that is faster for you.</span>
-        </div>
-      </section>
+      <!-- Steps 2–4 — verify, a key, a run on their own catalogue, the team —
+           are on the portal at /welcome/organization, behind the session
+           that sign-up creates. They used to be mocked here, with a random
+           key minted in the browser. They are not mocked anywhere now. -->
 
       <!-- ---------------- THE OTHER DOOR ---------------- -->
       <section class="step" data-step="contact">
@@ -837,11 +708,8 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <spa
     set("ocScale", sc||"Not set", !sc);
     set("ocScaleA", sa||"Not set", !sa);
 
-    var em=(document.getElementById("oEmail").value||"").trim();
-    var at=em.indexOf("@");
-    var dom = at>0 ? em.slice(at) : "@yourcompany.com";
-    document.getElementById("domName").textContent = dom;
-    document.getElementById("vEmail").textContent = em || "you@yourcompany.com";
+    // The email and its domain used to feed the mocked verify and team steps,
+    // which now live on the portal. Nothing here reads them any more.
   }
   ["oName","oRegion","oScale","oScaleA","oEmail"].forEach(function(id){
     var el=document.getElementById(id); if(el){ el.addEventListener("input", syncCard); el.addEventListener("change", syncCard); }
@@ -867,7 +735,10 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <spa
   var RULES = {
     oName:   required("Give the organization a name — the legal one if you have it."),
     oSite:   urlRule,
-    oEmail:  emailRule("so we can verify the domain"),
+    oPerson: required("Your name, for the account and for invites you send."),
+    oPhone:  function(v){ return /^\+[1-9]\d{6,14}$/.test((v||"").replace(/[\s().-]/g,"")) ? "" : "A phone number with its country code, like +234 801 234 5678."; },
+    oEmail:  emailRule("so we can send the verification link"),
+    oPassword: function(v){ return (v||"").length >= 8 ? "" : "At least 8 characters."; },
     oRegion: required("Choose a region — it sets your currency and where images are stored."),
     cOrg:    required("Which organization is this for?"),
     cEmail:  emailRule("so we can reply"),
@@ -900,7 +771,7 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <spa
   }
 
   /* ---------- steps ---------- */
-  var STEPS=["start","details","verify","prove","team","contact"];
+  var STEPS=["start","details","contact"];
   var ORDER=["details","verify","prove","team"];
   var reached={};
   function go(h){ location.hash = "#"+h; }
@@ -928,39 +799,53 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <spa
   }
   window.addEventListener("hashchange", route);
 
+  /* Region → the country the account is billed in. The API prices the
+     workspace from it; "rest of world" lets the API infer from the phone. */
+  var COUNTRY_OF_REGION = { ng:"NG", ea:"KE", za:"ZA", uk:"GB", us:"US" };
+
+  /* Create the account and the organization — for real. The API answers a
+     marketing-host sign-up with a one-time URL on the portal host, where the
+     session cookie can be set; the browser goes there and the welcome
+     continues (verify, key, a run on their catalogue, the team). */
   document.getElementById("fDetails").addEventListener("submit", function(e){
     e.preventDefault();
-    var ids=["oName","oSite","oEmail","oRegion"];
-    if(!validate(ids)) return;
+    if(!validate(["oName","oSite","oPerson","oPhone","oEmail","oPassword","oRegion"])) return;
     created = true;
     reached.details = true;
     syncCard();
-    document.getElementById("ocKind").textContent = (branch==="platform"?"Platform":"Agency")+" · live";
-    set("ocKey", branch==="platform" ? "as_test_a4f0…" : "Issued");
-    document.getElementById("testKey").textContent =
-      "as_test_" + Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,8);
-    go("verify");
+    var b=document.getElementById("bCreate"), formErr=document.getElementById("e-oForm");
+    formErr.textContent = "";
+    b.disabled = true; b.textContent = "Creating…";
+    var region = document.getElementById("oRegion").value;
+    var body = {
+      name: document.getElementById("oPerson").value.trim(),
+      email: document.getElementById("oEmail").value.trim().toLowerCase(),
+      phone: document.getElementById("oPhone").value.replace(/[\s().-]/g,""),
+      password: document.getElementById("oPassword").value,
+      phoneIsWhatsApp: false,
+      marketing: { granted: false, wording: "No marketing was offered on the organization sign-up form." },
+      sourceUrl: location.href,
+      organization: { name: document.getElementById("oName").value.trim(), website: document.getElementById("oSite").value.trim() }
+    };
+    if (COUNTRY_OF_REGION[region]) body.billingCountry = COUNTRY_OF_REGION[region];
+    var restore = function(msg){
+      b.disabled = false; b.innerHTML = 'Create organization<svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
+      formErr.textContent = msg;
+    };
+    fetch("/api/v1/auth/register", { method:"POST", headers:{"content-type":"application/json"}, credentials:"include", body: JSON.stringify(body) })
+      .then(function(r){ return r.json().then(function(j){ return { status:r.status, body:j }; }); }, function(){ return { status:0, body:{} }; })
+      .then(function(res){
+        var d = res.body && res.body.data;
+        if (res.status === 201 && d && d.status === "handoff") { location.assign(d.url); return; }
+        if (res.status === 201 && d && d.status === "signed_in") { location.assign(d.next || "/welcome/organization"); return; }
+        if (res.status === 409) return restore("An account with that email or phone already exists. Sign in instead.");
+        if (res.status === 400 && res.body && res.body.fields && res.body.fields.length) return restore(res.body.fields[0].message);
+        if (res.status === 429) return restore("Too many sign-ups from here just now. Try again in a little while.");
+        if (res.status === 0) return restore("Could not reach the server. Check your connection and try again.");
+        restore((res.body && res.body.message) || "Sign-up is not available right now.");
+      });
   });
 
-  document.getElementById("fProve").addEventListener("submit", function(e){
-    e.preventDefault(); reached.prove = true; go("team");
-  });
-
-  document.getElementById("fTeam").addEventListener("submit", function(e){
-    e.preventDefault();
-    reached.team = true;
-    var n = 1 + [].slice.call(document.querySelectorAll("#fTeam .inv input"))
-      .filter(function(i){ return i.value.trim(); }).length;
-    set("ocSeats", n===1 ? "1 owner" : (n + " people"));
-    var b=e.target.querySelector('button[type="submit"]');
-    b.textContent = "Invites sent";
-    b.disabled = true;
-    b.style.opacity = ".65";
-  });
-
-  /* This used to change the button to "Sent" and send nothing. The address now
-     goes to the waitlist endpoint under its own source, so it is a real lead in
-     the admin console; the button only says "Sent" once the server has it. */
   document.getElementById("fContact").addEventListener("submit", function(e){
     e.preventDefault();
     if(!validate(["cOrg","cEmail","cRole","cVol","cWhen"])) return;

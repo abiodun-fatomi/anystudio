@@ -65,6 +65,8 @@ export const RATE_LIMITS: Record<string, RateRule[]> = {
     { limit: 10, windowSec: 60, scope: 'merchant' },
   ],
   'POST /api/v1/uploads/from-url': [{ limit: 60, windowSec: 60, scope: 'apiKey' }],
+  // The portal's own fetch-a-listing: it reaches out to arbitrary hosts, so it is metered like the API's.
+  'POST /api/v1/workspaces/:workspaceId/media/from-url': [{ limit: 30, windowSec: 60, scope: 'account' }],
   'POST /api/v1/uploads': [{ limit: 120, windowSec: 60, scope: 'apiKey' }],
   'GET /api/v1/generations': [{ limit: 300, windowSec: 60, scope: 'apiKey' }],
   'GET /api/v1/generations/:generationId': [{ limit: 300, windowSec: 60, scope: 'apiKey' }],

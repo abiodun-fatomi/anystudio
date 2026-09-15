@@ -122,6 +122,8 @@ export interface RegisterInput {
   phoneIsWhatsApp: boolean;
   marketing: { granted: boolean; wording: string };
   sourceUrl?: string;
+  /** Sign up as an organization: its first workspace is the organization, and the welcome continues on the portal. */
+  organization?: { name: string; website?: string };
 }
 
 /**
@@ -1524,6 +1526,9 @@ export const api = {
     presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
       request<PresignedUpload>('POST', `/workspaces/${workspaceId}/media/uploads`, file),
     complete: (workspaceId: string, assetId: string) => request<MediaAssetRow>('POST', `/workspaces/${workspaceId}/media/uploads/complete`, { assetId }),
+    /** A product from a link: the picture itself, or the listing page it sits on. `title` and `pageUrl` are null for a direct picture. */
+    fromUrl: (workspaceId: string, url: string) =>
+      request<{ asset: MediaAssetRow; title: string | null; pageUrl: string | null }>('POST', `/workspaces/${workspaceId}/media/from-url`, { url }),
     list: (workspaceId: string, opts: { kind?: 'SOURCE' | 'OUTPUT'; cursor?: string; take?: number } = {}) => {
       const q = new URLSearchParams();
       if (opts.kind) q.set('kind', opts.kind);
