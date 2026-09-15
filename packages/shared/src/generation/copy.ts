@@ -57,10 +57,19 @@ export const COPY_JSON_SCHEMA: Record<string, unknown> = {
     description: {
       type: 'object',
       properties: {
-        long: { type: 'string', description: 'Storefront listing, 80–200 words, benefits before features' },
+        long: {
+          type: 'string',
+          description:
+            'Storefront listing, 120–250 words. Concrete: the colour and finish as seen, the shape, the visible parts and details, the condition, then what it does for the buyer, then the specs the seller gave. Nothing that is neither visible nor given.',
+        },
         short: { type: 'string', description: 'One or two sentences' },
         bullets: { type: 'array', items: { type: 'string' }, description: '2–6 concrete selling points' },
-        specs: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] } },
+        specs: {
+          type: 'array',
+          items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] },
+          description:
+            'Every specification the seller gave, plus what is plainly visible (colour, number of cameras, closure type…). Never a guessed capacity, size or year.',
+        },
       },
       required: ['long', 'short', 'bullets', 'specs'],
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readProductPage } from './product-page';
+import { looksLikeAppShell, readProductPage } from './product-page';
 
 /**
  * A link preview's reading of a product page: the picture the page presents
@@ -53,6 +53,21 @@ describe('reading a product page', () => {
     const out = readProductPage(page('<title>Nothing here</title>', '<p>text</p>'), 'https://x.example/');
     expect(out.images).toEqual([]);
     expect(out.title).toBe('Nothing here');
+    expect(out.appShell).toBe(false);
+  });
+
+  it('knows an application shell from a page that simply has no picture', () => {
+    // Mykiya's product page as the server sends it: the generic title, a mount point, bundles, nothing else.
+    const shell = page(
+      '<title>Mykiya | Shop Electronics, Fashion &amp; Groceries</title><script src="/static/js/main.3f2a.js"></script>',
+      '<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div><script src="/static/js/vendor.js"></script>',
+    );
+    const out = readProductPage(shell, 'https://www.mykiya.ng/storefront/productdetail/1073');
+    expect(out.images).toEqual([]);
+    expect(out.appShell).toBe(true);
+    // A real page with real words and no picture is not a shell.
+    const article = page('<title>About us</title>', `<h1>About us</h1><p>${'We sell things to people who want them. '.repeat(20)}</p>`);
+    expect(looksLikeAppShell(article)).toBe(false);
   });
 
   it('decodes entities in attributes and ignores malformed JSON-LD', () => {

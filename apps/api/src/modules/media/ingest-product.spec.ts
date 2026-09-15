@@ -63,6 +63,16 @@ describe('a product from a link', () => {
     expect(out.asset.key).toBe('k:https://shop.ng/i/bag-2.jpg');
   });
 
+  it('says why when a page is an app shell — the picture is not in the HTML at all', async () => {
+    vi.mocked(safeFetch).mockResolvedValueOnce(
+      response('<html><head><title>Mykiya</title></head><body><div id="root"></div><script src="/main.js"></script></body></html>', 'text/html'),
+    );
+    await expect(service.ingestProduct('ws', 'u', 'https://www.mykiya.ng/storefront/productdetail/1073')).rejects.toMatchObject({
+      details: { url: expect.stringContaining('builds itself in the browser') },
+    });
+    expect(ingestUrl).not.toHaveBeenCalled();
+  });
+
   it('says plainly when a page has no product picture', async () => {
     vi.mocked(safeFetch).mockResolvedValueOnce(response('<html><body><p>Coming soon</p></body></html>', 'text/html'));
     await expect(service.ingestProduct('ws', 'u', 'https://shop.ng/soon')).rejects.toMatchObject({

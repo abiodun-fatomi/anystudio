@@ -36,9 +36,10 @@ export class DeveloperController {
 
   @Get('/playground')
   @RequireWorkspaceRole('AUDITOR')
-  @ApiOperation({ summary: "The playground's daily allowance for this workspace" })
-  playgroundAllowance(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
-    return this.playground.allowance(workspaceId);
+  @ApiOperation({ summary: "The playground's menu, priced, and this workspace's daily allowance" })
+  async playgroundAllowance(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
+    const [allowance, features] = await Promise.all([this.playground.allowance(workspaceId), this.playground.features()]);
+    return { ...allowance, features };
   }
 
   @Post('/playground/runs')

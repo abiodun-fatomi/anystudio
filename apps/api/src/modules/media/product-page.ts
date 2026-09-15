@@ -18,6 +18,13 @@ export interface ProductPageRead {
   images: string[];
   /** The page's own name for the product, when it has one. */
   title: string | null;
+  /**
+   * True when the HTML is an application shell — a near-empty body that a
+   * script fills in later — so an empty `images` means "this page cannot be
+   * read from its HTML at all", not "this page has no picture". The reason
+   * a person gets should say which.
+   */
+  appShell: boolean;
 }
 
 const META = /<meta\s+[^>]*>/gi;
@@ -126,5 +133,23 @@ export function readProductPage(html: string, pageUrl: string): ProductPageRead 
     })() ??
     null;
 
-  return { images, title: title ? title.slice(0, 120) : null };
+  return { images, title: title ? title.slice(0, 120) : null, appShell: images.length === 0 && looksLikeAppShell(html) };
+}
+
+/**
+ * A single-page app's HTML: a body that is nothing but mount points and
+ * script tags. Measured, not guessed — the text left once tags and scripts
+ * are stripped is what a link preview would have had to work with.
+ */
+export function looksLikeAppShell(html: string): boolean {
+  const body = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html)?.[1] ?? html;
+  const scripts = (body.match(/<script\b/gi) ?? []).length;
+  const text = body
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const mount = /<(div|main|app-root)[^>]*\bid=["'](root|app|__next|__nuxt|main)["']/i.test(body) || /<app-root\b/i.test(body);
+  return (mount || scripts > 0) && text.length < 400;
 }

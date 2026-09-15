@@ -157,15 +157,20 @@ export class MerchantRefDto {
 
 export class PlaygroundRunDto {
   @ApiProperty({ format: 'uuid', description: 'An uploaded photo in this workspace.' }) @IsUUID() assetId!: string;
-  @ApiProperty({ enum: ['INSPECT', 'BACKGROUND_REPLACE', 'TEXT_GENERATE'], isArray: true })
+  @ApiProperty({ enum: ['check', 'copy', 'background', 'product_alone', 'cutout', 'enhance', 'reel', 'ugc'], isArray: true })
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(3)
-  @IsIn(['INSPECT', 'BACKGROUND_REPLACE', 'TEXT_GENERATE'], { each: true })
-  capabilities!: Array<'INSPECT' | 'BACKGROUND_REPLACE' | 'TEXT_GENERATE'>;
-  @ApiPropertyOptional({ description: 'The listing title, if known: the check compares against it and the copy is named after it.' })
+  @ArrayMaxSize(8)
+  @IsIn(['check', 'copy', 'background', 'product_alone', 'cutout', 'enhance', 'reel', 'ugc'], { each: true })
+  features!: Array<'check' | 'copy' | 'background' | 'product_alone' | 'cutout' | 'enhance' | 'reel' | 'ugc'>;
+  @ApiPropertyOptional({ description: 'The product name: the check compares against it, the copy and the reel are named after it.' })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(120)
   title?: string;
+  @ApiPropertyOptional({ description: 'What the seller knows that the photo cannot show — specs, material, size, what is in the box.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(800)
+  details?: string;
 }

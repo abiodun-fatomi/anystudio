@@ -221,3 +221,76 @@
   font-size: var(--t-1);
   color: var(--muted);
 }
+
+/* What the product is: the name and the details the photo cannot show. */
+.about {
+  display: grid;
+  gap: var(--s-3);
+}
+
+/* Results: the original and every picture or clip that came back. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.shot[data-transparent='true'] {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e6e2ea 25%, transparent 25%), linear-gradient(-45deg, #e6e2ea 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e2ea 75%), linear-gradient(-45deg, transparent 75%, #e6e2ea 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+}
+.shot[data-transparent='true'] img {
+  object-fit: contain;
+}
+.shot[data-video='true'] {
+  aspect-ratio: 9 / 16;
+}
+.shot video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.pick[data-kind='video'] .cost {
+  color: var(--accent);
+}
+
+/* The copy, whole: paragraph, bullets, specs. */
+.para {
+  margin: 0 0 var(--s-2);
+  white-space: pre-wrap;
+}
+.bullets {
+  margin: 0 0 var(--s-2);
+  padding-left: 1.2em;
+}
+.bullets li {
+  margin: 2px 0;
+}
+.specs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+}
+.specs > div {
+  display: flex;
+  gap: var(--s-2);
+  font-size: var(--t-1);
+}
+.specs dt {
+  color: var(--muted);
+  flex: none;
+}
+.specs dd {
+  margin: 0;
+  color: var(--ink);
+}
