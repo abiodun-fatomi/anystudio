@@ -448,6 +448,15 @@ export interface Quote {
   expectedMs: number;
 }
 
+export type PlaygroundCapability = 'INSPECT' | 'BACKGROUND_REPLACE' | 'TEXT_GENERATE';
+/** How much of today's playground the workspace has left — real generations, so capped on top of credits. */
+export interface PlaygroundAllowance {
+  dailyLimit: number;
+  usedToday: number;
+  remaining: number;
+  resetsAt: string;
+}
+
 export interface MediaAssetRow {
   id: string;
   workspaceId: string;
@@ -1261,7 +1270,7 @@ export const api = {
         'GET',
         '/admin/waitlist',
       ),
-    leads: (q: { show?: 'open' | 'all'; cursor?: string | null; take?: number }) =>
+    leads: (q: { status?: 'all' | 'new' | 'handled'; from?: string; to?: string; cursor?: string | null; take?: number }) =>
       request<{ rows: AdminLead[]; nextCursor: string | null }>(
         'GET',
         `/admin/leads?${new URLSearchParams(
@@ -1347,6 +1356,13 @@ export const api = {
     updateProject: (workspaceId: string, id: string, body: { name?: string; description?: string; archived?: boolean }) =>
       request<DevProject>('PATCH', `/workspaces/${workspaceId}/developer/projects/${id}`, body),
     keys: (workspaceId: string) => request<DevKey[]>('GET', `/workspaces/${workspaceId}/developer/keys`),
+    playground: (workspaceId: string) => request<PlaygroundAllowance>('GET', `/workspaces/${workspaceId}/developer/playground`),
+    playgroundRun: (workspaceId: string, body: { assetId: string; capabilities: PlaygroundCapability[]; title?: string }) =>
+      request<{ runs: Array<{ capability: PlaygroundCapability; generation: GenerationRow }>; balance: number; allowance: PlaygroundAllowance }>(
+        'POST',
+        `/workspaces/${workspaceId}/developer/playground/runs`,
+        body,
+      ),
     createKey: (workspaceId: string, body: { projectId: string; name: string; scopes?: string[]; expiresInDays?: number }) =>
       request<DevKey & { key: string }>('POST', `/workspaces/${workspaceId}/developer/keys`, body),
     revokeKey: (workspaceId: string, id: string) => request<DevKey>('DELETE', `/workspaces/${workspaceId}/developer/keys/${id}`),

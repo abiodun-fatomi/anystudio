@@ -31,14 +31,14 @@ import {
 } from '@prisma/client';
 import type { Request } from 'express';
 import { randomBytes } from 'node:crypto';
-import { ProviderError } from '@anystudio/shared';
+import { ProviderError, surfaceOriginFor, type AppEnv } from '@anystudio/shared';
 import { ConflictError, ForbiddenError, InsufficientCreditsError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
 import { Mailer } from '../../utils/mail-service';
-import { refundDecided, refundRequested } from '../../assets/email-templates';
+import { refundAlert, refundDecided, refundRequested } from '../../assets/email-templates';
 import { money } from '../usage-billing/usage-billing.service';
 import { assertStaffMutation, type Actor } from '../auth/policy';
 import { LedgerService } from '../ledger/ledger.service';
@@ -3105,6 +3105,9 @@ export class BillingService {
     );
     logger.info({ requestId: request.id, paymentId, workspaceId, credits: payment.credits, balance }, 'refund requested');
     const user = await this.db.user.findUnique({ where: { id: actor.userId }, select: { email: true, name: true } });
+    const workspace = await this.db.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } });
+    const rawEnv = process.env.APP_ENV;
+    const env: AppEnv = rawEnv === 'production' || rawEnv === 'staging' || rawEnv === 'dev' ? rawEnv : 'local';
     if (user?.email) {
       const origin = this.auth.publicOrigin(req);
       await this.mailer
@@ -3121,11 +3124,18 @@ export class BillingService {
     const alert = process.env.REFUNDS_EMAIL?.trim();
     if (alert)
       await this.mailer
-        .send({
-          to: alert,
-          subject: `Refund request: ${money(payment.amountMinor, payment.currency)} · ${payment.reference}`,
-          text: `Workspace ${workspaceId}\nPayment ${payment.id} (${payment.reference}) ${itemWords(payment)} ${money(payment.amountMinor, payment.currency)}\nCredits ${payment.credits}, balance now ${balance}\nReason: ${dto.reason.trim()}\n\nDecide in the staff console → Payments.`,
-        })
+        .send(
+          refundAlert(alert, {
+            workspaceName: workspace?.name ?? workspaceId,
+            amount: money(payment.amountMinor, payment.currency),
+            item: itemWords(payment),
+            reference: payment.reference,
+            credits: payment.credits,
+            balance,
+            reason: dto.reason.trim(),
+            consoleUrl: `${surfaceOriginFor('ADMIN', env)}/admin/payments`,
+          }),
+        )
         .catch((err: unknown) => logger.error({ err, requestId: request.id }, 'refund alert mail failed'));
     return this.refundView(request);
   }

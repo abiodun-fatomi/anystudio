@@ -12,10 +12,10 @@ import { Injectable } from '@nestjs/common';
 import { PrismaClient, type JobApplication, type JobPosting } from '@prisma/client';
 import type { Request } from 'express';
 import { randomBytes } from 'node:crypto';
-import { marketingHost, type AppEnv } from '@anystudio/shared';
+import { marketingHost, surfaceOriginFor, type AppEnv } from '@anystudio/shared';
 import { ConflictError, NotFoundError, ValidationError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
-import { applicationReceived } from '../../assets/email-templates';
+import { applicationAlert, applicationReceived } from '../../assets/email-templates';
 import { Mailer } from '../../utils/mail-service';
 import { authLog } from '../auth/auth.log';
 import { assertStaff, type Actor } from '../auth/policy';
@@ -103,11 +103,18 @@ export class CareersService {
     const alert = process.env.CAREERS_EMAIL?.trim();
     if (alert)
       await this.mailer
-        .send({
-          to: alert,
-          subject: `New application: ${job.title} — ${app.name}`,
-          text: `${app.name} <${email}>${app.phone ? ` · ${app.phone}` : ''}\n${app.links ?? ''}\n\n${app.coverNote ?? ''}\n\nStaff console → Careers → ${job.title}.`,
-        })
+        .send(
+          applicationAlert(alert, {
+            name: app.name,
+            email,
+            phone: app.phone,
+            links: app.links,
+            coverNote: app.coverNote,
+            title: job.title,
+            team: job.team,
+            consoleUrl: `${surfaceOriginFor('ADMIN', env)}/admin/careers`,
+          }),
+        )
         .catch((err: unknown) => logger.error({ err, applicationId: app.id }, 'application alert failed'));
     return { ok: true, id: app.id };
   }

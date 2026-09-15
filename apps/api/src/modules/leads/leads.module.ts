@@ -20,7 +20,8 @@ import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, IsUUID, Length, Matche
 import type { Request } from 'express';
 import { NotFoundError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
-import { leadReceived } from '../../assets/email-templates';
+import { surfaceOriginFor, type AppEnv } from '@anystudio/shared';
+import { leadAlert, leadReceived } from '../../assets/email-templates';
 import { Mailer } from '../../utils/mail-service';
 import { AuthModule } from '../auth/auth.module';
 import { Public, RequireStaff, RequireSurface } from '../auth/decorators';
@@ -40,8 +41,12 @@ export class LeadDto {
 export class LeadsQueryDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() cursor?: string;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 25 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) take?: number;
-  /** `open` (default) hides handled leads; `all` shows them too. */
-  @ApiPropertyOptional({ enum: ['open', 'all'] }) @IsOptional() @Matches(/^(open|all)$/) show?: 'open' | 'all';
+  /** Everything by default; `new` is what still needs a reply, `handled` what has one. */
+  @ApiPropertyOptional({ enum: ['all', 'new', 'handled'], default: 'all' }) @IsOptional() @Matches(/^(all|new|handled)$/) status?: 'all' | 'new' | 'handled';
+  /** Received on or after this day (YYYY-MM-DD, UTC). */
+  @ApiPropertyOptional({ example: '2026-09-01' }) @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string;
+  /** Received on or before this day (YYYY-MM-DD, UTC), inclusive. */
+  @ApiPropertyOptional({ example: '2026-09-30' }) @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string;
 }
 
 export class LeadPatchDto {
@@ -104,11 +109,11 @@ export class LeadsService {
   }
 
   /**
-   * The email is the whole form, plain text, because the person reading it
-   * on a phone wants to reply, not click through. It goes to the MAIL_FROM
-   * inbox, which is where a platform's reply to the acknowledgement lands
-   * anyway. Never fatal: the row is already there, and the console shows it
-   * whether or not this lands.
+   * The email is the whole form, laid out to be read and answered from a
+   * phone: the reply is the button. It goes to the MAIL_FROM inbox, which is
+   * where a platform's reply to the acknowledgement lands anyway. Never
+   * fatal: the row is already there, and the console shows it whether or
+   * not this lands.
    */
   private async announce(lead: Lead) {
     const to = inboxOf(process.env.MAIL_FROM);
@@ -116,28 +121,34 @@ export class LeadsService {
       logger.warn({ leadId: lead.id }, 'MAIL_FROM is not set; the lead is only in the staff console');
       return;
     }
-    const line = (label: string, value: string | null) => `${label}: ${value ?? '—'}`;
-    const text = [
-      line('Organization', lead.organization),
-      line('Email', lead.email),
-      line('Role', lead.role),
-      line('Images and reels per month', lead.volume),
-      line('Wants to be live', lead.timeline),
-      '',
-      'Anything that would stop this working:',
-      lead.notes ?? '—',
-      '',
-      `Reply to ${lead.email}. Staff console → Platform leads.`,
-    ].join('\n');
+    const raw = process.env.APP_ENV;
+    const env: AppEnv = raw === 'production' || raw === 'staging' || raw === 'dev' ? raw : 'local';
     await this.mailer
-      .send({ to, subject: `Platform lead: ${lead.organization}`, text })
+      .send(
+        leadAlert(to, {
+          organization: lead.organization,
+          email: lead.email,
+          role: lead.role,
+          volume: lead.volume,
+          timeline: lead.timeline,
+          notes: lead.notes,
+          consoleUrl: `${surfaceOriginFor('ADMIN', env)}/admin/leads`,
+        }),
+      )
       .catch((err: unknown) => logger.error({ err, leadId: lead.id }, 'lead alert failed'));
   }
 
   async list(q: LeadsQueryDto): Promise<{ rows: LeadView[]; nextCursor: string | null }> {
     const take = q.take ?? 25;
+    const createdAt = {
+      ...(q.from ? { gte: new Date(`${q.from}T00:00:00.000Z`) } : {}),
+      ...(q.to ? { lt: new Date(new Date(`${q.to}T00:00:00.000Z`).getTime() + 86_400_000) } : {}),
+    };
     const rows = await this.db.lead.findMany({
-      where: q.show === 'all' ? {} : { handledAt: null },
+      where: {
+        ...(q.status === 'new' ? { handledAt: null } : q.status === 'handled' ? { handledAt: { not: null } } : {}),
+        ...(Object.keys(createdAt).length ? { createdAt } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: take + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
