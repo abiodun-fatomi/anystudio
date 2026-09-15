@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, IsUrl, Max, MaxLength, Min } from 'class-validator';
 
 export class PresignUploadDto {
   @ApiProperty({ example: 'IMG_2041.jpg' })
@@ -52,6 +52,13 @@ export class ReadUrlQueryDto {
   @IsString()
   @MaxLength(512)
   key!: string;
+}
+
+export class FromUrlDto {
+  @ApiProperty({ example: 'https://bimbomarket.ng/products/mini-handbag', description: 'A product page, or a direct https link to the picture' })
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(2000)
+  url!: string;
 }
 
 export class ReadUrlsDto {

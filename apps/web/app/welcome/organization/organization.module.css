@@ -1,0 +1,231 @@
+/* The organization's welcome: what the seller welcome does not need — a key
+   box, a result strip, an invite list. Everything else is welcome.module.css. */
+
+.card {
+  width: min(100%, 640px);
+}
+
+.mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--cyan-wash);
+  font-size: var(--t-2);
+  line-height: 1.5;
+}
+.note[data-tone='warn'] {
+  background: var(--warn-wash);
+}
+.note[data-tone='ok'] {
+  background: var(--ok-wash);
+}
+
+/* --- the key --- */
+.keybox {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface);
+}
+.keybox .hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.keyrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.keyrow code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-2);
+  overflow-wrap: anywhere;
+}
+.code {
+  margin: 0;
+  padding: 14px;
+  background: #17131a;
+  color: #f1ecf5;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.code b {
+  color: #ff9cc8;
+  font-weight: 500;
+}
+
+/* --- run it on their catalogue --- */
+.source {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+.drop {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.drop input {
+  display: none;
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--t-1);
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line-soft);
+}
+.urlrow {
+  display: flex;
+  gap: 8px;
+}
+.urlrow .inp {
+  flex: 1;
+  min-width: 0;
+}
+
+.results {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.shot {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+  aspect-ratio: 1;
+}
+.shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.shot .tag {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: rgba(23, 19, 26, 0.72);
+  color: #fff;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.shot .wait {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, transparent, rgba(10, 8, 12, 0.78));
+  color: #fff;
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
+.line {
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--t-2);
+  line-height: 1.5;
+}
+.line[data-status='FAILED'] {
+  background: var(--danger-wash);
+}
+.line strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.verdict {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.verdict[data-v='mismatch'],
+.verdict[data-v='not_a_product'] {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+.verdict[data-v='unclear'] {
+  background: var(--sunk);
+  color: var(--muted);
+}
+
+/* --- the team --- */
+.invites {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+.invite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 8px;
+}
+.sent {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+  font-size: var(--t-2);
+}
+.sent li {
+  list-style: none;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}

@@ -122,6 +122,8 @@ export interface RegisterInput {
   phoneIsWhatsApp: boolean;
   marketing: { granted: boolean; wording: string };
   sourceUrl?: string;
+  /** Sign up as an organization: its first workspace is the organization, and the welcome continues on the portal. */
+  organization?: { name: string; website?: string };
 }
 
 /**
@@ -369,6 +371,20 @@ export interface AdminApplication {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A platform that filled in the /org contact form — the whole form, not just the address. */
+export interface AdminLead {
+  id: string;
+  organization: string;
+  email: string;
+  role: string | null;
+  volume: string | null;
+  timeline: string | null;
+  notes: string | null;
+  source: string;
+  handledAt: string | null;
+  createdAt: string;
 }
 
 export interface AdminBillingAccount extends BillingAccountView {
@@ -1245,6 +1261,18 @@ export const api = {
         'GET',
         '/admin/waitlist',
       ),
+    leads: (q: { show?: 'open' | 'all'; cursor?: string | null; take?: number }) =>
+      request<{ rows: AdminLead[]; nextCursor: string | null }>(
+        'GET',
+        `/admin/leads?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(q)
+              .filter(([, v]) => v)
+              .map(([k, v]) => [k, String(v)]),
+          ),
+        )}`,
+      ),
+    setLeadHandled: (id: string, handled: boolean) => request<AdminLead>('PATCH', `/admin/leads/${id}`, { handled }),
     billingAccounts: () => request<AdminBillingAccount[]>('GET', '/admin/billing/accounts'),
     billingRates: () => request<Array<{ currency: string; per100Minor: number }>>('GET', '/admin/billing/rates'),
     billingInvoices: (q: { status?: string; workspaceId?: string; cursor?: string | null; take?: number }) =>
@@ -1524,6 +1552,9 @@ export const api = {
     presign: (workspaceId: string, file: { filename: string; mime: string; bytes: number }) =>
       request<PresignedUpload>('POST', `/workspaces/${workspaceId}/media/uploads`, file),
     complete: (workspaceId: string, assetId: string) => request<MediaAssetRow>('POST', `/workspaces/${workspaceId}/media/uploads/complete`, { assetId }),
+    /** A product from a link: the picture itself, or the listing page it sits on. `title` and `pageUrl` are null for a direct picture. */
+    fromUrl: (workspaceId: string, url: string) =>
+      request<{ asset: MediaAssetRow; title: string | null; pageUrl: string | null }>('POST', `/workspaces/${workspaceId}/media/from-url`, { url }),
     list: (workspaceId: string, opts: { kind?: 'SOURCE' | 'OUTPUT'; cursor?: string; take?: number } = {}) => {
       const q = new URLSearchParams();
       if (opts.kind) q.set('kind', opts.kind);

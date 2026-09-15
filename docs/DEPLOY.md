@@ -678,9 +678,13 @@ back with a CV (PDF or Word, up to 8 MB, presigned straight to storage
 under `careers/`), a confirmation email to the applicant, and an alert to
 `CAREERS_EMAIL` if set. The mobile-app waitlist on `/why#mobile` posts to
 `POST /api/v1/waitlist`; counts and the latest signups are at
-`GET /api/v1/admin/waitlist`.
+`GET /api/v1/admin/waitlist`. The platform contact form on `/org#contact`
+posts every field to `POST /api/v1/leads`; leads are read and marked
+handled in the console → **Platform leads**, and announced to `LEADS_EMAIL`
+if set.
 
-**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`.
+**Migrations.** `20260918000002_careers`, `20260918000003_waitlist`,
+`20260925000001_leads`.
 
 ## 17. Error tracking (Sentry, optional)
 

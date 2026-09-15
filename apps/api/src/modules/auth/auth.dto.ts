@@ -89,6 +89,24 @@ export class MarketingConsentDto {
   wording: string;
 }
 
+/**
+ * The organization a sign-up is for — a marketplace, a platform, an agency.
+ * Present, the account's first workspace is an ORGANIZATION named after it
+ * rather than a personal studio, and the welcome continues on the portal.
+ */
+export class OrganizationDto {
+  @ApiProperty({ example: 'Bimbo Marketplace Ltd', maxLength: 120 })
+  @IsString()
+  @Length(2, 120)
+  name: string;
+
+  @ApiPropertyOptional({ example: 'https://bimbomarket.ng' })
+  @IsOptional()
+  @IsUrl({ require_protocol: false })
+  @MaxLength(300)
+  website?: string;
+}
+
 export class RegisterDto {
   @ApiProperty({ example: 'Adaeze Okonkwo', maxLength: 120 })
   @IsString()
@@ -138,6 +156,12 @@ export class RegisterDto {
   @IsUrl({ require_tld: false })
   @MaxLength(500)
   sourceUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Sign up as an organization: its first workspace is the organization, not a personal studio', type: OrganizationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrganizationDto)
+  organization?: OrganizationDto;
 }
 
 export class ForgotPasswordDto {
