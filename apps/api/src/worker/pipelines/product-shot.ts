@@ -45,12 +45,21 @@
  */
 
 import sharp from 'sharp';
-import { EXPORT_SIZES, ProviderError, judgesShape, type CapabilityParams, type ProviderArtifact, type ProviderResult } from '@anystudio/shared';
+import {
+  ASPECTS,
+  EXPORT_SIZES,
+  ProviderError,
+  judgesShape,
+  type Aspect,
+  type CapabilityParams,
+  type ProviderArtifact,
+  type ProviderResult,
+} from '@anystudio/shared';
 import type { Pipeline, PipelineContext } from './index';
 import { FIDELITY, fidelity, type FidelityReport } from './fidelity';
 import { preservationThresholds, tunedUseCase } from './preservation-policy';
 import { applyBrand, artifactBytes, pasteProductAt } from './image';
-import { focalCrop, sharpnessFocal } from './crop';
+import { focalCrop, maskFocal, sharpnessFocal } from './crop';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 import { rethrowIfAborted } from './abort';
 import { restylePipeline } from './restyle';
@@ -84,6 +93,7 @@ export const productShotPipeline: Pipeline = async (ctx) => {
     ctx.log.info({ mode: p.mode, providerKey: 'local:beautify', sizes: p.sizes.length }, 'whole-photo enhancement finished without regenerating the subject');
     return { artifacts, providerKey: 'local:beautify', costMinor: 0 };
   }
+  if (p.mode === 'isolate') return productAlone(ctx, p);
 
   const strict = judgesShape(p.mode);
   // Only a mode the check may refuse has a tunable acceptance; the rest are measured against the fixed defaults, for the record.
@@ -168,6 +178,176 @@ export const productShotPipeline: Pipeline = async (ctx) => {
   ctx.log.info({ mode: p.mode, score: picked.report?.score ?? null, repaired: picked.repaired, sizes: p.sizes.length }, 'product shot finished');
   return { artifacts, providerKey: picked.result.providerKey, providerJobId: picked.result.providerJobId, costMinor: picked.result.costMinor };
 };
+
+/**
+ * Product alone: whatever was holding, hanging or surrounding the product
+ * taken out, the product itself untouched.
+ *
+ * This is deliberately NOT a described edit sent to the product-shot vendor.
+ * Asked to "remove the hand" on a phone, that vendor drew a different phone
+ * — same brand, another colour, another camera — and the ordinary check
+ * could not have caught it, because the ordinary check measures against the
+ * photo's own cutout, and the cutout of a phone in a hand is the phone AND
+ * the hand: the result that did as asked and the result that invented a
+ * phone both score as "product changed".
+ *
+ * So the work goes to the image-edit route, the models that hold a subject
+ * still while its surroundings change, and the check is turned round. The
+ * RESULT is cut out — by then it is the product alone — and that product is
+ * looked for in the ORIGINAL photo. Found there with the same structure and
+ * colour, it is the seller's product and the picture ships. Not found, the
+ * model invented one: a different model is asked once, sternly, and a second
+ * miss is refused and refunded rather than posted.
+ */
+async function productAlone(ctx: PipelineContext, p: Params) {
+  await ctx.stage('preparing', 8, 'Reading your photo');
+  const source = (await fetchBytes('product-shot', ctx.files.sourceKey!.url, 60_000, ctx.signal)).bytes;
+  const meta = await sharp(source).metadata();
+  const upright = meta.orientation && meta.orientation >= 5 ? { w: meta.height ?? 1, h: meta.width ?? 1 } : { w: meta.width ?? 1, h: meta.height ?? 1 };
+  const aspect = nearestAspect(upright.w / upright.h);
+
+  const exclude: string[] = [];
+  let picked: { bytes: Uint8Array; cut: Uint8Array | null; result: ProviderResult; report: FidelityReport | null } | null = null;
+  let last: FidelityReport | null = null;
+  for (let attempt = 1; attempt <= 2 && !picked; attempt++) {
+    await ctx.stage(
+      'generating',
+      attempt === 1 ? 20 : 30,
+      attempt === 1 ? 'Taking out what is holding it' : 'That one changed your product — asking another model',
+    );
+    const result = await ctx.callCapability(
+      'IMAGE_EDIT',
+      {
+        generationId: ctx.row.id,
+        workspaceId: ctx.row.workspaceId,
+        params: { sourceKey: p.sourceKey, prompt: aloneInstruction(p, attempt), preserveProduct: true, useCase: 'photography', aspect, sizes: [] },
+        files: ctx.files,
+      },
+      {
+        timeoutMs: ctx.budgetMs,
+        signal: ctx.signal,
+        onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail),
+        ...(exclude.length ? { route: { exclude } } : {}),
+      },
+    );
+    const bytes = await artifactBytes(result, ctx.signal);
+
+    // The check needs the result's product on its own. If the cutout cannot
+    // be made, the picture ships unchecked — as every shot does when the
+    // helper call is down — rather than a credit being spent on our plumbing.
+    await ctx.stage('composing', 60, 'Checking it is still your product');
+    const cut = await resultCutout(ctx, bytes, attempt);
+    if (!cut) {
+      picked = { bytes, cut: null, result, report: null };
+      break;
+    }
+    const report = await fidelity(bytes, cut, source);
+    ctx.log.info(
+      { mode: p.mode, pass: attempt, ...report, keep: ALONE.keep, providerKey: result.providerKey },
+      'product-alone fidelity measured (result located in the original)',
+    );
+    if (report.placed && report.structure >= FIDELITY.locate && report.score >= ALONE.keep) {
+      picked = { bytes, cut, result, report };
+      break;
+    }
+    last = report;
+    exclude.push(result.providerKey);
+    ctx.log.warn(
+      { mode: p.mode, pass: attempt, score: report.score, structure: report.structure, providerKey: result.providerKey },
+      'product-alone result is not the photographed product',
+    );
+  }
+  if (!picked) {
+    throw new ProviderError(
+      'LOW_QUALITY',
+      `product alone: the edited product was not the photographed one after 2 attempts: fidelity ${last?.score ?? 0} (keep ${ALONE.keep}); structure ${last?.structure ?? 0} (locate ${FIDELITY.locate})`,
+      'product-alone',
+      { raw: last },
+    );
+  }
+
+  await ctx.stage('composing', 76, 'Adding your name and price');
+  const branded = await applyBrand(ctx, picked.bytes, p);
+  await ctx.stage('composing', 88, 'Cutting every size');
+  const out = await sharp(branded).metadata();
+  const artifacts: ProviderArtifact[] = [{ bytes: new Uint8Array(branded), mime: 'image/png', role: 'image', width: out.width, height: out.height }];
+  // The crops aim at the product where it sits in the RESULT — the cutout knows — not where it sat in the photo.
+  const focal = (picked.cut ? await maskFocal(picked.cut) : null) ?? (await sharpnessFocal(branded));
+  for (const size of p.sizes) {
+    const spec = EXPORT_SIZES[size];
+    const bytes = await focalCrop(branded, spec.width, spec.height, focal);
+    artifacts.push({ bytes: new Uint8Array(bytes), mime: 'image/jpeg', role: 'variant', width: spec.width, height: spec.height, size });
+  }
+  ctx.log.info({ mode: p.mode, score: picked.report?.score ?? null, providerKey: picked.result.providerKey, sizes: p.sizes.length }, 'product alone finished');
+  return { artifacts, providerKey: picked.result.providerKey, providerJobId: picked.result.providerJobId, costMinor: picked.result.costMinor };
+}
+
+/**
+ * The bar for "found in the original". Lower than the ordinary keep on
+ * purpose: the region of the photo where the product is found also holds
+ * the fingers that were over it, so even a perfect result never scores 1
+ * here. The structure floor is the ordinary one — a weak match is not a
+ * match, and this mode never pastes anything, so nothing rides on it.
+ */
+export const ALONE = { keep: 0.74 } as const;
+
+const SHADOW_WORDS: Record<Params['shadow'], string> = {
+  soft: ' with a soft, natural contact shadow beneath it',
+  hard: ' with a crisp contact shadow beneath it',
+  floating: ' with a soft shadow below it, as if floating',
+  none: ' and no shadow',
+};
+
+function aloneInstruction(p: Params, attempt: number): string {
+  const steer = p.prompt?.trim();
+  const base =
+    `Remove the hand, person, hanger, stand or any prop that is holding, wearing or surrounding the product${steer ? ` (${steer})` : ''}. ` +
+    `Show the product alone, complete and exactly as photographed — the same angle, size, colours, materials, text, logos and every detail unchanged — ` +
+    `on a plain, seamless, evenly lit light studio background${SHADOW_WORDS[p.shadow]}.`;
+  return attempt === 1
+    ? base
+    : `${base}
+
+IMPORTANT: the previous attempt drew a different product. Reproduce the product pixel-for-pixel from the photo; do not redesign, recolour, reshape or replace it. Only what surrounds it may change.`;
+}
+
+/** The result with its background gone — the product alone, for the check. Null when the helper is down. */
+async function resultCutout(ctx: PipelineContext, bytes: Uint8Array, attempt: number): Promise<Uint8Array | null> {
+  try {
+    const key = await ctx.media.putGenerationWork({
+      workspaceId: ctx.row.workspaceId,
+      generationId: ctx.row.id,
+      createdAt: ctx.row.createdAt,
+      name: `alone-${attempt}.png`,
+      bytes,
+      mime: 'image/png',
+    });
+    const cut = await ctx.callCapability(
+      'BACKGROUND_REMOVE',
+      {
+        generationId: ctx.row.id,
+        workspaceId: ctx.row.workspaceId,
+        params: { sourceKey: key, background: 'transparent' },
+        files: { sourceKey: { key, url: await ctx.media.signRead(key, 60 * 60), mime: 'image/png', bytes: bytes.length } },
+      },
+      { timeoutMs: 60_000, signal: ctx.signal },
+    );
+    return await artifactBytes(cut, ctx.signal);
+  } catch (err) {
+    rethrowIfAborted(ctx.signal, err);
+    ctx.log.warn({ err: err instanceof Error ? err.message : err }, 'cutout of the result unavailable; shipping the product-alone shot unchecked');
+    return null;
+  }
+}
+
+/** The catalogue aspect closest to the photo's own, so the product is not re-framed on the way. */
+export function nearestAspect(ratio: number): Aspect {
+  const value = (a: Aspect) => {
+    const [w, h] = a.split(':').map(Number) as [number, number];
+    return w / h;
+  };
+  return [...ASPECTS].sort((a, b) => Math.abs(Math.log(value(a) / ratio)) - Math.abs(Math.log(value(b) / ratio)))[0]!;
+}
 
 /**
  * The original and its alpha mask, or nothing.

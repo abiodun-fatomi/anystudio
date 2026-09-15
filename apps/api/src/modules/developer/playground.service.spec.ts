@@ -68,7 +68,7 @@ describe('the daily allowance', () => {
 });
 
 describe('the menu', () => {
-  it('is priced from the credit table, and the product-alone shot is an edit that names the hand', async () => {
+  it('is priced from the credit table, and the product-alone shot is the pipeline’s own mode — never a described edit', async () => {
     const menu = await service.features();
     expect(menu.map((f) => [f.key, f.credits])).toEqual([
       ['check', 1],
@@ -82,7 +82,7 @@ describe('the menu', () => {
     ]);
     await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone', 'ugc'] });
     expect(generations.request).toHaveBeenCalledWith(
-      expect.objectContaining({ capability: 'PRODUCT_SHOT', params: expect.objectContaining({ mode: 'edit', prompt: expect.stringContaining('hand') }) }),
+      expect.objectContaining({ capability: 'PRODUCT_SHOT', params: { sourceKey: 'ws/uploads/bag.jpg', mode: 'isolate', sizes: [] } }),
     );
     expect(generations.request).toHaveBeenCalledWith(
       expect.objectContaining({

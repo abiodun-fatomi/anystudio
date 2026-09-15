@@ -312,11 +312,12 @@ describe('a mode we have not confirmed', () => {
     await expect(sent(shot({ mode: 'sketch' }))).rejects.toThrow(/cannot do "sketch"/);
   });
 
-  it('has a mapping for every mode the studio offers', async () => {
-    const { OFFERED_PRODUCT_MODES } = await import('@anystudio/shared');
+  it('has a mapping for every mode the studio offers, and refuses the ones the pipeline composes itself', async () => {
+    const { OFFERED_PRODUCT_MODES, PIPELINE_OWNED_MODES } = await import('@anystudio/shared');
     for (const mode of OFFERED_PRODUCT_MODES) {
       const extra = mode === 'edit' ? { prompt: 'x' } : {};
-      await expect(sent(shot({ mode, ...extra })), mode).resolves.toBeTruthy();
+      if (PIPELINE_OWNED_MODES.includes(mode)) await expect(sent(shot({ mode })), mode).rejects.toThrow(/cannot do/);
+      else await expect(sent(shot({ mode, ...extra })), mode).resolves.toBeTruthy();
     }
   });
 });

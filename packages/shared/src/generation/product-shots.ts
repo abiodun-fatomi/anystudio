@@ -78,6 +78,21 @@ export const PRODUCT_MODES = {
     verified: true,
   },
   /**
+   * The photo most merchants actually have: the item in their own hand, on a
+   * hanger, on a stand. This is not a described edit sent to the product-shot
+   * vendor — asked to "remove the hand", that vendor drew a different phone.
+   * The pipeline composes it from the image-edit route and checks the result
+   * the other way round (see the pipeline for why); the vendor never sees it.
+   */
+  isolate: {
+    label: 'Product alone',
+    note: 'The hand, hanger or stand taken out; the product itself untouched, on a plain background.',
+    hint: 'For anything photographed being held or hung. The product keeps its exact shape, colour and markings.',
+    forClothes: false,
+    costCode: 'image.product_shot',
+    verified: true,
+  },
+  /**
    * The escape hatch. Every catalogue of named modes eventually meets a
    * merchant whose problem is not on the list — a hand in the frame, a
    * hanger, a crease in the wrong place — and the answer should be a
@@ -144,6 +159,13 @@ export const PRODUCT_MODE_KEYS = Object.keys(PRODUCT_MODES) as ProductMode[];
  * from one that was not. Measured for the record, shipped regardless.
  */
 export const KEEPS_GEOMETRY: readonly ProductMode[] = ['ironing', 'beautify', 'expand', 'text_removal'];
+/**
+ * Modes the pipeline composes from OTHER capabilities and never sends to a
+ * PRODUCT_SHOT vendor. An adapter asked for one of these refuses, which is
+ * the right answer: the pipeline should have handled it first. (Beautify is
+ * also done without the vendor, but keeps a vendor mapping in reserve.)
+ */
+export const PIPELINE_OWNED_MODES: readonly ProductMode[] = ['isolate'];
 /** Whether a refusal is fair for this mode, or would throw away a correct picture. */
 export const judgesShape = (mode: ProductMode): boolean => KEEPS_GEOMETRY.includes(mode);
 

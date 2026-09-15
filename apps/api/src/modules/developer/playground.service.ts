@@ -69,16 +69,11 @@ const FEATURES: Feature[] = [
     key: 'product_alone',
     capability: 'PRODUCT_SHOT',
     label: 'Product alone',
-    help: 'Hands, hangers and props taken out; the product by itself on a plain background.',
+    help: 'The hand, hanger or stand taken out; the product itself untouched, on a plain background.',
     costCode: 'image.product_shot',
     kind: 'image',
-    params: (sourceKey) => ({
-      sourceKey,
-      mode: 'edit',
-      prompt:
-        'Remove any hand, person, hanger or prop holding or surrounding the product. Show the product alone, complete and unchanged, centred on a plain light background.',
-      sizes: [],
-    }),
+    // Not a described edit: the pipeline's own mode, which checks that the product it hands back is the one photographed.
+    params: (sourceKey) => ({ sourceKey, mode: 'isolate', sizes: [] }),
   },
   {
     key: 'cutout',

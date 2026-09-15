@@ -18,7 +18,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, judgesShape, type ProductMode } from '@anystudio/shared';
-import { productShotPipeline } from './product-shot';
+import { ALONE, nearestAspect, productShotPipeline } from './product-shot';
 import type { PipelineContext } from './index';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 
@@ -251,6 +251,114 @@ describe('a shot that came back as a different product', () => {
     expect(out.artifacts.length).toBeGreaterThan(0);
     expect(callProvider).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls.flat().join(' ')).not.toContain('put back where it was found');
+  });
+});
+
+/**
+ * Product alone. The edit goes to the image-edit route, never the product-shot
+ * vendor; the result is cut out and looked for in the ORIGINAL photo; a model
+ * that drew a different product is refused, and a second model is asked
+ * before anyone is refunded.
+ */
+function aloneCtx(attempts: Array<{ image: Uint8Array; cut: Uint8Array | null; providerKey: string }>, over: Record<string, unknown> = {}) {
+  const base = ctxWith({ params: params({ mode: 'isolate', ...over }), output: new Uint8Array(), mask: null });
+  let edits = 0;
+  const cutsFor = new Map<string, Uint8Array | null>();
+  const callCapability = vi.fn(async (capability: string, input: { params: { sourceKey: string } }) => {
+    if (capability === 'IMAGE_EDIT') {
+      const a = attempts[edits++];
+      if (!a) throw new Error('no more attempts scripted');
+      cutsFor.set(`work-${edits}`, a.cut);
+      return { providerKey: a.providerKey, providerJobId: `job-${edits}`, costMinor: 13, artifacts: [{ role: 'image', mime: 'image/png', bytes: a.image }] };
+    }
+    if (capability === 'BACKGROUND_REMOVE') {
+      const cut = cutsFor.get(input.params.sourceKey);
+      if (!cut) throw new Error('background removal is down');
+      return { providerKey: 'x:cut', costMinor: 1, artifacts: [{ role: 'image', mime: 'image/png', bytes: cut }] };
+    }
+    throw new Error(`unexpected capability ${capability}`);
+  });
+  let works = 0;
+  const media = {
+    getBytes: vi.fn(async () => Buffer.from(sourceBytes)),
+    putGenerationWork: vi.fn(async () => `work-${++works}`),
+    signRead: vi.fn(async (key: string) => `https://signed/${key}`),
+  };
+  const ctx = {
+    ...(base.ctx as object),
+    callCapability,
+    media,
+    row: { ...(base.ctx.row as object), createdAt: new Date('2026-09-15T00:00:00Z') },
+  } as unknown as PipelineContext;
+  return { ctx, callCapability, callProvider: base.callProvider, media, warn: base.warn };
+}
+
+describe('Product alone', () => {
+  it('asks the image-edit route, not the product-shot vendor, and ships a result whose product is found in the photo', async () => {
+    sourceBytes = await photo(RED);
+    const { ctx, callCapability, callProvider, media } = aloneCtx([
+      { image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' },
+    ]);
+
+    const out = await productShotPipeline(ctx);
+    expect(callProvider).not.toHaveBeenCalled();
+    const edit = callCapability.mock.calls.find((c) => c[0] === 'IMAGE_EDIT')![1] as { params: Record<string, unknown> };
+    expect(edit.params).toMatchObject({ sourceKey: 'ws-1/p.png', preserveProduct: true, useCase: 'photography', aspect: '1:1', sizes: [] });
+    expect(String(edit.params.prompt)).toMatch(/hand.*exactly as photographed/s);
+    // The RESULT is what gets cut out and checked, by way of the work store.
+    expect(media.putGenerationWork).toHaveBeenCalledWith(expect.objectContaining({ name: 'alone-1.png', generationId: 'g-1' }));
+    expect(callCapability).toHaveBeenCalledWith(
+      'BACKGROUND_REMOVE',
+      expect.objectContaining({ params: { sourceKey: 'work-1', background: 'transparent' } }),
+      expect.anything(),
+    );
+    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
+    expect(out.artifacts.filter((a) => a.role === 'variant')).toHaveLength(2);
+    expect(out.artifacts[0]).toMatchObject({ width: 256, height: 256 });
+  });
+
+  it('refuses a model that drew a different product, asks another model once, and ships when that one kept it', async () => {
+    sourceBytes = await photo(RED);
+    const { ctx, callCapability, warn } = aloneCtx([
+      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'photoroom:edit' },
+      { image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' },
+    ]);
+
+    const out = await productShotPipeline(ctx);
+    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
+    const edits = callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT');
+    expect(edits).toHaveLength(2);
+    // The second ask goes elsewhere, and says why.
+    expect(edits[1]![2]).toMatchObject({ route: { exclude: ['photoroom:edit'] } });
+    expect(String((edits[1]![1] as { params: { prompt: string } }).params.prompt)).toContain('drew a different product');
+    expect(warn.mock.calls.flat().join(' ')).toContain('not the photographed product');
+    // And never a paste-back: the blue one is simply not used.
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('put back');
+  });
+
+  it('is refused and refunded after two invented products, with the numbers', async () => {
+    sourceBytes = await photo(RED);
+    const { ctx } = aloneCtx([
+      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
+      { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'b:two' },
+    ]);
+    await expect(productShotPipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY', message: expect.stringContaining(`keep ${ALONE.keep}`) });
+  });
+
+  it('still ships when the result cannot be cut out, rather than spending the credit on our plumbing', async () => {
+    sourceBytes = await photo(RED);
+    const { ctx, warn } = aloneCtx([{ image: await photo(RED), cut: null, providerKey: 'vertex:gemini-3-pro-image' }]);
+    const out = await productShotPipeline(ctx);
+    expect(out.artifacts.length).toBeGreaterThan(0);
+    expect(warn.mock.calls.flat().join(' ')).toContain('unchecked');
+  });
+
+  it('keeps the photo’s own frame: the edit is asked at the catalogue aspect nearest the original', () => {
+    expect(nearestAspect(1)).toBe('1:1');
+    expect(nearestAspect(3024 / 4032)).toBe('3:4');
+    expect(nearestAspect(1080 / 1350)).toBe('4:5');
+    expect(nearestAspect(1080 / 1920)).toBe('9:16');
+    expect(nearestAspect(1920 / 1080)).toBe('16:9');
   });
 });
 

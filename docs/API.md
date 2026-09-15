@@ -153,7 +153,18 @@ Studio/library previews loop after the user starts playback; downloaded files
 retain their finite duration. Previously generated files are not modified.
 
 PRODUCT_SHOT modes: `on_model`, `ghost_mannequin`, `flat_lay`, `ironing`,
-`beautify`, `text_removal`, `edit`, `expand`. Custom edit needs a prompt.
+`beautify`, `text_removal`, `isolate`, `edit`, `expand`. Custom edit needs a prompt.
+
+`PRODUCT_SHOT` mode `isolate` ("Product alone") takes out the hand, hanger,
+stand or prop holding the product and returns the product unchanged on a plain
+light background. It is composed by the pipeline, not sent to the product-shot
+vendor: the edit runs on the `IMAGE_EDIT` route with the subject held constant,
+the result is cut out, and that product is located in the original photo. A
+result whose product is not found there (a redrawn phone, a recoloured bag) is
+refused and a second model asked once; two misses fail the row as
+`LOW_QUALITY` with credits refunded. Set `shadow` (`soft` by default, `none`
+to omit) and `prompt` to steer what should be removed. `edit` remains the
+free-form mode and, like the reshaping modes, is measured but never refused.
 
 `PRODUCT_SHOT` mode `beautify` (including batch children) now enhances the
 original photo locally rather than asking Photoroom to rebuild a studio shot.
