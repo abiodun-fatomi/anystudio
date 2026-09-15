@@ -162,7 +162,10 @@ vendor: the edit runs on the `IMAGE_EDIT` route with the subject held constant,
 the result is cut out, and that product is located in the original photo. A
 result whose product is not found there (a redrawn phone, a recoloured bag) is
 refused and a second model asked once; two misses fail the row as
-`LOW_QUALITY` with credits refunded. Set `shadow` (`soft` by default, `none`
+`LOW_QUALITY` with credits refunded. The comparison allows a fifth of the
+product to be hidden in the photo (the fingers that were over it); the bar is
+the ordinary one. A deployment with no `IMAGE_EDIT` provider falls back to the
+product-shot vendor's free-form edit, held to the same check. Set `shadow` (`soft` by default, `none`
 to omit) and `prompt` to steer what should be removed. `edit` remains the
 free-form mode and, like the reshaping modes, is measured but never refused.
 

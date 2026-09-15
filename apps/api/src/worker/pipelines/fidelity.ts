@@ -123,7 +123,19 @@ export async function fidelity(
   source: Buffer | Uint8Array,
   cutout: Buffer | Uint8Array,
   output: Buffer | Uint8Array,
-  options: { expandedCanvas?: boolean } = {},
+  options: {
+    expandedCanvas?: boolean;
+    /**
+     * The fraction of the product that may be hidden in the OUTPUT without
+     * counting against it — for a comparison against a photo where fingers
+     * or a hanger were over the product. The worst-agreeing pixels up to
+     * this share are left out of the judgement (never out of the search).
+     * A product that was redrawn disagrees everywhere, so leaving out a
+     * fifth of it does not rescue it; a product that was merely held
+     * disagrees only where the hand was, and comes out whole.
+     */
+    occluded?: number;
+  } = {},
 ): Promise<FidelityReport> {
   const none: FidelityReport = { score: 0, structure: 0, colour: 0, coverage: 0, placed: null, origin: null };
   const srcMeta = await sharp(source).metadata();
@@ -222,18 +234,10 @@ export async function fidelity(
 
   // 3. Judge the product where it was found.
   const { patch, x, y } = best;
-  let colourDiff = 0;
-  for (let j = 0; j < patch.h; j++) {
-    for (let i = 0; i < patch.w; i++) {
-      const m = j * patch.w + i;
-      if (patch.mask[m]! < 240) continue;
-      const o = ((y + j) * OW + (x + i)) * 3;
-      colourDiff += (Math.abs(patch.rgb[m * 3]! - out[o]!) + Math.abs(patch.rgb[m * 3 + 1]! - out[o + 1]!) + Math.abs(patch.rgb[m * 3 + 2]! - out[o + 2]!)) / 3;
-    }
-  }
-  const structure = Math.max(0, best.ncc);
+  const judged = judge(patch, out, outLum, OW, x, y, Math.min(0.5, Math.max(0, options.occluded ?? 0)));
+  const structure = Math.max(0, judged.structure);
   // Colour: 0 difference → 1; 60 levels of average difference → 0. Lighting changes cost a little, a recolour costs a lot.
-  const colour = Math.max(0, 1 - colourDiff / Math.max(1, patch.solid) / 60);
+  const colour = Math.max(0, 1 - judged.colourDiff / 60);
   const score = 0.65 * structure + 0.35 * colour;
   return {
     score: round(score),
@@ -243,6 +247,54 @@ export async function fidelity(
     placed: { x: round((x + patch.w / 2) / OW), y: round((y + patch.h / 2) / OH), w: round(patch.w / OW), h: round(patch.h / OH), scale: best.scale },
     origin,
   };
+}
+
+/**
+ * Structure and colour of the product at the place it was found, over the
+ * pixels that are allowed to count. With nothing occluded that is every
+ * masked pixel and the structure is the search's own correlation; with a
+ * share occluded, the pixels that agree least are set aside first and both
+ * numbers are taken over the rest.
+ */
+function judge(patch: Patch, out: Buffer, outLum: Float32Array, OW: number, x: number, y: number, occluded: number): { structure: number; colourDiff: number } {
+  const px: Array<{ m: number; o: number; diff: number }> = [];
+  for (let j = 0; j < patch.h; j++) {
+    for (let i = 0; i < patch.w; i++) {
+      const m = j * patch.w + i;
+      if (patch.mask[m]! < 128) continue;
+      const o = ((y + j) * OW + (x + i)) * 3;
+      const diff = (Math.abs(patch.rgb[m * 3]! - out[o]!) + Math.abs(patch.rgb[m * 3 + 1]! - out[o + 1]!) + Math.abs(patch.rgb[m * 3 + 2]! - out[o + 2]!)) / 3;
+      px.push({ m, o, diff });
+    }
+  }
+  if (occluded > 0) px.sort((a, b) => a.diff - b.diff).splice(Math.max(16, Math.ceil(px.length * (1 - occluded))));
+
+  let sumA = 0;
+  let sumB = 0;
+  for (const p of px) {
+    sumA += patch.lum[p.m]!;
+    sumB += outLum[p.o / 3]!;
+  }
+  const meanA = sumA / Math.max(1, px.length);
+  const meanB = sumB / Math.max(1, px.length);
+  let num = 0;
+  let da = 0;
+  let db = 0;
+  let colourSum = 0;
+  let solid = 0;
+  for (const p of px) {
+    const a = patch.lum[p.m]! - meanA;
+    const b = outLum[p.o / 3]! - meanB;
+    num += a * b;
+    da += a * a;
+    db += b * b;
+    // Colour is judged well inside the mask, where the edge does not blur it.
+    if (patch.mask[p.m]! >= 240) {
+      colourSum += p.diff;
+      solid++;
+    }
+  }
+  return { structure: da > 0 && db > 0 ? num / Math.sqrt(da * db) : 0, colourDiff: colourSum / Math.max(1, solid) };
 }
 
 /** The masked product, cut from the source box and resized to tw×th. */

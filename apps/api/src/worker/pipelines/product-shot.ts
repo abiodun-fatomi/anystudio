@@ -206,30 +206,35 @@ async function productAlone(ctx: PipelineContext, p: Params) {
   const upright = meta.orientation && meta.orientation >= 5 ? { w: meta.height ?? 1, h: meta.width ?? 1 } : { w: meta.width ?? 1, h: meta.height ?? 1 };
   const aspect = nearestAspect(upright.w / upright.h);
 
+  // Who is asked. The image-edit route first, and on a miss the same route
+  // minus the model that missed. When that route has nobody at all — no
+  // image-edit key on this deployment — the product-shot vendor's own
+  // free-form edit is asked instead, under the same check: it is the vendor
+  // that drew the wrong phone, so its answer is trusted exactly as far as
+  // the check says and not an inch further.
   const exclude: string[] = [];
+  let viaVendor = false;
   let picked: { bytes: Uint8Array; cut: Uint8Array | null; result: ProviderResult; report: FidelityReport | null } | null = null;
   let last: FidelityReport | null = null;
-  for (let attempt = 1; attempt <= 2 && !picked; attempt++) {
+  let attempt = 0;
+  while (attempt < 2 && !picked) {
+    attempt++;
     await ctx.stage(
       'generating',
       attempt === 1 ? 20 : 30,
       attempt === 1 ? 'Taking out what is holding it' : 'That one changed your product — asking another model',
     );
-    const result = await ctx.callCapability(
-      'IMAGE_EDIT',
-      {
-        generationId: ctx.row.id,
-        workspaceId: ctx.row.workspaceId,
-        params: { sourceKey: p.sourceKey, prompt: aloneInstruction(p, attempt), preserveProduct: true, useCase: 'photography', aspect, sizes: [] },
-        files: ctx.files,
-      },
-      {
-        timeoutMs: ctx.budgetMs,
-        signal: ctx.signal,
-        onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail),
-        ...(exclude.length ? { route: { exclude } } : {}),
-      },
-    );
+    let result: ProviderResult;
+    try {
+      result = viaVendor ? await vendorEdit(ctx, p, attempt) : await routeEdit(ctx, p, aspect, attempt, exclude);
+    } catch (err) {
+      rethrowIfAborted(ctx.signal, err);
+      if (viaVendor || !(err instanceof ProviderError) || err.kind !== 'PROVIDER_DOWN') throw err;
+      ctx.log.warn({ err: err.message }, 'no image-edit provider for product-alone; asking the product-shot vendor under the same check');
+      viaVendor = true;
+      attempt--;
+      continue;
+    }
     const bytes = await artifactBytes(result, ctx.signal);
 
     // The check needs the result's product on its own. If the cutout cannot
@@ -241,12 +246,12 @@ async function productAlone(ctx: PipelineContext, p: Params) {
       picked = { bytes, cut: null, result, report: null };
       break;
     }
-    const report = await fidelity(bytes, cut, source);
+    const report = await fidelity(bytes, cut, source, { occluded: ALONE.occluded });
     ctx.log.info(
-      { mode: p.mode, pass: attempt, ...report, keep: ALONE.keep, providerKey: result.providerKey },
+      { mode: p.mode, pass: attempt, ...report, keep: FIDELITY.keep, occluded: ALONE.occluded, providerKey: result.providerKey },
       'product-alone fidelity measured (result located in the original)',
     );
-    if (report.placed && report.structure >= FIDELITY.locate && report.score >= ALONE.keep) {
+    if (report.placed && report.structure >= FIDELITY.locate && report.score >= FIDELITY.keep) {
       picked = { bytes, cut, result, report };
       break;
     }
@@ -260,7 +265,7 @@ async function productAlone(ctx: PipelineContext, p: Params) {
   if (!picked) {
     throw new ProviderError(
       'LOW_QUALITY',
-      `product alone: the edited product was not the photographed one after 2 attempts: fidelity ${last?.score ?? 0} (keep ${ALONE.keep}); structure ${last?.structure ?? 0} (locate ${FIDELITY.locate})`,
+      `product alone: the edited product was not the photographed one after 2 attempts: fidelity ${last?.score ?? 0} (keep ${FIDELITY.keep}); structure ${last?.structure ?? 0} (locate ${FIDELITY.locate})`,
       'product-alone',
       { raw: last },
     );
@@ -283,13 +288,48 @@ async function productAlone(ctx: PipelineContext, p: Params) {
 }
 
 /**
- * The bar for "found in the original". Lower than the ordinary keep on
- * purpose: the region of the photo where the product is found also holds
- * the fingers that were over it, so even a perfect result never scores 1
- * here. The structure floor is the ordinary one — a weak match is not a
- * match, and this mode never pastes anything, so nothing rides on it.
+ * How much of the product may be hidden in the PHOTO without counting
+ * against the result: the region where the product is found there also
+ * holds the fingers or hanger that were over it. A fifth. A hand wrapped
+ * round more than that gets a good result refused — the safe way round —
+ * and a product redrawn in another colour disagrees everywhere, so leaving
+ * a fifth out never rescues it (0.56 on the fixture against a keep of 0.86).
+ * The bar itself is the ordinary one; nothing here is lowered.
  */
-export const ALONE = { keep: 0.74 } as const;
+export const ALONE = { occluded: 0.2 } as const;
+
+/** The image-edit route: the models that hold a subject still while its surroundings change. */
+function routeEdit(ctx: PipelineContext, p: Params, aspect: Aspect, attempt: number, exclude: string[]): Promise<ProviderResult> {
+  return ctx.callCapability(
+    'IMAGE_EDIT',
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      params: { sourceKey: p.sourceKey, prompt: aloneInstruction(p, attempt), preserveProduct: true, useCase: 'photography', aspect, sizes: [] },
+      files: ctx.files,
+    },
+    {
+      timeoutMs: ctx.budgetMs,
+      signal: ctx.signal,
+      onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail),
+      ...(exclude.length ? { route: { exclude } } : {}),
+    },
+  );
+}
+
+/** The product-shot vendor's free-form edit, for a deployment with no image-edit key. Checked like any other answer. */
+function vendorEdit(ctx: PipelineContext, p: Params, attempt: number): Promise<ProviderResult> {
+  return ctx.callProvider(
+    {
+      generationId: ctx.row.id,
+      workspaceId: ctx.row.workspaceId,
+      capability: 'PRODUCT_SHOT',
+      params: { ...p, mode: 'edit', prompt: aloneInstruction(p, attempt), sizes: [] },
+      files: ctx.files,
+    },
+    { timeoutMs: ctx.budgetMs, signal: ctx.signal, onProgress: (detail, progress) => void ctx.stage('generating', progress ?? 40, detail) },
+  );
+}
 
 const SHADOW_WORDS: Record<Params['shadow'], string> = {
   soft: ' with a soft, natural contact shadow beneath it',

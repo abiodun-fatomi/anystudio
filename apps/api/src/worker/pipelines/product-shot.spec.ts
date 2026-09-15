@@ -17,8 +17,9 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
-import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, judgesShape, type ProductMode } from '@anystudio/shared';
-import { ALONE, nearestAspect, productShotPipeline } from './product-shot';
+import { KEEPS_GEOMETRY, OFFERED_PRODUCT_MODES, ProviderError, judgesShape, type ProductMode } from '@anystudio/shared';
+import { nearestAspect, productShotPipeline } from './product-shot';
+import { FIDELITY } from './fidelity';
 import type { PipelineContext } from './index';
 import { fetchBytes } from '../../modules/provider/adapters/http';
 
@@ -64,6 +65,18 @@ async function cutout(colour: { r: number; g: number; b: number }, size = 256): 
     .toBuffer();
   const out = await sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: block, top: 70, left: 70 }])
+    .png()
+    .toBuffer();
+  return new Uint8Array(out);
+}
+
+/** The same product with a finger over about a sixth of it — how a merchant actually photographs a phone. */
+async function held(colour: { r: number; g: number; b: number }, size = 256): Promise<Uint8Array> {
+  const finger = await sharp({ create: { width: 22, height: 70, channels: 3, background: { r: 176, g: 120, b: 80 } } })
+    .png()
+    .toBuffer();
+  const out = await sharp(await photo(colour, size))
+    .composite([{ input: finger, top: 90, left: 66 }])
     .png()
     .toBuffer();
   return new Uint8Array(out);
@@ -317,6 +330,45 @@ describe('Product alone', () => {
     expect(out.artifacts[0]).toMatchObject({ width: 256, height: 256 });
   });
 
+  it('ships a clean result of a product that was held: the fingers in the photo do not count against it', async () => {
+    sourceBytes = await held(RED);
+    const { ctx, callProvider } = aloneCtx([{ image: await photo(RED), cut: await cutout(RED), providerKey: 'vertex:gemini-3-pro-image' }]);
+    const out = await productShotPipeline(ctx);
+    expect(callProvider).not.toHaveBeenCalled();
+    expect(out.providerKey).toBe('vertex:gemini-3-pro-image');
+  });
+
+  it('with no image-edit provider at all, asks the product-shot vendor instead — and holds it to the same check', async () => {
+    sourceBytes = await held(RED);
+    // Vendor draws the wrong product first, then keeps it.
+    const answers = [await photo(BLUE), await photo(RED)];
+    const cuts = [await cutout(BLUE), await cutout(RED)];
+    const { ctx, callCapability, callProvider } = aloneCtx([]);
+    callCapability.mockImplementation(async (capability: string, input: { params: { sourceKey: string } }) => {
+      if (capability === 'IMAGE_EDIT') throw new ProviderError('PROVIDER_DOWN', 'no provider available for IMAGE_EDIT', 'router');
+      const n = Number(input.params.sourceKey.replace('work-', '')) - 1;
+      return { providerKey: 'x:cut', costMinor: 1, artifacts: [{ role: 'image', mime: 'image/png', bytes: cuts[n]! }] };
+    });
+    let n = 0;
+    callProvider.mockImplementation(async () => ({
+      providerKey: 'photoroom:edit',
+      providerJobId: `pr-${n + 1}`,
+      costMinor: 2,
+      artifacts: [{ role: 'image', mime: 'image/png', bytes: answers[n++]! }],
+    }));
+
+    const out = await productShotPipeline(ctx);
+    expect(out.providerKey).toBe('photoroom:edit');
+    expect(callProvider).toHaveBeenCalledTimes(2);
+    expect(callProvider.mock.calls[0]![0]).toMatchObject({
+      capability: 'PRODUCT_SHOT',
+      params: expect.objectContaining({ mode: 'edit', prompt: expect.stringContaining('hand') }),
+    });
+    // The image-edit route was asked once and found empty; the vendor's two answers were each checked.
+    expect(callCapability.mock.calls.filter((c) => c[0] === 'IMAGE_EDIT')).toHaveLength(1);
+    expect(callCapability.mock.calls.filter((c) => c[0] === 'BACKGROUND_REMOVE')).toHaveLength(2);
+  });
+
   it('refuses a model that drew a different product, asks another model once, and ships when that one kept it', async () => {
     sourceBytes = await photo(RED);
     const { ctx, callCapability, warn } = aloneCtx([
@@ -342,7 +394,7 @@ describe('Product alone', () => {
       { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'a:one' },
       { image: await photo(BLUE), cut: await cutout(BLUE), providerKey: 'b:two' },
     ]);
-    await expect(productShotPipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY', message: expect.stringContaining(`keep ${ALONE.keep}`) });
+    await expect(productShotPipeline(ctx)).rejects.toMatchObject({ kind: 'LOW_QUALITY', message: expect.stringContaining(`keep ${FIDELITY.keep}`) });
   });
 
   it('still ships when the result cannot be cut out, rather than spending the credit on our plumbing', async () => {
