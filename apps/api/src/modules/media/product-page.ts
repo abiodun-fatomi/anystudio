@@ -125,8 +125,16 @@ export function readProductPage(html: string, pageUrl: string): ProductPageRead 
     .filter((c): c is string => c !== null);
   const images = [...new Set([...ordered, ...contentImages(html, base)])];
 
+  // The page's name for the product: the share card's, else the heading, else
+  // the tab title. A rendered single-page app rarely updates its <title>, so
+  // its <h1> is the product and the <title> is the site.
   const title =
     metaContents(html, ['og:title', 'twitter:title'])[0] ??
+    (() => {
+      const h = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+      const text = h ? decode(h[1]!.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')) : '';
+      return text.length >= 2 && text.length <= 120 ? text : null;
+    })() ??
     (() => {
       const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
       return m ? decode(m[1]!.replace(/\s+/g, ' ')) : null;

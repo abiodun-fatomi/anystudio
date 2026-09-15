@@ -302,6 +302,28 @@ contact form needs no extra variable: it is emailed, whole, to the
 `MAIL_FROM` address — the inbox their reply would reach anyway — so keep
 that a real mailbox.
 
+### `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_BROWSER_TOKEN` — reading JavaScript storefronts (optional)
+
+"Paste a listing" reads a product page the way a link preview does: the
+HTML the server sends. Marketplaces built as single-page apps (Mykiya is
+one) send an empty shell and draw the product in the browser, so there is
+nothing to read. With these two set, such a page is rendered through
+[Cloudflare Browser Rendering](https://developers.cloudflare.com/browser-rendering/)
+— a real browser on Cloudflare's machines, one REST call, the rendered DOM
+back — and read again. Nothing is installed on Render.
+
+1. Account ID: Cloudflare dashboard → the account overview, right-hand
+   column.
+2. Token: **My Profile → API Tokens → Create Token → Custom token**,
+   permission **Browser Rendering → Edit**, scoped to the account. Copy it
+   once.
+3. Workers Free gives 10 minutes of browser time a day; Workers Paid gives
+   10 hours a month, then $0.09 an hour. A render takes a few seconds, so
+   even the free tier covers a hundred-odd listings a day.
+
+Unset, or if a render fails or times out (15 s), the person gets the plain
+message: the page builds itself in the browser; paste the image address.
+
 ### `PLAYGROUND_DAILY_RUNS` (optional)
 
 The developer portal's Playground runs the API on a photo without code.

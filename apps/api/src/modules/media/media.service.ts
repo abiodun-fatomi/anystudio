@@ -35,6 +35,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../../config/
 import { logger } from '../../../config/logger';
 import { runFfprobe } from '../../../config/ffmpeg';
 import { sniffMime } from './sniff';
+import { pageRendererFromEnv, type PageRenderer } from './page-render';
 import { readProductPage } from './product-page';
 
 /** Signed URLs live this long. Long enough to upload on 3G, short enough to be useless when leaked. */
@@ -85,6 +86,9 @@ export function customerReadable(asset: ReadableAsset): boolean {
 export class MediaService {
   private readonly s3: S3Client;
   private readonly bucket: string;
+
+  /** Renders single-page-app listings through a real browser when configured; see page-render.ts. */
+  private readonly renderer: PageRenderer = pageRendererFromEnv();
 
   constructor(private readonly db: PrismaClient) {
     const missing = missingMediaStorageEnv();
@@ -257,7 +261,13 @@ export class MediaService {
       clearTimeout(timer);
     }
 
-    const read = readProductPage(html, target.toString());
+    let read = readProductPage(html, target.toString());
+    // An app shell has nothing to read until a browser has run it. Ask for that
+    // render (when configured) and read what the browser saw instead.
+    if (read.images.length === 0 && read.appShell) {
+      const rendered = await this.renderer.render(target.toString());
+      if (rendered) read = readProductPage(rendered, target.toString());
+    }
     if (read.images.length === 0)
       throw new ValidationError({
         url: read.appShell
