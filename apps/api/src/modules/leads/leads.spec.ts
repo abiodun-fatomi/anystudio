@@ -83,10 +83,12 @@ describe('a platform writes in', () => {
     expect(mailer.send).toHaveBeenCalledTimes(2);
     const mail = mailer.send.mock.calls.map((c) => c[0] as { to: string; subject: string; text: string }).find((m) => m.to === 'hello@anystudio.ai')!;
     expect(mail.to).toBe('hello@anystudio.ai');
-    expect(mail.subject).toBe('Platform lead: Bimbo Marketplace');
-    for (const s of ['ada@bimbomarket.ng', 'Head of Product', '5,000 images and 200 reels', 'Before the December sale', 'Cloudinary']) {
+    expect(mail.subject).toBe('Platform lead: Bimbo Marketplace — 5,000 images and 200 reels');
+    for (const s of ['ada@bimbomarket.ng', 'Head of Product', '5,000 images and 200 reels', 'Before the December sale', 'Cloudinary', '/admin/leads']) {
       expect(mail.text).toContain(s);
     }
+    // and the reply is one tap: the button is a mailto to the sender with a subject
+    expect((mail as { html?: string }).html).toContain('href="mailto:ada@bimbomarket.ng?subject=');
   });
 
   it('still stores the lead when no MAIL_FROM is set; only the sender hears', async () => {
@@ -129,18 +131,31 @@ describe('the inbox behind MAIL_FROM', () => {
 });
 
 describe('reading them back', () => {
-  it('lists open leads newest first, one past the page to know if there is more', async () => {
+  it('lists everything newest first by default, one past the page to know if there is more', async () => {
     db.lead.findMany.mockResolvedValueOnce([row({ id: 'a', organization: 'A', email: 'a@x' }), row({ id: 'b', organization: 'B', email: 'b@x' })]);
     const out = await service.list({ take: 1 });
-    expect(db.lead.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { handledAt: null }, orderBy: { createdAt: 'desc' }, take: 2 }));
+    expect(db.lead.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {}, orderBy: { createdAt: 'desc' }, take: 2 }));
     expect(out.rows.map((r) => r.id)).toEqual(['a']);
     expect(out.nextCursor).toBe('a');
     expect(out.rows[0]).toMatchObject({ createdAt: '2026-09-15T09:00:00.000Z', handledAt: null });
   });
 
-  it('shows handled ones too when asked', async () => {
-    await service.list({ show: 'all' });
-    expect(db.lead.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+  it('narrows to what still needs a reply, or what has one', async () => {
+    await service.list({ status: 'new' });
+    expect(db.lead.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { handledAt: null } }));
+    await service.list({ status: 'handled' });
+    expect(db.lead.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { handledAt: { not: null } } }));
+  });
+
+  it('narrows to a range of days, inclusive at both ends, in UTC', async () => {
+    await service.list({ from: '2026-09-01', to: '2026-09-15' });
+    expect(db.lead.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { createdAt: { gte: new Date('2026-09-01T00:00:00.000Z'), lt: new Date('2026-09-16T00:00:00.000Z') } } }),
+    );
+    await service.list({ status: 'new', from: '2026-09-10' });
+    expect(db.lead.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { handledAt: null, createdAt: { gte: new Date('2026-09-10T00:00:00.000Z') } } }),
+    );
   });
 
   it('marks a lead handled and back again', async () => {
