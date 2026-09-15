@@ -34,6 +34,8 @@ interface Feature {
   /** The credit_costs code the price comes from. */
   costCode: string;
   kind: 'image' | 'text' | 'video';
+  /** Bumped when what the feature does changes, so an old row is not replayed as the new feature's answer. */
+  version: number;
   params: (sourceKey: string, title: string | null, details: string | null) => Record<string, unknown>;
 }
 
@@ -45,6 +47,7 @@ const FEATURES: Feature[] = [
     help: 'Is this a usable product photo, and is it the product the listing says?',
     costCode: 'image.inspect',
     kind: 'text',
+    version: 1,
     params: (sourceKey, title) => ({ sourceKey, ...(title ? { declared: { name: title } } : {}) }),
   },
   {
@@ -54,6 +57,7 @@ const FEATURES: Feature[] = [
     help: 'A description, bullets and specs no other listing is using — from the photo and what you tell it.',
     costCode: 'text.description',
     kind: 'text',
+    version: 1,
     params: (sourceKey, title, details) => ({ sourceKey, ...(title ? { productName: title } : {}), ...(details ? { details } : {}), language: 'en' }),
   },
   {
@@ -63,22 +67,20 @@ const FEATURES: Feature[] = [
     help: 'The photo as taken, on a plain studio background, relit, with a shadow. Whatever is holding the product stays.',
     costCode: 'image.background',
     kind: 'image',
+    version: 1,
     params: (sourceKey) => ({ sourceKey, prompt: 'A plain warm white studio background, soft even light', shadow: true, relight: true }),
   },
   {
     key: 'product_alone',
     capability: 'PRODUCT_SHOT',
     label: 'Product alone',
-    help: 'Hands, hangers and props taken out; the product by itself on a plain background.',
+    help: 'The hand, hanger or stand cut away; the product itself untouched, on a plain background. Nothing is redrawn.',
     costCode: 'image.product_shot',
     kind: 'image',
-    params: (sourceKey) => ({
-      sourceKey,
-      mode: 'edit',
-      prompt:
-        'Remove any hand, person, hanger or prop holding or surrounding the product. Show the product alone, complete and unchanged, centred on a plain light background.',
-      sizes: [],
-    }),
+    // v2: the pipeline's own mode — the vendor's text-guided cut, checked against the photo. v1 was a described edit that drew a different phone.
+    // The product's name, when given, is what the cut is told to keep.
+    version: 2,
+    params: (sourceKey, title) => ({ sourceKey, mode: 'isolate', sizes: [], ...(title ? { prompt: title } : {}) }),
   },
   {
     key: 'cutout',
@@ -87,6 +89,7 @@ const FEATURES: Feature[] = [
     help: 'The subject with the background removed — a transparent PNG for your own layouts.',
     costCode: 'image.bg_remove',
     kind: 'image',
+    version: 1,
     params: (sourceKey) => ({ sourceKey, background: 'transparent' }),
   },
   {
@@ -96,6 +99,7 @@ const FEATURES: Feature[] = [
     help: 'The same photo, sharper and better lit, nothing added.',
     costCode: 'image.product_shot',
     kind: 'image',
+    version: 1,
     params: (sourceKey) => ({ sourceKey, mode: 'beautify', sizes: [] }),
   },
   {
@@ -105,6 +109,7 @@ const FEATURES: Feature[] = [
     help: 'A five-second vertical product reveal from the one photo.',
     costCode: 'video.reel',
     kind: 'video',
+    version: 1,
     params: (sourceKey, title) => ({ sourceKey, format: 'reveal', shots: 1, durationSec: 5, aspect: '9:16', ...(title ? { productName: title } : {}) }),
   },
   {
@@ -114,6 +119,7 @@ const FEATURES: Feature[] = [
     help: 'A 15-second ad with a presenter talking to camera, then the product.',
     costCode: 'video.ad_15s_presenter',
     kind: 'video',
+    version: 1,
     params: (sourceKey, title, details) => ({
       sourceKey,
       format: 'ugc',
@@ -198,10 +204,23 @@ export class PlaygroundService {
     const details = input.details?.trim() || null;
     const stem = asset.id.slice(0, 8);
 
-    // What would actually be new work: a replay costs nothing and is not counted.
-    const keys = picked.map((f) => `${PREFIX}${stem}:${f.key}:v1`);
-    const existing = await this.db.generation.findMany({ where: { workspaceId, clientKey: { in: keys } }, select: { clientKey: true } });
-    const fresh = keys.filter((k) => !existing.some((e) => e.clientKey === k)).length;
+    // What would actually be new work: a replay of a row that is queued,
+    // running or done costs nothing and is not counted. A row that FAILED is
+    // not a result, so the same photo and feature may be asked again under a
+    // fresh key — and a feature whose implementation changed (its `version`)
+    // never replays the old implementation's row.
+    const rows = await this.db.generation.findMany({
+      where: { workspaceId, clientKey: { startsWith: `${PREFIX}${stem}:` } },
+      select: { clientKey: true, status: true },
+    });
+    const keyFor = new Map<FeatureKey, { clientKey: string; replay: boolean }>();
+    for (const f of picked) {
+      const base = `${PREFIX}${stem}:${f.key}:v${f.version}`;
+      const mine = rows.filter((r) => r.clientKey === base || r.clientKey?.startsWith(`${base}:r`));
+      const live = mine.find((r) => r.status !== 'FAILED');
+      keyFor.set(f.key, live ? { clientKey: live.clientKey!, replay: true } : { clientKey: mine.length ? `${base}:r${mine.length}` : base, replay: false });
+    }
+    const fresh = [...keyFor.values()].filter((k) => !k.replay).length;
     const allowance = await this.allowance(workspaceId);
     if (fresh > allowance.remaining) throw new PlaygroundExhaustedError(allowance);
 
@@ -213,7 +232,7 @@ export class PlaygroundService {
         requestedById: actor.userId,
         capability: f.capability,
         params: f.params(asset.key, title, details),
-        clientKey: `${PREFIX}${stem}:${f.key}:v1`,
+        clientKey: keyFor.get(f.key)!.clientKey,
         channel: 'WEB',
       });
       balance = out.balance;

@@ -78,6 +78,22 @@ export const PRODUCT_MODES = {
     verified: true,
   },
   /**
+   * The photo most merchants actually have: the item in their own hand, on a
+   * hanger, on a stand. Not a described edit — asked to "remove the hand",
+   * every generative model tried drew a different phone. The vendor's
+   * text-guided cut keeps the photo's own pixels of the product and drops
+   * the hand; the pipeline checks the answer the other way round and falls
+   * back to the image-edit route only when the vendor is not there.
+   */
+  isolate: {
+    label: 'Product alone',
+    note: 'The hand, hanger or stand cut away; the product itself untouched, on a plain background.',
+    hint: 'Name the item — "phone", "bag", "sneaker" — for the cleanest cut. Nothing is redrawn, so an edge that was under a finger stays as the cut leaves it.',
+    forClothes: false,
+    costCode: 'image.product_shot',
+    verified: true,
+  },
+  /**
    * The escape hatch. Every catalogue of named modes eventually meets a
    * merchant whose problem is not on the list — a hand in the frame, a
    * hanger, a crease in the wrong place — and the answer should be a

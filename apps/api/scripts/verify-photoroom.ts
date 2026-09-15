@@ -24,6 +24,7 @@
  *   … --model-photo https://…/me.jpg           put it on a person of your own
  *   … --angles https://…/back.jpg,https://…/side.jpg   more views of the same item
  *   … --batch 12                               what a folder of twelve does at once
+ *   … --modes isolate --keep phone             product alone: the text-guided cut, told what the item is
  *
  * One vendor call per mode. Five modes is five of the month's images.
  */
@@ -198,6 +199,8 @@ async function main(): Promise<void> {
         : {}),
       ...(mode === 'text_removal' ? { textKind: 'artificial' } : {}),
       ...(mode === 'edit' ? { prompt: 'remove the hanger' } : {}),
+      // Product alone: the prompt is what the cut keeps. `--keep phone` for a phone in a hand.
+      ...(mode === 'isolate' ? { prompt: arg('keep', 'product') } : {}),
     });
     if (!parsed.ok) {
       console.log(`✗ ${label.padEnd(18)} the schema refused it: ${JSON.stringify(parsed.issues)}`);

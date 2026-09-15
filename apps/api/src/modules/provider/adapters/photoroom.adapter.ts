@@ -167,6 +167,23 @@ const MODE_FIELDS: Partial<Record<ShotParams['mode'], (p: ShotParams, q: URLSear
     q.set('editWithAI.prompt', p.prompt ?? '');
     q.set('removeBackground', 'false');
   },
+  /**
+   * Product alone, and nothing generated. The vendor's text-guided
+   * segmentation (a preview feature: `segmentation.prompt` is what to keep,
+   * `segmentation.negativePrompt` what to drop) cuts the product out from
+   * whatever is holding it, and the cut lands on a plain ground with the
+   * shadow the mode asks for. The product's pixels are the photo's own — the
+   * one thing a described edit could never promise. `prompt` here is the
+   * item's name ("phone", "bag"), the cleanest steer the segmenter can get;
+   * without it the vendor is asked for the product and given the list of
+   * things that hold one to leave out.
+   */
+  isolate: (p, q) => {
+    q.set('segmentation.prompt', p.prompt?.trim() || 'product');
+    q.set('segmentation.negativePrompt', 'hand, finger, arm, person, hanger, mannequin, stand, clip');
+    q.set('background.color', 'F5F4F2');
+    q.set('padding', '0.1');
+  },
   // Widening the frame is the whole point, so this one must not keep the original size.
   expand: (p, q) => {
     q.set('expand.mode', 'ai.auto');
