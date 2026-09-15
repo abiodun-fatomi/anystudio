@@ -99,7 +99,10 @@ img{max-width:100%;display:block}
    on the same line and the document itself never moves. */
 .shell{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);min-height:100vh}
 @supports(height:100dvh){.shell{min-height:100dvh}}
-@media(max-width:940px){.shell{grid-template-columns:1fr;min-height:0}}
+/* minmax(0,1fr), not 1fr: a bare 1fr track cannot shrink below its content's
+   min-width, and this column's content is a 520px step — on a 390px phone the
+   page was 556px wide and everything past the right edge was simply gone. */
+@media(max-width:940px){.shell{grid-template-columns:minmax(0,1fr);min-height:0}}
 @media(min-width:941px){
   .shell{height:100vh;overflow:hidden;grid-template-rows:minmax(0,1fr) auto}
   .shell>.aside{grid-column:1;grid-row:1/3;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
@@ -185,7 +188,11 @@ img{max-width:100%;display:block}
 .theme .lbl{min-width:34px;text-align:left}
 
 .step-wrap{width:100%;max-width:520px;margin-inline:auto;flex:1;display:flex;flex-direction:column;justify-content:center;padding-block:8px}
-.step{display:none}
+/* min-width:0 for the same reason: a grid or flex item refuses to shrink below
+   its longest unbreakable line, and a curl sample is one. Without this the
+   step grew past its 520px column and was centred inside the overflow, so the
+   first characters of every line sat under the clip on the left. */
+.step{display:none;min-width:0}
 .step[data-active="true"]{display:block;animation:in .34s cubic-bezier(.2,.8,.3,1)}
 @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.step[data-active="true"]{animation:none}}
@@ -267,7 +274,8 @@ input[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--danger
 .copy:hover{border-color:var(--ink);color:var(--ink)}
 .copy[data-done="true"]{border-color:var(--ok);color:var(--ok)}
 pre.code{margin:0;background:#17131A;color:#F1ECF5;padding:16px;font-family:var(--f-mono);
-  font-size:12.5px;line-height:1.7;overflow-x:auto;border-top:1px solid var(--line-soft)}
+  font-size:12.5px;line-height:1.7;overflow-x:auto;border-top:1px solid var(--line-soft);
+  white-space:pre-wrap;overflow-wrap:anywhere}
 pre.code .k{color:#FF9CC8}
 pre.code .s{color:#9DEDF6}
 pre.code .c{color:#ADA3B7}
@@ -521,17 +529,17 @@ pre.code .c{color:#ADA3B7}
         <div class="only-platform">
           <div class="keybox">
             <div class="hd">
-              <span class="lbl">Test key · 500 credits</span>
+              <span class="lbl">Test key · 150 credits</span>
               <span class="pill">Sandbox</span>
             </div>
             <div class="keyrow">
-              <code id="testKey">sk_test_a4f0c1b9e2d7_REPLACE_ON_VERIFY</code>
+              <code id="testKey">as_test_a4f0c1b9e2d7_REPLACE_ON_VERIFY</code>
               <button class="copy" type="button" data-copy="testKey">Copy</button>
             </div>
-            <pre class="code"><span class="c"># one call per listing — the image comes back in about 20 seconds</span>
-curl <span class="k">-X</span> POST https://api.anystudio.ai/v1/listings <span class="k">\</span>
+            <pre class="code"><span class="c"># one call per upload — is this photo the product? The verdict comes back inline.</span>
+curl <span class="k">-X</span> POST https://api.anystudio.ai/api/v1/inspect <span class="k">\</span>
   <span class="k">-H</span> <span class="s">"Authorization: Bearer $ANYSTUDIO_KEY"</span> <span class="k">\</span>
-  <span class="k">-d</span> <span class="s">'{"merchant_id":"m_8821","image_url":"…","price":"4500","currency":"NGN"}'</span></pre>
+  <span class="k">-d</span> <span class="s">'{"sourceKey":"…","declared":{"category":"bags"},"merchantRef":"store-441"}'</span></pre>
           </div>
           <ul class="checks">
             <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Test keys never touch live merchants and never charge you</li>
@@ -547,7 +555,7 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/v1/listings <span c
               <span class="pill">Ready</span>
             </div>
             <div class="keyrow">
-              <code>Untitled project · 500 test credits</code>
+              <code>Untitled project · 150 credits</code>
               <button class="copy" type="button" data-copy="none">Rename</button>
             </div>
           </div>
@@ -928,9 +936,9 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/v1/listings <span c
     reached.details = true;
     syncCard();
     document.getElementById("ocKind").textContent = (branch==="platform"?"Platform":"Agency")+" · live";
-    set("ocKey", branch==="platform" ? "sk_test_a4f0…" : "Issued");
+    set("ocKey", branch==="platform" ? "as_test_a4f0…" : "Issued");
     document.getElementById("testKey").textContent =
-      "sk_test_" + Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,8);
+      "as_test_" + Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,8);
     go("verify");
   });
 
@@ -950,13 +958,19 @@ curl <span class="k">-X</span> POST https://api.anystudio.ai/v1/listings <span c
     b.style.opacity = ".65";
   });
 
+  /* This used to change the button to "Sent" and send nothing. The address now
+     goes to the waitlist endpoint under its own source, so it is a real lead in
+     the admin console; the button only says "Sent" once the server has it. */
   document.getElementById("fContact").addEventListener("submit", function(e){
     e.preventDefault();
     if(!validate(["cOrg","cEmail","cRole","cVol","cWhen"])) return;
     var b=e.target.querySelector('button[type="submit"]');
-    b.textContent = "Sent — we'll reply within a working day";
-    b.disabled = true;
-    b.style.opacity = ".65";
+    b.disabled = true; b.textContent = "Sending…";
+    var done=function(){ b.textContent = "Sent — we'll reply within a working day"; b.style.opacity = ".65"; };
+    var failed=function(){ b.disabled = false; b.textContent = "Could not send — try again, or WhatsApp"; };
+    fetch("/api/v1/waitlist", { method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ email: document.getElementById("cEmail").value.trim(), source: "org-contact" }) })
+      .then(function(r){ (r.ok || r.status === 409) ? done() : failed(); }, failed);
   });
 
   document.querySelectorAll(".copy").forEach(function(c){
