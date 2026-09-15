@@ -28,13 +28,6 @@ export const PRESERVATION_POLICIES = [
     capability: 'PRODUCT_SHOT',
     advice: 'Start at 0.86. Lower only after reviewing legitimate text removal; product labels can also be affected.',
   },
-  {
-    id: 'edit',
-    label: 'Merchant Shots — Describe a change',
-    key: 'photoroom:edit',
-    capability: 'PRODUCT_SHOT',
-    advice: 'Start at 0.86. Intentional changes may score lower; inspect samples before relaxing this check.',
-  },
 ] as const;
 export type PreservationUseCase = (typeof PRESERVATION_POLICIES)[number]['id'];
 export function preservationAcceptance(config: unknown, useCase: string): number {
@@ -49,6 +42,11 @@ export const PRESERVATION_NOT_APPLICABLE = [
   {
     label: 'On-model / Ghost mannequin / Flat lay',
     advice: 'These deliberately change geometry. Scores are diagnostic only; an acceptance gate would reject intended transformations.',
+  },
+  {
+    label: 'Merchant Shots — Describe a change',
+    advice:
+      'The change asked for is a change to the photographed subject, and the score cannot tell it from an unwanted one ("remove the hand" scores as a lost product). Diagnostic only; nothing is refused or pasted back.',
   },
   {
     label: 'Image generation without a reference',

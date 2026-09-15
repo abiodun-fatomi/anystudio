@@ -129,10 +129,12 @@ export default function PlaygroundPage() {
 
   async function finish(key: PlaygroundFeatureKey, id: string) {
     try {
-      const { generation } = await api.generations.get(workspaceId, id);
+      const { generation, message } = await api.generations.get(workspaceId, id);
       const keys = (generation.outputs ?? []).map((o) => o.key).filter(Boolean);
       const urls = keys.length ? (await api.media.urls(workspaceId, keys)).urls : {};
-      patch(key, (r) => ({ ...r, row: generation, urls, stage: generation.status === 'SUCCEEDED' ? 'done' : 'failed' }));
+      // A failed row comes with the API's own sentence — what happened and that the credits are back.
+      const failed = generation.status === 'FAILED';
+      patch(key, (r) => ({ ...r, row: generation, urls, stage: failed ? 'failed' : 'done', error: failed ? (message ?? r.error) : r.error }));
       void refreshBalance();
     } catch (e) {
       patch(key, (r) => ({ ...r, error: e instanceof ApiError ? e.message : 'Could not read the result.' }));

@@ -224,6 +224,31 @@ describe('the playground', () => {
     for (const s of ['Blue iPhone 17 Pro, 256 GB', 'three cameras', 'Three rear cameras', 'Colour', 'Blue']) expect(container.textContent).toContain(s);
   });
 
+  it('says why a run failed in the API’s own words, not a blanket line', async () => {
+    mocks.run.mockImplementationOnce(async () => ({
+      runs: [
+        {
+          feature: 'background',
+          capability: 'BACKGROUND_REPLACE',
+          generation: { id: 'gen-background', status: 'FAILED', stage: 'failed', credits: 10, input: {}, outputs: null, failureKind: 'LOW_QUALITY' },
+        },
+      ],
+      balance: 150,
+      allowance: allowance(4),
+    }));
+    mocks.get.mockImplementation(async () => ({
+      generation: (await mocks.run.mock.results[0]!.value).runs[0].generation,
+      message: 'We could not make a version that kept your product looking right. Your credits are back — try a clearer photo or a simpler scene.',
+    }));
+    await open();
+    await act(async () => button('Product check').click());
+    await act(async () => button('Listing copy').click());
+    await dropPhoto();
+    await act(async () => {});
+    expect(container.textContent).toContain('kept your product looking right');
+    expect(container.textContent).not.toContain('Could not make it');
+  });
+
   it('stops at an exhausted day: the inputs are off and it says when the day resets', async () => {
     mocks.playground.mockResolvedValue({ ...allowance(15), features: MENU });
     await open();
