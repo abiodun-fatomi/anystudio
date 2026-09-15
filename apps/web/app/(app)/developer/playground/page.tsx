@@ -195,7 +195,8 @@ export default function PlaygroundPage() {
       const asset = await uploadFile(workspaceId, file);
       await run(asset, null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not upload that photo.');
+      // uploadFile already turns the API's reasons into plain Errors; the words are the useful part.
+      setError(e instanceof Error && e.message ? e.message : 'Could not upload that photo.');
     } finally {
       setBusy(null);
     }
