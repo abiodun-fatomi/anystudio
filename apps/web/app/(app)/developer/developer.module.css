@@ -41,6 +41,10 @@
   gap: var(--s-5);
   max-width: 1200px;
 }
+/* A page that is a workbench rather than a document (the playground) takes the whole content width. */
+.body:has([data-wide]) {
+  max-width: none;
+}
 
 /* ---- groups ---- */
 .group {
@@ -134,6 +138,10 @@
   flex-wrap: wrap;
   min-width: 0;
 }
+.rowTitle > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .rowSub {
   font-size: var(--t-1);
   color: var(--muted);
@@ -146,6 +154,7 @@
   display: flex;
   gap: var(--s-2);
   align-items: center;
+  flex-wrap: wrap;
   flex: none;
 }
 @media (max-width: 640px) {

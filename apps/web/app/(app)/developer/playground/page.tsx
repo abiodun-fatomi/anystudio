@@ -13,7 +13,7 @@
  * made it. Every run is real provider spend, so the workspace has a daily
  * allowance on top of its credits; the page shows it and stops at it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import {
   api,
   ApiError,
@@ -135,8 +135,28 @@ export default function PlaygroundPage() {
   const [copied, setCopied] = useState<PlaygroundFeatureKey | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const streams = useRef<EventSource[]>([]);
+  const bench = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => streams.current.forEach((s) => s.close()), []);
+
+  /**
+   * Where the workbench starts, so the columns can be sized to what is left
+   * of the screen below it and the page itself never has to move: the
+   * Developer header and its tabs stay put, the menu scrolls inside its own
+   * frame, the photo stays where it is. Measured, because the header above
+   * wraps differently at every width.
+   */
+  useLayoutEffect(() => {
+    const el = bench.current;
+    if (!el) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      el.style.setProperty('--bench-top', `${Math.max(0, Math.round(top))}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [source]);
 
   // A clock, only while something is running: the cards say how long each took.
   const live = runs.some((r) => stateOf(r) === 'queued' || stateOf(r) === 'running');
@@ -168,6 +188,13 @@ export default function PlaygroundPage() {
   async function finish(key: PlaygroundFeatureKey, id: string) {
     try {
       const { generation, message } = await api.generations.get(workspaceId, id);
+      // The stream can drop while the row is still running (a proxy timeout,
+      // a sleeping laptop). That is not "done": keep the card live and listen again.
+      if (generation.status !== 'SUCCEEDED' && generation.status !== 'FAILED') {
+        patch(key, (r) => ({ ...r, row: generation, stage: generation.stage ?? r.stage, progress: generation.progress ?? r.progress }));
+        setTimeout(() => watch(key, id), 2500);
+        return;
+      }
       const keys = (generation.outputs ?? []).map((o) => o.key).filter(Boolean);
       const urls = keys.length ? (await api.media.urls(workspaceId, keys)).urls : {};
       // A failed row comes with the API's own sentence — what happened and that the credits are back.
@@ -390,7 +417,7 @@ export default function PlaygroundPage() {
     const st = stateOf(r);
     return (
       <div className={styles.cardFoot}>
-        <span>
+        <span className={styles.meta}>
           {r.row?.credits ?? featureOf(r)?.credits ?? 0} cr · {took(r)}
         </span>
         <div className={styles.actions}>
@@ -420,7 +447,7 @@ export default function PlaygroundPage() {
   };
 
   return (
-    <div className={dev.group} onPaste={onPaste}>
+    <div className={dev.group} onPaste={onPaste} data-wide="">
       <div className={styles.head}>
         <div>
           <div className={dev.groupTitle}>Playground</div>
@@ -455,7 +482,7 @@ export default function PlaygroundPage() {
       </div>
 
       {!source && (
-        <div className={styles.bench}>
+        <div className={styles.bench} ref={bench}>
           <section className={styles.menu} role="group" aria-label="What to run">
             <div className={styles.menuHead}>
               <h3>What to run</h3>
@@ -508,7 +535,26 @@ export default function PlaygroundPage() {
             </div>
           </section>
 
-          <section className={styles.stage}>
+          <section className={styles.stage} data-notes={Boolean(error || short || (exhausted && allowance))}>
+            <div className={styles.notes}>
+              {error && (
+                <div className={styles.note} data-tone="warn">
+                  {error}
+                </div>
+              )}
+              {short && balance !== null && (
+                <div className={styles.note} data-tone="warn">
+                  That is {cost.toLocaleString()} credits and this workspace has {balance.toLocaleString()}. Take something off, or top up under Credits.
+                </div>
+              )}
+              {exhausted && allowance && !short && (
+                <div className={styles.note} data-tone="warn">
+                  {allowance.remaining === 0
+                    ? `Today's ${allowance.dailyLimit} playground calls are used. It resets ${resetWords(allowance.resetsAt)}; an API key can keep going now.`
+                    : `${allowance.remaining} call${allowance.remaining === 1 ? '' : 's'} left today — pick ${allowance.remaining} or fewer, or wait for the reset ${resetWords(allowance.resetsAt)}.`}
+                </div>
+              )}
+            </div>
             <label
               className={styles.drop}
               data-over={over}
@@ -563,29 +609,12 @@ export default function PlaygroundPage() {
                 rows={2}
               />
             </div>
-            {error && (
-              <div className={styles.note} data-tone="warn">
-                {error}
-              </div>
-            )}
-            {short && balance !== null && (
-              <div className={styles.note} data-tone="warn">
-                That is {cost.toLocaleString()} credits and this workspace has {balance.toLocaleString()}. Take something off, or top up under Credits.
-              </div>
-            )}
-            {exhausted && allowance && !short && (
-              <div className={styles.note} data-tone="warn">
-                {allowance.remaining === 0
-                  ? `Today's ${allowance.dailyLimit} playground calls are used. It resets ${resetWords(allowance.resetsAt)}; an API key can keep going now.`
-                  : `${allowance.remaining} call${allowance.remaining === 1 ? '' : 's'} left today — pick ${allowance.remaining} or fewer, or wait for the reset ${resetWords(allowance.resetsAt)}.`}
-              </div>
-            )}
           </section>
         </div>
       )}
 
       {source && (
-        <div className={styles.session}>
+        <div className={styles.session} ref={bench}>
           <div className={styles.sessionBar}>
             {source.url ? <img className={styles.thumb} src={source.url} alt="" /> : <span className={styles.thumb} />}
             <div style={{ minWidth: 0 }}>
@@ -624,7 +653,7 @@ export default function PlaygroundPage() {
                 )}
               </div>
               <div className={styles.cardFoot}>
-                <span>as uploaded</span>
+                <span className={styles.meta}>as uploaded</span>
               </div>
             </div>
 

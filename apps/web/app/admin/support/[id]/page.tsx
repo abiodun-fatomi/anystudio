@@ -109,7 +109,7 @@ export default function SupportThreadPage() {
           ) : undefined
         }
       />
-      <div className={styles.two} style={{ gridTemplateColumns: 'minmax(0,1fr) 300px' }}>
+      <div className={`${styles.two} ${styles.twoAside}`}>
         <div className={styles.card} style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
           <div className={chat.thread}>
             {d.messages.map((m) => {

@@ -343,7 +343,7 @@ export default function CareersAdminPage() {
             maxLength={120}
             placeholder="Founding engineer, studio pipeline"
           />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
+          <div className={styles.cols2}>
             <Input label="Team" value={f.team ?? ''} onChange={(e) => set('team', e.target.value)} maxLength={60} placeholder="Engineering" />
             <Input
               label="Location"
@@ -353,7 +353,7 @@ export default function CareersAdminPage() {
               placeholder="Lagos or remote (WAT ±3)"
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--s-3)', alignItems: 'end' }}>
+          <div className={styles.cols3}>
             <Select label="Type" value={f.type ?? 'FULL_TIME'} onChange={(e) => set('type', e.target.value)} options={TYPES} />
             <Input
               label="Salary"

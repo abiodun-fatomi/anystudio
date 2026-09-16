@@ -4,14 +4,6 @@
   min-height: 100dvh;
   background: var(--surface);
 }
-@media (max-width: 900px) {
-  .frame {
-    grid-template-columns: 1fr;
-  }
-  .rail {
-    display: none;
-  }
-}
 .rail {
   position: sticky;
   top: 0;
@@ -140,6 +132,7 @@
   max-width: 1480px;
   width: 100%;
 }
+
 .heroes {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -157,8 +150,13 @@
   gap: var(--s-4);
   align-items: start;
 }
+/* A main column with a 300px aside — a chat next to its facts. */
+.twoAside {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
 @media (max-width: 1000px) {
-  .two {
+  .two,
+  .twoAside {
     grid-template-columns: 1fr;
   }
 }
@@ -272,4 +270,106 @@ pre.json {
 .workerBanner code {
   font-family: var(--f-mono);
   font-size: var(--t-1);
+}
+
+/* Two or three fields side by side in a dialog; one under another on a phone. */
+.cols2,
+.cols3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+.cols3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: end;
+}
+
+/* ---- narrow screens: kept last so these win over the rules above ---- */
+/* Under 900px the rail becomes a bar across the top: brand and sign-out on
+   the first line, the sections as a row of chips that scrolls sideways under
+   it. Same links, same markup — only where they sit. (This block has to come
+   after the rail's own rules, or its `display: flex` wins over the bar.) */
+@media (max-width: 900px) {
+  .frame {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rail {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    padding: var(--s-2) var(--s-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .brand {
+    margin: 0;
+    padding: var(--s-1) 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .env {
+    display: none;
+  }
+  .nav {
+    order: 3;
+    flex: 1 0 100%;
+    display: flex;
+    gap: var(--s-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--s-3));
+    padding: 0 var(--s-3) var(--s-1);
+    scroll-snap-type: x proximity;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .item {
+    flex: none;
+    min-height: 34px;
+    padding: 0 var(--s-3);
+    border-radius: var(--r-pill);
+    font-size: var(--t-1);
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
+  .foot {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .who > span:last-child {
+    display: none;
+  }
+  .main {
+    padding: var(--s-4) var(--s-4) var(--s-7);
+  }
+}
+@media (max-width: 560px) {
+  .heroes {
+    grid-template-columns: 1fr;
+  }
+  .toolbar > * {
+    min-width: 0;
+    flex: 1 1 160px;
+  }
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 0 var(--s-4);
+  }
+  .kv dt {
+    margin-top: var(--s-2);
+  }
+  .cols2,
+  .cols3 {
+    grid-template-columns: 1fr;
+  }
 }

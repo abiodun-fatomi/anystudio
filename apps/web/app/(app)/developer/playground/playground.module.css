@@ -53,31 +53,71 @@
 }
 
 /* ------------------------------------------------------------ workbench */
+/*
+ * On a desktop the page does not move. Both columns are capped at what is
+ * left of the viewport below them (`--bench-top` is measured by the page),
+ * the menu scrolls inside its own frame with its title pinned at the top and
+ * the tally at the bottom, and the photo stays where it is. The Developer
+ * header and its tabs therefore never leave the screen. On a phone the
+ * columns stack and the page scrolls as pages do.
+ */
 .bench {
+  /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+  /* Never shorter than 480px: on a short window the page scrolls instead of
+     squeezing the columns into a slot nothing fits in. */
+  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr);
   gap: var(--s-5);
   align-items: start;
+}
+.menu {
+  display: grid;
+  gap: var(--s-4);
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  max-height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+/* The photo stage fills the fold: the drop surface takes whatever height the notes, the link row and the fields leave. */
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(280px, 1fr) auto auto;
+  gap: var(--s-3);
+  align-content: start;
+  height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
 @media (max-width: 880px) {
   .bench {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.menu {
-  display: grid;
-  gap: var(--s-4);
-  padding: var(--s-4);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-lg);
-  background: var(--surface);
+  .menu,
+  .stage {
+    max-height: none;
+    height: auto;
+    overflow: visible;
+  }
 }
 .menuHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s-3);
+  padding: var(--s-4) 0 var(--s-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
 }
 .menuHead h3 {
   margin: 0;
@@ -187,12 +227,16 @@
   color: var(--accent);
 }
 .tally {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s-3);
-  padding-top: var(--s-3);
+  padding: var(--s-3) 0 var(--s-4);
   border-top: 1px solid var(--line-soft);
+  background: var(--surface);
   font-size: var(--t-2);
 }
 .tally strong {
@@ -204,10 +248,6 @@
 }
 
 /* ------------------------------------------------------------ the photo */
-.stage {
-  display: grid;
-  gap: var(--s-3);
-}
 .drop {
   position: relative;
   display: grid;
@@ -288,6 +328,20 @@
   text-transform: uppercase;
   color: var(--muted);
 }
+/* What the page has to say before a photo goes in — always above the fold, never under the drop surface. */
+.notes {
+  display: grid;
+  gap: var(--s-2);
+}
+.stage:not([data-notes='true']) .notes {
+  display: none;
+}
+/* With nothing to say the notes block is not rendered at all, so the drop
+   surface takes the first row — a placeholder row here would leave the drop
+   in a zero-height track, spilling over the link field beneath it. */
+.stage:not([data-notes='true']) {
+  grid-template-rows: minmax(280px, 1fr) auto auto;
+}
 .note {
   padding: 10px 14px;
   border-radius: var(--r-md);
@@ -301,10 +355,29 @@
 
 /* ------------------------------------------------------------ session */
 .session {
+  /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+  /* Never shorter than 480px: on a short window the page scrolls instead of
+     squeezing the columns into a slot nothing fits in. */
+  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
   display: grid;
   gap: var(--s-4);
+  align-content: start;
+  max-height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+@media (max-width: 880px) {
+  .session {
+    max-height: none;
+    overflow: visible;
+  }
 }
 .sessionBar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -355,6 +428,12 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: var(--s-4);
+  align-items: start;
+}
+@media (max-width: 480px) {
+  .gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .card {
   display: grid;
@@ -375,8 +454,11 @@
   align-items: center;
   gap: var(--s-2);
   padding: 10px 12px;
+  min-width: 0;
 }
 .cardTitle {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--t-2);
   font-weight: 600;
   overflow: hidden;
@@ -519,20 +601,28 @@
   color: var(--ink-soft);
   background: var(--danger-wash);
 }
+/* Cost and time on one line, the actions on the next: a card is narrow and three actions do not share a row with a figure. */
 .cardFoot {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: var(--s-2);
+  gap: 4px var(--s-2);
   padding: 8px 8px 8px 12px;
   border-top: 1px solid var(--line-soft);
   font-family: var(--f-mono);
   font-size: var(--t-1);
   color: var(--muted);
+  min-width: 0;
+}
+.meta {
+  white-space: nowrap;
 }
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
+  margin-left: auto;
 }
 .action {
   display: inline-flex;
