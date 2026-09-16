@@ -13,7 +13,7 @@
  * made it. Every run is real provider spend, so the workspace has a daily
  * allowance on top of its credits; the page shows it and stops at it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import {
   api,
   ApiError,
@@ -135,8 +135,28 @@ export default function PlaygroundPage() {
   const [copied, setCopied] = useState<PlaygroundFeatureKey | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const streams = useRef<EventSource[]>([]);
+  const bench = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => streams.current.forEach((s) => s.close()), []);
+
+  /**
+   * Where the workbench starts, so the columns can be sized to what is left
+   * of the screen below it and the page itself never has to move: the
+   * Developer header and its tabs stay put, the menu scrolls inside its own
+   * frame, the photo stays where it is. Measured, because the header above
+   * wraps differently at every width.
+   */
+  useLayoutEffect(() => {
+    const el = bench.current;
+    if (!el) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      el.style.setProperty('--bench-top', `${Math.max(0, Math.round(top))}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [source]);
 
   // A clock, only while something is running: the cards say how long each took.
   const live = runs.some((r) => stateOf(r) === 'queued' || stateOf(r) === 'running');
@@ -420,7 +440,7 @@ export default function PlaygroundPage() {
   };
 
   return (
-    <div className={dev.group} onPaste={onPaste}>
+    <div className={dev.group} onPaste={onPaste} data-wide="">
       <div className={styles.head}>
         <div>
           <div className={dev.groupTitle}>Playground</div>
@@ -455,7 +475,7 @@ export default function PlaygroundPage() {
       </div>
 
       {!source && (
-        <div className={styles.bench}>
+        <div className={styles.bench} ref={bench}>
           <section className={styles.menu} role="group" aria-label="What to run">
             <div className={styles.menuHead}>
               <h3>What to run</h3>
@@ -585,7 +605,7 @@ export default function PlaygroundPage() {
       )}
 
       {source && (
-        <div className={styles.session}>
+        <div className={styles.session} ref={bench}>
           <div className={styles.sessionBar}>
             {source.url ? <img className={styles.thumb} src={source.url} alt="" /> : <span className={styles.thumb} />}
             <div style={{ minWidth: 0 }}>

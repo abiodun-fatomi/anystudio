@@ -41,6 +41,10 @@
   gap: var(--s-5);
   max-width: 1200px;
 }
+/* A page that is a workbench rather than a document (the playground) takes the whole content width. */
+.body:has([data-wide]) {
+  max-width: none;
+}
 
 /* ---- groups ---- */
 .group {
