@@ -120,7 +120,16 @@
 }
 .rowActions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s-1);
+}
+@media (max-width: 520px) {
+  .accountRow {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .rowActions {
+    grid-column: 2;
+  }
 }
 .platformFoot {
   display: flex;
