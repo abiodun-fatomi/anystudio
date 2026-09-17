@@ -1,4 +1,9 @@
 .row {
+  /* The real input is visually hidden with `position: absolute`; it must
+     sit inside its own label, or in a wide table it lands wherever the
+     nearest positioned ancestor is and pushes the page's scroll width out
+     past the table's scroller. */
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--s-3);

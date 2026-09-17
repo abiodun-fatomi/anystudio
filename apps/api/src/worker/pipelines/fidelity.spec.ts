@@ -4,7 +4,14 @@
  * background, the product recoloured, the product replaced. The score must
  * order them the way a seller would.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// These tests do real pixel work — cutouts, the sliding search, every export
+// crop — on the same CPU the rest of the suite is using. Two seconds here on a
+// laptop is five and more on a loaded CI runner, and a timeout there is not a
+// finding about the pipeline. Thirty seconds still catches a hang.
+vi.setConfig({ testTimeout: 30_000 });
+
 import sharp from 'sharp';
 import { FIDELITY, fidelity } from './fidelity';
 import { pasteProduct, pasteProductAt } from './image';
@@ -98,6 +105,36 @@ describe('fidelity', () => {
     expect(recoloured.score).toBeLessThan(FIDELITY.keep);
     expect(replaced.score).toBeLessThan(FIDELITY.composite);
     expect(replaced.score).toBeLessThan(recoloured.score);
+  });
+
+  it('with an occlusion allowance, a product that was merely held scores as kept; a recoloured one still does not', async () => {
+    // The product-alone check runs the other way round: the clean result is
+    // the reference, and it is looked for in the photo, where fingers were
+    // over part of it. A finger: a skin-toned wedge over about a sixth of it.
+    const FINGER = '<rect x="70" y="150" width="60" height="120" rx="20" fill="#B07850"/>';
+    const held = await scene(PLAIN, `${PRODUCT}${FINGER}`);
+    const clean = await scene(PLAIN, PRODUCT);
+    const cut = await cutout(PRODUCT);
+
+    const strict = await fidelity(clean, cut, held);
+    const tolerant = await fidelity(clean, cut, held, { occluded: 0.2 });
+    expect(tolerant.score).toBeGreaterThan(strict.score);
+    expect(tolerant.score).toBeGreaterThanOrEqual(FIDELITY.keep);
+    expect(tolerant.structure).toBeGreaterThanOrEqual(FIDELITY.locate);
+
+    // Redrawn in another colour, differences are everywhere; leaving a fifth out rescues nothing.
+    const recoloured = await fidelity(await scene(PLAIN, productSvg('#0066CC', '#FFFFFF')), await cutout(productSvg('#0066CC', '#FFFFFF')), held, {
+      occluded: 0.2,
+    });
+    expect(recoloured.score).toBeLessThan(FIDELITY.keep);
+    // A different product altogether: not even found.
+    const replaced = await fidelity(
+      await scene(PLAIN, productSvg('#0066CC', '#0066CC', 160, 160, 60)),
+      await cutout(productSvg('#0066CC', '#0066CC', 160, 160, 60)),
+      held,
+      { occluded: 0.2 },
+    );
+    expect(replaced.score).toBeLessThan(FIDELITY.composite);
   });
 
   it('finds the product when the frame changed shape and it moved, and reports where', async () => {

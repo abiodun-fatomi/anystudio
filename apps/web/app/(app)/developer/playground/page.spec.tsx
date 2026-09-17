@@ -49,6 +49,7 @@ vi.mock('@/lib/api', () => ({
     developer: { playground: mocks.playground, playgroundRun: mocks.run, keys: mocks.keys },
     media: { urls: mocks.urls, fromUrl: mocks.fromUrl },
     generations: { get: mocks.get, create: mocks.create, streamUrl: (w: string, id: string) => `/stream/${w}/${id}` },
+    library: { downloadUrl: (w: string, id: string) => `/api/workspaces/${w}/library/${id}/download` },
   },
 }));
 
@@ -71,6 +72,7 @@ const setter = () => Object.getOwnPropertyDescriptor(window.HTMLInputElement.pro
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('scrollTo', vi.fn()); // jsdom has no layout; the viewer restores the scroll position on close
   vi.stubGlobal(
     'EventSource',
     class {
@@ -142,10 +144,10 @@ describe('the playground', () => {
     await open();
     await act(async () => button('Clean background').click());
     await act(async () => button('Product alone').click());
-    const [name] = [...container.querySelectorAll('input[type="text"], input:not([type])')] as HTMLInputElement[];
+    const name = container.querySelector('input[placeholder^="iPhone"]') as HTMLInputElement;
     await act(async () => {
-      setter().call(name!, 'iPhone 17 Pro');
-      name!.dispatchEvent(new Event('input', { bubbles: true }));
+      setter().call(name, 'iPhone 17 Pro');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const details = container.querySelector('textarea') as HTMLTextAreaElement;
     const tset = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
@@ -247,6 +249,84 @@ describe('the playground', () => {
     await act(async () => {});
     expect(container.textContent).toContain('kept your product looking right');
     expect(container.textContent).not.toContain('Could not make it');
+  });
+
+  it('a finished picture opens at full size beside the original, and downloads as the files an integration would get', async () => {
+    mocks.run.mockImplementationOnce(async () => ({
+      runs: [
+        {
+          feature: 'background',
+          capability: 'BACKGROUND_REPLACE',
+          generation: {
+            id: 'gen-bg',
+            status: 'SUCCEEDED',
+            stage: 'done',
+            credits: 10,
+            input: {},
+            outputs: [
+              { key: 'ws/out/bg.png', role: 'image', mime: 'image/png', width: 1024, height: 1280 },
+              { key: 'ws/out/bg-story.jpg', role: 'variant', mime: 'image/jpeg', width: 1080, height: 1920, size: 'story' },
+            ],
+          },
+        },
+      ],
+      balance: 140,
+      allowance: allowance(4),
+    }));
+    mocks.get.mockImplementation(async () => ({ generation: (await mocks.run.mock.results[0]!.value).runs[0].generation }));
+    mocks.urls.mockResolvedValue({
+      urls: { 'ws/uploads/bag.jpg': 'https://cdn/bag.jpg', 'ws/out/bg.png': 'https://cdn/bg.png', 'ws/out/bg-story.jpg': 'https://cdn/bg-story.jpg' },
+    });
+    await open();
+    await act(async () => button('Product check').click());
+    await act(async () => button('Listing copy').click());
+    await dropPhoto();
+    await act(async () => {});
+
+    const download = container.querySelector('a[href$="/library/gen-bg/download"]');
+    expect(download?.textContent).toContain('Download');
+    await act(async () => button('View').click());
+    const viewer = document.querySelector('[aria-label="Photo at full size"]') as HTMLElement;
+    expect(viewer).toBeTruthy();
+    // Opens on the result; the original is one arrow away.
+    expect(viewer.textContent).toContain('2 / 3');
+    expect(viewer.querySelector('img')?.getAttribute('src')).toBe('https://cdn/bg.png');
+    await act(async () => (viewer.querySelector('[aria-label="Previous"]') as HTMLButtonElement).click());
+    expect(viewer.querySelector('img')?.getAttribute('src')).toBe('https://cdn/bag.jpg');
+    await act(async () => (viewer.querySelector('[aria-label="Close"]') as HTMLButtonElement).click());
+    expect(document.querySelector('[aria-label="Photo at full size"]')).toBeNull();
+  });
+
+  it('a failed card can be asked again, and one more feature can be added to the same photo', async () => {
+    mocks.run.mockImplementationOnce(async () => ({
+      runs: [
+        {
+          feature: 'background',
+          capability: 'BACKGROUND_REPLACE',
+          generation: { id: 'gen-bg', status: 'FAILED', stage: 'failed', credits: 10, input: {}, outputs: null, failureKind: 'LOW_QUALITY' },
+        },
+      ],
+      balance: 150,
+      allowance: allowance(4),
+    }));
+    mocks.get.mockImplementation(async () => ({
+      generation: (await mocks.run.mock.results[0]!.value).runs[0].generation,
+      message: 'We could not make a version that kept your product looking right.',
+    }));
+    await open();
+    await act(async () => button('Product check').click());
+    await act(async () => button('Listing copy').click());
+    await dropPhoto();
+    await act(async () => {});
+    expect(container.textContent).toContain('kept your product looking right');
+
+    await act(async () => button('Run again').click());
+    expect(mocks.run).toHaveBeenLastCalledWith('ws-org', expect.objectContaining({ assetId: 'asset-12345678-aaaa', features: ['background'] }));
+
+    // The rest of the menu is one tap away, priced, on the same photo.
+    await act(async () => button('Reel').click());
+    expect(mocks.run).toHaveBeenLastCalledWith('ws-org', expect.objectContaining({ assetId: 'asset-12345678-aaaa', features: ['reel'] }));
+    expect(container.textContent).toContain('Reel');
   });
 
   it('stops at an exhausted day: the inputs are off and it says when the day resets', async () => {

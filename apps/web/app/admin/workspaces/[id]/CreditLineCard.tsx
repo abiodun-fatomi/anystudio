@@ -244,7 +244,7 @@ function TermsDialog({
       }
     >
       <div style={{ display: 'grid', gap: 'var(--s-3)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
+        <div className={styles.cols2}>
           <Input label="Credit limit (credits)" type="number" min={0} value={limit} onChange={(e) => setLimit(e.target.value)} required />
           <Input
             label={`Rate / 100 credits (${currency})`}
@@ -267,7 +267,7 @@ function TermsDialog({
           onChange={(e) => setMinimum(e.target.value)}
           hint="Invoices below it are topped up to it"
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
+        <div className={styles.cols2}>
           <Input label="Net days" type="number" min={0} max={90} value={net} onChange={(e) => setNet(e.target.value)} hint="Issue to due" />
           <Input label="Grace days" type="number" min={0} max={60} value={grace} onChange={(e) => setGrace(e.target.value)} hint="Past due, then paused" />
         </div>

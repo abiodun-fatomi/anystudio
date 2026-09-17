@@ -242,6 +242,10 @@
 
 /* Table */
 .tableWrap {
+  /* Positioned so that absolutely-placed descendants — a visually hidden
+     label, a checkbox's hidden input — stay inside the scroller instead of
+     widening the page when the table is wider than the screen. */
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
@@ -322,6 +326,8 @@
 .stat {
   display: grid;
   gap: var(--s-2);
+  min-width: 0;
+  container-type: inline-size;
 }
 .statK {
   font-family: var(--f-mono);
@@ -332,7 +338,11 @@
 }
 .statV {
   font-family: var(--f-display);
-  font-size: var(--t-8);
+  /* Sized against the stat's own width, so "NGN 4,350,000" stays on one
+     line in a narrow card instead of pushing the card past its column; a
+     card 330px or wider gets the full size. */
+  font-size: clamp(var(--t-6), 11cqi, var(--t-8));
+  min-width: 0;
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;

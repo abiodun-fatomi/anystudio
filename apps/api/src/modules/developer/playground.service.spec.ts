@@ -68,7 +68,7 @@ describe('the daily allowance', () => {
 });
 
 describe('the menu', () => {
-  it('is priced from the credit table, and the product-alone shot is an edit that names the hand', async () => {
+  it('is priced from the credit table, and the product-alone shot is the pipeline’s own mode — never a described edit', async () => {
     const menu = await service.features();
     expect(menu.map((f) => [f.key, f.credits])).toEqual([
       ['check', 1],
@@ -82,13 +82,19 @@ describe('the menu', () => {
     ]);
     await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone', 'ugc'] });
     expect(generations.request).toHaveBeenCalledWith(
-      expect.objectContaining({ capability: 'PRODUCT_SHOT', params: expect.objectContaining({ mode: 'edit', prompt: expect.stringContaining('hand') }) }),
+      expect.objectContaining({ capability: 'PRODUCT_SHOT', params: { sourceKey: 'ws/uploads/bag.jpg', mode: 'isolate', sizes: [] } }),
     );
     expect(generations.request).toHaveBeenCalledWith(
       expect.objectContaining({
         capability: 'IMAGE_TO_VIDEO',
         params: expect.objectContaining({ format: 'ugc', shots: 2, presenter: { kind: 'stock', key: 'daphne' } }),
       }),
+    );
+    // Told the product's name, the cut is told what to keep.
+    generations.request.mockClear();
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone'], title: 'phone' });
+    expect(generations.request).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { sourceKey: 'ws/uploads/bag.jpg', mode: 'isolate', sizes: [], prompt: 'phone' } }),
     );
   });
 
@@ -154,9 +160,29 @@ describe('a run', () => {
 
   it('does not count a replay of the same photo against the day', async () => {
     db.generation.count.mockResolvedValue(15);
-    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:check:v1' }]);
+    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:check:v1', status: 'SUCCEEDED' }]);
     await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] });
     expect(generations.request).toHaveBeenCalledTimes(1); // GenerationService answers the existing row for free
+    expect(generations.request).toHaveBeenCalledWith(expect.objectContaining({ clientKey: 'playground:asset-12:check:v1' }));
+  });
+
+  it('asks again under a fresh key when the earlier row failed — a failure is not a result', async () => {
+    db.generation.findMany.mockResolvedValueOnce([
+      { clientKey: 'playground:asset-12:check:v1', status: 'FAILED' },
+      { clientKey: 'playground:asset-12:check:v1:r1', status: 'FAILED' },
+    ]);
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] });
+    expect(generations.request).toHaveBeenCalledWith(expect.objectContaining({ clientKey: 'playground:asset-12:check:v1:r2' }));
+    // ...and it is counted, because it is new work.
+    db.generation.count.mockResolvedValue(15);
+    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:check:v1', status: 'FAILED' }]);
+    await expect(service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['check'] })).rejects.toBeInstanceOf(PlaygroundExhaustedError);
+  });
+
+  it('never replays an older version of a feature: Product alone is v2, so the v1 described-edit row is left alone', async () => {
+    db.generation.findMany.mockResolvedValueOnce([{ clientKey: 'playground:asset-12:product_alone:v1', status: 'SUCCEEDED' }]);
+    await service.run(actor, 'ws', { assetId: 'asset-12345678-aaaa', features: ['product_alone'] });
+    expect(generations.request).toHaveBeenCalledWith(expect.objectContaining({ clientKey: 'playground:asset-12:product_alone:v2' }));
   });
 
   it('says so with the allowance in the error, and a 429', async () => {

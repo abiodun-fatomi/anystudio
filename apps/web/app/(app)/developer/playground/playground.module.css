@@ -1,87 +1,273 @@
-/* The playground: pick the calls, give it a photo, watch the rows come back. */
-.allowance {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-  font-size: var(--t-2);
-  color: var(--muted);
-}
-.meter {
-  flex: 0 0 140px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--sunk);
-  overflow: hidden;
-}
-.meter > span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-}
-.meter[data-empty='true'] > span {
-  background: var(--warn);
-}
+/*
+ * The playground: compose the request on the left, hand it a photo on the
+ * right, and watch the answers come back as cards you can open, compare
+ * and download — the shop window for what the API charges for.
+ */
 
-.picks {
-  display: grid;
-  gap: var(--s-2);
-}
-.pick {
+/* ------------------------------------------------------------ allowance */
+.head {
   display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.allowance {
+  display: grid;
+  grid-template-columns: auto auto;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-3);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-md);
   background: var(--surface);
+  font-size: var(--t-1);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.allowance strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: var(--t-5);
+  line-height: 1;
+  color: var(--ink);
+}
+.ring {
+  --p: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--sunk) 0);
+  display: grid;
+  place-items: center;
+}
+.ring::after {
+  content: '';
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+.ring[data-empty='true'] {
+  background: conic-gradient(var(--warn) 100%, var(--sunk) 0);
+}
+
+/* ------------------------------------------------------------ workbench */
+/*
+ * On a desktop the page does not move. Both columns are capped at what is
+ * left of the viewport below them (`--bench-top` is measured by the page),
+ * the menu scrolls inside its own frame with its title pinned at the top and
+ * the tally at the bottom, and the photo stays where it is. The Developer
+ * header and its tabs therefore never leave the screen. On a phone the
+ * columns stack and the page scrolls as pages do.
+ */
+.bench {
+  /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+  /* Never shorter than 480px: on a short window the page scrolls instead of
+     squeezing the columns into a slot nothing fits in. */
+  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
+  display: grid;
+  grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+.menu {
+  display: grid;
+  gap: var(--s-4);
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  max-height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+/* The photo stage fills the fold: the drop surface takes whatever height the notes, the link row and the fields leave. */
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(280px, 1fr) auto auto;
+  gap: var(--s-3);
+  align-content: start;
+  height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+@media (max-width: 880px) {
+  .bench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .menu,
+  .stage {
+    max-height: none;
+    height: auto;
+    overflow: visible;
+  }
+}
+.menuHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-4) 0 var(--s-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+}
+.menuHead h3 {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: var(--t-4);
+  font-weight: 700;
+}
+.menuHead span {
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.section {
+  display: grid;
+  gap: 6px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sectionTitle span {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.opt {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
   cursor: pointer;
   font: inherit;
   text-align: left;
   color: inherit;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
-.pick[aria-pressed='true'] {
+.opt:hover {
+  border-color: var(--line);
+}
+.opt[aria-pressed='true'] {
   border-color: var(--accent);
   background: var(--accent-wash);
 }
-.pick strong {
+.opt:active {
+  transform: scale(0.995);
+}
+.tick {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1.5px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+  transition: all var(--dur-fast) var(--ease);
+}
+.opt[aria-pressed='true'] .tick {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tick svg {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: all var(--dur-fast) var(--ease);
+}
+.opt[aria-pressed='true'] .tick svg {
+  opacity: 1;
+  transform: none;
+}
+.opt strong {
   display: block;
   font-size: var(--t-2);
+  font-weight: 600;
 }
-.pick span {
+.opt span {
   display: block;
+  margin-top: 1px;
   font-size: var(--t-1);
+  line-height: 1.45;
   color: var(--muted);
 }
-.pick .cost {
-  margin-left: auto;
-  flex: none;
+.cost {
   font-family: var(--f-mono);
   font-size: var(--t-1);
   color: var(--ink-soft);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: var(--sunk);
+}
+.opt[data-kind='video'] .cost {
+  color: var(--accent);
+}
+.tally {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-3) 0 var(--s-4);
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+  font-size: var(--t-2);
+}
+.tally strong {
+  font-family: var(--f-display);
+  font-size: var(--t-5);
+}
+.tally span {
+  color: var(--muted);
 }
 
-.source {
-  display: grid;
-  gap: 10px;
-}
+/* ------------------------------------------------------------ the photo */
 .drop {
+  position: relative;
   display: grid;
   place-items: center;
-  gap: 6px;
-  padding: 26px 16px;
+  align-content: center;
+  gap: var(--s-2);
+  min-height: 280px;
+  padding: var(--s-6) var(--s-5);
   border: 1.5px dashed var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  border-radius: var(--r-lg);
+  background: radial-gradient(60% 50% at 50% 0%, var(--accent-wash) 0%, transparent 70%), var(--surface);
   text-align: center;
   cursor: pointer;
-  font-size: var(--t-2);
-  color: var(--ink-soft);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
 }
+.drop:hover,
 .drop[data-over='true'] {
   border-color: var(--accent);
-  background: var(--accent-wash);
 }
 .drop[aria-disabled='true'] {
   opacity: 0.55;
@@ -90,30 +276,74 @@
 .drop input {
   display: none;
 }
-.or {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.dropIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  color: var(--accent);
+  box-shadow: var(--elev-1);
+}
+.drop strong {
+  font-family: var(--f-display);
+  font-size: var(--t-5);
+  font-weight: 700;
+}
+.drop span {
+  font-size: var(--t-2);
   color: var(--muted);
-  font-size: var(--t-1);
 }
-.or::before,
-.or::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--line-soft);
+.drop kbd {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
 }
-.urlrow {
+.linkRow {
   display: flex;
   gap: 8px;
 }
-.urlrow .inp {
+.linkRow .inp {
   flex: 1;
   min-width: 0;
 }
+.about {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.aboutTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* What the page has to say before a photo goes in — always above the fold, never under the drop surface. */
+.notes {
+  display: grid;
+  gap: var(--s-2);
+}
+.stage:not([data-notes='true']) .notes {
+  display: none;
+}
+/* With nothing to say the notes block is not rendered at all, so the drop
+   surface takes the first row — a placeholder row here would leave the drop
+   in a zero-height track, spilling over the link field beneath it. */
+.stage:not([data-notes='true']) {
+  grid-template-rows: minmax(280px, 1fr) auto auto;
+}
 .note {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-radius: var(--r-md);
   background: var(--cyan-wash);
   font-size: var(--t-2);
@@ -123,76 +353,362 @@
   background: var(--warn-wash);
 }
 
-.results {
+/* ------------------------------------------------------------ session */
+.session {
+  /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+  /* Never shorter than 480px: on a short window the page scrolls instead of
+     squeezing the columns into a slot nothing fits in. */
+  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
   display: grid;
-  gap: 12px;
+  gap: var(--s-4);
+  align-content: start;
+  max-height: var(--fold);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
-.pair {
+@media (max-width: 880px) {
+  .session {
+    max-height: none;
+    overflow: visible;
+  }
+}
+.sessionBar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.shot {
-  position: relative;
-  border-radius: var(--r-md);
-  overflow: hidden;
-  background: var(--sunk);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
   border: 1px solid var(--line-soft);
-  aspect-ratio: 1;
+  border-radius: var(--r-lg);
+  background: var(--surface);
 }
-.shot img {
-  display: block;
-  width: 100%;
-  height: 100%;
+.thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-md);
   object-fit: cover;
+  background: var(--sunk);
 }
-.shot .tag {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  padding: 3px 7px;
-  border-radius: 3px;
-  background: rgba(23, 19, 26, 0.72);
-  color: #fff;
+.sessionBar strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: var(--t-5);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sessionBar small {
+  display: block;
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.sessionActions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 640px) {
+  .sessionBar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .sessionActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+@media (max-width: 480px) {
+  .gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+  transition: box-shadow var(--dur) var(--ease);
+}
+.card:hover,
+.card:focus-within {
+  box-shadow: var(--elev-1);
+}
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.cardTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--t-2);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pill {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
   font-family: var(--f-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  background: var(--sunk);
+  color: var(--muted);
 }
-.shot .wait {
+.pill[data-state='done'] {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.pill[data-state='running'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.pill[data-state='failed'] {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.media {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.media[data-video='true'] {
+  aspect-ratio: 9 / 16;
+  background: #000;
+}
+.media[data-transparent='true'] {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e6e2ea 25%, transparent 25%), linear-gradient(-45deg, #e6e2ea 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e2ea 75%), linear-gradient(-45deg, transparent 75%, #e6e2ea 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+}
+.media img,
+.media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.mediaButton {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.mediaButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* While it runs: the seller's own photo, dimmed, with the scan passing over it. */
+.ghost {
+  opacity: 0.35;
+  filter: saturate(0.6);
+}
+.scan {
   position: absolute;
-  inset: auto 0 0 0;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, transparent, rgba(10, 8, 12, 0.78));
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 61, 147, 0.22) 50%, transparent 100%);
+  background-size: 100% 40%;
+  background-repeat: no-repeat;
+  animation: scan 1.8s var(--ease) infinite;
+  pointer-events: none;
+}
+@keyframes scan {
+  0% {
+    background-position: 0 -40%;
+  }
+  100% {
+    background-position: 0 140%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan {
+    animation: none;
+    background: rgba(255, 61, 147, 0.08);
+  }
+}
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease);
+}
+.stageText {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(10, 8, 12, 0.72);
   color: #fff;
   font-family: var(--f-mono);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.line {
-  padding: 12px 14px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
-  background: var(--surface);
+.failed {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  text-align: center;
   font-size: var(--t-2);
   line-height: 1.5;
-}
-.line[data-status='FAILED'] {
+  color: var(--ink-soft);
   background: var(--danger-wash);
 }
-.line strong {
-  display: block;
-  margin-bottom: 4px;
+/* Cost and time on one line, the actions on the next: a card is narrow and three actions do not share a row with a figure. */
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px var(--s-2);
+  padding: 8px 8px 8px 12px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--f-mono);
+  font-size: var(--t-1);
+  color: var(--muted);
+  min-width: 0;
+}
+.meta {
+  white-space: nowrap;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: auto;
+}
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-family: var(--f-body);
+  font-size: var(--t-1);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.action:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.action:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.action[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.action svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ------------------------------------------------------------ words */
+.words {
+  display: grid;
+  gap: var(--s-4);
+}
+.doc {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.docHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.docHead h3 {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: var(--t-5);
+  font-weight: 700;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .verdict {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  border-radius: var(--r-pill);
   font-family: var(--f-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   background: var(--ok-wash);
   color: var(--ok);
+}
+.verdict::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
 }
 .verdict[data-v='mismatch'],
 .verdict[data-v='not_a_product'] {
@@ -203,8 +719,85 @@
   background: var(--sunk);
   color: var(--muted);
 }
+.para {
+  margin: 0;
+  font-size: var(--t-3);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+}
+.bullets {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: var(--t-2);
+  line-height: 1.6;
+}
+.bullets li {
+  margin: 2px 0;
+}
+.specs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line-soft);
+}
+.specs > div {
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-2);
+}
+.specs dt {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.specs dd {
+  margin: 0;
+  color: var(--ink);
+}
+.muted {
+  color: var(--muted);
+}
 
-/* The request and the response, as code, per call. */
+/* ------------------------------------------------------------ more */
+.more {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  font-size: var(--t-2);
+  color: var(--muted);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--t-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chip code {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ wire */
 .wire {
   display: grid;
   gap: var(--s-2);
@@ -220,77 +813,4 @@
   font-family: var(--f-mono);
   font-size: var(--t-1);
   color: var(--muted);
-}
-
-/* What the product is: the name and the details the photo cannot show. */
-.about {
-  display: grid;
-  gap: var(--s-3);
-}
-
-/* Results: the original and every picture or clip that came back. */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-}
-.shot[data-transparent='true'] {
-  background-color: #fff;
-  background-image:
-    linear-gradient(45deg, #e6e2ea 25%, transparent 25%), linear-gradient(-45deg, #e6e2ea 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #e6e2ea 75%), linear-gradient(-45deg, transparent 75%, #e6e2ea 75%);
-  background-size: 20px 20px;
-  background-position:
-    0 0,
-    0 10px,
-    10px -10px,
-    -10px 0;
-}
-.shot[data-transparent='true'] img {
-  object-fit: contain;
-}
-.shot[data-video='true'] {
-  aspect-ratio: 9 / 16;
-}
-.shot video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
-}
-.pick[data-kind='video'] .cost {
-  color: var(--accent);
-}
-
-/* The copy, whole: paragraph, bullets, specs. */
-.para {
-  margin: 0 0 var(--s-2);
-  white-space: pre-wrap;
-}
-.bullets {
-  margin: 0 0 var(--s-2);
-  padding-left: 1.2em;
-}
-.bullets li {
-  margin: 2px 0;
-}
-.specs {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--s-1) var(--s-3);
-  margin: 0;
-}
-.specs > div {
-  display: flex;
-  gap: var(--s-2);
-  font-size: var(--t-1);
-}
-.specs dt {
-  color: var(--muted);
-  flex: none;
-}
-.specs dd {
-  margin: 0;
-  color: var(--ink);
 }

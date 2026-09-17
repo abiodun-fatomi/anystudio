@@ -1,6 +1,9 @@
 .wrap {
   min-height: 100dvh;
   display: grid;
+  /* One track the width of the viewport — not `auto`, which would size to
+     the card's longest line and push the card past a phone's right edge. */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 28px 18px;
   background: var(--paper);
@@ -12,6 +15,11 @@
   border-radius: 14px;
   padding: 30px 30px 26px;
   box-shadow: var(--frame-shadow);
+}
+@media (max-width: 480px) {
+  .card {
+    padding: 22px 18px 20px;
+  }
 }
 .top {
   display: flex;
@@ -111,6 +119,7 @@
 }
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 24px;
 }
