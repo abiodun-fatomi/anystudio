@@ -45,7 +45,11 @@ export class AuthGuard implements CanActivate {
 
     const token = req.cookies?.[COOKIE[surface]];
     if (!token) throw new UnauthorizedError();
-    const session = await this.sessions.resolve(token, surface);
+    // A route marked @BackgroundRequest() is a poll: it authenticates, but it
+    // does not count as the person being here, so it cannot slide the idle
+    // window. The decision is the route's, never the caller's.
+    const background = this.reflector.getAllAndOverride<boolean>(META.background, targets) ?? false;
+    const session = await this.sessions.resolve(token, surface, { slide: !background });
     if (!session) throw new UnauthorizedError();
 
     const actor = await this.auth.actorFor(session.userId, surface, session);

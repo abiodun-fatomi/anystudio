@@ -46,6 +46,8 @@ export interface MintOptions {
   ip?: string;
   userAgent?: string;
   geoLabel?: string;
+  /** The family's hard deadline, carried through a rotation. Absent on a fresh sign-in. */
+  absoluteExpiresAt?: Date;
 }
 
 export interface IssuedSession {
@@ -86,6 +88,12 @@ export class SessionService {
     const refreshToken = newToken();
     const now = Date.now();
 
+    // The hard cap belongs to the sign-in, not to the token pair. Minting a
+    // fresh one on every rotation is what put it permanently out of reach.
+    const absoluteExpiresAt = o.absoluteExpiresAt ?? new Date(now + cfg.absoluteHrs * 3_600_000);
+    // Idle may approach the cap but never cross it.
+    const idleExpiresAt = new Date(Math.min(now + cfg.idleMin * 60_000, absoluteExpiresAt.getTime()));
+
     const session = await this.db.session.create({
       data: {
         userId: o.userId,
@@ -99,8 +107,8 @@ export class SessionService {
         ip: o.ip,
         userAgent: o.userAgent?.slice(0, 400),
         geoLabel: o.geoLabel,
-        idleExpiresAt: new Date(now + cfg.idleMin * 60_000),
-        absoluteExpiresAt: new Date(now + cfg.absoluteHrs * 3_600_000),
+        idleExpiresAt,
+        absoluteExpiresAt,
       },
     });
 
@@ -114,7 +122,7 @@ export class SessionService {
    * credential epoch. The caller turns that into one generic 401; distinguishing
    * the reasons would tell an attacker which of their guesses was closest.
    */
-  async resolve(token: string, surface: Surface): Promise<Session | null> {
+  async resolve(token: string, surface: Surface, opts: { slide?: boolean } = {}): Promise<Session | null> {
     const session = await this.db.session.findUnique({
       where: { tokenHash: sha256(token) },
       include: { user: { select: { credentialEpoch: true, status: true } } },
@@ -136,13 +144,15 @@ export class SessionService {
 
     // Sliding idle window. Written at most once a minute so a busy tab does not
     // turn every request into a write.
-    if (now.getTime() - session.lastSeenAt.getTime() > 60_000) {
+    // `slide: false` authenticates without moving the idle window: background
+    // traffic must not stand in for a person.
+    if (opts.slide !== false && now.getTime() - session.lastSeenAt.getTime() > 60_000) {
       const cfg = LIFETIME[surface];
       await this.db.session.update({
         where: { id: session.id },
         data: {
           lastSeenAt: now,
-          idleExpiresAt: new Date(now.getTime() + cfg.idleMin * 60_000),
+          idleExpiresAt: new Date(Math.min(now.getTime() + cfg.idleMin * 60_000, session.absoluteExpiresAt.getTime())),
         },
       });
     }
@@ -181,7 +191,23 @@ export class SessionService {
       return { result: 'reuse_detected' };
     }
 
-    if (current.surface !== surface || current.revokedAt || current.absoluteExpiresAt < new Date()) {
+    const now = new Date();
+    if (current.surface !== surface || current.revokedAt || current.absoluteExpiresAt < now) {
+      return { result: 'invalid' };
+    }
+
+    // IDLE DEATH IS FINAL.
+    //
+    // Refresh exists to rotate a live session's tokens, not to resurrect a dead
+    // one. Without this check the idle window cost an attacker — or a forgotten
+    // laptop — one extra round trip and nothing more: the cookie failed, the
+    // client refreshed, and the session came back with a clean window. Marked
+    // rather than merely refused so the security screen can say why it ended.
+    if (current.idleExpiresAt < now) {
+      await this.db.session.update({
+        where: { id: current.id },
+        data: { revokedAt: now, revokedReason: 'idle_timeout' },
+      });
       return { result: 'invalid' };
     }
 
@@ -192,6 +218,8 @@ export class SessionService {
       credentialEpoch: current.user.credentialEpoch,
       ip: current.ip ?? undefined,
       userAgent: current.userAgent ?? undefined,
+      // Inherited, not restarted: the cap is the age of the sign-in.
+      absoluteExpiresAt: current.absoluteExpiresAt,
     });
 
     // Keep the family so a later replay of the old token is attributable.
