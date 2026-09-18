@@ -1,0 +1,620 @@
+From dacaaea1bfd8e42ac4827fa08d7de5e632d11274 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 16 Sep 2026 09:38:56 +0000
+Subject: [PATCH 1/2] fix(web): playground stage rows, card footers and stream
+ re-watch
+
+- The notes block is not rendered when there is nothing to say, so the
+  drop surface took a zero-height first row and spilled over the link
+  field beneath it; the stage now has three rows without notes, and the
+  photo row's minimum matches the drop surface's own.
+- The workbench fold has a 480px floor: a short window scrolls the page
+  instead of squeezing both columns into a slot nothing fits in.
+- Errors and allowance notes sit above the drop surface, not under the fold.
+- Card footers wrap at narrow card widths; the gallery aligns cards to
+  the top so a text card does not stretch to a picture card's height.
+- finish() re-watches a run whose stream dropped before a terminal state
+  instead of marking it done; the Add button does not wait on live runs.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015kWtUp6FyjurHyxcnPnvfS
+---
+ .../app/(app)/developer/playground/page.tsx   | 49 +++++++++++--------
+ .../playground/playground.module.css          | 45 +++++++++++++++--
+ 2 files changed, 69 insertions(+), 25 deletions(-)
+
+diff --git a/apps/web/app/(app)/developer/playground/page.tsx b/apps/web/app/(app)/developer/playground/page.tsx
+index 9898569..c73ceea 100644
+--- a/apps/web/app/(app)/developer/playground/page.tsx
++++ b/apps/web/app/(app)/developer/playground/page.tsx
+@@ -188,6 +188,13 @@ export default function PlaygroundPage() {
+   async function finish(key: PlaygroundFeatureKey, id: string) {
+     try {
+       const { generation, message } = await api.generations.get(workspaceId, id);
++      // The stream can drop while the row is still running (a proxy timeout,
++      // a sleeping laptop). That is not "done": keep the card live and listen again.
++      if (generation.status !== 'SUCCEEDED' && generation.status !== 'FAILED') {
++        patch(key, (r) => ({ ...r, row: generation, stage: generation.stage ?? r.stage, progress: generation.progress ?? r.progress }));
++        setTimeout(() => watch(key, id), 2500);
++        return;
++      }
+       const keys = (generation.outputs ?? []).map((o) => o.key).filter(Boolean);
+       const urls = keys.length ? (await api.media.urls(workspaceId, keys)).urls : {};
+       // A failed row comes with the API's own sentence — what happened and that the credits are back.
+@@ -410,7 +417,7 @@ export default function PlaygroundPage() {
+     const st = stateOf(r);
+     return (
+       <div className={styles.cardFoot}>
+-        <span>
++        <span className={styles.meta}>
+           {r.row?.credits ?? featureOf(r)?.credits ?? 0} cr · {took(r)}
+         </span>
+         <div className={styles.actions}>
+@@ -528,7 +535,26 @@ export default function PlaygroundPage() {
+             </div>
+           </section>
+ 
+-          <section className={styles.stage}>
++          <section className={styles.stage} data-notes={Boolean(error || short || (exhausted && allowance))}>
++            <div className={styles.notes}>
++              {error && (
++                <div className={styles.note} data-tone="warn">
++                  {error}
++                </div>
++              )}
++              {short && balance !== null && (
++                <div className={styles.note} data-tone="warn">
++                  That is {cost.toLocaleString()} credits and this workspace has {balance.toLocaleString()}. Take something off, or top up under Credits.
++                </div>
++              )}
++              {exhausted && allowance && !short && (
++                <div className={styles.note} data-tone="warn">
++                  {allowance.remaining === 0
++                    ? `Today's ${allowance.dailyLimit} playground calls are used. It resets ${resetWords(allowance.resetsAt)}; an API key can keep going now.`
++                    : `${allowance.remaining} call${allowance.remaining === 1 ? '' : 's'} left today — pick ${allowance.remaining} or fewer, or wait for the reset ${resetWords(allowance.resetsAt)}.`}
++                </div>
++              )}
++            </div>
+             <label
+               className={styles.drop}
+               data-over={over}
+@@ -583,23 +609,6 @@ export default function PlaygroundPage() {
+                 rows={2}
+               />
+             </div>
+-            {error && (
+-              <div className={styles.note} data-tone="warn">
+-                {error}
+-              </div>
+-            )}
+-            {short && balance !== null && (
+-              <div className={styles.note} data-tone="warn">
+-                That is {cost.toLocaleString()} credits and this workspace has {balance.toLocaleString()}. Take something off, or top up under Credits.
+-              </div>
+-            )}
+-            {exhausted && allowance && !short && (
+-              <div className={styles.note} data-tone="warn">
+-                {allowance.remaining === 0
+-                  ? `Today's ${allowance.dailyLimit} playground calls are used. It resets ${resetWords(allowance.resetsAt)}; an API key can keep going now.`
+-                  : `${allowance.remaining} call${allowance.remaining === 1 ? '' : 's'} left today — pick ${allowance.remaining} or fewer, or wait for the reset ${resetWords(allowance.resetsAt)}.`}
+-              </div>
+-            )}
+           </section>
+         </div>
+       )}
+@@ -644,7 +653,7 @@ export default function PlaygroundPage() {
+                 )}
+               </div>
+               <div className={styles.cardFoot}>
+-                <span>as uploaded</span>
++                <span className={styles.meta}>as uploaded</span>
+               </div>
+             </div>
+ 
+diff --git a/apps/web/app/(app)/developer/playground/playground.module.css b/apps/web/app/(app)/developer/playground/playground.module.css
+index e763b5b..d18d6b5 100644
+--- a/apps/web/app/(app)/developer/playground/playground.module.css
++++ b/apps/web/app/(app)/developer/playground/playground.module.css
+@@ -63,7 +63,9 @@
+  */
+ .bench {
+   /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+-  --fold: calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7));
++  /* Never shorter than 480px: on a short window the page scrolls instead of
++     squeezing the columns into a slot nothing fits in. */
++  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
+   display: grid;
+   grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr);
+   gap: var(--s-5);
+@@ -82,10 +84,10 @@
+   scrollbar-width: thin;
+   scrollbar-color: var(--line) transparent;
+ }
+-/* The photo stage fills the fold: the drop surface takes whatever height the link row and the fields leave. */
++/* The photo stage fills the fold: the drop surface takes whatever height the notes, the link row and the fields leave. */
+ .stage {
+   display: grid;
+-  grid-template-rows: minmax(240px, 1fr) auto auto;
++  grid-template-rows: auto minmax(280px, 1fr) auto auto;
+   gap: var(--s-3);
+   align-content: start;
+   height: var(--fold);
+@@ -326,6 +328,20 @@
+   text-transform: uppercase;
+   color: var(--muted);
+ }
++/* What the page has to say before a photo goes in — always above the fold, never under the drop surface. */
++.notes {
++  display: grid;
++  gap: var(--s-2);
++}
++.stage:not([data-notes='true']) .notes {
++  display: none;
++}
++/* With nothing to say the notes block is not rendered at all, so the drop
++   surface takes the first row — a placeholder row here would leave the drop
++   in a zero-height track, spilling over the link field beneath it. */
++.stage:not([data-notes='true']) {
++  grid-template-rows: minmax(280px, 1fr) auto auto;
++}
+ .note {
+   padding: 10px 14px;
+   border-radius: var(--r-md);
+@@ -340,7 +356,9 @@
+ /* ------------------------------------------------------------ session */
+ .session {
+   /* What sits below the workbench: the card's own padding and the shell's bottom margin. */
+-  --fold: calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7));
++  /* Never shorter than 480px: on a short window the page scrolls instead of
++     squeezing the columns into a slot nothing fits in. */
++  --fold: max(480px, calc(100dvh - var(--bench-top, 0px) - var(--s-5) - var(--s-7) - 2px));
+   display: grid;
+   gap: var(--s-4);
+   align-content: start;
+@@ -410,6 +428,12 @@
+   display: grid;
+   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+   gap: var(--s-4);
++  align-items: start;
++}
++@media (max-width: 480px) {
++  .gallery {
++    grid-template-columns: minmax(0, 1fr);
++  }
+ }
+ .card {
+   display: grid;
+@@ -430,8 +454,11 @@
+   align-items: center;
+   gap: var(--s-2);
+   padding: 10px 12px;
++  min-width: 0;
+ }
+ .cardTitle {
++  flex: 1 1 auto;
++  min-width: 0;
+   font-size: var(--t-2);
+   font-weight: 600;
+   overflow: hidden;
+@@ -574,20 +601,28 @@
+   color: var(--ink-soft);
+   background: var(--danger-wash);
+ }
++/* Cost and time on one line, the actions on the next: a card is narrow and three actions do not share a row with a figure. */
+ .cardFoot {
+   display: flex;
++  flex-wrap: wrap;
+   justify-content: space-between;
+   align-items: center;
+-  gap: var(--s-2);
++  gap: 4px var(--s-2);
+   padding: 8px 8px 8px 12px;
+   border-top: 1px solid var(--line-soft);
+   font-family: var(--f-mono);
+   font-size: var(--t-1);
+   color: var(--muted);
++  min-width: 0;
++}
++.meta {
++  white-space: nowrap;
+ }
+ .actions {
+   display: flex;
++  flex-wrap: wrap;
+   gap: 2px;
++  margin-left: auto;
+ }
+ .action {
+   display: inline-flex;
+-- 
+2.43.0
+
+
+From 322520dc7e5fece979499e8455c68f961c269b0e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 16 Sep 2026 09:39:11 +0000
+Subject: [PATCH 2/2] fix(web): every screen lays out cleanly from 360px to
+ 1440px
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Crawled all 53 routes at 360, 390, 768, 1024, 1280 and 1440 with realistic
+data and fixed everything that overflowed or squeezed:
+
+- Staff console: the phone rule for the rail was written above the rail's
+  own `display: flex`, so it never applied and the sidebar rendered as a
+  full-height block above the page. Under 900px the rail is now a sticky
+  top bar — brand, avatar and sign-out on one line, the sections as a row
+  of chips that scrolls sideways. Stat tiles go single-column under 560px,
+  key/value lists stack, the support thread's 300px aside collapses, and
+  the two- and three-field dialog rows stack (`.cols2`/`.cols3` replace
+  the inline grids).
+- Tables: a visually-hidden checkbox input and `.sr-only` labels inside a
+  wide table were positioned against an ancestor outside the scroller and
+  widened the whole page (providers, templates). The table wrapper and the
+  choice row are positioned now, so they stay inside the scroll box.
+- Stat values size against their own card (container units), so
+  "NGN 84,000" stays on one line at tablet widths instead of pushing the
+  card past its column.
+- Welcome cards: the centring grid's track sized to the card's longest
+  line and pushed it off a phone; the track is now the viewport width and
+  the action buttons wrap.
+- Developer rows: long endpoint URLs can break, and the row's action
+  buttons wrap. Publishing: account actions drop under the handle on a
+  phone instead of overlapping it.
+
+No logic changes; the web suite, eslint and the build pass.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015kWtUp6FyjurHyxcnPnvfS
+---
+ .../app/(app)/developer/developer.module.css  |   5 +
+ .../(app)/publishing/publishing.module.css    |   9 ++
+ apps/web/app/admin/admin.module.css           | 118 ++++++++++++++++--
+ apps/web/app/admin/careers/page.tsx           |   4 +-
+ apps/web/app/admin/support/[id]/page.tsx      |   2 +-
+ .../admin/workspaces/[id]/CreditLineCard.tsx  |   4 +-
+ apps/web/app/welcome/welcome.module.css       |   9 ++
+ apps/web/components/ui/Choice.module.css      |   5 +
+ apps/web/components/ui/Display.module.css     |  12 +-
+ 9 files changed, 153 insertions(+), 15 deletions(-)
+
+diff --git a/apps/web/app/(app)/developer/developer.module.css b/apps/web/app/(app)/developer/developer.module.css
+index bb80e16..5f981f9 100644
+--- a/apps/web/app/(app)/developer/developer.module.css
++++ b/apps/web/app/(app)/developer/developer.module.css
+@@ -138,6 +138,10 @@
+   flex-wrap: wrap;
+   min-width: 0;
+ }
++.rowTitle > span {
++  min-width: 0;
++  overflow-wrap: anywhere;
++}
+ .rowSub {
+   font-size: var(--t-1);
+   color: var(--muted);
+@@ -150,6 +154,7 @@
+   display: flex;
+   gap: var(--s-2);
+   align-items: center;
++  flex-wrap: wrap;
+   flex: none;
+ }
+ @media (max-width: 640px) {
+diff --git a/apps/web/app/(app)/publishing/publishing.module.css b/apps/web/app/(app)/publishing/publishing.module.css
+index 73d262e..d791502 100644
+--- a/apps/web/app/(app)/publishing/publishing.module.css
++++ b/apps/web/app/(app)/publishing/publishing.module.css
+@@ -120,8 +120,17 @@
+ }
+ .rowActions {
+   display: flex;
++  flex-wrap: wrap;
+   gap: var(--s-1);
+ }
++@media (max-width: 520px) {
++  .accountRow {
++    grid-template-columns: 34px minmax(0, 1fr);
++  }
++  .rowActions {
++    grid-column: 2;
++  }
++}
+ .platformFoot {
+   display: flex;
+   align-items: center;
+diff --git a/apps/web/app/admin/admin.module.css b/apps/web/app/admin/admin.module.css
+index 619e903..bf78275 100644
+--- a/apps/web/app/admin/admin.module.css
++++ b/apps/web/app/admin/admin.module.css
+@@ -4,14 +4,6 @@
+   min-height: 100dvh;
+   background: var(--surface);
+ }
+-@media (max-width: 900px) {
+-  .frame {
+-    grid-template-columns: 1fr;
+-  }
+-  .rail {
+-    display: none;
+-  }
+-}
+ .rail {
+   position: sticky;
+   top: 0;
+@@ -140,6 +132,7 @@
+   max-width: 1480px;
+   width: 100%;
+ }
++
+ .heroes {
+   display: grid;
+   grid-template-columns: repeat(4, 1fr);
+@@ -157,8 +150,13 @@
+   gap: var(--s-4);
+   align-items: start;
+ }
++/* A main column with a 300px aside — a chat next to its facts. */
++.twoAside {
++  grid-template-columns: minmax(0, 1fr) 300px;
++}
+ @media (max-width: 1000px) {
+-  .two {
++  .two,
++  .twoAside {
+     grid-template-columns: 1fr;
+   }
+ }
+@@ -273,3 +271,105 @@ pre.json {
+   font-family: var(--f-mono);
+   font-size: var(--t-1);
+ }
++
++/* Two or three fields side by side in a dialog; one under another on a phone. */
++.cols2,
++.cols3 {
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: var(--s-3);
++}
++.cols3 {
++  grid-template-columns: 1fr 1fr 1fr;
++  align-items: end;
++}
++
++/* ---- narrow screens: kept last so these win over the rules above ---- */
++/* Under 900px the rail becomes a bar across the top: brand and sign-out on
++   the first line, the sections as a row of chips that scrolls sideways under
++   it. Same links, same markup — only where they sit. (This block has to come
++   after the rail's own rules, or its `display: flex` wins over the bar.) */
++@media (max-width: 900px) {
++  .frame {
++    grid-template-columns: minmax(0, 1fr);
++  }
++  .rail {
++    position: sticky;
++    top: 0;
++    z-index: 20;
++    height: auto;
++    flex-direction: row;
++    flex-wrap: wrap;
++    align-items: center;
++    gap: var(--s-2) var(--s-3);
++    padding: var(--s-2) var(--s-3);
++    border-right: 0;
++    border-bottom: 1px solid var(--line-soft);
++  }
++  .brand {
++    margin: 0;
++    padding: var(--s-1) 0;
++    flex: 1 1 auto;
++    min-width: 0;
++  }
++  .env {
++    display: none;
++  }
++  .nav {
++    order: 3;
++    flex: 1 0 100%;
++    display: flex;
++    gap: var(--s-1);
++    overflow-x: auto;
++    scrollbar-width: none;
++    margin: 0 calc(-1 * var(--s-3));
++    padding: 0 var(--s-3) var(--s-1);
++    scroll-snap-type: x proximity;
++  }
++  .nav::-webkit-scrollbar {
++    display: none;
++  }
++  .item {
++    flex: none;
++    min-height: 34px;
++    padding: 0 var(--s-3);
++    border-radius: var(--r-pill);
++    font-size: var(--t-1);
++    white-space: nowrap;
++    scroll-snap-align: start;
++  }
++  .foot {
++    margin: 0;
++    padding: 0;
++    border: 0;
++    display: flex;
++    align-items: center;
++    gap: var(--s-3);
++  }
++  .who > span:last-child {
++    display: none;
++  }
++  .main {
++    padding: var(--s-4) var(--s-4) var(--s-7);
++  }
++}
++@media (max-width: 560px) {
++  .heroes {
++    grid-template-columns: 1fr;
++  }
++  .toolbar > * {
++    min-width: 0;
++    flex: 1 1 160px;
++  }
++  .kv {
++    grid-template-columns: 1fr;
++    gap: 0 var(--s-4);
++  }
++  .kv dt {
++    margin-top: var(--s-2);
++  }
++  .cols2,
++  .cols3 {
++    grid-template-columns: 1fr;
++  }
++}
+diff --git a/apps/web/app/admin/careers/page.tsx b/apps/web/app/admin/careers/page.tsx
+index 2cff718..a581b24 100644
+--- a/apps/web/app/admin/careers/page.tsx
++++ b/apps/web/app/admin/careers/page.tsx
+@@ -343,7 +343,7 @@ export default function CareersAdminPage() {
+             maxLength={120}
+             placeholder="Founding engineer, studio pipeline"
+           />
+-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
++          <div className={styles.cols2}>
+             <Input label="Team" value={f.team ?? ''} onChange={(e) => set('team', e.target.value)} maxLength={60} placeholder="Engineering" />
+             <Input
+               label="Location"
+@@ -353,7 +353,7 @@ export default function CareersAdminPage() {
+               placeholder="Lagos or remote (WAT ±3)"
+             />
+           </div>
+-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--s-3)', alignItems: 'end' }}>
++          <div className={styles.cols3}>
+             <Select label="Type" value={f.type ?? 'FULL_TIME'} onChange={(e) => set('type', e.target.value)} options={TYPES} />
+             <Input
+               label="Salary"
+diff --git a/apps/web/app/admin/support/[id]/page.tsx b/apps/web/app/admin/support/[id]/page.tsx
+index 65c7fa0..e01acdd 100644
+--- a/apps/web/app/admin/support/[id]/page.tsx
++++ b/apps/web/app/admin/support/[id]/page.tsx
+@@ -109,7 +109,7 @@ export default function SupportThreadPage() {
+           ) : undefined
+         }
+       />
+-      <div className={styles.two} style={{ gridTemplateColumns: 'minmax(0,1fr) 300px' }}>
++      <div className={`${styles.two} ${styles.twoAside}`}>
+         <div className={styles.card} style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+           <div className={chat.thread}>
+             {d.messages.map((m) => {
+diff --git a/apps/web/app/admin/workspaces/[id]/CreditLineCard.tsx b/apps/web/app/admin/workspaces/[id]/CreditLineCard.tsx
+index 38e1c89..8b623e4 100644
+--- a/apps/web/app/admin/workspaces/[id]/CreditLineCard.tsx
++++ b/apps/web/app/admin/workspaces/[id]/CreditLineCard.tsx
+@@ -244,7 +244,7 @@ function TermsDialog({
+       }
+     >
+       <div style={{ display: 'grid', gap: 'var(--s-3)' }}>
+-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
++        <div className={styles.cols2}>
+           <Input label="Credit limit (credits)" type="number" min={0} value={limit} onChange={(e) => setLimit(e.target.value)} required />
+           <Input
+             label={`Rate / 100 credits (${currency})`}
+@@ -267,7 +267,7 @@ function TermsDialog({
+           onChange={(e) => setMinimum(e.target.value)}
+           hint="Invoices below it are topped up to it"
+         />
+-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)' }}>
++        <div className={styles.cols2}>
+           <Input label="Net days" type="number" min={0} max={90} value={net} onChange={(e) => setNet(e.target.value)} hint="Issue to due" />
+           <Input label="Grace days" type="number" min={0} max={60} value={grace} onChange={(e) => setGrace(e.target.value)} hint="Past due, then paused" />
+         </div>
+diff --git a/apps/web/app/welcome/welcome.module.css b/apps/web/app/welcome/welcome.module.css
+index ed5fc48..d4ff690 100644
+--- a/apps/web/app/welcome/welcome.module.css
++++ b/apps/web/app/welcome/welcome.module.css
+@@ -1,6 +1,9 @@
+ .wrap {
+   min-height: 100dvh;
+   display: grid;
++  /* One track the width of the viewport — not `auto`, which would size to
++     the card's longest line and push the card past a phone's right edge. */
++  grid-template-columns: minmax(0, 1fr);
+   place-items: center;
+   padding: 28px 18px;
+   background: var(--paper);
+@@ -13,6 +16,11 @@
+   padding: 30px 30px 26px;
+   box-shadow: var(--frame-shadow);
+ }
++@media (max-width: 480px) {
++  .card {
++    padding: 22px 18px 20px;
++  }
++}
+ .top {
+   display: flex;
+   justify-content: space-between;
+@@ -111,6 +119,7 @@
+ }
+ .actions {
+   display: flex;
++  flex-wrap: wrap;
+   gap: 10px;
+   margin-top: 24px;
+ }
+diff --git a/apps/web/components/ui/Choice.module.css b/apps/web/components/ui/Choice.module.css
+index 1972997..2b36180 100644
+--- a/apps/web/components/ui/Choice.module.css
++++ b/apps/web/components/ui/Choice.module.css
+@@ -1,4 +1,9 @@
+ .row {
++  /* The real input is visually hidden with `position: absolute`; it must
++     sit inside its own label, or in a wide table it lands wherever the
++     nearest positioned ancestor is and pushes the page's scroll width out
++     past the table's scroller. */
++  position: relative;
+   display: flex;
+   align-items: flex-start;
+   gap: var(--s-3);
+diff --git a/apps/web/components/ui/Display.module.css b/apps/web/components/ui/Display.module.css
+index d22bde6..5e69477 100644
+--- a/apps/web/components/ui/Display.module.css
++++ b/apps/web/components/ui/Display.module.css
+@@ -242,6 +242,10 @@
+ 
+ /* Table */
+ .tableWrap {
++  /* Positioned so that absolutely-placed descendants — a visually hidden
++     label, a checkbox's hidden input — stay inside the scroller instead of
++     widening the page when the table is wider than the screen. */
++  position: relative;
+   overflow-x: auto;
+   border: 1px solid var(--line-soft);
+   border-radius: var(--r-lg);
+@@ -322,6 +326,8 @@
+ .stat {
+   display: grid;
+   gap: var(--s-2);
++  min-width: 0;
++  container-type: inline-size;
+ }
+ .statK {
+   font-family: var(--f-mono);
+@@ -332,7 +338,11 @@
+ }
+ .statV {
+   font-family: var(--f-display);
+-  font-size: var(--t-8);
++  /* Sized against the stat's own width, so "NGN 4,350,000" stays on one
++     line in a narrow card instead of pushing the card past its column; a
++     card 330px or wider gets the full size. */
++  font-size: clamp(var(--t-6), 11cqi, var(--t-8));
++  min-width: 0;
+   font-weight: 800;
+   letter-spacing: -0.03em;
+   line-height: 1;
+-- 
+2.43.0
+
