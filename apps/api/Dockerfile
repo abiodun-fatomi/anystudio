@@ -80,7 +80,7 @@ RUN cd /out \
 # Build with --build-arg MATTING_MODEL_URL= (empty) to ship without it; the
 # adapter then goes unregistered and cutouts route to a vendor as before.
 FROM node:22-slim AS models
-ARG MATTING_MODEL_URL=https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx
+ARG MATTING_MODEL_URL=
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/models
