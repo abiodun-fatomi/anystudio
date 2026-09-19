@@ -255,10 +255,9 @@ export class MattingProvider extends BaseProvider {
   }
 
   private async compose(source: RawImage, alpha: Uint8Array, background: string): Promise<Uint8Array> {
-    const image = sharp(Buffer.from(source.data), { raw: { width: source.width, height: source.height, channels: 3 } }).joinChannel(
-      Buffer.from(alpha),
-      { raw: { width: source.width, height: source.height, channels: 1 } },
-    );
+    const image = sharp(Buffer.from(source.data), { raw: { width: source.width, height: source.height, channels: 3 } }).joinChannel(Buffer.from(alpha), {
+      raw: { width: source.width, height: source.height, channels: 1 },
+    });
     const flattened = background === 'transparent' ? image : image.flatten({ background });
     const png = await flattened.png({ compressionLevel: 6 }).toBuffer();
     return new Uint8Array(png.buffer, png.byteOffset, png.byteLength);

@@ -11,12 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { borderColour, coverage, keyOut, type RawImage } from './matting.adapter';
 
 /** A solid canvas with an optional rectangle of another colour in the middle. */
-function canvas(
-  width: number,
-  height: number,
-  bg: [number, number, number],
-  subject?: { colour: [number, number, number]; inset: number },
-): RawImage {
+function canvas(width: number, height: number, bg: [number, number, number], subject?: { colour: [number, number, number]; inset: number }): RawImage {
   const data = new Uint8Array(width * height * 3);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
