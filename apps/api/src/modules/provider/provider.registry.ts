@@ -23,6 +23,7 @@ import { OpenAiProvider } from './adapters/openai.adapter';
 import { AnthropicProvider } from './adapters/anthropic.adapter';
 import { BflProvider } from './adapters/bfl.adapter';
 import { LocalProvider } from './adapters/local.adapter';
+import { MattingProvider } from './adapters/matting.adapter';
 import { HiggsfieldProvider } from './adapters/higgsfield.adapter';
 import { ElevenLabsProvider } from './adapters/elevenlabs.adapter';
 import { HeyGenProvider } from './adapters/heygen.adapter';
@@ -46,6 +47,9 @@ export class ProviderRegistry {
     const candidates: Array<{ present: boolean; make: () => GenerationProvider[] }> = [
       { present: !isProd, make: () => [new StubProvider()] },
       { present: true, make: () => [new LocalProvider()] },
+      // Weights, not a credential: present only where the image baked them in.
+      // Absent, the row is unroutable and cutouts fall through to a vendor.
+      { present: MattingProvider.available(), make: () => [new MattingProvider()] },
       { present: Boolean(env.FAL_KEY), make: () => FalProvider.all(env.FAL_KEY!) },
       {
         present: Boolean(env.GOOGLE_AI_API_KEY || env.GOOGLE_VERTEX_SA_JSON),
