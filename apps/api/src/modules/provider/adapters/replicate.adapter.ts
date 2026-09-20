@@ -8,7 +8,8 @@
 
 import { ProviderError, type Capability, type ProviderInput, type ProviderOpts, type ProviderResult } from '@anystudio/shared';
 import { BaseProvider } from './base';
-import { http, pick, poll } from './http';
+import sharp from 'sharp';
+import { fetchBytes, http, pick, poll } from './http';
 
 interface Prediction {
   id: string;
@@ -42,7 +43,7 @@ export class ReplicateProvider extends BaseProvider {
     const model = this.str(input.config, 'model', this.defaultModel);
     const version = this.str(input.config, 'version', '');
     const headers = { authorization: `Bearer ${this.token}`, prefer: 'wait=30' };
-    const body = { input: { image: this.file(input, 'sourceKey'), ...(p.background === 'transparent' ? {} : { background_color: p.background }) } };
+    const body = { input: { image: this.file(input, 'sourceKey') } };
 
     let providerJobId: string;
     let pollUrl: string;
@@ -95,6 +96,14 @@ export class ReplicateProvider extends BaseProvider {
     if (!url) {
       await opts.onSettled?.('FAILED');
       throw new ProviderError('RETRYABLE', `${this.key}: no output url`, this.key, { providerJobId, raw: final.output });
+    }
+    // The model knows nothing about backgrounds: it returns a transparent
+    // cutout, always. A requested colour is composited here with sharp, so the
+    // customer gets the exact hex they picked instead of a vendor's guess.
+    if (p.background !== 'transparent') {
+      const cutout = await fetchBytes(this.key, url, 30_000, opts.signal);
+      const bytes = await sharp(Buffer.from(cutout.bytes)).flatten({ background: p.background }).png().toBuffer();
+      return { providerKey: this.key, providerJobId, artifacts: [{ bytes, mime: 'image/png', role: 'image' }], meta: { model, background: p.background } };
     }
     return { providerKey: this.key, providerJobId, artifacts: [{ url, mime: 'image/png', role: 'image' }], meta: { model } };
   }
