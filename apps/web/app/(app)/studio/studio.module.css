@@ -2105,7 +2105,7 @@
   flex: none;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 4px;
   border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
 }
 .swatchTransparent {
