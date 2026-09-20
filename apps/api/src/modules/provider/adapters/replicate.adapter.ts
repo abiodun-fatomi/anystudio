@@ -40,6 +40,7 @@ export class ReplicateProvider extends BaseProvider {
     if (input.capability !== 'BACKGROUND_REMOVE') this.unsupported(input.capability);
     const p = this.params(input, 'BACKGROUND_REMOVE');
     const model = this.str(input.config, 'model', this.defaultModel);
+    const version = this.str(input.config, 'version', '');
     const headers = { authorization: `Bearer ${this.token}`, prefer: 'wait=30' };
     const body = { input: { image: this.file(input, 'sourceKey'), ...(p.background === 'transparent' ? {} : { background_color: p.background }) } };
 
@@ -51,9 +52,14 @@ export class ReplicateProvider extends BaseProvider {
       const saved = opts.resume.data?.pollUrl;
       pollUrl = typeof saved === 'string' && saved ? saved : `https://api.replicate.com/v1/predictions/${encodeURIComponent(providerJobId)}`;
     } else {
-      const response = await http<Prediction>(this.key, `https://api.replicate.com/v1/models/${model}/predictions`, {
+      // Replicate's path-style endpoint serves only its official models; a
+      // community model 404s there and must be pinned by version through
+      // /v1/predictions. The version id lives on the routing row, so a model
+      // update stays a config edit, not a deploy.
+      const endpoint = version ? 'https://api.replicate.com/v1/predictions' : `https://api.replicate.com/v1/models/${model}/predictions`;
+      const response = await http<Prediction>(this.key, endpoint, {
         headers,
-        body,
+        body: version ? { version, ...body } : body,
         timeoutMs: 45_000,
         signal: opts.signal,
       });
