@@ -237,7 +237,9 @@ const PROVIDERS: Array<{
     priority: 30,
     costPerCall: 1,
     enabled: true,
-    config: { model: '851-labs/background-remover' },
+    // Community model: Replicate's path-style predictions endpoint 404s for
+    // these, so the adapter pins the exact version through /v1/predictions.
+    config: { model: '851-labs/background-remover', version: 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc' },
     licenceNote: 'BiRefNet weights MIT-family; training-data provenance not documented — not for the ORGANIZATION tier. Checked 2026-09-04.',
   },
   {
