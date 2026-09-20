@@ -324,41 +324,98 @@ export class AdminService {
   /**
    * Money in vs money out, for the owner's eyes only. Read-only. Revenue side
    * is credits consumed by SUCCEEDED top-level generations (refunded failures
-   * therefore never count); spend side is the attempt journal's reconciled
-   * costMinor, summed over ALL attempts because a failed hop a vendor billed
-   * is still money out. Cash (payments) sits beside consumed credits so one
-   * is never mistaken for the other.
+   * therefore never count), valued in USD at the window's realized price per
+   * credit when USD sales exist, else at the cheapest active list price —
+   * the payload says which. Spend side is the attempt journal's reconciled
+   * costMinor over ALL attempts. Cash is reported per currency and never
+   * summed across currencies, because kobo are not cents.
    */
   async economics(actor: Actor, q: EconomicsQueryDto) {
     assertStaff(actor, 'SUPERADMIN');
+    const monthMatch = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(q.month ?? '');
     const windows: Record<string, number> = { '24h': DAY_MS, '7d': 7 * DAY_MS, '30d': 30 * DAY_MS, '90d': 90 * DAY_MS };
-    const window = q.window && windows[q.window] ? q.window : '7d';
-    const since = new Date(Date.now() - windows[window]!);
-    const [byCap, byProv, cash, creditDays, spendDays] = await Promise.all([
+    let window: string;
+    let since: Date;
+    let until = new Date();
+    if (monthMatch) {
+      window = q.month!;
+      since = new Date(Date.UTC(Number(monthMatch[1]), Number(monthMatch[2]) - 1, 1));
+      until = new Date(Date.UTC(Number(monthMatch[1]), Number(monthMatch[2]), 1));
+    } else if (q.window === 'all') {
+      window = 'all';
+      since = new Date(0);
+    } else if (q.window === 'mtd') {
+      window = 'mtd';
+      const n = new Date();
+      since = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+    } else {
+      window = q.window && windows[q.window] ? q.window : '7d';
+      since = new Date(Date.now() - windows[window]!);
+    }
+    const [byCap, byProv, cashRows, subsByStatus, activeSubs, packs, plans, creditDays, spendDays] = await Promise.all([
       this.db.generation.groupBy({
         by: ['capability'],
-        where: { status: 'SUCCEEDED', kind: { not: 'CHILD' }, createdAt: { gte: since } },
+        where: { status: 'SUCCEEDED', kind: { not: 'CHILD' }, createdAt: { gte: since, lt: until } },
         _sum: { credits: true },
         _count: { _all: true },
       }),
       this.db.providerAttempt.groupBy({
         by: ['providerKey', 'capability'],
-        where: { createdAt: { gte: since } },
+        where: { createdAt: { gte: since, lt: until } },
         _sum: { costMinor: true },
         _count: { _all: true },
       }),
-      this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: since } }, _sum: { amountMinor: true, credits: true } }),
+      this.db.payment.groupBy({
+        by: ['currency'],
+        where: { status: 'SUCCEEDED', createdAt: { gte: since, lt: until } },
+        _sum: { amountMinor: true, credits: true },
+        _count: { _all: true },
+      }),
+      this.db.subscription.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.db.subscription.findMany({ where: { status: 'ACTIVE' }, select: { planCode: true, interval: true } }),
+      this.db.creditPack.findMany({ where: { active: true }, select: { credits: true, priceByMarket: true } }),
+      this.db.plan.findMany({ where: { active: true }, select: { code: true, credits: true, priceByMarket: true } }),
       this.db.$queryRaw<Array<{ day: Date; credits: number }>>`
         SELECT date_trunc('day', "createdAt") AS day, COALESCE(SUM(credits), 0)::int AS credits
         FROM generations
-        WHERE status::text = 'SUCCEEDED' AND kind::text <> 'CHILD' AND "createdAt" >= ${since}
+        WHERE status::text = 'SUCCEEDED' AND kind::text <> 'CHILD' AND "createdAt" >= ${since} AND "createdAt" < ${until}
         GROUP BY 1 ORDER BY 1`,
       this.db.$queryRaw<Array<{ day: Date; spend: number }>>`
         SELECT date_trunc('day', "createdAt") AS day, COALESCE(SUM("costMinor"), 0)::int AS spend
         FROM provider_attempts
-        WHERE "createdAt" >= ${since}
+        WHERE "createdAt" >= ${since} AND "createdAt" < ${until}
         GROUP BY 1 ORDER BY 1`,
     ]);
+    // USD value of one credit: what USD buyers actually paid this window, else
+    // the cheapest active list price. Conservative on purpose — the dashboard
+    // must never flatter the margin.
+    const usdCash = cashRows.find((c) => c.currency === 'USD');
+    const realized = usdCash && (usdCash._sum.credits ?? 0) > 0 ? (usdCash._sum.amountMinor ?? 0) / usdCash._sum.credits! : null;
+    const usdOf = (priceByMarket: unknown): number | null => {
+      const v = (priceByMarket as Record<string, unknown> | null)?.['USD'];
+      return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
+    };
+    const listCandidates = [...packs, ...plans]
+      .map((r) => {
+        const usd = usdOf(r.priceByMarket);
+        return usd && r.credits > 0 ? (usd * 100) / r.credits : null;
+      })
+      .filter((n): n is number => n != null);
+    const list = listCandidates.length ? Math.min(...listCandidates) : null;
+    const creditValueUsdMinor = realized ?? list;
+    const creditValueBasis = realized != null ? 'realized' : list != null ? 'list' : null;
+    const planByCode = new Map(plans.map((pl) => [pl.code, pl]));
+    const mrrUsdMinor = Math.round(
+      activeSubs.reduce((n, sub) => {
+        const usd = usdOf(planByCode.get(sub.planCode)?.priceByMarket);
+        if (!usd) return n;
+        return n + (sub.interval === 'year' ? (usd * 100) / 12 : usd * 100);
+      }, 0),
+    );
+    const subCount = (status: string) => subsByStatus.find((r) => r.status === status)?._count._all ?? 0;
+    const creditsConsumed = byCap.reduce((n, c) => n + (c._sum.credits ?? 0), 0);
+    const spendMinor = byProv.reduce((n, r) => n + (r._sum.costMinor ?? 0), 0);
+    const revenueUsdMinor = creditValueUsdMinor != null ? Math.round(creditsConsumed * creditValueUsdMinor) : null;
     const spendFor = (cap: string) => byProv.filter((r) => r.capability === cap).reduce((n, r) => n + (r._sum.costMinor ?? 0), 0);
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
     const days = new Map<string, { day: string; credits: number; spendMinor: number }>();
@@ -371,12 +428,22 @@ export class AdminService {
     return {
       window,
       since: since.toISOString(),
+      until: until.toISOString(),
+      creditValueUsdMinor,
+      creditValueBasis,
       totals: {
-        creditsConsumed: byCap.reduce((n, c) => n + (c._sum.credits ?? 0), 0),
+        creditsConsumed,
         generations: byCap.reduce((n, c) => n + c._count._all, 0),
-        spendMinor: byProv.reduce((n, r) => n + (r._sum.costMinor ?? 0), 0),
-        cashMinor: cash._sum.amountMinor ?? 0,
-        creditsSold: cash._sum.credits ?? 0,
+        revenueUsdMinor,
+        spendMinor,
+        marginUsdMinor: revenueUsdMinor != null ? revenueUsdMinor - spendMinor : null,
+        creditsSold: cashRows.reduce((n, c) => n + (c._sum.credits ?? 0), 0),
+        cash: cashRows
+          .map((c) => ({ currency: c.currency, amountMinor: c._sum.amountMinor ?? 0, credits: c._sum.credits ?? 0, payments: c._count._all }))
+          .sort((a, b) => b.amountMinor - a.amountMinor),
+        subscriptionsActive: subCount('ACTIVE'),
+        subscriptionsPastDue: subCount('PAST_DUE'),
+        mrrUsdMinor,
       },
       byCapability: byCap
         .map((c) => ({ capability: c.capability, credits: c._sum.credits ?? 0, generations: c._count._all, spendMinor: spendFor(c.capability) }))
