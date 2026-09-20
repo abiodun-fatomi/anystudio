@@ -385,13 +385,16 @@ pre.json {
 }
 
 /* Economics: one rhythm for every block on the page. The stack owns all
-   spacing, so children keep no margins of their own here. */
+   vertical space — children keep none of their own margins here (the doubled
+   class outranks any single-class rule a child brings from its own module). */
 .stack {
   display: grid;
   gap: var(--s-4);
   align-content: start;
 }
+.stack.stack > * {
+  margin-block: 0;
+}
 .stack .heroes {
   gap: var(--s-4);
-  margin-bottom: 0;
 }
