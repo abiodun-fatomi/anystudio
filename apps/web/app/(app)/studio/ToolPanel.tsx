@@ -1215,7 +1215,21 @@ function FieldControl({
                 </span>
               ),
             }
-          : { id: o.id, label: o.label },
+          : o.id === 'transparent' || o.id.startsWith('#')
+            ? {
+                id: o.id,
+                label: (
+                  <span className={styles.ratioItem}>
+                    <span
+                      className={o.id === 'transparent' ? `${styles.swatch} ${styles.swatchTransparent}` : styles.swatch}
+                      style={o.id.startsWith('#') ? { background: o.id } : undefined}
+                      aria-hidden="true"
+                    />
+                    {o.label}
+                  </span>
+                ),
+              }
+            : { id: o.id, label: o.label },
       );
       return (
         <div>
