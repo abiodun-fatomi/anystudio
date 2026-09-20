@@ -30,6 +30,7 @@ import type {
   AuditQueryDto,
   CataloguePatchDto,
   CreditsDto,
+  EconomicsQueryDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -319,6 +320,73 @@ export class AdminService {
   }
 
   // ---------------------------------------------------------------- generations
+
+  /**
+   * Money in vs money out, for the owner's eyes only. Read-only. Revenue side
+   * is credits consumed by SUCCEEDED top-level generations (refunded failures
+   * therefore never count); spend side is the attempt journal's reconciled
+   * costMinor, summed over ALL attempts because a failed hop a vendor billed
+   * is still money out. Cash (payments) sits beside consumed credits so one
+   * is never mistaken for the other.
+   */
+  async economics(actor: Actor, q: EconomicsQueryDto) {
+    assertStaff(actor, 'SUPERADMIN');
+    const windows: Record<string, number> = { '24h': DAY_MS, '7d': 7 * DAY_MS, '30d': 30 * DAY_MS, '90d': 90 * DAY_MS };
+    const window = q.window && windows[q.window] ? q.window : '7d';
+    const since = new Date(Date.now() - windows[window]!);
+    const [byCap, byProv, cash, creditDays, spendDays] = await Promise.all([
+      this.db.generation.groupBy({
+        by: ['capability'],
+        where: { status: 'SUCCEEDED', kind: { not: 'CHILD' }, createdAt: { gte: since } },
+        _sum: { credits: true },
+        _count: { _all: true },
+      }),
+      this.db.providerAttempt.groupBy({
+        by: ['providerKey', 'capability'],
+        where: { createdAt: { gte: since } },
+        _sum: { costMinor: true },
+        _count: { _all: true },
+      }),
+      this.db.payment.aggregate({ where: { status: 'SUCCEEDED', createdAt: { gte: since } }, _sum: { amountMinor: true, credits: true } }),
+      this.db.$queryRaw<Array<{ day: Date; credits: number }>>`
+        SELECT date_trunc('day', "createdAt") AS day, COALESCE(SUM(credits), 0)::int AS credits
+        FROM generations
+        WHERE status::text = 'SUCCEEDED' AND kind::text <> 'CHILD' AND "createdAt" >= ${since}
+        GROUP BY 1 ORDER BY 1`,
+      this.db.$queryRaw<Array<{ day: Date; spend: number }>>`
+        SELECT date_trunc('day', "createdAt") AS day, COALESCE(SUM("costMinor"), 0)::int AS spend
+        FROM provider_attempts
+        WHERE "createdAt" >= ${since}
+        GROUP BY 1 ORDER BY 1`,
+    ]);
+    const spendFor = (cap: string) => byProv.filter((r) => r.capability === cap).reduce((n, r) => n + (r._sum.costMinor ?? 0), 0);
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const days = new Map<string, { day: string; credits: number; spendMinor: number }>();
+    for (const r of creditDays) days.set(dayKey(r.day), { day: dayKey(r.day), credits: r.credits, spendMinor: 0 });
+    for (const r of spendDays) {
+      const row = days.get(dayKey(r.day)) ?? { day: dayKey(r.day), credits: 0, spendMinor: 0 };
+      row.spendMinor = r.spend;
+      days.set(row.day, row);
+    }
+    return {
+      window,
+      since: since.toISOString(),
+      totals: {
+        creditsConsumed: byCap.reduce((n, c) => n + (c._sum.credits ?? 0), 0),
+        generations: byCap.reduce((n, c) => n + c._count._all, 0),
+        spendMinor: byProv.reduce((n, r) => n + (r._sum.costMinor ?? 0), 0),
+        cashMinor: cash._sum.amountMinor ?? 0,
+        creditsSold: cash._sum.credits ?? 0,
+      },
+      byCapability: byCap
+        .map((c) => ({ capability: c.capability, credits: c._sum.credits ?? 0, generations: c._count._all, spendMinor: spendFor(c.capability) }))
+        .sort((a, b) => b.credits - a.credits),
+      byProvider: byProv
+        .map((r) => ({ providerKey: r.providerKey, capability: r.capability, calls: r._count._all, spendMinor: r._sum.costMinor ?? 0 }))
+        .sort((a, b) => b.spendMinor - a.spendMinor),
+      daily: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    };
+  }
 
   async generations(q: GenerationsQueryDto) {
     const term = q.q?.trim();

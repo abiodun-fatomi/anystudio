@@ -38,6 +38,13 @@ export class GenerationsQueryDto extends SearchDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() workspaceId?: string;
 }
 
+export class EconomicsQueryDto {
+  @ApiPropertyOptional({ enum: ['24h', '7d', '30d', '90d'] })
+  @IsOptional()
+  @IsIn(['24h', '7d', '30d', '90d'])
+  window?: string;
+}
+
 export class PaymentsQueryDto extends SearchDto {
   @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'NEEDS_REVIEW', 'REFUNDED'] })
   @IsOptional()

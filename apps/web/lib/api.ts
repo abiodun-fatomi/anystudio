@@ -1175,6 +1175,15 @@ export const api = {
   admin: {
     overview: () => request<AdminOverview>('GET', '/admin/overview'),
     worker: () => request<WorkerStatus | null>('GET', '/admin/worker'),
+    economics: (window: string) =>
+      request<{
+        window: string;
+        since: string;
+        totals: { creditsConsumed: number; generations: number; spendMinor: number; cashMinor: number; creditsSold: number };
+        byCapability: Array<{ capability: string; credits: number; generations: number; spendMinor: number }>;
+        byProvider: Array<{ providerKey: string; capability: string; calls: number; spendMinor: number }>;
+        daily: Array<{ day: string; credits: number; spendMinor: number }>;
+      }>('GET', `/admin/economics?window=${encodeURIComponent(window)}`),
     customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',
