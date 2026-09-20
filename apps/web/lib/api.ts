@@ -1194,6 +1194,7 @@ export const api = {
           subscriptionsPastDue: number;
           mrrUsdMinor: number;
         };
+        previous: { creditsConsumed: number; revenueUsdMinor: number | null; spendMinor: number; cashUsdMinor: number } | null;
         byCapability: Array<{ capability: string; credits: number; generations: number; spendMinor: number }>;
         byProvider: Array<{ providerKey: string; capability: string; calls: number; spendMinor: number }>;
         daily: Array<{ day: string; credits: number; spendMinor: number }>;

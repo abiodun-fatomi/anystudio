@@ -270,3 +270,160 @@ function longDate(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z');
   return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
+
+/** A change against the previous equal period. Down can be the good direction: spend falling is green. */
+export function Delta({ now, prev, goodWhenDown = false }: { now: number | null; prev: number | null; goodWhenDown?: boolean }) {
+  if (now == null || prev == null || prev === 0) return null;
+  const pc = Math.round(((now - prev) / prev) * 100);
+  if (pc === 0) return <span className={styles.delta}>±0%</span>;
+  const up = pc > 0;
+  const good = goodWhenDown ? !up : up;
+  return (
+    <span className={styles.delta} data-tone={good ? 'ok' : 'danger'}>
+      {up ? '▲' : '▼'} {Math.abs(pc)}%
+    </span>
+  );
+}
+
+/** The shape of the period at a glance; the axes live in the big chart below. */
+export function Spark({ values, color = SERIES[0] }: { values: number[]; color?: string }) {
+  if (values.length < 2) return null;
+  const W = 96;
+  const H = 26;
+  const max = Math.max(1, ...values);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - (v / max) * (H - 4)}`);
+  return (
+    <svg className={styles.spark} viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden="true">
+      <polyline points={`0,${H} ${pts.join(' ')} ${W},${H}`} fill={color} opacity="0.14" stroke="none" />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A Hero with analytics attached: the number, its change, and its shape. */
+export function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+  delta,
+  spark,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  sub?: ReactNode;
+  tone?: 'ok' | 'warn' | 'danger';
+  delta?: ReactNode;
+  spark?: ReactNode;
+}) {
+  return (
+    <div className={styles.statCard} data-tone={tone}>
+      <div className={styles.statTop}>
+        <span className={styles.statLabel}>{label}</span>
+        {delta}
+      </div>
+      <div className={styles.statValue}>{value}</div>
+      <div className={styles.statFoot}>
+        {sub ? <span className={styles.statSub}>{sub}</span> : <span />}
+        {spark}
+      </div>
+    </div>
+  );
+}
+
+/** Share of a whole. The centre carries the total so the ring never has to be read precisely. */
+export function Donut({
+  title,
+  centre,
+  centreSub,
+  slices,
+  unit = '',
+}: {
+  title: ReactNode;
+  centre: ReactNode;
+  centreSub?: ReactNode;
+  slices: Array<{ label: string; value: number; sub?: string }>;
+  unit?: string;
+}) {
+  const total = slices.reduce((n, sl) => n + sl.value, 0);
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  let acc = 0;
+  return (
+    <figure className={styles.fig}>
+      <figcaption className={styles.figHead}>
+        <span className={styles.figTitle}>{title}</span>
+      </figcaption>
+      {total <= 0 ? (
+        <p className={styles.empty}>Nothing in this period.</p>
+      ) : (
+        <div className={styles.donutWrap}>
+          <div className={styles.donutPlot}>
+            <svg viewBox="0 0 140 140" role="img" aria-label={`${String(title)}: ${slices.map((sl) => `${sl.label} ${sl.value}${unit}`).join(', ')}`}>
+              <circle cx="70" cy="70" r={R} fill="none" stroke="var(--sunk)" strokeWidth="14" />
+              {slices.map((sl, i) => {
+                const frac = sl.value / total;
+                const dash = `${frac * C} ${C}`;
+                const off = -acc * C;
+                acc += frac;
+                return (
+                  <circle
+                    key={sl.label}
+                    cx="70"
+                    cy="70"
+                    r={R}
+                    fill="none"
+                    stroke={SERIES[i % SERIES.length]}
+                    strokeWidth="14"
+                    strokeDasharray={dash}
+                    strokeDashoffset={off}
+                    transform="rotate(-90 70 70)"
+                  />
+                );
+              })}
+            </svg>
+            <div className={styles.donutCentre}>
+              <b>{centre}</b>
+              {centreSub && <small>{centreSub}</small>}
+            </div>
+          </div>
+          <ul className={styles.donutLegend}>
+            {slices.map((sl, i) => (
+              <li key={sl.label}>
+                <i style={{ background: SERIES[i % SERIES.length] }} aria-hidden="true" />
+                <span className={styles.donutLabel}>
+                  {sl.label}
+                  {sl.sub && <small>{sl.sub}</small>}
+                </span>
+                <b>
+                  {sl.value.toLocaleString()}
+                  {unit} · {Math.round((sl.value / total) * 100)}%
+                </b>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </figure>
+  );
+}
+
+/** The one sentence only this page can say: of every dollar consumed, what the vendors took. */
+export function UnitSplit({ revenueMinor, spendMinor }: { revenueMinor: number; spendMinor: number }) {
+  const share = Math.min(1, spendMinor / Math.max(1, revenueMinor));
+  const vendor = (share * 100).toFixed(0);
+  const kept = (100 - share * 100).toFixed(0);
+  const vendorCents = (share * 100).toFixed(1);
+  return (
+    <div className={styles.unitSplit} role="img" aria-label={`Of every dollar consumed, vendors billed ${vendorCents} cents`}>
+      <div className={styles.unitLine}>
+        Of every <b>$1.00</b> sellers consume, vendors bill <b data-tone={share > 0.5 ? 'danger' : undefined}>${share.toFixed(2)}</b> and{' '}
+        <b data-tone="ok">${(1 - share).toFixed(2)}</b> stays.
+      </div>
+      <div className={styles.unitTrack}>
+        <span className={styles.unitKept} style={{ width: `${kept}%` }} />
+        <span className={styles.unitVendor} style={{ width: `${vendor}%` }} />
+      </div>
+    </div>
+  );
+}

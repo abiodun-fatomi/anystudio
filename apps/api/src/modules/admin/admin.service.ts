@@ -328,7 +328,9 @@ export class AdminService {
    * credit when USD sales exist, else at the cheapest active list price —
    * the payload says which. Spend side is the attempt journal's reconciled
    * costMinor over ALL attempts. Cash is reported per currency and never
-   * summed across currencies, because kobo are not cents.
+   * summed across currencies, because kobo are not cents. `previous` holds
+   * the equal-length period before this one, valued at the SAME credit
+   * price, so its deltas measure volume and cost, never price drift.
    */
   async economics(actor: Actor, q: EconomicsQueryDto) {
     assertStaff(actor, 'SUPERADMIN');
@@ -352,7 +354,8 @@ export class AdminService {
       window = q.window && windows[q.window] ? q.window : '7d';
       since = new Date(Date.now() - windows[window]!);
     }
-    const [byCap, byProv, cashRows, subsByStatus, activeSubs, packs, plans, creditDays, spendDays] = await Promise.all([
+    const prevSince = new Date(since.getTime() - (until.getTime() - since.getTime()));
+    const [byCap, byProv, cashRows, subsByStatus, activeSubs, packs, plans, creditDays, spendDays, prevCredits, prevSpend, prevCash] = await Promise.all([
       this.db.generation.groupBy({
         by: ['capability'],
         where: { status: 'SUCCEEDED', kind: { not: 'CHILD' }, createdAt: { gte: since, lt: until } },
@@ -385,10 +388,16 @@ export class AdminService {
         FROM provider_attempts
         WHERE "createdAt" >= ${since} AND "createdAt" < ${until}
         GROUP BY 1 ORDER BY 1`,
+      this.db.generation.aggregate({
+        where: { status: 'SUCCEEDED', kind: { not: 'CHILD' }, createdAt: { gte: prevSince, lt: since } },
+        _sum: { credits: true },
+      }),
+      this.db.providerAttempt.aggregate({ where: { createdAt: { gte: prevSince, lt: since } }, _sum: { costMinor: true } }),
+      this.db.payment.aggregate({
+        where: { status: 'SUCCEEDED', currency: 'USD', createdAt: { gte: prevSince, lt: since } },
+        _sum: { amountMinor: true },
+      }),
     ]);
-    // USD value of one credit: what USD buyers actually paid this window, else
-    // the cheapest active list price. Conservative on purpose — the dashboard
-    // must never flatter the margin.
     const usdCash = cashRows.find((c) => c.currency === 'USD');
     const realized = usdCash && (usdCash._sum.credits ?? 0) > 0 ? (usdCash._sum.amountMinor ?? 0) / usdCash._sum.credits! : null;
     const usdOf = (priceByMarket: unknown): number | null => {
@@ -415,7 +424,9 @@ export class AdminService {
     const subCount = (status: string) => subsByStatus.find((r) => r.status === status)?._count._all ?? 0;
     const creditsConsumed = byCap.reduce((n, c) => n + (c._sum.credits ?? 0), 0);
     const spendMinor = byProv.reduce((n, r) => n + (r._sum.costMinor ?? 0), 0);
-    const revenueUsdMinor = creditValueUsdMinor != null ? Math.round(creditsConsumed * creditValueUsdMinor) : null;
+    const value = (credits: number) => (creditValueUsdMinor != null ? Math.round(credits * creditValueUsdMinor) : null);
+    const revenueUsdMinor = value(creditsConsumed);
+    const prevCreditsConsumed = prevCredits._sum.credits ?? 0;
     const spendFor = (cap: string) => byProv.filter((r) => r.capability === cap).reduce((n, r) => n + (r._sum.costMinor ?? 0), 0);
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
     const days = new Map<string, { day: string; credits: number; spendMinor: number }>();
@@ -445,6 +456,15 @@ export class AdminService {
         subscriptionsPastDue: subCount('PAST_DUE'),
         mrrUsdMinor,
       },
+      previous:
+        window === 'all'
+          ? null
+          : {
+              creditsConsumed: prevCreditsConsumed,
+              revenueUsdMinor: value(prevCreditsConsumed),
+              spendMinor: prevSpend._sum.costMinor ?? 0,
+              cashUsdMinor: prevCash._sum.amountMinor ?? 0,
+            },
       byCapability: byCap
         .map((c) => ({ capability: c.capability, credits: c._sum.credits ?? 0, generations: c._count._all, spendMinor: spendFor(c.capability) }))
         .sort((a, b) => b.credits - a.credits),

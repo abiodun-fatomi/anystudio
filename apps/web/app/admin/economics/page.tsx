@@ -1,16 +1,18 @@
 'use client';
-/** Money in vs money out, in USD: consumed credits valued at realized (else list) price, vendor spend, per-currency cash, subscriptions. SUPERADMIN only. */
+/** The money page: unit economics up top, stat cards with deltas and sparklines, daily bars, provider donut, capability breakdown, exact figures last. SUPERADMIN only. */
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
 import { Select, Skeleton, Table, tableCell } from '@/components/ui';
+import { Breakdown, DailyBars, Delta, Donut, Hero, SERIES, Spark, StatCard, UnitSplit } from '@/components/charts/Charts';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
 type Economics = Awaited<ReturnType<typeof api.admin.economics>>;
 
 const money = (m: number | null | undefined) => (m == null ? '—' : (m / 100).toFixed(2));
-const pct = (rev: number | null, spend: number) => (rev == null || rev <= 0 ? '—' : `${Math.round((1 - spend / rev) * 100)}%`);
+const usd = (m: number) => Math.round(m) / 100;
+const marginPct = (rev: number | null, spend: number) => (rev == null || rev <= 0 ? null : Math.round((1 - spend / rev) * 100));
 
 function periods() {
   const fixed = [
@@ -25,8 +27,7 @@ function periods() {
   const now = new Date();
   for (let i = 0; i < 12; i++) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    const value = d.toISOString().slice(0, 7);
-    months.push({ value, label: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }) });
+    months.push({ value: d.toISOString().slice(0, 7), label: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }) });
   }
   return [...fixed, ...months];
 }
@@ -61,95 +62,110 @@ export default function EconomicsPage() {
 
   const v = data?.creditValueUsdMinor ?? null;
   const revOf = (credits: number) => (v == null ? null : Math.round(credits * v));
+  const margin = data?.totals.marginUsdMinor ?? null;
+  const mPct = data ? marginPct(data.totals.revenueUsdMinor, data.totals.spendMinor) : null;
+  const prevMargin = data?.previous && data.previous.revenueUsdMinor != null ? data.previous.revenueUsdMinor - data.previous.spendMinor : null;
+  const usdCash = data?.totals.cash.find((c) => c.currency === 'USD');
+  const otherCash = (data?.totals.cash ?? []).filter((c) => c.currency !== 'USD');
+  const revenueSpark = data ? data.daily.map((d) => usd(revOf(d.credits) ?? 0)) : [];
+  const spendSpark = data ? data.daily.map((d) => usd(d.spendMinor)) : [];
 
   return (
     <div className="rise">
       <PageHeader
         title="Economics"
-        lede="Consumed credits valued in USD against what the vendors actually billed. Cash is listed per currency; kobo are not cents."
+        lede="Consumed credits valued in USD against what the vendors actually billed. Deltas compare the equal period before this one."
       />
       <div className={styles.toolbar}>
         <Select label="Period" value={period} onChange={(e) => setPeriod(e.target.value)} options={options} />
       </div>
       {error ? <p className={styles.danger}>{error}</p> : null}
       {data === null && !error ? (
-        <Skeleton height={280} />
+        <Skeleton height={360} />
       ) : data ? (
         <>
-          {data.creditValueBasis ? (
-            <p className={styles.mono} style={{ color: 'var(--muted)' }}>
-              1 credit ≈ ${money(data.creditValueUsdMinor)}{' '}
-              {data.creditValueBasis === 'realized' ? '(what USD buyers actually paid this period)' : '(cheapest list price — no USD sales in this period yet)'}
-            </p>
-          ) : (
-            <p className={styles.mono} style={{ color: 'var(--muted)' }}>
-              No USD price found on any active pack or plan, so revenue is shown as — until the catalogue has one.
-            </p>
-          )}
-          <Table>
-            <thead>
-              <tr>
-                <th>Totals · {data.window}</th>
-                <th className={tableCell.num}>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Est. revenue consumed (USD)</td>
-                <td className={tableCell.num}>{money(data.totals.revenueUsdMinor)}</td>
-              </tr>
-              <tr>
-                <td>Vendor spend (USD)</td>
-                <td className={tableCell.num}>{money(data.totals.spendMinor)}</td>
-              </tr>
-              <tr>
-                <td>Gross margin (USD)</td>
-                <td className={tableCell.num}>
-                  {money(data.totals.marginUsdMinor)} · {pct(data.totals.revenueUsdMinor, data.totals.spendMinor)}
-                </td>
-              </tr>
-              <tr>
-                <td>Credits consumed (succeeded)</td>
-                <td className={tableCell.num}>{data.totals.creditsConsumed}</td>
-              </tr>
-              <tr>
-                <td>Generations (succeeded, top-level)</td>
-                <td className={tableCell.num}>{data.totals.generations}</td>
-              </tr>
-              {data.totals.cash.map((c) => (
-                <tr key={c.currency}>
-                  <td>
-                    Cash collected ({c.currency}) · {c.payments} payment{c.payments === 1 ? '' : 's'}
-                  </td>
-                  <td className={tableCell.num}>{money(c.amountMinor)}</td>
-                </tr>
-              ))}
-              {data.totals.cash.length === 0 ? (
-                <tr>
-                  <td>Cash collected</td>
-                  <td className={tableCell.num}>0.00</td>
-                </tr>
-              ) : null}
-              <tr>
-                <td>Credits sold</td>
-                <td className={tableCell.num}>{data.totals.creditsSold}</td>
-              </tr>
-              <tr>
-                <td>Active subscriptions (now)</td>
-                <td className={tableCell.num}>{data.totals.subscriptionsActive}</td>
-              </tr>
-              {data.totals.subscriptionsPastDue > 0 ? (
-                <tr>
-                  <td>Past-due subscriptions (now)</td>
-                  <td className={tableCell.num}>{data.totals.subscriptionsPastDue}</td>
-                </tr>
-              ) : null}
-              <tr>
-                <td>Est. MRR (USD, now)</td>
-                <td className={tableCell.num}>{money(data.totals.mrrUsdMinor)}</td>
-              </tr>
-            </tbody>
-          </Table>
+          {data.totals.revenueUsdMinor != null && data.totals.revenueUsdMinor > 0 ? (
+            <UnitSplit revenueMinor={data.totals.revenueUsdMinor} spendMinor={data.totals.spendMinor} />
+          ) : null}
+          <div className={styles.heroes}>
+            <StatCard
+              label="Est. revenue consumed"
+              value={data.totals.revenueUsdMinor == null ? '—' : `$${money(data.totals.revenueUsdMinor)}`}
+              delta={<Delta now={data.totals.revenueUsdMinor} prev={data.previous?.revenueUsdMinor ?? null} />}
+              spark={<Spark values={revenueSpark} color={SERIES[0]} />}
+              sub={
+                data.creditValueBasis == null
+                  ? 'no USD price on any active pack or plan yet'
+                  : `1 credit ≈ $${money(v)} · ${data.creditValueBasis === 'realized' ? 'what USD buyers paid' : 'cheapest list price'}`
+              }
+            />
+            <StatCard
+              label="Vendor spend"
+              value={`$${money(data.totals.spendMinor)}`}
+              delta={<Delta now={data.totals.spendMinor} prev={data.previous?.spendMinor ?? null} goodWhenDown />}
+              spark={<Spark values={spendSpark} color={SERIES[1]} />}
+              sub={`${data.totals.generations.toLocaleString()} succeeded generations`}
+            />
+            <StatCard
+              label="Gross margin"
+              value={margin == null ? '—' : `$${money(margin)}`}
+              delta={<Delta now={margin} prev={prevMargin} />}
+              tone={margin == null ? undefined : margin < 0 ? 'danger' : mPct != null && mPct >= 50 ? 'ok' : undefined}
+              sub={mPct == null ? 'needs a credit price' : `${mPct}% of consumed revenue stays`}
+            />
+            <StatCard
+              label="Cash collected"
+              value={`$${money(usdCash?.amountMinor ?? 0)}`}
+              delta={<Delta now={usdCash?.amountMinor ?? 0} prev={data.previous?.cashUsdMinor ?? null} />}
+              sub={
+                otherCash.length
+                  ? otherCash.map((c) => `${c.currency} ${money(c.amountMinor)}`).join(' · ')
+                  : `${data.totals.cash.reduce((n, c) => n + c.payments, 0)} payments · ${data.totals.creditsSold.toLocaleString()} credits sold`
+              }
+            />
+          </div>
+          <DailyBars
+            title="Money by day"
+            unit=" USD"
+            series={v == null ? ['Vendor spend'] : ['Est. revenue', 'Vendor spend']}
+            points={data.daily.map((d) => ({
+              date: d.day,
+              values: v == null ? [usd(d.spendMinor)] : [usd(revOf(d.credits) ?? 0), usd(d.spendMinor)],
+            }))}
+          />
+          <div className={styles.split}>
+            <Donut
+              title="Vendor spend by provider"
+              unit=" USD"
+              centre={`$${money(data.totals.spendMinor)}`}
+              centreSub="this period"
+              slices={data.byProvider.slice(0, 4).map((r) => ({ label: r.providerKey, value: usd(r.spendMinor), sub: `${r.calls} calls · ${r.capability}` }))}
+            />
+            <Breakdown
+              title={v == null ? 'Credits by capability' : 'Est. revenue by capability'}
+              unit={v == null ? '' : ' USD'}
+              color={SERIES[2]}
+              rows={data.byCapability.map((c) => {
+                const p = marginPct(revOf(c.credits), c.spendMinor);
+                return {
+                  label: c.capability,
+                  value: v == null ? c.credits : usd(revOf(c.credits) ?? 0),
+                  sub: `${c.generations} generations${p == null ? '' : ` · ${p}% margin`}`,
+                };
+              })}
+            />
+          </div>
+          <div className={styles.heroes}>
+            <Hero label="Credits consumed" value={data.totals.creditsConsumed.toLocaleString()} sub="succeeded, top-level only" />
+            <Hero label="Credits sold" value={data.totals.creditsSold.toLocaleString()} sub="all currencies" />
+            <Hero
+              label="Active subscriptions"
+              value={data.totals.subscriptionsActive.toLocaleString()}
+              sub={data.totals.subscriptionsPastDue ? `${data.totals.subscriptionsPastDue} past due` : 'now, not windowed'}
+              tone={data.totals.subscriptionsPastDue ? 'warn' : undefined}
+            />
+            <Hero label="Est. MRR" value={`$${money(data.totals.mrrUsdMinor)}`} sub="active subs at plan list price" />
+          </div>
           <Table>
             <thead>
               <tr>
@@ -162,56 +178,19 @@ export default function EconomicsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.byCapability.map((c) => (
-                <tr key={c.capability}>
-                  <td>{c.capability}</td>
-                  <td className={tableCell.num}>{c.generations}</td>
-                  <td className={tableCell.num}>{c.credits}</td>
-                  <td className={tableCell.num}>{money(revOf(c.credits))}</td>
-                  <td className={tableCell.num}>{money(c.spendMinor)}</td>
-                  <td className={tableCell.num}>{pct(revOf(c.credits), c.spendMinor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-          <Table>
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Capability</th>
-                <th className={tableCell.num}>Calls</th>
-                <th className={tableCell.num}>Vendor spend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.byProvider.map((r) => (
-                <tr key={`${r.providerKey}-${r.capability}`}>
-                  <td className={styles.mono}>{r.providerKey}</td>
-                  <td>{r.capability}</td>
-                  <td className={tableCell.num}>{r.calls}</td>
-                  <td className={tableCell.num}>{money(r.spendMinor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-          <Table>
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th className={tableCell.num}>Credits consumed</th>
-                <th className={tableCell.num}>Est. revenue</th>
-                <th className={tableCell.num}>Vendor spend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.daily.map((d) => (
-                <tr key={d.day}>
-                  <td className={styles.mono}>{d.day}</td>
-                  <td className={tableCell.num}>{d.credits}</td>
-                  <td className={tableCell.num}>{money(revOf(d.credits))}</td>
-                  <td className={tableCell.num}>{money(d.spendMinor)}</td>
-                </tr>
-              ))}
+              {data.byCapability.map((c) => {
+                const p = marginPct(revOf(c.credits), c.spendMinor);
+                return (
+                  <tr key={c.capability}>
+                    <td>{c.capability}</td>
+                    <td className={tableCell.num}>{c.generations}</td>
+                    <td className={tableCell.num}>{c.credits}</td>
+                    <td className={tableCell.num}>{money(revOf(c.credits))}</td>
+                    <td className={tableCell.num}>{money(c.spendMinor)}</td>
+                    <td className={tableCell.num}>{p == null ? '—' : `${p}%`}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
         </>

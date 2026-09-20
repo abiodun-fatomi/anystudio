@@ -373,3 +373,13 @@ pre.json {
     grid-template-columns: 1fr;
   }
 }
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+}
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
