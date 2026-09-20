@@ -71,7 +71,7 @@ export default function EconomicsPage() {
   const spendSpark = data ? data.daily.map((d) => usd(d.spendMinor)) : [];
 
   return (
-    <div className="rise">
+    <div className={`rise ${styles.stack}`}>
       <PageHeader
         title="Economics"
         lede="Consumed credits valued in USD against what the vendors actually billed. Deltas compare the equal period before this one."

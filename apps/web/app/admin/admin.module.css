@@ -383,3 +383,15 @@ pre.json {
     grid-template-columns: 1fr;
   }
 }
+
+/* Economics: one rhythm for every block on the page. The stack owns all
+   spacing, so children keep no margins of their own here. */
+.stack {
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+}
+.stack .heroes {
+  gap: var(--s-4);
+  margin-bottom: 0;
+}
