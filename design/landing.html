@@ -124,12 +124,11 @@
         "priceCurrency": "USD",
         "lowPrice": "0",
         "highPrice": "499",
-        "offerCount": "5",
+        "offerCount": "4",
         "offers": [
           {"@type":"Offer","name":"Starter","price":"0","priceCurrency":"USD","description":"15 free branded images. No card required."},
           {"@type":"Offer","name":"Creator","price":"9","priceCurrency":"USD","description":"600 credits a month — about 60 images or 5 reels."},
           {"@type":"Offer","name":"Business","price":"29","priceCurrency":"USD","description":"2,400 credits a month — about 240 images or 20 reels."},
-          {"@type":"Offer","name":"Studio","price":"99","priceCurrency":"USD"},
           {"@type":"Offer","name":"Organization","price":"499","priceCurrency":"USD","description":"24,000 credits a month, seats with roles, projects and API access."}
         ]
       }
@@ -963,8 +962,7 @@ pre.code .c{color:#ADA3B7}   /* 6.1:1 — comments still recede, but legibly */
 .seg button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
 .save{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);font-weight:700}
 
-.plans{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;align-items:stretch}
-@media(max-width:1240px){.plans{grid-template-columns:repeat(3,1fr)}}
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:stretch}
 @media(max-width:1000px){.plans{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.plans{grid-template-columns:1fr}}
 .plan{
@@ -2896,20 +2894,6 @@ figure{margin:0}
         <a class="btn btn-primary" href="auth.html#signup">Choose Business</a>
       </div>
 
-      <div class="plan" data-plan="studio">
-        <h3>Studio</h3>
-        <div class="amt"><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="studio">99</span><span class="per" data-per>/month</span></div>
-        <span class="cr" data-cr="studio">9,000 credits · ~900 images or 75 reels</span>
-        <ul>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> 8 brand kits</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Auto-post to every channel</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Bulk runs across a whole catalogue</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Advanced analytics and scheduling</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Priority generation</li>
-        </ul>
-        <a class="btn btn-ghost" href="auth.html#signup">Choose Studio</a>
-      </div>
-
       <div class="plan" data-plan="org">
         <span class="who">For platforms &amp; teams</span>
         <h3>Organization</h3>
@@ -3514,9 +3498,9 @@ figure{margin:0}
 
   /* ---------- pricing ---------- */
   var PRICES = {
-    USD:{sym:"$", free:"0", creator:[9,90],  business:[29,290],  studio:[99,990],  org:[499,4990],  packs:{500:"$6",   1500:"$15",  5000:"$45"}},
-    NGN:{sym:"₦", free:"0", creator:[12000,120000], business:[39000,390000], studio:[132000,1320000], org:[499,4990], packs:{500:"₦7,500", 1500:"₦19,000", 5000:"₦56,000"}},
-    GBP:{sym:"£", free:"0", creator:[7,70],  business:[24,240],  studio:[82,820],  org:[499,4990],  packs:{500:"£5",   1500:"£12",  5000:"£36"}}
+    USD:{sym:"$", free:"0", creator:[9,90],  business:[29,290],  org:[499,4990],  packs:{500:"$6",   1500:"$15",  5000:"$45"}},
+    NGN:{sym:"₦", free:"0", creator:[12000,120000], business:[39000,390000], org:[499,4990], packs:{500:"₦7,500", 1500:"₦19,000", 5000:"₦56,000"}},
+    GBP:{sym:"£", free:"0", creator:[7,70],  business:[24,240],  org:[499,4990],  packs:{500:"£5",   1500:"£12",  5000:"£36"}}
   };
   var cur = "USD", cycle = 0; /* 0 = monthly, 1 = yearly */
 
@@ -3536,7 +3520,7 @@ figure{margin:0}
     document.querySelectorAll("[data-pack]").forEach(function(el){
       el.textContent = P.packs[el.dataset.pack];
     });
-    var CR = { creator: 600, business: 2400, studio: 9000, org: 24000 };
+    var CR = { creator: 600, business: 2400, org: 24000 };
     document.querySelectorAll("[data-cr]").forEach(function(el){
       var c = CR[el.dataset.cr] * (cycle ? 12 : 1);
       var per = cycle ? "/year" : "/month";
@@ -3580,7 +3564,6 @@ figure{margin:0}
     {key:"free",     name:"Starter",      credits:30},
     {key:"creator",  name:"Creator",      credits:600},
     {key:"business", name:"Business",     credits:2400},
-    {key:"studio",  name:"Studio",       credits:9000},
     {key:"org",      name:"Organization", credits:24000}
   ];
   var sImg = document.getElementById("sImg"), sReel = document.getElementById("sReel");
