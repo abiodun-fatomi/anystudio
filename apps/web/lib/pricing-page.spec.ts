@@ -15,13 +15,13 @@ const text = (selector: string) => document.querySelector(selector)!.textContent
 const click = (selector: string) => (document.querySelector(selector) as HTMLElement).click();
 
 describe('published pricing controls', () => {
-  it('offers Studio monthly and annually with the matching credits', () => {
-    expect(text('[data-price="studio"]')).toBe('99');
-    expect(text('[data-cr="studio"]')).toContain('9,000 credits');
+  it('offers Business monthly and annually with the matching credits', () => {
+    expect(text('[data-price="business"]')).toBe('29');
+    expect(text('[data-cr="business"]')).toContain('2,400 credits');
     click('[data-cycle="yr"]');
-    expect(text('[data-price="studio"]')).toBe('990');
-    expect(text('[data-cr="studio"]')).toContain('108,000 credits');
-    expect(document.querySelector('[data-plan="studio"] a')!.getAttribute('href')).toBe('/signup');
+    expect(text('[data-price="business"]')).toBe('290');
+    expect(text('[data-cr="business"]')).toContain('28,800 credits');
+    expect(document.querySelector('[data-plan="business"] a')!.getAttribute('href')).toBe('/signup');
   });
 
   it.each(['USD', 'NGN', 'GBP'])('keeps Organization in USD when browsing %s prices', (currency) => {
@@ -34,15 +34,15 @@ describe('published pricing controls', () => {
     expect(text('[data-cr="org"]')).toContain('288,000 credits');
   });
 
-  it('includes Studio in the usage calculator and keeps its recommendation local', () => {
+  it('keeps the usage calculator recommendation and its local price in step', () => {
     const images = document.querySelector('#sImg') as HTMLInputElement;
     const reels = document.querySelector('#sReel') as HTMLInputElement;
-    images.value = '300';
+    images.value = '150';
     reels.value = '0';
     images.dispatchEvent(new Event('input'));
-    expect(text('#recName')).toBe('Studio');
+    expect(text('#recName')).toBe('Business');
     click('[data-cur="NGN"]');
     expect(text('#recCur')).toBe('₦');
-    expect(text('#recPrice')).toBe('132,000');
+    expect(text('#recPrice')).toBe('39,000');
   });
 });

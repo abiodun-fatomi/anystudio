@@ -105,7 +105,6 @@ const PLANS: Array<{ code: string; credits: number; usd: number; ngn: number; gb
   { code: 'starter', credits: 30, usd: 0, ngn: 0, gbp: 0, sort: 0, active: false },
   { code: 'creator', credits: 600, usd: 9, ngn: 12000, gbp: 7, sort: 10, active: true },
   { code: 'business', credits: 2400, usd: 29, ngn: 39000, gbp: 24, sort: 20, active: true },
-  { code: 'studio', credits: 9000, usd: 99, ngn: 132000, gbp: 82, sort: 25, active: true },
   // Organizations pay in USD alone: metered API billing in a drifting currency is FX risk on both sides.
   { code: 'org', credits: 24000, usd: 499, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
 ];
