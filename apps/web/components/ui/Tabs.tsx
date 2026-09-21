@@ -58,7 +58,7 @@ export function Tabs({
   const listRef = useRef<HTMLDivElement>(null);
   const select = (id: string) => {
     onChange(id);
-    listRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus();
+    listRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus({ preventScroll: true });
   };
   return (
     <div className={className}>
@@ -105,7 +105,7 @@ export function SegmentedControl<T extends string>({
   const ref = useRef<HTMLDivElement>(null);
   const select = (id: string) => {
     onChange(id as T);
-    ref.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus();
+    ref.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)?.focus({ preventScroll: true });
   };
   return (
     <div ref={ref} role="radiogroup" aria-label={label} className={cx(styles.seg, className)} onKeyDown={(e) => roving(e, items, value, select)}>

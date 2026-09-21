@@ -216,13 +216,30 @@ const PROVIDERS: Array<{
   },
 
   // ---- background removal ---------------------------------------------------
+  // Ours first, at no marginal cost, for everyone except organizations: the
+  // ORGANIZATION row below is Bria at priority 5 and keeps its place, because
+  // that tier is paying for documented training-data provenance, which this
+  // row cannot offer. Registered only where the weights are baked in, so this
+  // row is simply skipped on a process without them.
+  {
+    key: 'local:matting',
+    capability: 'BACKGROUND_REMOVE',
+    priority: 8,
+    costPerCall: 0,
+    enabled: true,
+    config: { model: 'birefnet-lite', inputSize: 1024, fastPath: true },
+    licenceNote:
+      'BiRefNet weights MIT (ZhengPeng7/BiRefNet), ONNX export onnx-community/BiRefNet_lite-ONNX. Runs on our own hardware: no vendor terms, no per-image fee. Training-data provenance undocumented — not for the ORGANIZATION tier. Checked 2026-09-17.',
+  },
   {
     key: 'replicate:birefnet',
     capability: 'BACKGROUND_REMOVE',
     priority: 30,
     costPerCall: 1,
     enabled: true,
-    config: { model: '851-labs/background-remover' },
+    // Community model: Replicate's path-style predictions endpoint 404s for
+    // these, so the adapter pins the exact version through /v1/predictions.
+    config: { model: '851-labs/background-remover', version: 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc' },
     licenceNote: 'BiRefNet weights MIT-family; training-data provenance not documented — not for the ORGANIZATION tier. Checked 2026-09-04.',
   },
   {

@@ -135,9 +135,17 @@ export function ToolPanel({
   // button is pressed, never discovered in the result.
   const wantsSource = tool.needsSourceFor?.(values) ?? tool.needsSource;
   const photoIgnored = hasSource && !acceptsSourceKey(capability) && !tool.fields.some((f) => f.kind === 'file' || f.kind === 'photos');
+  const lastToolId = useRef(tool.id);
   useEffect(() => {
     let live = true;
-    setQuote(null);
+    // Stale-while-revalidate: keep the old figure on screen while the fresh
+    // one loads. A line that unmounts and returns shoves the whole sheet up
+    // and down on every field change. Only a tool switch blanks it, because
+    // another tool's price must never be shown, even for a moment.
+    if (lastToolId.current !== tool.id) {
+      lastToolId.current = tool.id;
+      setQuote(null);
+    }
     api.generations
       .quote(workspace.id, capability, quoteParams)
       .then((q) => {
@@ -163,7 +171,9 @@ export function ToolPanel({
         <div className={styles.panel}>
           <div>
             <div className={styles.panelTitle}>{tool.label}</div>
-            <div className={styles.panelLede}>{quote ? `${quote.label} · ${quote.credits} credits · about ${Math.round(quote.expectedMs / 1000)}s` : ' '}</div>
+            <div className={styles.panelLede}>
+              {quote ? `${quote.label} · ${quote.credits} credits · about ${Math.round(quote.expectedMs / 1000)}s` : '\u00A0'}
+            </div>
           </div>
 
           <div className={styles.fields}>
@@ -1215,7 +1225,21 @@ function FieldControl({
                 </span>
               ),
             }
-          : { id: o.id, label: o.label },
+          : o.id === 'transparent' || o.id.startsWith('#')
+            ? {
+                id: o.id,
+                label: (
+                  <span className={styles.ratioItem}>
+                    <span
+                      className={o.id === 'transparent' ? `${styles.swatch} ${styles.swatchTransparent}` : styles.swatch}
+                      style={o.id.startsWith('#') ? { background: o.id } : undefined}
+                      aria-hidden="true"
+                    />
+                    {o.label}
+                  </span>
+                ),
+              }
+            : { id: o.id, label: o.label },
       );
       return (
         <div>

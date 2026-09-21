@@ -13,6 +13,7 @@ import {
   AuditQueryDto,
   CataloguePatchDto,
   CreditsDto,
+  EconomicsQueryDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -78,6 +79,10 @@ export class AdminController {
 
   @Get('/worker') worker() {
     return this.admin.workerStatus();
+  }
+  /** Money in vs money out. The service holds the SUPERADMIN gate. */
+  @Get('/economics') economics(@CurrentActor() a: Actor, @Query() q: EconomicsQueryDto) {
+    return this.admin.economics(a, q);
   }
   @Get('/generations') generations(@Query() q: GenerationsQueryDto) {
     return this.admin.generations(q);

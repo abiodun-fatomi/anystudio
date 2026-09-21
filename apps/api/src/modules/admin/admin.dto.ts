@@ -38,6 +38,19 @@ export class GenerationsQueryDto extends SearchDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() workspaceId?: string;
 }
 
+export class EconomicsQueryDto {
+  @ApiPropertyOptional({ enum: ['24h', '7d', '30d', '90d', 'mtd', 'all'] })
+  @IsOptional()
+  @IsIn(['24h', '7d', '30d', '90d', 'mtd', 'all'])
+  window?: string;
+  /** A calendar month, YYYY-MM. When present it wins over window. */
+  @ApiPropertyOptional({ example: '2026-09' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(7)
+  month?: string;
+}
+
 export class PaymentsQueryDto extends SearchDto {
   @ApiPropertyOptional({ enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'NEEDS_REVIEW', 'REFUNDED'] })
   @IsOptional()

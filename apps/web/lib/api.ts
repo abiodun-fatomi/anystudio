@@ -1175,6 +1175,30 @@ export const api = {
   admin: {
     overview: () => request<AdminOverview>('GET', '/admin/overview'),
     worker: () => request<WorkerStatus | null>('GET', '/admin/worker'),
+    economics: (period: string) =>
+      request<{
+        window: string;
+        since: string;
+        until: string;
+        creditValueUsdMinor: number | null;
+        creditValueBasis: 'realized' | 'list' | null;
+        totals: {
+          creditsConsumed: number;
+          generations: number;
+          revenueUsdMinor: number | null;
+          spendMinor: number;
+          marginUsdMinor: number | null;
+          creditsSold: number;
+          cash: Array<{ currency: string; amountMinor: number; credits: number; payments: number }>;
+          subscriptionsActive: number;
+          subscriptionsPastDue: number;
+          mrrUsdMinor: number;
+        };
+        previous: { creditsConsumed: number; revenueUsdMinor: number | null; spendMinor: number; cashUsdMinor: number } | null;
+        byCapability: Array<{ capability: string; credits: number; generations: number; spendMinor: number }>;
+        byProvider: Array<{ providerKey: string; capability: string; calls: number; spendMinor: number }>;
+        daily: Array<{ day: string; credits: number; spendMinor: number }>;
+      }>('GET', `/admin/economics?${/^\d{4}-\d{2}$/.test(period) ? 'month' : 'window'}=${encodeURIComponent(period)}`),
     customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',

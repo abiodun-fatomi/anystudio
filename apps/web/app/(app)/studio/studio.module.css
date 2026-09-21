@@ -2098,3 +2098,18 @@
     gap: 4px;
   }
 }
+
+/* Colour chips in the cutout picker: the colour itself, then the word. */
+.swatch {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+}
+.swatchTransparent {
+  background-image: conic-gradient(var(--ink-soft) 0 25%, transparent 0 50%, var(--ink-soft) 0 75%, transparent 0);
+  background-size: 8px 8px;
+  opacity: 0.6;
+}

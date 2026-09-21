@@ -8,7 +8,7 @@ require 'yaml'
 ENVIRONMENTS = {
   'render.yaml' => {
     branch: 'development', suffix: '-dev', app_env: 'dev',
-    api_plan: '0.5c-512mb', api_instances: 1, worker_plan: '0.5c-512mb',
+    api_plan: '0.5c-512mb', api_instances: 1, worker_plan: '1c-2g',
     worker_node_options: '--max-old-space-size=384', worker_fast: '6', worker_heavy: '8'
   },
   'render.staging.yaml' => {

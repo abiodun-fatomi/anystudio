@@ -72,6 +72,20 @@ RUN cd /out \
  && DATABASE_URL=$PRISMA_SMOKE_URL DIRECT_URL=$PRISMA_SMOKE_URL \
     node -e "const{PrismaClient}=require('@prisma/client');new PrismaClient();console.log('prisma client OK')"
 
+# ---- models: the weights we run ourselves -----------------------------------
+# BiRefNet-lite, MIT, ~224 MB, baked into the image rather than fetched at
+# boot: a worker that downloads its model on the first request is a worker
+# that times out on the first request. Its own stage so the download is cached
+# independently of the build and never lands in the runtime image's apt layer.
+# Build with --build-arg MATTING_MODEL_URL= (empty) to ship without it; the
+# adapter then goes unregistered and cutouts route to a vendor as before.
+FROM node:22-slim AS models
+ARG MATTING_MODEL_URL=
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/models
+RUN if [ -n "$MATTING_MODEL_URL" ]; then curl -fsSL "$MATTING_MODEL_URL" -o birefnet-lite.onnx; fi
+
 # ---- runtime ----------------------------------------------------------------
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production
@@ -93,6 +107,8 @@ WORKDIR /app
 # /out already carries dist, node_modules with a generated Prisma client, and
 # prisma/ with the schema and migrations.
 COPY --from=build --chown=node:node /out ./
+# The cutout weights. MATTING_MODEL_DIR overrides the location in development.
+COPY --from=models --chown=node:node /opt/models /opt/models
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \

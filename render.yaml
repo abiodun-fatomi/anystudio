@@ -123,7 +123,7 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
     dockerCommand: node dist/src/worker/main.js
-    plan: 0.5c-512mb
+    plan: 1c-2g
     numInstances: 1
     # Render otherwise sends SIGKILL after 30 s, while vendor video/dub calls
     # routinely run for minutes. This is Render's maximum graceful window;

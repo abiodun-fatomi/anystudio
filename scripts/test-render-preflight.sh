@@ -47,7 +47,7 @@ envs() {
 }
 case "$url" in
   */services/api) service anystudio-api-dev web_service 0.5c-512mb 1 '' 'npm run release' ;;
-  */services/worker) service anystudio-worker-dev background_worker 0.5c-512mb 1 'node dist/src/worker/main.js' '' ;;
+  */services/worker) service anystudio-worker-dev background_worker 1c-2g 1 'node dist/src/worker/main.js' '' ;;
   */services/media) service anystudio-media-dev background_worker 1c-2g 1 'node dist/src/worker/main.js' '' ;;
   */services/api/env-vars*) envs api ;;
   */services/worker/env-vars*) envs worker ;;

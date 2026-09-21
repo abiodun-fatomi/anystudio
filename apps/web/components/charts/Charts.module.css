@@ -237,3 +237,164 @@
   font-size: var(--t-2);
   color: var(--muted);
 }
+
+/* Economics additions ------------------------------------------------------ */
+.delta {
+  font-size: var(--t-1);
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.delta[data-tone='ok'] {
+  color: var(--ok);
+}
+.delta[data-tone='danger'] {
+  color: var(--danger);
+}
+.spark {
+  display: block;
+  flex: none;
+}
+.statCard {
+  padding: var(--s-4) var(--s-5);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  min-width: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.statCard[data-tone='ok'] {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--line-soft));
+}
+.statCard[data-tone='warn'] {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line-soft));
+}
+.statCard[data-tone='danger'] {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line-soft));
+}
+.statTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.statLabel {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.statValue {
+  font-size: var(--t-6);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.statFoot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 26px;
+}
+.statSub {
+  font-size: var(--t-1);
+  color: var(--muted);
+}
+.donutWrap {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: var(--s-5);
+  align-items: center;
+}
+@media (max-width: 560px) {
+  .donutWrap {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+}
+.donutPlot {
+  position: relative;
+  width: 140px;
+}
+.donutCentre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.donutCentre b {
+  font-size: var(--t-4);
+  font-variant-numeric: tabular-nums;
+}
+.donutCentre small {
+  color: var(--muted);
+  font-size: var(--t-0);
+}
+.donutLegend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.donutLegend li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-1);
+  min-width: 0;
+}
+.donutLegend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.donutLabel {
+  display: grid;
+  min-width: 0;
+}
+.donutLabel small {
+  color: var(--muted);
+}
+.donutLegend b {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.unitSplit {
+  padding: var(--s-4) var(--s-5);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  display: grid;
+  gap: var(--s-3);
+}
+.unitLine {
+  font-size: var(--t-3);
+}
+.unitLine b {
+  font-variant-numeric: tabular-nums;
+}
+.unitLine b[data-tone='ok'] {
+  color: var(--ok);
+}
+.unitLine b[data-tone='danger'] {
+  color: var(--danger);
+}
+.unitTrack {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--sunk);
+}
+.unitKept {
+  background: var(--ok);
+}
+.unitVendor {
+  background: var(--danger);
+  opacity: 0.85;
+}
