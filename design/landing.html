@@ -1105,9 +1105,10 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
 /* Two doors on the Organization tier. A platform evaluating this is an engineer
    who wants a key today; an agency wants a conversation. One button loses one
    of them, and "Talk to us" pointing at a section with no CTA lost both. */
-.plan-doors{display:grid;gap:8px;margin-top:auto}
-.plan-doors .btn{width:100%}
-.doorhint{display:block;margin-top:14px;font-size:12.5px;color:var(--muted);line-height:1.5;text-align:center}
+.plan-doors{display:grid;gap:8px}
+.plan-doors .btn{width:100%;margin-top:0}
+.plan .who{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.doorhint{display:block;margin-top:auto;padding-top:6px;font-size:12px;color:var(--muted);line-height:1.5;text-align:center}
 .api-cta{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
 .api-cta .btn{flex:1;min-width:190px}
 .api-note{margin-top:14px;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -2910,6 +2911,7 @@ figure{margin:0}
       </div>
 
       <div class="plan" data-plan="org">
+        <span class="who">For platforms &amp; teams</span>
         <h3>Organization</h3>
         <div class="amt"><span class="per" style="align-self:center">from</span><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="org">499</span><span class="per" data-per>/month</span></div>
         <span class="cr" data-cr="org">24,000 credits · then metered</span>
@@ -2919,9 +2921,9 @@ figure{margin:0}
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Usage billing per project</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Seats, roles and audit log</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Priority queue</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Instant team support on WhatsApp — a human, not a bot</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Guided onboarding with a real person</li>
-          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Founding rate — locked for as long as you stay</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Instant human support on WhatsApp</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Guided onboarding</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Founding rate, locked for life</li>
         </ul>
         <span class="doorhint">Self-serve, with a test key on the second screen. No card. Organization is billed in US dollars only, everywhere.</span>
         <div class="plan-doors">
