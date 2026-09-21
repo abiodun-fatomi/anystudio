@@ -12,6 +12,7 @@ ATTEMPT_TARGET=packages/db/prisma/migrations/20260922000002_provider_attempts/mi
 REFUND_CYCLE_TARGET=packages/db/prisma/migrations/20260922000003_refund_cycles/migration.sql
 LEDGER_TARGET=packages/db/prisma/migrations/20260922000004_authoritative_ledger_balance/migration.sql
 LEGACY_REFUND_TARGET=packages/db/prisma/migrations/20260922000005_legacy_refund_adjustments/migration.sql
+RETIRE_STUDIO_TARGET=packages/db/prisma/migrations/20260925000002_retire_studio_plan/migration.sql
 SCRATCH="$(mktemp -d)"
 trap 'rm -rf "$SCRATCH"' EXIT
 
@@ -204,6 +205,43 @@ psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$ATTEMPT_TARGET" >/dev/null
 psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$REFUND_CYCLE_TARGET" >/dev/null
 psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$LEDGER_TARGET" >/dev/null
 psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$LEGACY_REFUND_TARGET" >/dev/null
+
+# A retired plan can still be referenced by historical subscriptions. An
+# upgrade must hide it from sale without deleting history or other plans.
+psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+INSERT INTO "plans" (code, credits, "priceByMarket", active, "updatedAt")
+VALUES ('studio', 9000, '{"USD":99}', true, now());
+INSERT INTO "subscriptions" (
+  id, "workspaceId", provider, "planCode", interval, status, "updatedAt"
+) VALUES (
+  '00000000-0000-4000-8000-000000000009',
+  '00000000-0000-4000-8000-000000000001',
+  'FLUTTERWAVE', 'studio', 'month', 'CANCELLED', now()
+);
+SQL
+psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$RETIRE_STUDIO_TARGET" >/dev/null
+psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 -f "$RETIRE_STUDIO_TARGET" >/dev/null
+psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "plans" WHERE code = 'studio' AND active = false
+      AND credits = 9000 AND "priceByMarket" = '{"USD":99}'::jsonb
+  ) THEN
+    RAISE EXCEPTION 'Studio must be inactive while retaining its historical plan data';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM "subscriptions"
+    WHERE id = '00000000-0000-4000-8000-000000000009'
+      AND "planCode" = 'studio' AND status = 'CANCELLED'
+  ) THEN
+    RAISE EXCEPTION 'Studio retirement changed subscription history';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM "plans" WHERE code = 'growth' AND active = true) THEN
+    RAISE EXCEPTION 'Studio retirement changed an unrelated plan';
+  END IF;
+END $$;
+SQL
 
 psql "$UPGRADE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
