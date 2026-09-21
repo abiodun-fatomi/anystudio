@@ -1199,6 +1199,19 @@ export const api = {
         byProvider: Array<{ providerKey: string; capability: string; calls: number; spendMinor: number }>;
         daily: Array<{ day: string; credits: number; spendMinor: number }>;
       }>('GET', `/admin/economics?${/^\d{4}-\d{2}$/.test(period) ? 'month' : 'window'}=${encodeURIComponent(period)}`),
+    fx: () =>
+      request<{
+        rates: Array<{ currency: string; rate: number; note: string | null; updatedAt: string }>;
+        plans: Array<{ code: string; credits: number; priceByMarket: Record<string, number> | null; yearlyPriceByMarket: Record<string, number> | null }>;
+        packs: Array<{ code: string; credits: number; priceByMarket: Record<string, number> | null }>;
+      }>('GET', '/admin/fx'),
+    setFx: (body: { currency: string; rate: number; apply?: boolean; reason?: string }) =>
+      request<{
+        currency: string;
+        rate: number;
+        applied: boolean;
+        changed: Array<{ kind: string; code: string; from: number; to: number; yearlyTo?: number }>;
+      }>('POST', '/admin/fx', body),
     customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',

@@ -6,10 +6,10 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsISO8601,
   IsIn,
   IsInt,
   IsNumber,
-  IsISO8601,
   IsObject,
   IsOptional,
   IsString,
@@ -139,6 +139,23 @@ export class PlanPatchDto extends CataloguePatchDto {
   @IsOptional()
   @IsObject()
   yearlyPriceByMarket?: Record<string, unknown> | null;
+}
+
+export class FxRateDto extends ReasonDto {
+  @ApiPropertyOptional({ example: 'NGN' })
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @ApiPropertyOptional({ example: 1450, description: 'Currency units per 1 USD.' })
+  @IsNumber()
+  rate!: number;
+
+  /** When true, every plan and pack that already sells in this currency is repriced from its USD anchor at this rate. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  apply?: boolean;
 }
 
 /**

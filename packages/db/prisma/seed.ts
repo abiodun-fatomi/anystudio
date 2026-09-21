@@ -105,6 +105,7 @@ const PLANS: Array<{ code: string; credits: number; usd: number; ngn: number; gb
   { code: 'starter', credits: 30, usd: 0, ngn: 0, gbp: 0, sort: 0, active: false },
   { code: 'creator', credits: 600, usd: 9, ngn: 12000, gbp: 7, sort: 10, active: true },
   { code: 'business', credits: 2400, usd: 29, ngn: 39000, gbp: 24, sort: 20, active: true },
+  { code: 'studio', credits: 9000, usd: 99, ngn: 132000, gbp: 82, sort: 25, active: true },
   // Organizations pay in USD alone: metered API billing in a drifting currency is FX risk on both sides.
   { code: 'org', credits: 24000, usd: 499, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
 ];
@@ -131,6 +132,16 @@ const USAGE_RATES = [
   { currency: 'GHS', per100Minor: 1600 }, // GH₵16
   { currency: 'KES', per100Minor: 16000 }, // KSh160
   { currency: 'ZAR', per100Minor: 2300 }, // R23
+];
+
+/**
+ * Starting FX standards for a fresh database: units per 1 USD, matching the
+ * launch price card. Console-owned after that — the seed never restates a
+ * rate an operator has set, exactly like plan prices.
+ */
+const FX_RATES = [
+  { currency: 'NGN', rate: 1333 },
+  { currency: 'GBP', rate: 0.8 },
 ];
 
 /**
@@ -570,6 +581,9 @@ async function reference() {
   }
   for (const r of USAGE_RATES) {
     await db.usageRate.upsert({ where: { currency: r.currency }, create: r, update: { per100Minor: r.per100Minor } });
+  }
+  for (const f of FX_RATES) {
+    await db.fxRate.upsert({ where: { currency: f.currency }, create: f, update: {} });
   }
   for (const pr of PROVIDERS) {
     const previous = await db.providerModel.findUnique({ where: { key_capability: { key: pr.key, capability: pr.capability } }, select: { config: true } });

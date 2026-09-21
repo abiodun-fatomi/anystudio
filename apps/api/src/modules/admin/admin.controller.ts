@@ -14,6 +14,7 @@ import {
   CataloguePatchDto,
   CreditsDto,
   EconomicsQueryDto,
+  FxRateDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -79,6 +80,13 @@ export class AdminController {
 
   @Get('/worker') worker() {
     return this.admin.workerStatus();
+  }
+  /** FX standards: one number per currency drives every non-USD price. SUPERADMIN only. */
+  @Get('/fx') fx(@CurrentActor() a: Actor) {
+    return this.admin.fxRates(a);
+  }
+  @Post('/fx') @HttpCode(HttpStatus.OK) setFx(@CurrentActor() a: Actor, @Body() b: FxRateDto, @Req() req: Request) {
+    return this.admin.setFxRate(a, b, req);
   }
   /** Money in vs money out. The service holds the SUPERADMIN gate. */
   @Get('/economics') economics(@CurrentActor() a: Actor, @Query() q: EconomicsQueryDto) {
