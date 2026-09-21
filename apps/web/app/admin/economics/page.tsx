@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { PageHeader } from '@/components/shell/Page';
-import { Select, Skeleton, Table, tableCell } from '@/components/ui';
+import { Button, Input, Select, Skeleton, Table, tableCell } from '@/components/ui';
 import { Breakdown, DailyBars, Delta, Donut, Hero, SERIES, Spark, StatCard, UnitSplit } from '@/components/charts/Charts';
 import { useAdmin } from '../AdminShell';
 import styles from '../admin.module.css';
 
 type Economics = Awaited<ReturnType<typeof api.admin.economics>>;
+type Fx = Awaited<ReturnType<typeof api.admin.fx>>;
 
 const money = (m: number | null | undefined) => (m == null ? '—' : (m / 100).toFixed(2));
 const usd = (m: number) => Math.round(m) / 100;
@@ -39,6 +40,42 @@ export default function EconomicsPage() {
   const [data, setData] = useState<Economics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const options = useMemo(periods, []);
+  const [fx, setFxData] = useState<Fx | null>(null);
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [applying, setApplying] = useState<string | null>(null);
+  const [fxMsg, setFxMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!allowed) return;
+    let gone = false;
+    api.admin
+      .fx()
+      .then((d) => {
+        if (!gone) setFxData(d);
+      })
+      .catch(() => {
+        if (!gone) setFxMsg('Could not load exchange rates. Reload the page to try again.');
+      });
+    return () => {
+      gone = true;
+    };
+  }, [allowed]);
+  const roundFor = (currency: string, v: number) => (currency === 'NGN' ? Math.max(500, Math.round(v / 500) * 500) : Math.max(1, Math.round(v)));
+  const applyRate = async (currency: string, current: number) => {
+    const rate = Number(edit[currency] ?? current);
+    if (!Number.isFinite(rate) || !(rate > 0) || applying) return;
+    setApplying(currency);
+    setFxMsg(null);
+    try {
+      const out = await api.admin.setFx({ currency, rate, apply: true, reason: 'FX standard update from Economics' });
+      setFxMsg(`${out.currency} set to ${out.rate} per USD — ${out.changed.length} price${out.changed.length === 1 ? '' : 's'} recomputed.`);
+      const d = await api.admin.fx();
+      setFxData(d);
+    } catch (e: unknown) {
+      setFxMsg(e instanceof Error ? e.message : 'Could not apply it (a recent second-factor confirmation may be needed).');
+    } finally {
+      setApplying(null);
+    }
+  };
 
   useEffect(() => {
     if (!allowed) return;
@@ -195,6 +232,61 @@ export default function EconomicsPage() {
           </Table>
         </>
       ) : null}
+      {fx ? (
+        <Table>
+          <thead>
+            <tr>
+              <th>Exchange rates · the standard (1 USD =)</th>
+              <th className={tableCell.num}>Rate</th>
+              <th>Derived (Creator · Business, rounded)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {fx.rates.map((r) => {
+              const val = edit[r.currency] ?? String(r.rate);
+              const rate = Number(val);
+              const sample = (code: string) => {
+                const pl = fx.plans.find((x) => x.code === code);
+                const usd = pl?.priceByMarket?.USD;
+                return usd && rate > 0 ? roundFor(r.currency, usd * rate).toLocaleString() : '—';
+              };
+              return (
+                <tr key={r.currency}>
+                  <td className={styles.mono}>
+                    {r.currency}
+                    {r.note ? <span style={{ color: 'var(--muted)' }}> · {r.note}</span> : null}
+                  </td>
+                  <td className={tableCell.num}>
+                    <Input
+                      label={`${r.currency} per USD`}
+                      type="number"
+                      min="0.0001"
+                      max="99999999.9999"
+                      step="0.0001"
+                      value={val}
+                      disabled={applying !== null}
+                      onChange={(e) => setEdit((m) => ({ ...m, [r.currency]: e.target.value }))}
+                    />
+                  </td>
+                  <td className={styles.mono}>
+                    {sample('creator')} · {sample('business')}
+                  </td>
+                  <td className={tableCell.num}>
+                    <Button
+                      onClick={() => void applyRate(r.currency, r.rate)}
+                      disabled={applying !== null || !Number.isFinite(rate) || rate < 0.0001 || rate > 99999999.9999 || Number(rate.toFixed(4)) !== rate}
+                    >
+                      {applying === r.currency ? 'Applying…' : 'Set & reprice'}
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      ) : null}
+      {fxMsg ? <p className={styles.mono}>{fxMsg}</p> : null}
     </div>
   );
 }

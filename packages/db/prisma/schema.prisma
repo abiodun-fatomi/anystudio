@@ -2207,3 +2207,17 @@ model PublishJob {
   @@index([generationId])
   @@map("publish_jobs")
 }
+
+/// The exchange-rate standard: how many units of a currency one US dollar
+/// buys. Every non-USD plan and pack price derives from the USD anchor at
+/// this rate when a reprice is applied from the console. Console-owned after
+/// birth; the seed plants starting values and never restates them.
+model FxRate {
+  currency  String   @id
+  /// Currency units per 1 USD, e.g. NGN 1333.0, GBP 0.80.
+  rate      Decimal  @db.Decimal(12, 4)
+  note      String?
+  updatedAt DateTime @updatedAt
+
+  @@map("fx_rates")
+}

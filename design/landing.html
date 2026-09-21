@@ -123,13 +123,13 @@
         "@type": "AggregateOffer",
         "priceCurrency": "USD",
         "lowPrice": "0",
-        "highPrice": "199",
+        "highPrice": "499",
         "offerCount": "4",
         "offers": [
           {"@type":"Offer","name":"Starter","price":"0","priceCurrency":"USD","description":"15 free branded images. No card required."},
           {"@type":"Offer","name":"Creator","price":"9","priceCurrency":"USD","description":"600 credits a month — about 60 images or 5 reels."},
           {"@type":"Offer","name":"Business","price":"29","priceCurrency":"USD","description":"2,400 credits a month — about 240 images or 20 reels."},
-          {"@type":"Offer","name":"Organization","price":"199","priceCurrency":"USD","description":"12,000 credits a month, seats with roles, projects and API access."}
+          {"@type":"Offer","name":"Organization","price":"499","priceCurrency":"USD","description":"24,000 credits a month, seats with roles, projects and API access."}
         ]
       }
     },
@@ -1103,9 +1103,10 @@ footer{padding-block:44px;border-top:1px solid var(--line-soft);margin-top:clamp
 /* Two doors on the Organization tier. A platform evaluating this is an engineer
    who wants a key today; an agency wants a conversation. One button loses one
    of them, and "Talk to us" pointing at a section with no CTA lost both. */
-.plan-doors{display:grid;gap:8px;margin-top:auto}
-.plan-doors .btn{width:100%}
-.doorhint{display:block;margin-top:14px;font-size:12.5px;color:var(--muted);line-height:1.5;text-align:center}
+.plan-doors{display:grid;gap:8px}
+.plan-doors .btn{width:100%;margin-top:0}
+.plan .who{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.doorhint{display:block;margin-top:auto;padding-top:6px;font-size:12px;color:var(--muted);line-height:1.5;text-align:center}
 .api-cta{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
 .api-cta .btn{flex:1;min-width:190px}
 .api-note{margin-top:14px;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -1925,8 +1926,10 @@ figure{margin:0}
           <li>Unique descriptions, never duplicated</li>
           <li>Usage metered per call, billed monthly</li>
           <li>Webhooks, seats and roles</li>
+          <li>Instant human support on WhatsApp</li>
+          <li>Founding rate, locked for life</li>
         </ul>
-        <span class="foot">Custom · from $199</span>
+        <span class="foot">Custom · from $499</span>
       </div>
     </div>
   </div>
@@ -2866,7 +2869,7 @@ figure{margin:0}
       <div class="plan" data-plan="creator">
         <h3>Creator</h3>
         <div class="amt"><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="creator">9</span><span class="per" data-per>/month</span></div>
-        <span class="cr">600 credits · ~60 images or 5 reels</span>
+        <span class="cr" data-cr="creator">600 credits · ~60 images or 5 reels</span>
         <ul>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> 1 brand kit</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Publish to 3 channels</li>
@@ -2880,7 +2883,7 @@ figure{margin:0}
         <span class="flag">Most popular</span>
         <h3>Business</h3>
         <div class="amt"><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="business">29</span><span class="per" data-per>/month</span></div>
-        <span class="cr">2,400 credits · ~240 images or 20 reels</span>
+        <span class="cr" data-cr="business">2,400 credits · ~240 images or 20 reels</span>
         <ul>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> 4 brand kits</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Auto-post to 10 channels</li>
@@ -2892,17 +2895,21 @@ figure{margin:0}
       </div>
 
       <div class="plan" data-plan="org">
+        <span class="who">For platforms &amp; teams</span>
         <h3>Organization</h3>
-        <div class="amt"><span class="per" style="align-self:center">from</span><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="org">199</span><span class="per" data-per>/month</span></div>
-        <span class="cr">12,000 credits · then metered</span>
+        <div class="amt"><span class="per" style="align-self:center">from</span><span class="cur" style="color:var(--muted)"></span><span class="v" data-price="org">499</span><span class="per" data-per>/month</span></div>
+        <span class="cr" data-cr="org">24,000 credits · then metered</span>
         <ul>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> API access and webhooks</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Unlimited projects and keys</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Usage billing per project</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Seats, roles and audit log</li>
           <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Priority queue</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Instant human support on WhatsApp</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Guided onboarding</li>
+          <li><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> Founding rate, locked for life</li>
         </ul>
-        <span class="doorhint">Self-serve, with a test key on the second screen. No card.</span>
+        <span class="doorhint">Self-serve, with a test key on the second screen. No card. Organization is billed in US dollars only, everywhere.</span>
         <div class="plan-doors">
           <a class="btn btn-primary" href="org.html">Create an organization</a>
           <a class="btn btn-ghost" href="org.html#contact">Talk to us about volume</a>
@@ -3491,9 +3498,9 @@ figure{margin:0}
 
   /* ---------- pricing ---------- */
   var PRICES = {
-    USD:{sym:"$", free:"0", creator:[9,90],  business:[29,290],  org:[199,1990],  packs:{500:"$6",   1500:"$15",  5000:"$45"}},
-    NGN:{sym:"₦", free:"0", creator:[12000,120000], business:[39000,390000], org:[265000,2650000], packs:{500:"₦7,500", 1500:"₦19,000", 5000:"₦56,000"}},
-    GBP:{sym:"£", free:"0", creator:[7,70],  business:[24,240],  org:[165,1650],  packs:{500:"£5",   1500:"£12",  5000:"£36"}}
+    USD:{sym:"$", free:"0", creator:[9,90],  business:[29,290],  org:[499,4990],  packs:{500:"$6",   1500:"$15",  5000:"$45"}},
+    NGN:{sym:"₦", free:"0", creator:[12000,120000], business:[39000,390000], org:[499,4990], packs:{500:"₦7,500", 1500:"₦19,000", 5000:"₦56,000"}},
+    GBP:{sym:"£", free:"0", creator:[7,70],  business:[24,240],  org:[499,4990],  packs:{500:"£5",   1500:"£12",  5000:"£36"}}
   };
   var cur = "USD", cycle = 0; /* 0 = monthly, 1 = yearly */
 
@@ -3501,11 +3508,11 @@ figure{margin:0}
 
   function renderPrices(){
     var P = PRICES[cur];
-    document.querySelectorAll(".plan .cur").forEach(function(el){ el.textContent = P.sym; });
+    document.querySelectorAll(".plan .cur").forEach(function(el){ el.textContent = el.closest(".plan").dataset.plan === "org" ? PRICES.USD.sym : P.sym; });
     document.querySelectorAll("[data-price]").forEach(function(el){
       var k = el.dataset.price;
       if (k === "free"){ el.textContent = P.free; return; }
-      el.textContent = fmt(P[k][cycle]);
+      el.textContent = fmt((k === "org" ? PRICES.USD : P)[k][cycle]);
     });
     document.querySelectorAll("[data-per]").forEach(function(el){
       el.textContent = cycle ? "/year" : "/month";
@@ -3513,6 +3520,23 @@ figure{margin:0}
     document.querySelectorAll("[data-pack]").forEach(function(el){
       el.textContent = P.packs[el.dataset.pack];
     });
+    var CR = { creator: 600, business: 2400, org: 24000 };
+    document.querySelectorAll("[data-cr]").forEach(function(el){
+      var c = CR[el.dataset.cr] * (cycle ? 12 : 1);
+      var per = cycle ? "/year" : "/month";
+      var tail = el.dataset.cr === "org" ? " · then metered"
+        : " · ~" + fmt(Math.round(c / IMG_COST)) + " images or " + Math.floor(c / REEL_COST) + " reels";
+      el.textContent = fmt(c) + " credits" + per + tail;
+    });
+    // Organizations are billed in USD alone, whatever the currency toggle says.
+    var orgV = document.querySelector('[data-price="org"]');
+    if (orgV){
+      orgV.textContent = fmt(PRICES.USD.org[cycle]);
+      var orgAmt = orgV.parentNode;
+      var orgCur = orgAmt.querySelector('.cur'); if (orgCur) orgCur.textContent = '$';
+      var orgPer = orgAmt.querySelector('[data-per]');
+      if (orgPer) orgPer.textContent = (cycle ? '/year' : '/month') + (cur === 'USD' ? '' : ' · billed in USD');
+    }
     document.getElementById("saveTag").textContent = cycle ? "Two months free, applied" : "Save 2 months on yearly";
     renderCalc();
   }
@@ -3540,7 +3564,7 @@ figure{margin:0}
     {key:"free",     name:"Starter",      credits:30},
     {key:"creator",  name:"Creator",      credits:600},
     {key:"business", name:"Business",     credits:2400},
-    {key:"org",      name:"Organization", credits:12000}
+    {key:"org",      name:"Organization", credits:24000}
   ];
   var sImg = document.getElementById("sImg"), sReel = document.getElementById("sReel");
 
@@ -3557,8 +3581,8 @@ figure{margin:0}
 
     var P = PRICES[cur];
     document.getElementById("recName").textContent = tier.name;
-    document.getElementById("recCur").textContent = tier.key === "free" ? "" : P.sym;
-    document.getElementById("recPrice").textContent = tier.key === "free" ? "Free" : fmt(P[tier.key][cycle]);
+    document.getElementById("recCur").textContent = tier.key === "free" ? "" : (tier.key === "org" ? PRICES.USD.sym : P.sym);
+    document.getElementById("recPrice").textContent = tier.key === "free" ? "Free" : fmt((tier.key === "org" ? PRICES.USD : P)[tier.key][cycle]);
     document.getElementById("recPer").textContent = tier.key === "free" ? "" : (cycle ? "/year" : "/month");
     document.getElementById("recNeed").textContent = fmt(need);
     document.getElementById("recHas").textContent = fmt(tier.credits);

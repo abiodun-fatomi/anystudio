@@ -31,6 +31,7 @@ import type {
   CataloguePatchDto,
   CreditsDto,
   EconomicsQueryDto,
+  FxRateDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -320,6 +321,96 @@ export class AdminService {
   }
 
   // ---------------------------------------------------------------- generations
+
+  /** The FX standards beside the catalogue they would reprice. SUPERADMIN only. */
+  async fxRates(actor: Actor) {
+    assertStaff(actor, 'SUPERADMIN');
+    const [rates, plans, packs] = await Promise.all([
+      this.db.fxRate.findMany({ orderBy: { currency: 'asc' } }),
+      this.db.plan.findMany({ orderBy: { sort: 'asc' } }),
+      this.db.creditPack.findMany({ orderBy: { sort: 'asc' } }),
+    ]);
+    return { rates: rates.map((r) => ({ currency: r.currency, rate: Number(r.rate), note: r.note, updatedAt: r.updatedAt })), plans, packs };
+  }
+
+  /**
+   * Set the FX standard for a currency; with apply, recompute every plan and
+   * pack price for that currency from its USD anchor at the new rate. Two
+   * invariants: USD is the anchor and is never repriced, and a row that does
+   * not already sell in the currency never gains it — which is what keeps
+   * USD-only plans USD-only. Rounding keeps prices human: NGN to the nearest
+   * 500, everything else to whole units. Audited under admin.plan, because
+   * that is what it changes.
+   */
+  async setFxRate(actor: Actor, dto: FxRateDto, req: Request) {
+    assertStaffMutation(actor, { min: 'SUPERADMIN', stepUpMinutes: STEP_UP_MIN });
+    const currency = dto.currency.toUpperCase();
+    if (currency === 'USD') throw new ValidationError({ currency: 'USD is the anchor; set the other currencies against it.' });
+    if (!MARKET_CURRENCIES.includes(currency as never)) throw new ValidationError({ currency: 'Choose a supported billing currency.' });
+    if (!Number.isFinite(dto.rate) || dto.rate < 0.0001 || dto.rate > 99999999.9999 || Number(dto.rate.toFixed(4)) !== dto.rate) {
+      throw new ValidationError({ rate: 'Use a rate from 0.0001 to 99999999.9999, with at most four decimal places.' });
+    }
+    const { stored, changed } = await this.db.$transaction(
+      async (tx) => {
+        const stored = await tx.fxRate.upsert({
+          where: { currency },
+          create: { currency, rate: dto.rate, note: dto.reason ?? null },
+          update: { rate: dto.rate, note: dto.reason ?? null },
+        });
+        const usdOf = (m: unknown): number | null => {
+          const v = (m as Record<string, unknown> | null)?.['USD'];
+          return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
+        };
+        const round = (v: number) => (currency === 'NGN' ? Math.max(500, Math.round(v / 500) * 500) : Math.max(1, Math.round(v)));
+        const changed: Array<{ kind: 'plan' | 'pack'; code: string; from: number; to: number; yearlyTo?: number }> = [];
+        if (dto.apply) {
+          const [plans, packs] = await Promise.all([tx.plan.findMany(), tx.creditPack.findMany()]);
+          for (const pl of plans) {
+            const usd = usdOf(pl.priceByMarket);
+            const cur = (pl.priceByMarket as Record<string, unknown> | null)?.[currency];
+            if (usd == null || typeof cur !== 'number') continue;
+            const to = round(usd * dto.rate);
+            const data: Record<string, unknown> = { priceByMarket: { ...(pl.priceByMarket as Record<string, number>), [currency]: to } };
+            let yearlyTo: number | undefined;
+            const yUsd = usdOf(pl.yearlyPriceByMarket);
+            if (yUsd != null && typeof (pl.yearlyPriceByMarket as Record<string, unknown> | null)?.[currency] === 'number') {
+              yearlyTo = round(yUsd * dto.rate);
+              data.yearlyPriceByMarket = { ...(pl.yearlyPriceByMarket as Record<string, number>), [currency]: yearlyTo };
+            }
+            await tx.plan.update({ where: { code: pl.code }, data });
+            changed.push({ kind: 'plan', code: pl.code, from: cur, to, yearlyTo });
+          }
+          for (const pk of packs) {
+            const usd = usdOf(pk.priceByMarket);
+            const cur = (pk.priceByMarket as Record<string, unknown> | null)?.[currency];
+            if (usd == null || typeof cur !== 'number') continue;
+            const to = round(usd * dto.rate);
+            await tx.creditPack.update({
+              where: { code: pk.code },
+              data: { priceByMarket: { ...(pk.priceByMarket as Record<string, number>), [currency]: to } },
+            });
+            changed.push({ kind: 'pack', code: pk.code, from: cur, to });
+          }
+        }
+        return { stored, changed };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+    authLog(
+      'admin.plan',
+      'succeeded',
+      {
+        userId: actor.userId,
+        currency,
+        rate: dto.rate,
+        applied: !!dto.apply,
+        changed: changed.map((c) => `${c.kind}:${c.code}:${c.from}->${c.to}`),
+        reason: dto.reason,
+      },
+      req,
+    );
+    return { currency, rate: Number(stored.rate), applied: !!dto.apply, changed };
+  }
 
   /**
    * Money in vs money out, for the owner's eyes only. Read-only. Revenue side

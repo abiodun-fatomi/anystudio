@@ -101,11 +101,12 @@ const CREDIT_COSTS = [
  * gateway. `starter` is the free tier: a row so invoices and the plans page
  * can name it, never sold.
  */
-const PLANS = [
+const PLANS: Array<{ code: string; credits: number; usd: number; ngn: number; gbp: number; sort: number; active: boolean; usdOnly?: boolean }> = [
   { code: 'starter', credits: 30, usd: 0, ngn: 0, gbp: 0, sort: 0, active: false },
   { code: 'creator', credits: 600, usd: 9, ngn: 12000, gbp: 7, sort: 10, active: true },
   { code: 'business', credits: 2400, usd: 29, ngn: 39000, gbp: 24, sort: 20, active: true },
-  { code: 'org', credits: 12000, usd: 199, ngn: 265000, gbp: 165, sort: 30, active: true },
+  // Organizations pay in USD alone: metered API billing in a drifting currency is FX risk on both sides.
+  { code: 'org', credits: 24000, usd: 499, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
 ];
 
 /** One-time top-ups. Priced a little above the plan rate, so the plan is the better deal. */
@@ -123,12 +124,23 @@ const PACKS = [
  * organization is committing to volume, not buying a bundle.
  */
 const USAGE_RATES = [
-  { currency: 'USD', per100Minor: 125 }, // $1.25 per 100 credits
+  // Overage must never undercut the bundle: org is $499 / 24,000 = 2.08c per credit.
+  { currency: 'USD', per100Minor: 225 }, // $2.25 per 100 credits
   { currency: 'GBP', per100Minor: 100 }, // £1.00
   { currency: 'NGN', per100Minor: 160000 }, // ₦1,600
   { currency: 'GHS', per100Minor: 1600 }, // GH₵16
   { currency: 'KES', per100Minor: 16000 }, // KSh160
   { currency: 'ZAR', per100Minor: 2300 }, // R23
+];
+
+/**
+ * Starting FX standards for a fresh database: units per 1 USD, matching the
+ * launch price card. Console-owned after that — the seed never restates a
+ * rate an operator has set, exactly like plan prices.
+ */
+const FX_RATES = [
+  { currency: 'NGN', rate: 1333 },
+  { currency: 'GBP', rate: 0.8 },
 ];
 
 /**
@@ -551,8 +563,8 @@ async function reference() {
       create: {
         code: p.code,
         credits: p.credits,
-        priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp },
-        yearlyPriceByMarket: p.usd ? { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 } : undefined,
+        priceByMarket: p.usdOnly ? { USD: p.usd } : { USD: p.usd, NGN: p.ngn, GBP: p.gbp },
+        yearlyPriceByMarket: p.usd ? (p.usdOnly ? { USD: p.usd * 10 } : { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 }) : undefined,
         sort: p.sort,
         active: p.active,
       },
@@ -568,6 +580,9 @@ async function reference() {
   }
   for (const r of USAGE_RATES) {
     await db.usageRate.upsert({ where: { currency: r.currency }, create: r, update: { per100Minor: r.per100Minor } });
+  }
+  for (const f of FX_RATES) {
+    await db.fxRate.upsert({ where: { currency: f.currency }, create: f, update: {} });
   }
   for (const pr of PROVIDERS) {
     const previous = await db.providerModel.findUnique({ where: { key_capability: { key: pr.key, capability: pr.capability } }, select: { config: true } });
