@@ -101,11 +101,12 @@ const CREDIT_COSTS = [
  * gateway. `starter` is the free tier: a row so invoices and the plans page
  * can name it, never sold.
  */
-const PLANS = [
+const PLANS: Array<{ code: string; credits: number; usd: number; ngn: number; gbp: number; sort: number; active: boolean; usdOnly?: boolean }> = [
   { code: 'starter', credits: 30, usd: 0, ngn: 0, gbp: 0, sort: 0, active: false },
   { code: 'creator', credits: 600, usd: 9, ngn: 12000, gbp: 7, sort: 10, active: true },
   { code: 'business', credits: 2400, usd: 29, ngn: 39000, gbp: 24, sort: 20, active: true },
-  { code: 'org', credits: 12000, usd: 199, ngn: 265000, gbp: 165, sort: 30, active: true },
+  // Organizations pay in USD alone: metered API billing in a drifting currency is FX risk on both sides.
+  { code: 'org', credits: 12000, usd: 199, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
 ];
 
 /** One-time top-ups. Priced a little above the plan rate, so the plan is the better deal. */
@@ -551,8 +552,8 @@ async function reference() {
       create: {
         code: p.code,
         credits: p.credits,
-        priceByMarket: { USD: p.usd, NGN: p.ngn, GBP: p.gbp },
-        yearlyPriceByMarket: p.usd ? { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 } : undefined,
+        priceByMarket: p.usdOnly ? { USD: p.usd } : { USD: p.usd, NGN: p.ngn, GBP: p.gbp },
+        yearlyPriceByMarket: p.usd ? (p.usdOnly ? { USD: p.usd * 10 } : { USD: p.usd * 10, NGN: p.ngn * 10, GBP: p.gbp * 10 }) : undefined,
         sort: p.sort,
         active: p.active,
       },
