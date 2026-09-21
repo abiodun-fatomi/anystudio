@@ -106,7 +106,7 @@ const PLANS: Array<{ code: string; credits: number; usd: number; ngn: number; gb
   { code: 'creator', credits: 600, usd: 9, ngn: 12000, gbp: 7, sort: 10, active: true },
   { code: 'business', credits: 2400, usd: 29, ngn: 39000, gbp: 24, sort: 20, active: true },
   // Organizations pay in USD alone: metered API billing in a drifting currency is FX risk on both sides.
-  { code: 'org', credits: 12000, usd: 199, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
+  { code: 'org', credits: 30000, usd: 499, ngn: 265000, gbp: 165, sort: 30, active: true, usdOnly: true },
 ];
 
 /** One-time top-ups. Priced a little above the plan rate, so the plan is the better deal. */
@@ -124,7 +124,8 @@ const PACKS = [
  * organization is committing to volume, not buying a bundle.
  */
 const USAGE_RATES = [
-  { currency: 'USD', per100Minor: 125 }, // $1.25 per 100 credits
+  // Overage must never undercut the bundle: org is $499 / 30,000 = 1.66c per credit.
+  { currency: 'USD', per100Minor: 200 }, // $2.00 per 100 credits
   { currency: 'GBP', per100Minor: 100 }, // £1.00
   { currency: 'NGN', per100Minor: 160000 }, // ₦1,600
   { currency: 'GHS', per100Minor: 1600 }, // GH₵16
