@@ -346,47 +346,56 @@ export class AdminService {
     assertStaffMutation(actor, { min: 'SUPERADMIN', stepUpMinutes: STEP_UP_MIN });
     const currency = dto.currency.toUpperCase();
     if (currency === 'USD') throw new ValidationError({ currency: 'USD is the anchor; set the other currencies against it.' });
-    if (!(dto.rate > 0) || !isFinite(dto.rate)) throw new ValidationError({ rate: 'The rate must be a positive number of currency units per USD.' });
-    const stored = await this.db.fxRate.upsert({
-      where: { currency },
-      create: { currency, rate: dto.rate, note: dto.reason ?? null },
-      update: { rate: dto.rate, note: dto.reason ?? null },
-    });
-    const usdOf = (m: unknown): number | null => {
-      const v = (m as Record<string, unknown> | null)?.['USD'];
-      return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
-    };
-    const round = (v: number) => (currency === 'NGN' ? Math.max(500, Math.round(v / 500) * 500) : Math.max(1, Math.round(v)));
-    const changed: Array<{ kind: 'plan' | 'pack'; code: string; from: number; to: number; yearlyTo?: number }> = [];
-    if (dto.apply) {
-      const [plans, packs] = await Promise.all([this.db.plan.findMany(), this.db.creditPack.findMany()]);
-      for (const pl of plans) {
-        const usd = usdOf(pl.priceByMarket);
-        const cur = (pl.priceByMarket as Record<string, unknown> | null)?.[currency];
-        if (usd == null || typeof cur !== 'number') continue;
-        const to = round(usd * dto.rate);
-        const data: Record<string, unknown> = { priceByMarket: { ...(pl.priceByMarket as Record<string, number>), [currency]: to } };
-        let yearlyTo: number | undefined;
-        const yUsd = usdOf(pl.yearlyPriceByMarket);
-        if (yUsd != null && typeof (pl.yearlyPriceByMarket as Record<string, unknown> | null)?.[currency] === 'number') {
-          yearlyTo = round(yUsd * dto.rate);
-          data.yearlyPriceByMarket = { ...(pl.yearlyPriceByMarket as Record<string, number>), [currency]: yearlyTo };
-        }
-        await this.db.plan.update({ where: { code: pl.code }, data });
-        changed.push({ kind: 'plan', code: pl.code, from: cur, to, yearlyTo });
-      }
-      for (const pk of packs) {
-        const usd = usdOf(pk.priceByMarket);
-        const cur = (pk.priceByMarket as Record<string, unknown> | null)?.[currency];
-        if (usd == null || typeof cur !== 'number') continue;
-        const to = round(usd * dto.rate);
-        await this.db.creditPack.update({
-          where: { code: pk.code },
-          data: { priceByMarket: { ...(pk.priceByMarket as Record<string, number>), [currency]: to } },
-        });
-        changed.push({ kind: 'pack', code: pk.code, from: cur, to });
-      }
+    if (!MARKET_CURRENCIES.includes(currency as never)) throw new ValidationError({ currency: 'Choose a supported billing currency.' });
+    if (!Number.isFinite(dto.rate) || dto.rate < 0.0001 || dto.rate > 99999999.9999 || Number(dto.rate.toFixed(4)) !== dto.rate) {
+      throw new ValidationError({ rate: 'Use a rate from 0.0001 to 99999999.9999, with at most four decimal places.' });
     }
+    const { stored, changed } = await this.db.$transaction(
+      async (tx) => {
+        const stored = await tx.fxRate.upsert({
+          where: { currency },
+          create: { currency, rate: dto.rate, note: dto.reason ?? null },
+          update: { rate: dto.rate, note: dto.reason ?? null },
+        });
+        const usdOf = (m: unknown): number | null => {
+          const v = (m as Record<string, unknown> | null)?.['USD'];
+          return typeof v === 'number' && isFinite(v) && v > 0 ? v : null;
+        };
+        const round = (v: number) => (currency === 'NGN' ? Math.max(500, Math.round(v / 500) * 500) : Math.max(1, Math.round(v)));
+        const changed: Array<{ kind: 'plan' | 'pack'; code: string; from: number; to: number; yearlyTo?: number }> = [];
+        if (dto.apply) {
+          const [plans, packs] = await Promise.all([tx.plan.findMany(), tx.creditPack.findMany()]);
+          for (const pl of plans) {
+            const usd = usdOf(pl.priceByMarket);
+            const cur = (pl.priceByMarket as Record<string, unknown> | null)?.[currency];
+            if (usd == null || typeof cur !== 'number') continue;
+            const to = round(usd * dto.rate);
+            const data: Record<string, unknown> = { priceByMarket: { ...(pl.priceByMarket as Record<string, number>), [currency]: to } };
+            let yearlyTo: number | undefined;
+            const yUsd = usdOf(pl.yearlyPriceByMarket);
+            if (yUsd != null && typeof (pl.yearlyPriceByMarket as Record<string, unknown> | null)?.[currency] === 'number') {
+              yearlyTo = round(yUsd * dto.rate);
+              data.yearlyPriceByMarket = { ...(pl.yearlyPriceByMarket as Record<string, number>), [currency]: yearlyTo };
+            }
+            await tx.plan.update({ where: { code: pl.code }, data });
+            changed.push({ kind: 'plan', code: pl.code, from: cur, to, yearlyTo });
+          }
+          for (const pk of packs) {
+            const usd = usdOf(pk.priceByMarket);
+            const cur = (pk.priceByMarket as Record<string, unknown> | null)?.[currency];
+            if (usd == null || typeof cur !== 'number') continue;
+            const to = round(usd * dto.rate);
+            await tx.creditPack.update({
+              where: { code: pk.code },
+              data: { priceByMarket: { ...(pk.priceByMarket as Record<string, number>), [currency]: to } },
+            });
+            changed.push({ kind: 'pack', code: pk.code, from: cur, to });
+          }
+        }
+        return { stored, changed };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
     authLog(
       'admin.plan',
       'succeeded',

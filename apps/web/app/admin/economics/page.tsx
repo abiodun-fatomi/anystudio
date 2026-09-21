@@ -53,7 +53,7 @@ export default function EconomicsPage() {
         if (!gone) setFxData(d);
       })
       .catch(() => {
-        if (!gone) setFxData(null);
+        if (!gone) setFxMsg('Could not load exchange rates. Reload the page to try again.');
       });
     return () => {
       gone = true;
@@ -62,7 +62,7 @@ export default function EconomicsPage() {
   const roundFor = (currency: string, v: number) => (currency === 'NGN' ? Math.max(500, Math.round(v / 500) * 500) : Math.max(1, Math.round(v)));
   const applyRate = async (currency: string, current: number) => {
     const rate = Number(edit[currency] ?? current);
-    if (!(rate > 0)) return;
+    if (!Number.isFinite(rate) || !(rate > 0) || applying) return;
     setApplying(currency);
     setFxMsg(null);
     try {
@@ -258,13 +258,25 @@ export default function EconomicsPage() {
                     {r.note ? <span style={{ color: 'var(--muted)' }}> · {r.note}</span> : null}
                   </td>
                   <td className={tableCell.num}>
-                    <Input label="" value={val} onChange={(e) => setEdit((m) => ({ ...m, [r.currency]: e.target.value }))} />
+                    <Input
+                      label={`${r.currency} per USD`}
+                      type="number"
+                      min="0.0001"
+                      max="99999999.9999"
+                      step="0.0001"
+                      value={val}
+                      disabled={applying !== null}
+                      onChange={(e) => setEdit((m) => ({ ...m, [r.currency]: e.target.value }))}
+                    />
                   </td>
                   <td className={styles.mono}>
                     {sample('creator')} · {sample('business')}
                   </td>
                   <td className={tableCell.num}>
-                    <Button onClick={() => void applyRate(r.currency, r.rate)} disabled={applying === r.currency || !(rate > 0)}>
+                    <Button
+                      onClick={() => void applyRate(r.currency, r.rate)}
+                      disabled={applying !== null || !Number.isFinite(rate) || rate < 0.0001 || rate > 99999999.9999 || Number(rate.toFixed(4)) !== rate}
+                    >
                       {applying === r.currency ? 'Applying…' : 'Set & reprice'}
                     </Button>
                   </td>

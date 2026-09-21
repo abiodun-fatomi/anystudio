@@ -142,13 +142,15 @@ export class PlanPatchDto extends CataloguePatchDto {
 }
 
 export class FxRateDto extends ReasonDto {
-  @ApiPropertyOptional({ example: 'NGN' })
+  @ApiProperty({ example: 'NGN' })
   @IsString()
-  @MaxLength(3)
+  @Matches(/^[a-zA-Z]{3}$/)
   currency!: string;
 
-  @ApiPropertyOptional({ example: 1450, description: 'Currency units per 1 USD.' })
-  @IsNumber()
+  @ApiProperty({ example: 1450, description: 'Currency units per 1 USD.' })
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0.0001)
+  @Max(99999999.9999)
   rate!: number;
 
   /** When true, every plan and pack that already sells in this currency is repriced from its USD anchor at this rate. */
