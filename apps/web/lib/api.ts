@@ -1212,6 +1212,12 @@ export const api = {
         applied: boolean;
         changed: Array<{ kind: string; code: string; from: number; to: number; yearlyTo?: number }>;
       }>('POST', '/admin/fx', body),
+    gateways: () => request<{ gateways: Array<{ key: string; enabled: boolean; note: string | null; updatedAt: string }> }>('GET', '/admin/gateways'),
+    setGateway: (body: { key: string; enabled: boolean; reason?: string }) =>
+      request<{
+        gateways: Array<{ key: string; enabled: boolean; note: string | null; updatedAt: string }>;
+        changed: Array<{ key: string; enabled: boolean }>;
+      }>('POST', '/admin/gateways', body),
     customers: (q: string, cursor?: string, take?: number) =>
       request<{ customers: AdminCustomer[]; nextCursor: string | null }>(
         'GET',

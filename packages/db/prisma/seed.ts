@@ -144,6 +144,18 @@ const FX_RATES = [
 ];
 
 /**
+ * Launch posture for the payment doors: card rails on Stripe, local Nigerian
+ * rails on Flutterwave, Paddle parked until a superadmin deliberately opens
+ * it (which retires Stripe in the same write). Create-only — the console
+ * owns these after birth, exactly like prices and FX standards.
+ */
+const GATEWAYS = [
+  { key: 'stripe', enabled: true },
+  { key: 'flutterwave', enabled: true },
+  { key: 'paddle', enabled: false },
+];
+
+/**
  * Provider routing. `priority` picks the default and the fallback order, so a
  * failing provider is demoted from the admin console without a release.
  *
@@ -583,6 +595,9 @@ async function reference() {
   }
   for (const f of FX_RATES) {
     await db.fxRate.upsert({ where: { currency: f.currency }, create: f, update: {} });
+  }
+  for (const g of GATEWAYS) {
+    await db.paymentGateway.upsert({ where: { key: g.key }, create: g, update: {} });
   }
   for (const pr of PROVIDERS) {
     const previous = await db.providerModel.findUnique({ where: { key_capability: { key: pr.key, capability: pr.capability } }, select: { config: true } });

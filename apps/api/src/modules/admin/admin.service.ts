@@ -32,6 +32,7 @@ import type {
   CreditsDto,
   EconomicsQueryDto,
   FxRateDto,
+  GatewayDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -321,6 +322,50 @@ export class AdminService {
   }
 
   // ---------------------------------------------------------------- generations
+
+  /** The payment doors and which are open. SUPERADMIN only. */
+  async gateways(actor: Actor) {
+    assertStaff(actor, 'SUPERADMIN');
+    const rows = await this.db.paymentGateway.findMany({ orderBy: { key: 'asc' } });
+    return { gateways: rows };
+  }
+
+  /**
+   * Open or close a payment door. One invariant, enforced here so no console
+   * mistake can violate it: Stripe and Paddle are alternatives for the same
+   * card rails and never run together — enabling either retires the other in
+   * the same write. Flutterwave is the local-rails door and moves on its
+   * own. The checkout consults this table before offering a processor, so
+   * the toggle is additive infrastructure: nothing existing reads it yet,
+   * and future code reads it or refuses politely.
+   */
+  async setGateway(actor: Actor, dto: GatewayDto, req: Request) {
+    assertStaffMutation(actor, { min: 'SUPERADMIN', stepUpMinutes: STEP_UP_MIN });
+    const key = dto.key.toLowerCase();
+    const KNOWN = ['stripe', 'flutterwave', 'paddle'];
+    if (!KNOWN.includes(key)) throw new ValidationError({ key: `Unknown gateway; expected one of ${KNOWN.join(', ')}.` });
+    const changed: Array<{ key: string; enabled: boolean }> = [];
+    await this.db.paymentGateway.upsert({
+      where: { key },
+      create: { key, enabled: dto.enabled, note: dto.reason ?? null },
+      update: { enabled: dto.enabled, note: dto.reason ?? null },
+    });
+    changed.push({ key, enabled: dto.enabled });
+    const rival = key === 'stripe' ? 'paddle' : key === 'paddle' ? 'stripe' : null;
+    if (dto.enabled && rival) {
+      const note = `retired when ${key} was enabled`;
+      await this.db.paymentGateway.upsert({ where: { key: rival }, create: { key: rival, enabled: false, note }, update: { enabled: false, note } });
+      changed.push({ key: rival, enabled: false });
+    }
+    authLog(
+      'admin.provider',
+      'succeeded',
+      { userId: actor.userId, gateway: key, enabled: dto.enabled, changed: changed.map((c) => `${c.key}:${c.enabled ? 'on' : 'off'}`), reason: dto.reason },
+      req,
+    );
+    const rows = await this.db.paymentGateway.findMany({ orderBy: { key: 'asc' } });
+    return { gateways: rows, changed };
+  }
 
   /** The FX standards beside the catalogue they would reprice. SUPERADMIN only. */
   async fxRates(actor: Actor) {
