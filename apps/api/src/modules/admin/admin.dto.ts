@@ -160,6 +160,17 @@ export class FxRateDto extends ReasonDto {
   apply?: boolean;
 }
 
+export class GatewayDto extends ReasonDto {
+  @ApiPropertyOptional({ example: 'paddle' })
+  @IsString()
+  @MaxLength(20)
+  key!: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  enabled!: boolean;
+}
+
 /**
  * A new template.
  *

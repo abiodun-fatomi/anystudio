@@ -15,6 +15,7 @@ import {
   CreditsDto,
   EconomicsQueryDto,
   FxRateDto,
+  GatewayDto,
   GenerationsQueryDto,
   PaymentsQueryDto,
   PlatformMessageDto,
@@ -80,6 +81,13 @@ export class AdminController {
 
   @Get('/worker') worker() {
     return this.admin.workerStatus();
+  }
+  /** Payment doors: which processors the checkout may offer. SUPERADMIN only. */
+  @Get('/gateways') gateways(@CurrentActor() a: Actor) {
+    return this.admin.gateways(a);
+  }
+  @Post('/gateways') @HttpCode(HttpStatus.OK) setGateway(@CurrentActor() a: Actor, @Body() b: GatewayDto, @Req() req: Request) {
+    return this.admin.setGateway(a, b, req);
   }
   /** FX standards: one number per currency drives every non-USD price. SUPERADMIN only. */
   @Get('/fx') fx(@CurrentActor() a: Actor) {
