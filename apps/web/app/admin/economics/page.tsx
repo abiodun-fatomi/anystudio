@@ -10,6 +10,7 @@ import styles from '../admin.module.css';
 
 type Economics = Awaited<ReturnType<typeof api.admin.economics>>;
 type Fx = Awaited<ReturnType<typeof api.admin.fx>>;
+type Gateways = Awaited<ReturnType<typeof api.admin.gateways>>;
 
 const money = (m: number | null | undefined) => (m == null ? '—' : (m / 100).toFixed(2));
 const usd = (m: number) => Math.round(m) / 100;
@@ -74,6 +75,38 @@ export default function EconomicsPage() {
       setFxMsg(e instanceof Error ? e.message : 'Could not apply it (a recent second-factor confirmation may be needed).');
     } finally {
       setApplying(null);
+    }
+  };
+  const [gw, setGw] = useState<Gateways | null>(null);
+  const [gwBusy, setGwBusy] = useState<string | null>(null);
+  const [gwMsg, setGwMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!allowed) return;
+    let gone = false;
+    api.admin
+      .gateways()
+      .then((d) => {
+        if (!gone) setGw(d);
+      })
+      .catch(() => {
+        if (!gone) setGwMsg('Could not load payment gateways. Reload the page to try again.');
+      });
+    return () => {
+      gone = true;
+    };
+  }, [allowed]);
+  const toggleGateway = async (key: string, enabled: boolean) => {
+    if (gwBusy) return;
+    setGwBusy(key);
+    setGwMsg(null);
+    try {
+      const out = await api.admin.setGateway({ key, enabled, reason: 'Toggled from Economics' });
+      setGw({ gateways: out.gateways });
+      setGwMsg(`Gateways updated: ${out.changed.map((c) => `${c.key} ${c.enabled ? 'on' : 'off'}`).join(', ')}.`);
+    } catch (e: unknown) {
+      setGwMsg(e instanceof Error ? e.message : 'Could not change it (a recent second-factor confirmation may be needed).');
+    } finally {
+      setGwBusy(null);
     }
   };
 
@@ -232,6 +265,34 @@ export default function EconomicsPage() {
           </Table>
         </>
       ) : null}
+      {gw ? (
+        <Table>
+          <thead>
+            <tr>
+              <th>Payment gateways · Stripe and Paddle never run together</th>
+              <th>Status</th>
+              <th className={tableCell.num}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {gw.gateways.map((g) => (
+              <tr key={g.key}>
+                <td className={styles.mono}>
+                  {g.key}
+                  {g.note ? <span style={{ color: 'var(--muted)' }}> · {g.note}</span> : null}
+                </td>
+                <td className={styles.mono}>{g.enabled ? 'on' : 'off'}</td>
+                <td className={tableCell.num}>
+                  <Button onClick={() => void toggleGateway(g.key, !g.enabled)} disabled={gwBusy !== null}>
+                    {gwBusy === g.key ? 'Saving…' : g.enabled ? 'Switch off' : 'Switch on'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : null}
+      {gwMsg ? <p className={styles.mono}>{gwMsg}</p> : null}
       {fx ? (
         <Table>
           <thead>

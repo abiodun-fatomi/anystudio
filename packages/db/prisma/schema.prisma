@@ -2221,3 +2221,17 @@ model FxRate {
 
   @@map("fx_rates")
 }
+
+/// The payment doors and which are open. Three known keys: stripe,
+/// flutterwave, paddle. Seeded once with the launch posture (stripe and
+/// flutterwave on, paddle off) and console-owned after birth. The service
+/// layer enforces the one invariant: stripe and paddle are alternatives for
+/// the same card rails and are never enabled together.
+model PaymentGateway {
+  key       String   @id
+  enabled   Boolean
+  note      String?
+  updatedAt DateTime @updatedAt
+
+  @@map("payment_gateways")
+}
