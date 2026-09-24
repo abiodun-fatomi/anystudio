@@ -344,27 +344,34 @@ export class AdminService {
     const key = dto.key.toLowerCase();
     const KNOWN = ['stripe', 'flutterwave', 'paddle'];
     if (!KNOWN.includes(key)) throw new ValidationError({ key: `Unknown gateway; expected one of ${KNOWN.join(', ')}.` });
-    const changed: Array<{ key: string; enabled: boolean }> = [];
-    await this.db.paymentGateway.upsert({
-      where: { key },
-      create: { key, enabled: dto.enabled, note: dto.reason ?? null },
-      update: { enabled: dto.enabled, note: dto.reason ?? null },
-    });
-    changed.push({ key, enabled: dto.enabled });
-    const rival = key === 'stripe' ? 'paddle' : key === 'paddle' ? 'stripe' : null;
-    if (dto.enabled && rival) {
-      const note = `retired when ${key} was enabled`;
-      await this.db.paymentGateway.upsert({ where: { key: rival }, create: { key: rival, enabled: false, note }, update: { enabled: false, note } });
-      changed.push({ key: rival, enabled: false });
-    }
+    const { gateways, changed } = await this.db.$transaction(
+      async (tx) => {
+        const changed: Array<{ key: string; enabled: boolean }> = [];
+        await tx.paymentGateway.upsert({
+          where: { key },
+          create: { key, enabled: dto.enabled, note: dto.reason ?? null },
+          update: { enabled: dto.enabled, note: dto.reason ?? null },
+        });
+        changed.push({ key, enabled: dto.enabled });
+        const rival = key === 'stripe' ? 'paddle' : key === 'paddle' ? 'stripe' : null;
+        if (dto.enabled && rival) {
+          const note = `retired when ${key} was enabled`;
+          await tx.paymentGateway.upsert({ where: { key: rival }, create: { key: rival, enabled: false, note }, update: { enabled: false, note } });
+          changed.push({ key: rival, enabled: false });
+        }
+        return { gateways: await tx.paymentGateway.findMany({ orderBy: { key: 'asc' } }), changed };
+      },
+      // Both writes and the returned snapshot must commit together. Concurrent
+      // Stripe/Paddle switches must not publish a partially applied change.
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
     authLog(
       'admin.provider',
       'succeeded',
       { userId: actor.userId, gateway: key, enabled: dto.enabled, changed: changed.map((c) => `${c.key}:${c.enabled ? 'on' : 'off'}`), reason: dto.reason },
       req,
     );
-    const rows = await this.db.paymentGateway.findMany({ orderBy: { key: 'asc' } });
-    return { gateways: rows, changed };
+    return { gateways, changed };
   }
 
   /** The FX standards beside the catalogue they would reprice. SUPERADMIN only. */

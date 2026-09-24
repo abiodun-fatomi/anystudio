@@ -89,13 +89,14 @@ export default function EconomicsPage() {
         if (!gone) setGw(d);
       })
       .catch(() => {
-        if (!gone) setGw(null);
+        if (!gone) setGwMsg('Could not load payment gateways. Reload the page to try again.');
       });
     return () => {
       gone = true;
     };
   }, [allowed]);
   const toggleGateway = async (key: string, enabled: boolean) => {
+    if (gwBusy) return;
     setGwBusy(key);
     setGwMsg(null);
     try {
@@ -282,7 +283,7 @@ export default function EconomicsPage() {
                 </td>
                 <td className={styles.mono}>{g.enabled ? 'on' : 'off'}</td>
                 <td className={tableCell.num}>
-                  <Button onClick={() => void toggleGateway(g.key, !g.enabled)} disabled={gwBusy === g.key}>
+                  <Button onClick={() => void toggleGateway(g.key, !g.enabled)} disabled={gwBusy !== null}>
                     {gwBusy === g.key ? 'Saving…' : g.enabled ? 'Switch off' : 'Switch on'}
                   </Button>
                 </td>
