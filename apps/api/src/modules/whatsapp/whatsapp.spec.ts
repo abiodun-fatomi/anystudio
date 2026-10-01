@@ -7,6 +7,7 @@ import { createHmac } from 'node:crypto';
 import { normaliseInbound } from './whatsapp.types';
 import { toMeta } from './whatsapp.client';
 import { WhatsappService } from './whatsapp.service';
+import { WhatsappController } from './whatsapp.controller';
 
 describe('inbound normalisation', () => {
   it('reads text, button and list replies, images (also as documents), and shrugs at the rest', () => {
@@ -92,5 +93,30 @@ describe('the door', () => {
     expect(svc.signatureOk(body, undefined)).toBe(false);
     delete process.env.WHATSAPP_APP_SECRET;
     expect(svc.signatureOk(body, sig)).toBe(false);
+  });
+
+  it('echoes the bare challenge as plain text, never inside the JSON envelope', () => {
+    const controller = new WhatsappController(svc);
+    const sent: { status?: number; type?: string; body?: unknown } = {};
+    const res = {
+      status(code: number) {
+        sent.status = code;
+        return this;
+      },
+      type(t: string) {
+        sent.type = t;
+        return this;
+      },
+      send(body: unknown) {
+        sent.body = body;
+        return this;
+      },
+    };
+    const req = { get: () => undefined } as never;
+    controller.verify({ 'hub.mode': 'subscribe', 'hub.verify_token': 'verify-me', 'hub.challenge': '12345' }, req, res as never);
+    expect(sent).toEqual({ status: 200, type: 'text/plain', body: '12345' });
+    expect(() => controller.verify({ 'hub.mode': 'subscribe', 'hub.verify_token': 'wrong', 'hub.challenge': '12345' }, req, res as never)).toThrow(
+      'Verification failed.',
+    );
   });
 });
