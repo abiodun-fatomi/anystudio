@@ -5,9 +5,9 @@
  * Meta retries anything slow or non-2xx, and a retry storm is worse than
  * one lost status.
  */
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ForbiddenError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
@@ -21,12 +21,17 @@ import type { WebhookEnvelope } from './whatsapp.types';
 export class WhatsappController {
   constructor(private readonly whatsapp: WhatsappService) {}
 
+  /**
+   * Meta compares the body to the challenge it sent, byte for byte. Taking
+   * `@Res()` opts this one handler out of the JSON envelope every other route
+   * gets, which would otherwise wrap the challenge and fail the handshake.
+   */
   @Get('/webhook')
-  verify(@Query() query: Record<string, unknown>, @Req() req: Request): string {
+  verify(@Query() query: Record<string, unknown>, @Req() req: Request, @Res() res: Response): void {
     const challenge = this.whatsapp.verify(query);
     authLog('whatsapp.webhook', challenge ? 'succeeded' : 'refused', { reason: challenge ? undefined : 'verify_token_mismatch', action: 'verify' }, req);
     if (!challenge) throw new ForbiddenError('Verification failed.');
-    return challenge;
+    res.status(HttpStatus.OK).type('text/plain').send(challenge);
   }
 
   @Post('/webhook')
