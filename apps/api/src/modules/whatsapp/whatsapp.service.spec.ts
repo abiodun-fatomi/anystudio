@@ -99,12 +99,26 @@ suite('WhatsappService', () => {
     expect(contact.user?.phoneVerifiedAt).toBeTruthy();
     const wallet = await db.wallet.findUniqueOrThrow({ where: { workspaceId: contact.workspaceId! } });
     expect(await ledger.balance(wallet.id)).toBe(SIGNUP_PROMO_CREDITS);
+    const workspace = await db.workspace.findUniqueOrThrow({ where: { id: contact.workspaceId! } });
+    expect(workspace.currency).toBe('NGN');
+    expect(workspace.region).toBe('ng');
     expect(last().kind).toBe('list');
     expect((last() as { text: string }).text).toContain('Hi Kemi');
     // The same message again is a duplicate; a second hello does not grant twice.
     expect(await svc.handleInbound(id, 'Kemi Ade', `wamid.${id}.1`, { kind: 'text', text: 'hi' })).toBe('duplicate');
     await svc.handleInbound(id, 'Kemi Ade', `wamid.${id}.2`, { kind: 'text', text: 'hello' });
     expect(await ledger.balance(wallet.id)).toBe(SIGNUP_PROMO_CREDITS);
+  });
+
+  it('a number from outside Nigeria is priced in its own market, not the naira default', async () => {
+    // 775-559 is a real Nevada exchange, so the number parses to US rather than to nothing.
+    const id = `1775559${String(Math.floor(Math.random() * 1e4)).padStart(4, '0')}`;
+    await svc.handleInbound(id, 'Sam Reno', `wamid.${id}.1`, { kind: 'text', text: 'hi' });
+    const contact = await db.whatsappContact.findUniqueOrThrow({ where: { waId: id } });
+    const workspace = await db.workspace.findUniqueOrThrow({ where: { id: contact.workspaceId! } });
+    expect(workspace.currency).toBe('USD');
+    expect(workspace.region).toBe('us');
+    expect(workspace.profile).toMatchObject({ billingCountry: 'US' });
   });
 
   it('a photo with a caption becomes a branded-image request on the WhatsApp channel, and the result comes back as pictures', async () => {
