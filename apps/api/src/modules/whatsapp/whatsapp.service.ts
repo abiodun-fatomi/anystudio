@@ -20,10 +20,11 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient, type Generation, type WhatsappContact } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { SIGNUP_PROMO_CREDITS, signupGrantKey, type GenerationOutput } from '@anystudio/shared';
+import { SIGNUP_PROMO_CREDITS, currencyForCountry, regionForCountry, signupGrantKey, type GenerationOutput } from '@anystudio/shared';
 import { AppError, InsufficientCreditsError } from '../../../config/globals/errors';
 import { logger } from '../../../config/logger';
 import { authLog } from '../auth/auth.log';
+import { RegistrationService } from '../auth/registration.service';
 import type { Actor } from '../auth/policy';
 import { AudioService } from '../audio/audio.service';
 import { BillingService } from '../billing/billing.service';
@@ -742,10 +743,18 @@ export class WhatsappService implements OnModuleInit {
         });
       }
       if (!workspaceId) {
+        // Priced from the number's country code, exactly as a web sign-up is from
+        // its form: +234 pays in naira through Flutterwave, +44 in pounds, the rest
+        // in dollars. Left to the column default, every WhatsApp number — a US one
+        // included — was being billed in NGN.
+        const country = RegistrationService.countryOfPhone(phone);
         const ws = await tx.workspace.create({
           data: {
             type: 'PERSONAL',
             name: `${name?.split(' ')[0] ?? 'My'}'s studio`,
+            currency: currencyForCountry(country),
+            region: regionForCountry(country),
+            ...(country ? { profile: { billingCountry: country } } : {}),
             members: { create: { userId: user.id, role: 'OWNER' } },
             wallet: { create: {} },
           },
